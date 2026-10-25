@@ -1104,7 +1104,8 @@ class IndexWindowTest {
         assertFalse(reader.contains("fun saveMailboxView"))
         assertFalse(reader.contains("import org.dlang.liveimap.settings.FolderView"))
         assertTrue(reader.contains("onFolderViewSaved"))
-        assertTrue(reader.contains("saveMutex.withLock"))
+        assertTrue(reader.contains("store.onAccount"))
+        assertTrue(reader.contains("it.copy(lastSaveMailbox = destination)"))
     }
 
     @Test

@@ -142,8 +142,6 @@ import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
@@ -591,7 +589,6 @@ private fun MessageReaderLoaded(
     var bodyGeneration by remember { mutableIntStateOf(0) }
     var pageGeneration by remember { mutableIntStateOf(0) }
     var heading by held.headingState
-    val saveMutex = remember { Mutex() }
 
     BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake) && !moreMenu && !displayMenu) {
         choosingMove = false
@@ -2817,7 +2814,6 @@ private fun MessageReaderLoaded(
     if (choosingMove) {
         MailboxChooser(
             store = store,
-            saveMutex = saveMutex,
             onStored = { loaded ->
                 account = account.copy(expandedFolders = loaded.expandedFolders)
             },
@@ -2868,7 +2864,7 @@ private fun MessageReaderLoaded(
                 }
             if (!copied) return@launch
             try {
-                saveMutex.withLock {
+                store.onAccount {
                     val updated = store.update { it.copy(lastSaveMailbox = destination) }
                     account = updated
                 }
@@ -2907,7 +2903,6 @@ private fun MessageReaderLoaded(
     if (choosingSave) {
         MailboxChooser(
             store = store,
-            saveMutex = saveMutex,
             onStored = { loaded ->
                 account = account.copy(expandedFolders = loaded.expandedFolders)
             },

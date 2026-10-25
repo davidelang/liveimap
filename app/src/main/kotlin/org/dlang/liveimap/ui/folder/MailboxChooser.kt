@@ -36,10 +36,20 @@ import android.content.ContextWrapper
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
@@ -47,6 +57,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SettingsStore
+import org.dlang.liveimap.settings.accountCommand
 import org.dlang.liveimap.ui.UiDims
 
 internal class MailboxChooserHeld : ViewModel() {
@@ -54,6 +65,45 @@ internal class MailboxChooserHeld : ViewModel() {
     var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
     var levelReady: Boolean = false
+    private val turns = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val turnScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    init {
+        turnScope.launch {
+            for (command in turns) {
+                try {
+                    command()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    private class OnTurn(val owner: MailboxChooserHeld) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<OnTurn>
+    }
+
+    suspend fun <T> turn(block: suspend () -> T): T {
+        if (coroutineContext[OnTurn]?.owner === this) return block()
+        val carried = coroutineContext.minusKey(Job).minusKey(ContinuationInterceptor)
+        val done = CompletableDeferred<T>()
+        turns.send {
+            try {
+                withContext(carried + OnTurn(this@MailboxChooserHeld)) {
+                    done.complete(block())
+                }
+            } catch (error: Throwable) {
+                done.completeExceptionally(error)
+            }
+        }
+        return done.await()
+    }
+
+    override fun onCleared() {
+        turnScope.cancel()
+    }
 
     fun bind(session: MailSession, store: SettingsStore): FolderListModel {
         val current = model
@@ -88,7 +138,6 @@ private fun Context.hostActivity(): Activity? {
 @Composable
 internal fun MailboxChooser(
     store: SettingsStore,
-    saveMutex: Mutex,
     onStored: (AccountSettings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -107,7 +156,6 @@ internal fun MailboxChooser(
     MailboxChooserLoaded(
         accountId = id,
         store = store, // the caller's store, already bound to its account (F121)
-        saveMutex = saveMutex,
         onStored = onStored,
         onPick = onPick,
         onDismiss = onDismiss,
@@ -120,7 +168,6 @@ internal fun MailboxChooser(
 private fun MailboxChooserLoaded(
     accountId: String,
     store: SettingsStore,
-    saveMutex: Mutex,
     onStored: (AccountSettings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -138,23 +185,22 @@ private fun MailboxChooserLoaded(
         }
     }
     val scope = rememberCoroutineScope()
-    val gate = remember { Mutex() }
     var rows by held.rowsState
     var notice by remember { mutableStateOf<String?>(null) }
     var stopped by remember { mutableStateOf(false) }
 
     LaunchedEffect(session) {
         if (held.levelReady) return@LaunchedEffect
-        gate.withLock {
+        held.turn {
             val account = try {
-                saveMutex.withLock { store.load() }
+                store.load()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 notice = error.message ?: notConnected
                 stopped = true
                 rows = emptyList()
-                return@withLock
+                return@turn
             }
             val opened = try {
                 session.openBound(store, account)
@@ -164,20 +210,20 @@ private fun MailboxChooserLoaded(
                 notice = error.text
                 stopped = true
                 rows = emptyList()
-                return@withLock
+                return@turn
             }
             when (opened) {
                 is OpenResult.Rejected -> {
                     notice = opened.capabilities
                     stopped = true
                     rows = emptyList()
-                    return@withLock
+                    return@turn
                 }
                 is OpenResult.Failed -> {
                     notice = opened.text
                     stopped = true
                     rows = emptyList()
-                    return@withLock
+                    return@turn
                 }
                 OpenResult.Connected -> Unit
             }
@@ -228,10 +274,10 @@ private fun MailboxChooserLoaded(
                                 onPick = { onPick(row.mailbox) },
                                 onToggle = {
                                     scope.launch {
-                                        gate.withLock {
-                                            if (stopped) return@withLock
+                                        held.turn {
+                                            if (stopped) return@turn
                                             try {
-                                                saveMutex.withLock {
+                                                store.accountCommand {
                                                     model.toggleExpanded(row.mailbox)
                                                     onStored(store.load())
                                                 }
@@ -241,7 +287,7 @@ private fun MailboxChooserLoaded(
                                                 notice = error.text
                                                 stopped = true
                                                 rows = emptyList()
-                                                return@withLock
+                                                return@turn
                                             }
                                             val listed = try {
                                                 model.loadLevel()

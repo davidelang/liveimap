@@ -108,14 +108,13 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
@@ -161,15 +160,14 @@ private val settingsIo = CoroutineScope(
             settingsSaveFailure.value = error.message ?: error.toString()
         },
 )
-private val settingsMutex = Mutex()
-private val openSettingsEditors = mutableListOf<SettingsEditor>()
+private val openSettingsEditors = AtomicReference<List<SettingsEditor>>(emptyList())
 
 private fun bindSettingsEditor(editor: SettingsEditor) {
-    synchronized(openSettingsEditors) { openSettingsEditors.add(editor) }
+    openSettingsEditors.updateAndGet { it + editor }
 }
 
 private fun unbindSettingsEditor(editor: SettingsEditor) {
-    synchronized(openSettingsEditors) { openSettingsEditors.remove(editor) }
+    openSettingsEditors.updateAndGet { it - editor }
 }
 
 private fun sameSieveAccount(openId: String?, capturedId: String?): Boolean =
@@ -225,7 +223,7 @@ private class SettingsEditor(
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsSaveFailure.value = null
         settingsIo.launch {
-            settingsMutex.withLock { saveKeepingToolbars(target) }
+            target.onAccount { saveKeepingToolbars(target) }
             SettingsRevision.bump()
         }
     }
@@ -235,7 +233,7 @@ private class SettingsEditor(
         password = value
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { target.setPassword(passwordState.value) }
+            target.onAccount { target.setPassword(passwordState.value) }
         }
     }
 
@@ -244,19 +242,19 @@ private class SettingsEditor(
         smtpPassword = value
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsIo.launch {
-            settingsMutex.withLock { target.setSmtpPassword(smtpPasswordState.value) }
+            target.onAccount { target.setSmtpPassword(smtpPasswordState.value) }
         }
     }
 
     fun load() {
         settingsIo.launch {
-            settingsMutex.withLock { reloadLocked() }
+            store.onAccount { reloadLocked() }
         }
     }
 
     fun selectAccount(id: String) {
         settingsIo.launch {
-            settingsMutex.withLock {
+            store.onAccount {
                 editingId = id // F121: edit it; the active account is unchanged
                 reloadLocked()
             }
@@ -265,7 +263,7 @@ private class SettingsEditor(
 
     fun addAccount() {
         settingsIo.launch {
-            settingsMutex.withLock {
+            store.onAccount {
                 editingId = store.addAccount().ifEmpty { null } // F121: edit the new account; not made active
                 reloadLocked()
             }
@@ -274,8 +272,8 @@ private class SettingsEditor(
 
     fun removeAccount(id: String) {
         settingsIo.launch {
-            settingsMutex.withLock {
-                if (!store.removeAccount(id)) return@withLock
+            store.onAccount {
+                if (!store.removeAccount(id)) return@onAccount
                 dropMailSession(id)
                 if (editingId == id) editingId = null
                 reloadLocked()
@@ -303,10 +301,10 @@ private class SettingsEditor(
  */
 internal suspend fun persistSievePin(store: DataStoreSettingsStore, editingId: String?, fingerprint: String) {
     val target = if (editingId.isNullOrEmpty()) store else store.forAccount(editingId)
-    // Same lock as editor.persist's read of settingsState. A save cannot encode the old pin after this write.
-    settingsMutex.withLock {
+    // Same command as editor.persist's read of settingsState. A save cannot encode the old pin after this write.
+    target.onAccount {
         target.update { it.copy(sieveCertPin = fingerprint) }
-        val editors = synchronized(openSettingsEditors) { openSettingsEditors.toList() }
+        val editors = openSettingsEditors.get()
         for (editor in editors) {
             if (!sameSieveAccount(editor.editingId, editingId)) continue
             editor.settings = editor.settings.copy(sieveCertPin = fingerprint)
@@ -564,7 +562,7 @@ private fun ToolbarsSection(editor: SettingsEditor, depth: Int, scroll: ScrollSt
             val loaded = target.load()
             val rowsChanged = previous.toolbarRows != loaded.toolbarRows
             if (toolbarsDiffer(previous, loaded)) {
-                settingsMutex.withLock {
+                target.onAccount {
                     editor.settings = editor.settings.keepingStoredToolbars(loaded)
                 }
             }
@@ -669,7 +667,6 @@ private fun ExpandedFoldersBody(editor: SettingsEditor) {
     if (picking) {
         MailboxChooser(
             store = editor.bound,
-            saveMutex = settingsMutex,
             onStored = { _ -> },
             onPick = { mailbox ->
                 if (mailbox.isNotEmpty()) {
@@ -732,7 +729,6 @@ private fun FolderViewsBody(editor: SettingsEditor) {
     if (picking) {
         MailboxChooser(
             store = editor.bound,
-            saveMutex = settingsMutex,
             onStored = { _ -> },
             onPick = { mailbox ->
                 if (mailbox.isNotEmpty()) {
@@ -2445,7 +2441,7 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
             onClick = {
                 val target = editor.bound
                 settingsIo.launch {
-                    settingsMutex.withLock { editor.saveKeepingToolbars(target) }
+                    target.onAccount { editor.saveKeepingToolbars(target) }
                     LayoutApply.request()
                 }
             },
@@ -2640,13 +2636,12 @@ private fun MailboxPickDialog(
     MailboxChooser(
         suggestUse = suggestUse,
         store = editor.bound,
-        saveMutex = settingsMutex,
         onStored = { loaded ->
             editor.settings = editor.settings.copy(expandedFolders = loaded.expandedFolders)
         },
         onPick = { mailbox ->
             settingsIo.launch {
-                settingsMutex.withLock {
+                editor.bound.onAccount {
                     val saved = editor.bound.update { assignMailbox(it, field, mailbox) }
                     editor.settings = editor.settings.keepingStoredToolbars(saved).let { current ->
                         assignMailbox(current, field, mailbox)
