@@ -1,71 +1,70 @@
 package org.dlang.liveimap.session
 
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
+
 class SessionTable(
     private val factory: () -> MailSession,
 ) {
-    private val lock = Any()
-    private val sessions = LinkedHashMap<String, MailSession>()
-    private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
-    private var plaintextConfirmer: (suspend () -> Boolean)? = null
+    private val sessions = ConcurrentHashMap<String, MailSession>()
+    private val confirmers = AtomicReference(ConfirmerPair(null, null))
 
     fun session(accountId: String): MailSession {
         if (accountId.isEmpty()) throw IllegalArgumentException("account id")
-        synchronized(lock) {
-            val existing = sessions[accountId]
-            if (existing != null) return existing
+        return sessions.compute(accountId) { _, existing ->
+            if (existing != null) return@compute existing
             val created = factory()
-            created.setCertConfirmer(certConfirmer)
-            created.setPlaintextConfirmer(plaintextConfirmer)
-            sessions[accountId] = created
-            return created
-        }
+            val pair = confirmers.get()
+            created.setCertConfirmer(pair.cert)
+            created.setPlaintextConfirmer(pair.plain)
+            created
+        }!!
     }
 
     /** The session already open for [accountId], or null. Does not call the factory. */
     fun existing(accountId: String): MailSession? {
         if (accountId.isEmpty()) return null
-        synchronized(lock) {
-            return sessions[accountId]
-        }
+        return sessions[accountId]
     }
 
     fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
-        synchronized(lock) {
-            certConfirmer = confirm
-            for (session in sessions.values) {
-                session.setCertConfirmer(confirm)
-            }
+        val pair = confirmers.updateAndGet { it.copy(cert = confirm) }
+        for (session in sessions.values) {
+            session.setCertConfirmer(pair.cert)
         }
     }
 
     suspend fun confirmCertificate(prompt: CertPrompt): Boolean {
-        val confirm = synchronized(lock) { certConfirmer } ?: return false
+        val confirm = confirmers.get().cert ?: return false
         return confirm(prompt)
     }
 
     suspend fun confirmPlaintext(): Boolean {
-        val confirm = synchronized(lock) { plaintextConfirmer } ?: return false
+        val confirm = confirmers.get().plain ?: return false
         return confirm()
     }
 
     fun setPlaintextConfirmer(confirm: (suspend () -> Boolean)?) {
-        synchronized(lock) {
-            plaintextConfirmer = confirm
-            for (session in sessions.values) {
-                session.setPlaintextConfirmer(confirm)
-            }
+        val pair = confirmers.updateAndGet { it.copy(plain = confirm) }
+        for (session in sessions.values) {
+            session.setPlaintextConfirmer(pair.plain)
         }
     }
 
     suspend fun suspendConnections() {
-        val copy = synchronized(lock) { sessions.values.toList() }
+        val copy = sessions.values.toList()
         for (session in copy) {
             session.suspendConnections()
         }
     }
 
     suspend fun drop(accountId: String) {
-        val removed = synchronized(lock) { sessions.remove(accountId) } ?: return
+        val removed = sessions.remove(accountId) ?: return
         removed.close()
     }
 }
+
+private data class ConfirmerPair(
+    val cert: (suspend (CertPrompt) -> Boolean)?,
+    val plain: (suspend () -> Boolean)?,
+)

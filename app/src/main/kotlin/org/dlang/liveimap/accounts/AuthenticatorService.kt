@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import org.dlang.liveimap.settings.SettingsTree
 import org.dlang.liveimap.ui.contacts.ContactCopyScreen
+import java.util.concurrent.atomic.AtomicReference
 
 class AuthenticatorService : Service() {
     private val authenticator by lazy { LiveImapAuthenticator(this) }
@@ -233,21 +234,32 @@ internal fun setupCallerDecision(caller: String?, ownPackage: String, verifiedTo
 internal object SetupTokens {
     const val EXTRA = "com.davidlang.liveimap.SETUP_TOKEN"
     private const val LIFE_MS = 10 * 60 * 1000L
-    private val issued = HashMap<String, Long>()
+    private val issued = AtomicReference<Map<String, Long>>(emptyMap())
     private val random = java.security.SecureRandom()
     internal var clock: () -> Long = { System.currentTimeMillis() }
 
-    @Synchronized fun issue(): String {
+    fun issue(): String {
         val bytes = ByteArray(24).also { random.nextBytes(it) }
         val token = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
         val now = clock()
-        issued.entries.removeAll { now - it.value > LIFE_MS }
-        issued[token] = now
+        issued.updateAndGet { current ->
+            val next = HashMap<String, Long>(current.size + 1)
+            for ((key, at) in current) if (now - at <= LIFE_MS) next[key] = at
+            next[token] = now
+            java.util.Collections.unmodifiableMap(next)
+        }
         return token
     }
 
-    @Synchronized fun consume(token: String): Boolean {
-        val at = issued.remove(token) ?: return false
-        return clock() - at <= LIFE_MS
+    fun consume(token: String): Boolean {
+        while (true) {
+            val current = issued.get()
+            val at = current[token] ?: return false
+            val next = HashMap<String, Long>(current.size - 1)
+            for ((key, value) in current) if (key != token) next[key] = value
+            if (issued.compareAndSet(current, java.util.Collections.unmodifiableMap(next))) {
+                return clock() - at <= LIFE_MS
+            }
+        }
     }
 }

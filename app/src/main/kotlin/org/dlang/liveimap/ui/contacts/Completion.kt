@@ -17,6 +17,7 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.SelectedAddress
 import org.dlang.liveimap.settings.androidSourceId
 import org.dlang.liveimap.settings.pineSourceId
+import java.util.concurrent.atomic.AtomicReference
 
 data class CompletionEntry(
     val nickname: String,
@@ -154,10 +155,7 @@ fun pineBookIsLoaded(accountId: String, mailbox: String): Boolean {
 /** Drop cached completion data (after an address-book write or Take Address, or a settings change). */
 fun forgetCompletionCaches() {
     pineEntries.clear()
-    synchronized(contactMemory) {
-        androidEntries = null
-        androidSets = null
-    }
+    androidContacts.updateAndGet { it.copy(sets = null, entries = null) }
 }
 
 suspend fun pineEntriesOnce(session: MailSession, accountId: String, mailbox: String): List<AlpineEntry> {
@@ -199,41 +197,52 @@ data class AndroidContactSet(
     val label: String,
 )
 
-private val contactMemory = Any()
-private var androidSets: List<AndroidContactSet>? = null
-private var androidEntries: Map<String, List<CompletionEntry>>? = null
-private var androidLoadedAt = 0L
+private data class AndroidContactSnapshot(
+    val sets: List<AndroidContactSet>?,
+    val entries: Map<String, List<CompletionEntry>>?,
+    val androidLoadedAt: Long,
+)
+
+private val androidContacts = AtomicReference(
+    AndroidContactSnapshot(sets = null, entries = null, androidLoadedAt = 0L),
+)
 private const val AndroidCacheMs = 5 * 60 * 1000L
 
 fun hasReadContacts(context: Context): Boolean =
     context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
 fun androidContactSetsOnce(resolver: ContentResolver, packageManager: PackageManager): List<AndroidContactSet> {
-    synchronized(contactMemory) {
-        androidSets?.let { return it }
-        val loaded = try {
-            queryAndroidContactSets(resolver, packageManager)
-        } catch (_: SecurityException) {
-            return emptyList()
-        }
-        androidSets = loaded
-        return loaded
+    androidContacts.get().sets?.let { return it }
+    val loaded = try {
+        queryAndroidContactSets(resolver, packageManager)
+    } catch (_: SecurityException) {
+        return emptyList()
     }
+    val published = androidContacts.updateAndGet { current ->
+        if (current.sets != null) current else current.copy(sets = loaded)
+    }
+    return published.sets ?: loaded
 }
 
 fun androidEntriesOnce(resolver: ContentResolver): Map<String, List<CompletionEntry>> {
-    synchronized(contactMemory) {
-        // F62: contacts added later show up after a few minutes (or at once after forgetCompletionCaches).
-        if (System.currentTimeMillis() - androidLoadedAt < AndroidCacheMs) androidEntries?.let { return it }
-        val loaded = try {
-            queryAndroidEntries(resolver)
-        } catch (_: SecurityException) {
-            return emptyMap()
-        }
-        androidEntries = loaded
-        androidLoadedAt = System.currentTimeMillis()
-        return loaded
+    val seen = androidContacts.get()
+    val now = System.currentTimeMillis()
+    // F62: contacts added later show up after a few minutes (or at once after forgetCompletionCaches).
+    if (seen.entries != null && now - seen.androidLoadedAt < AndroidCacheMs) return seen.entries
+    val sampled = System.currentTimeMillis()
+    val loaded = try {
+        queryAndroidEntries(resolver)
+    } catch (_: SecurityException) {
+        return emptyMap()
     }
+    val afterQuery = System.currentTimeMillis()
+    val published = androidContacts.updateAndGet { current ->
+        val newerInside = current.entries != null &&
+            current.androidLoadedAt >= sampled &&
+            afterQuery - current.androidLoadedAt < AndroidCacheMs
+        if (newerInside) current else current.copy(entries = loaded, androidLoadedAt = sampled)
+    }
+    return published.entries ?: loaded
 }
 
 private fun owningAppLabel(packageManager: PackageManager, accountType: String): String? {

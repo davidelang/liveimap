@@ -9,6 +9,7 @@ import org.dlang.liveimap.settings.AccountSettings
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 data class WatchPlan(
     val idle: List<String>,
@@ -164,7 +165,7 @@ data class IdleFolderChange(
  * (the only consumer uses counts). One consumer drains it. Does not open a socket.
  */
 class IdleChangeCoalescer {
-    private val pending = LinkedHashMap<Triple<String, String, String>, IdleFolderChange>()
+    private val pending = AtomicReference(LinkedHashMap<Triple<String, String, String>, IdleFolderChange>())
     private val signal = Channel<Unit>(Channel.CONFLATED)
 
     fun offer(change: IdleFolderChange) {
@@ -175,24 +176,28 @@ class IdleChangeCoalescer {
             is MailboxChange.Exists, is MailboxChange.Expunge -> "count"
             else -> change.change.toString()
         }
-        synchronized(pending) {
-            val key = Triple(change.accountId, change.mailbox, kind)
-            pending.remove(key)
-            pending[key] = change
+        val key = Triple(change.accountId, change.mailbox, kind)
+        pending.updateAndGet { current ->
+            val next = LinkedHashMap(current)
+            next.remove(key)
+            next[key] = change
+            next
         }
         signal.trySend(Unit)
     }
 
-    fun drain(): List<IdleFolderChange> = synchronized(pending) {
-        val out = pending.values.toList()
-        pending.clear()
-        out
+    fun drain(): List<IdleFolderChange> {
+        val taken = pending.getAndUpdate { LinkedHashMap() }
+        return taken.values.toList()
     }
 
     fun dropAccount(accountId: String) {
-        synchronized(pending) {
-            val keys = pending.keys.filter { it.first == accountId }
-            for (key in keys) pending.remove(key)
+        pending.updateAndGet { current ->
+            val next = LinkedHashMap<Triple<String, String, String>, IdleFolderChange>()
+            for ((key, value) in current) {
+                if (key.first != accountId) next[key] = value
+            }
+            next
         }
     }
 

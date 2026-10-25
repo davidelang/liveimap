@@ -3777,3 +3777,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-25 - Account writes run on one actor.
+
+## 2026-10-25 - Session snapshots and one prompt queue.
