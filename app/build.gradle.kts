@@ -90,8 +90,8 @@ android {
         }
     }
     sourceSets.getByName("main") {
-        java.srcDir(layout.buildDirectory.dir("generated/settingsTree"))
-        res.srcDir(layout.buildDirectory.dir("generated/settingsTreeRes"))
+        java.srcDir(file("build/generated/settingsTree"))
+        res.srcDir(file("build/generated/settingsTreeRes"))
     }
 }
 
