@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- F03: AccountSetupActivity hides other apps' overlays while it is shown (normal permission, API 31+). -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- F70: let the support button see mail apps and the help links see a browser (package visibility). -->
     <queries>

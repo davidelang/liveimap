@@ -3,6 +3,9 @@ package org.dlang.liveimap.accounts
 import kotlin.coroutines.coroutineContext
 import android.accounts.Account
 import android.accounts.AccountManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
@@ -38,6 +41,7 @@ import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.session.dropMailSession
+import org.dlang.liveimap.ui.contacts.forgetCompletionCaches
 import org.dlang.liveimap.settings.accountDrawerFolders
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
@@ -224,7 +228,27 @@ class AccountStore private constructor(private val context: Context) {
                     manager.getUserData(row, userAccountId) == accountId
                 } ?: return@withContext false
                 val stored = storedPreference(accountId)
-                if (!manager.removeAccountExplicitly(account)) return@withContext false
+                val settings = if (stored == null) null else decodeAccountSettings(stored)
+                var certificateRemoved = false
+                if (settings != null) {
+                    val path = settings.clientCert
+                    if (path.isNotBlank()) {
+                        val file = File(path)
+                        if (file.exists()) {
+                            if (!file.delete()) throw java.io.IOException(path)
+                            certificateRemoved = true
+                        }
+                        org.dlang.liveimap.engine.ClientCertStore.remove(path)
+                    }
+                    val alias = settings.clientCertAlias
+                    if (alias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias)
+                }
+                if (!manager.removeAccountExplicitly(account)) {
+                    if (certificateRemoved) {
+                        throw IllegalStateException("account is still listed and its certificate is already gone")
+                    }
+                    return@withContext false
+                }
                 JmapPlainHttp.drop(accountId)
                 removeAccountFiles(context.filesDir, accountId, stored)
                 deleteUnsentAccount(context.filesDir, accountId)
@@ -244,6 +268,8 @@ class AccountStore private constructor(private val context: Context) {
                 }
                 val saved = secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
                 if (!saved) error("smtp password not removed")
+                dropMailSession(accountId)
+                forgetCompletionCaches()
                 true
             }
             TrafficLog.setRecording(recordingWanted(logImapTrafficFlags()))
@@ -590,7 +616,24 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
         // F29: the same clean-up as the in-app removal: SMTP password, client cert, imported key, image trust.
         kotlinx.coroutines.runBlocking(Dispatchers.IO) {
             dropMailSession(accountId)
+            forgetCompletionCaches()
             val stored = appContext.accountSettingsDataStore.data.first()[stringPreferencesKey(accountId)]
+            var decodedAlias: String? = null
+            try {
+                if (stored != null) {
+                    val settings = decodeAccountSettings(stored)
+                    decodedAlias = settings.clientCertAlias
+                    val path = settings.clientCert
+                    if (path.isNotBlank()) {
+                        val file = File(path)
+                        if (file.exists() && !file.delete()) throw java.io.IOException(path)
+                    }
+                }
+            } catch (error: IllegalArgumentException) {
+                notifyCertificateLeftBehind(appContext, account.name, "unknown", error)
+            } catch (error: java.io.IOException) {
+                notifyCertificateLeftBehind(appContext, account.name, decodedAlias ?: "unknown", error)
+            }
             removeAccountFiles(appContext.filesDir, accountId, stored)
             AccountStore.shared(appContext).forgetSmtpPassword(accountId)
         }
@@ -605,6 +648,30 @@ internal fun deleteAccountArtifacts(context: Context, account: Account) {
         deleteUnsentAccount(appContext.filesDir, accountId)
     }
     File(appContext.cacheDir, "imap-traffic.log").delete()
+}
+
+internal fun certificateLeftBehind(accountName: String, alias: String): String =
+    "$accountName is removed and certificate $alias was not removed"
+
+private fun notifyCertificateLeftBehind(context: Context, accountName: String, alias: String, error: Exception) {
+    val text = certificateLeftBehind(accountName, alias)
+    Log.w(logTag, text, error)
+    try {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel("liveimap-account") == null) {
+            manager.createNotificationChannel(
+                NotificationChannel("liveimap-account", "Account", NotificationManager.IMPORTANCE_DEFAULT),
+            )
+        }
+        val notification = Notification.Builder(context, "liveimap-account")
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle(accountName)
+            .setContentText(text)
+            .build()
+        manager.notify(accountName.hashCode(), notification)
+    } catch (_: SecurityException) {
+        // The log line above stays. Notification permission is not requested at runtime.
+    }
 }
 
 /** One account's settings and secrets, for sending through it (see AccountStore.accountById). */

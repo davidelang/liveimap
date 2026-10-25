@@ -72,5 +72,6 @@ class RetargetCredentialsTest {
         assertTrue(stageStart >= 0 && stageEnd > stageStart)
         assertFalse(store.substring(stageStart, stageEnd).contains("runCatching { overlayAccountFields(decodeAccountSettings"))
         assertTrue(File("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt").readText().contains("retargetCredentials(settings, next)"))
+        assertEquals("Ada is removed and certificate leaf was not removed", certificateLeftBehind("Ada", "leaf"))
     }
 }
