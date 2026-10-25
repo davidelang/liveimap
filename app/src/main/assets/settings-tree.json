@@ -703,6 +703,43 @@
       {
         "setting": "maxImageTrustBytes",
         "default": 2000000
+      },
+      {
+        "setting": "indexPageSize",
+        "default": 60
+      },
+      {
+        "setting": "swipeThresholdPercent",
+        "default": 40,
+        "hardLimit": {
+          "min": 1,
+          "max": 99
+        }
+      },
+      {
+        "setting": "moveChunk",
+        "default": 1000,
+        "hardLimit": {
+          "min": 1,
+          "max": 2147483647
+        }
+      },
+      {
+        "setting": "clientSortChunk",
+        "default": 5000,
+        "hardLimit": {
+          "min": 1,
+          "max": 2147483647
+        }
+      },
+      {
+        "setting": "reconnectDelaysSec",
+        "default": [2, 10, 60],
+        "hardLimit": {
+          "minItems": 1,
+          "itemMin": 1,
+          "itemMax": 86400
+        }
       }
     ]
   },

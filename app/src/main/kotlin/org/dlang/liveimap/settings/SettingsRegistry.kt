@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.first
 
 /**
@@ -172,6 +173,11 @@ private val globalSettingsValue = stringPreferencesKey("value")
 object InstalledGlobals {
     val maxRawViewBytes = AtomicInteger(1 shl 20)
     val maxImageTrustBytes = AtomicInteger(2_000_000)
+    val indexPageSize = AtomicInteger(60)
+    val swipeThresholdPercent = AtomicInteger(40)
+    val moveChunk = AtomicInteger(1000)
+    val clientSortChunk = AtomicInteger(5000)
+    val reconnectDelaysSec = AtomicReference(listOf(2, 10, 60))
 }
 
 enum class SettingScope { Global, Account, Server }
@@ -847,7 +853,7 @@ fun globalRecordError(text: String): String? {
 }
 
 private fun globalValueOk(spec: SettingSpec, value: String): Boolean {
-    if (spec.key == "maxRawViewBytes" || spec.key == "maxImageTrustBytes") {
+    if (spec.key == "maxRawViewBytes" || spec.key == "maxImageTrustBytes" || spec.key == "indexPageSize") {
         val number = value.toLongOrNull() ?: return false
         return number >= 1L && number <= Int.MAX_VALUE.toLong()
     }
@@ -913,21 +919,51 @@ suspend fun startupSettingsError(context: Context): String? {
 private fun installGlobals(record: String) {
     var raw = 1 shl 20
     var image = 2_000_000
+    var page = 60
+    var swipe = 40
+    var move = 1000
+    var sortChunk = 5000
+    var delays = listOf(2, 10, 60)
     for (line in record.lines()) {
         if (line.isEmpty()) continue
         val eq = line.indexOf('=')
         if (eq <= 0) continue
-        val number = line.substring(eq + 1).toIntOrNull() ?: continue
-        when (line.substring(0, eq)) {
+        val key = line.substring(0, eq)
+        val text = line.substring(eq + 1)
+        if (key == "reconnectDelaysSec") {
+            val parsed = ArrayList<Int>()
+            var ok = true
+            for (part in text.split(",")) {
+                val number = part.toIntOrNull()
+                if (number == null) {
+                    ok = false
+                    break
+                }
+                parsed.add(number)
+            }
+            if (ok && parsed.isNotEmpty()) delays = parsed
+            continue
+        }
+        val number = text.toIntOrNull() ?: continue
+        when (key) {
             "maxRawViewBytes" -> raw = number
             "maxImageTrustBytes" -> image = number
+            "indexPageSize" -> page = number
+            "swipeThresholdPercent" -> swipe = number
+            "moveChunk" -> move = number
+            "clientSortChunk" -> sortChunk = number
         }
     }
     InstalledGlobals.maxRawViewBytes.set(raw)
     InstalledGlobals.maxImageTrustBytes.set(image)
+    InstalledGlobals.indexPageSize.set(page)
+    InstalledGlobals.swipeThresholdPercent.set(swipe)
+    InstalledGlobals.moveChunk.set(move)
+    InstalledGlobals.clientSortChunk.set(sortChunk)
+    InstalledGlobals.reconnectDelaysSec.set(delays)
 }
 
-private fun withGlobalLine(record: String, key: String, value: Int): String {
+private fun withGlobalLine(record: String, key: String, value: String): String {
     val next = "$key=$value"
     if (record.isEmpty()) return next
     val parts = record.split('\n').toMutableList()
@@ -946,13 +982,30 @@ private fun withGlobalLine(record: String, key: String, value: Int): String {
 }
 
 suspend fun saveGlobalNumber(context: Context, key: String, value: Int) {
-    if (value < 1) throw IllegalArgumentException(key)
+    val spec = settingsRegistry[key] ?: throw IllegalArgumentException(key)
+    if (!globalValueOk(spec, value.toString())) throw IllegalArgumentException(key)
     context.globalSettingsDataStore.edit { prefs ->
         val record = prefs[globalSettingsValue].orEmpty()
-        prefs[globalSettingsValue] = withGlobalLine(record, key, value)
+        prefs[globalSettingsValue] = withGlobalLine(record, key, value.toString())
     }
     when (key) {
         "maxRawViewBytes" -> InstalledGlobals.maxRawViewBytes.set(value)
         "maxImageTrustBytes" -> InstalledGlobals.maxImageTrustBytes.set(value)
+        "indexPageSize" -> InstalledGlobals.indexPageSize.set(value)
+        "swipeThresholdPercent" -> InstalledGlobals.swipeThresholdPercent.set(value)
+        "moveChunk" -> InstalledGlobals.moveChunk.set(value)
+        "clientSortChunk" -> InstalledGlobals.clientSortChunk.set(value)
     }
+}
+
+suspend fun saveGlobalDelays(context: Context, seconds: List<Int>) {
+    val key = "reconnectDelaysSec"
+    val spec = settingsRegistry[key] ?: throw IllegalArgumentException(key)
+    val text = seconds.joinToString(",")
+    if (!globalValueOk(spec, text)) throw IllegalArgumentException(key)
+    context.globalSettingsDataStore.edit { prefs ->
+        val record = prefs[globalSettingsValue].orEmpty()
+        prefs[globalSettingsValue] = withGlobalLine(record, key, text)
+    }
+    InstalledGlobals.reconnectDelaysSec.set(seconds)
 }

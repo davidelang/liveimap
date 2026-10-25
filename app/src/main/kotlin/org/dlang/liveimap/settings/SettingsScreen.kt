@@ -2121,6 +2121,73 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
                 scope.launch { saveGlobalNumber(context, key, number) }
             }
         }
+        "indexPageSize" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.indexPageSize.get(),
+                editor.ready,
+                { it >= 1 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
+        "swipeThresholdPercent" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.swipeThresholdPercent.get(),
+                editor.ready,
+                { it in 1..99 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
+        "moveChunk" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.moveChunk.get(),
+                editor.ready,
+                { it >= 1 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
+        "clientSortChunk" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            NumberLeaf(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.clientSortChunk.get(),
+                editor.ready,
+                { it >= 1 },
+            ) { number ->
+                scope.launch { saveGlobalNumber(context, key, number) }
+            }
+        }
+        "reconnectDelaysSec" -> {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            LineField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                InstalledGlobals.reconnectDelaysSec.get().joinToString(", "),
+                ready = editor.ready,
+            ) { text ->
+                val parts = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                val seconds = ArrayList<Int>(parts.size)
+                for (part in parts) {
+                    val number = part.toIntOrNull() ?: return@LineField
+                    if (number !in 1..86400) return@LineField
+                    seconds.add(number)
+                }
+                if (seconds.isEmpty()) return@LineField
+                scope.launch { saveGlobalDelays(context, seconds) }
+            }
+        }
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
 }

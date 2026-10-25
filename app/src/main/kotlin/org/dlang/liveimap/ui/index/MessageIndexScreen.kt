@@ -180,6 +180,7 @@ import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
+import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.ThreadIndexStyle
@@ -479,9 +480,9 @@ fun indexStatusDescription(
 
 /**
  * A row's number, Pine style: its 1-based position in the current sort/thread/filter order, not its IMAP sequence
- * number. The held window starts at anchorPage * IndexPageSize in that order; thread members are not numbered.
+ * number. The held window starts at anchorPage * indexPage() in that order; thread members are not numbered.
  */
-fun rowPosition(anchorPage: Int, indexInWindow: Int): Int = anchorPage * IndexPageSize + indexInWindow + 1
+fun rowPosition(anchorPage: Int, indexInWindow: Int): Int = anchorPage * indexPage() + indexInWindow + 1
 
 fun existsColumnChars(exists: Int): Int = if (exists <= 0) 1 else exists.toString().length
 
@@ -2326,7 +2327,7 @@ private fun MessageIndexLoaded(
                         sync.block()
                     
                         if (model.anchorPage < before && model.rows.isNotEmpty()) {
-                            val target = (IndexPageSize - 1).coerceAtMost(model.rows.lastIndex)
+                            val target = (indexPage() - 1).coerceAtMost(model.rows.lastIndex)
                             if (target >= 0) listState.scrollToItem(target)
                         }
                     }
@@ -4032,7 +4033,7 @@ private fun IndexMessageRow(
     var width by remember { mutableIntStateOf(0) }
     val holder = remember { SwipeBoxHolder() }
     val dismissState = rememberSwipeToDismissBoxState(
-        positionalThreshold = { distance -> distance * SwipeWidthPercent / 100f },
+        positionalThreshold = { distance -> distance * swipeWidthPercent() / 100f },
         confirmValueChange = { target ->
             if (target == SwipeToDismissBoxValue.Settled) {
                 true
@@ -4497,8 +4498,13 @@ private class WatchBackoff {
     fun onWatchLost(scope: CoroutineScope, session: MailSession) {
         if (job?.isActive == true) return
         attempt = 0
+        val seconds = InstalledGlobals.reconnectDelaysSec.get()
+        val delays = if (seconds.isEmpty()) {
+            longArrayOf(2_000L, 10_000L, 60_000L)
+        } else {
+            LongArray(seconds.size) { index -> seconds[index].toLong() * 1_000L }
+        }
         job = scope.launch {
-            val delays = longArrayOf(2_000L, 10_000L, 60_000L)
             while (true) {
                 val delayMs = delays[attempt.coerceAtMost(delays.size - 1)]
                 delay(delayMs)

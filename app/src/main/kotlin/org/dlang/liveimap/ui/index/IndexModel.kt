@@ -34,6 +34,7 @@ import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.MessageOrder
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.Density
@@ -56,6 +57,16 @@ import kotlin.math.abs
 
 const val IndexPageSize = 60
 const val SwipeWidthPercent = 40
+
+fun indexPage(): Int {
+    val stored = InstalledGlobals.indexPageSize.get()
+    return if (stored >= 1) stored else IndexPageSize
+}
+
+fun swipeWidthPercent(): Int {
+    val stored = InstalledGlobals.swipeThresholdPercent.get()
+    return if (stored in 1..99) stored else SwipeWidthPercent
+}
 
 enum class SimpleSearchField {
     Subject,
@@ -399,7 +410,7 @@ fun wantsPreview(account: AccountSettings): Boolean = when (account.previewSize)
 
 fun swipeReached(offsetPx: Float, widthPx: Float): Boolean {
     if (widthPx <= 0f) return false
-    return abs(offsetPx) * 100f >= widthPx * SwipeWidthPercent
+    return abs(offsetPx) * 100f >= widthPx * swipeWidthPercent()
 }
 
 data class SwipeVisual(
@@ -1419,12 +1430,13 @@ class IndexModel(
     }
 
     suspend fun onFirstVisible(index: Int): List<IndexRow> {
+        val page = indexPage()
         val previousIndex = lastVisibleIndex
         lastVisibleIndex = index
-        if (index < IndexPageSize) return heldRows
-        if (previousIndex >= IndexPageSize) return heldRows
+        if (index < page) return heldRows
+        if (previousIndex >= page) return heldRows
         val bound = if (arrivalTotal > 0) arrivalTotal else order.size
-        val next = (pageAnchor + 1) * IndexPageSize
+        val next = (pageAnchor + 1) * page
         if (next >= bound) return heldRows
         val previous = heldRows
         val previousAnchor = pageAnchor
@@ -1745,7 +1757,7 @@ class IndexModel(
                 else heldRows.filter { it.uid in wanted && "\\Deleted" in it.flags && inActedFolder(it, folder) }.map { it.uid }.toSet()
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
-            for (part in target.chunked(MoveChunk)) {
+            for (part in target.chunked(moveChunkSize())) {
                 try {
                     home(folder).storeFlags(part, setOf("\\Deleted"), emptySet())
                     done.addAll(part)
@@ -1799,7 +1811,7 @@ class IndexModel(
             // "Move entire folder" too goes in batches: first every UID (UID SEARCH ALL, in PARTIAL windows when
             // offered), then chunks. Copy-then-mark only sets \Deleted per chunk; nothing here expunges.
             val all = if (allMailbox) frozenAll(moveAllKind(settings), folder) else uids
-            val chunk = LabTestHooks.moveChunk() ?: MoveChunk
+            val chunk = moveChunkSize()
             val big = all.size > chunk
             var targetEpoch = -1L // one destination epoch for all batches, else 0 (no undo)
             val outcome = moveInChunks(all, chunk, { moveStop }, { done, total ->
@@ -1868,7 +1880,7 @@ class IndexModel(
             val snapshot = if (allMailbox) frozenAll(folder = folder) else uids
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
-            for (part in snapshot.chunked(MoveChunk)) {
+            for (part in snapshot.chunked(moveChunkSize())) {
                 try {
                     home(folder).storeFlags(part, setOf("\\Deleted"), emptySet())
                     home(folder).uidExpunge(part)
@@ -1915,7 +1927,7 @@ class IndexModel(
         try {
             if (u.delete) {
                 session.onRefs(accountKey, u.source) { s, _, uids ->
-                    for (part in uids.chunked(MoveChunk)) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
+                    for (part in uids.chunked(moveChunkSize())) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
                 }
                 val byFolder = LinkedHashMap<String, MutableSet<Long>>()
                 for (ref in u.source) byFolder.getOrPut(ref.mailbox) { LinkedHashSet() }.add(ref.uid)
@@ -1976,7 +1988,7 @@ class IndexModel(
             val target = if (allMailbox) frozenAll(folder = folder) else uids
             val done = ArrayList<Long>()
             var failure: MailFailure? = null
-            for (part in target.chunked(MoveChunk)) {
+            for (part in target.chunked(moveChunkSize())) {
                 try {
                     home(folder).storeFlags(part, add, remove)
                     done.addAll(part)
@@ -2245,8 +2257,9 @@ class IndexModel(
     }
 
     private suspend fun fetchArrivalWindow(): List<IndexRow> {
+        val page = indexPage()
         val exists = arrivalTotal
-        val span = arrivalSpan(exists, pageAnchor, view.newestFirst) ?: run {
+        val span = arrivalSpan(exists, pageAnchor, view.newestFirst, page) ?: run {
             order = emptyList()
             return emptyList()
         }
@@ -2256,8 +2269,8 @@ class IndexModel(
                 mode = IndexMode.ArrivalRange,
                 firstSequence = span.first,
                 lastSequence = span.last,
-                limit = IndexPageSize,
-                prefetch = IndexPageSize,
+                limit = page,
+                prefetch = page,
                 includePreview = includePreview,
             ),
         )
@@ -2323,17 +2336,18 @@ class IndexModel(
     private fun includesNewest(bound: Int): Boolean {
         if (view.newestFirst) return pageAnchor == 0
         if (bound <= 0) return pageAnchor == 0
-        val lastPage = (bound - 1) / IndexPageSize
+        val lastPage = (bound - 1) / indexPage()
         val start = (lastPage - 1).coerceAtLeast(0)
         return pageAnchor in start..lastPage
     }
 
     private fun clampedAnchor(count: Int, preserveAnchor: Int?, target: Int): Int {
         if (count <= 0) return 0
-        val lastPage = (count - 1) / IndexPageSize
+        val page = indexPage()
+        val lastPage = (count - 1) / page
         if (preserveAnchor != null) return preserveAnchor.coerceIn(0, lastPage)
         val maxAnchor = (lastPage - 1).coerceAtLeast(0)
-        val raw = ((target - IndexPageSize / 4).coerceAtLeast(0) / IndexPageSize)
+        val raw = ((target - page / 4).coerceAtLeast(0) / page)
         return raw.coerceIn(0, maxAnchor)
     }
 
@@ -2344,7 +2358,7 @@ class IndexModel(
             lastVisibleIndex = 0
             return
         }
-        val index = (target - pageAnchor * IndexPageSize).coerceIn(0, loadedCount - 1)
+        val index = (target - pageAnchor * indexPage()).coerceIn(0, loadedCount - 1)
         startInHeld = index
         lastVisibleIndex = index
     }
@@ -2521,22 +2535,22 @@ class IndexModel(
         return index
     }
 
-    private fun arrivalSpan(exists: Int, anchor: Int, fromNewestEnd: Boolean): IntRange? {
+    private fun arrivalSpan(exists: Int, anchor: Int, fromNewestEnd: Boolean, page: Int): IntRange? {
         if (exists <= 0 || anchor < 0) return null
         if (fromNewestEnd) {
-            val last = exists - anchor * IndexPageSize
+            val last = exists - anchor * page
             if (last < 1) return null
-            val olderLast = exists - (anchor + 1) * IndexPageSize
+            val olderLast = exists - (anchor + 1) * page
             val first = if (olderLast < 1) {
                 1
             } else {
-                (exists - (anchor + 2) * IndexPageSize + 1).coerceAtLeast(1)
+                (exists - (anchor + 2) * page + 1).coerceAtLeast(1)
             }
             return first..last
         }
-        val first = anchor * IndexPageSize + 1
+        val first = anchor * page + 1
         if (first > exists) return null
-        val last = exists.coerceAtMost((anchor + 2) * IndexPageSize)
+        val last = exists.coerceAtMost((anchor + 2) * page)
         return first..last
     }
 
@@ -2670,7 +2684,7 @@ class IndexModel(
      * whole UID list. Null when the server cannot do it, or answers COUNT without the window (Cyrus 3.12/3.13).
      */
     private suspend fun windowedSort(key: SortKey, newestFirst: Boolean, criteria: String? = null): WindowedOrder? {
-        val size = IndexPageSize * 2
+        val size = indexPage() * 2
         suspend fun window(lo: Int, hi: Int): UidWindow? = if (criteria == null) {
             home().sortWindow(key, newestFirst, lo, hi)
         } else {
@@ -2765,7 +2779,7 @@ class IndexModel(
 
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
-        val size = IndexPageSize * 2
+        val size = indexPage() * 2
         val first = home().searchWindow(kind, query, 1, size) ?: return null
         if (first.uids.isEmpty() && first.total > 0) return null
         val total = first.total
@@ -2820,12 +2834,13 @@ class IndexModel(
     }
 
     private suspend fun pagesOf(uids: List<Long>): List<IndexRow> {
-        if (uids is WindowedOrder) uids.ensure(pageAnchor * IndexPageSize, IndexPageSize * 2)
-        val visible = indexedRange(uids, pageAnchor * IndexPageSize, IndexPageSize)
-        val prefetch = indexedRange(uids, (pageAnchor + 1) * IndexPageSize, IndexPageSize)
+        val page = indexPage()
+        if (uids is WindowedOrder) uids.ensure(pageAnchor * page, page * 2)
+        val visible = indexedRange(uids, pageAnchor * page, page)
+        val prefetch = indexedRange(uids, (pageAnchor + 1) * page, page)
         val loaded = ArrayList<IndexRow>(visible.size + prefetch.size)
-        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible))
-        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch))
+        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible, page = page))
+        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch, page = page))
         return loaded
     }
 
@@ -2833,14 +2848,15 @@ class IndexModel(
         uids: List<Long>,
         preview: Boolean = includePreview,
         folder: String = mailbox,
+        page: Int = indexPage(),
     ): List<IndexRow> {
         return fetchListed(
             IndexRequest(
                 mailbox = folder,
                 mode = IndexMode.ByUid,
                 uids = uids,
-                limit = IndexPageSize,
-                prefetch = IndexPageSize,
+                limit = page,
+                prefetch = page,
                 includePreview = preview,
             ),
         )
@@ -2929,15 +2945,16 @@ class IndexModel(
     }
 
     private suspend fun pagesOfMailboxes(uids: List<Long>, mailboxes: List<String>): List<IndexRow> {
-        val start = pageAnchor * IndexPageSize
+        val page = indexPage()
+        val start = pageAnchor * page
         if (start >= uids.size) return emptyList()
-        val end = minOf(uids.size, start + IndexPageSize * 2)
+        val end = minOf(uids.size, start + page * 2)
         val loaded = ArrayList<IndexRow>()
         val failed = ArrayList<String>()
         for ((box, slice) in pageMailboxGroups(uids, mailboxes, start, end)) {
             // fetchListed checks the box's recorded epoch (or records it) in the same call as the fetch.
             val fetched = try {
-                align(slice, fetchByUid(slice, folder = box))
+                align(slice, fetchByUid(slice, folder = box, page = page))
             } catch (error: CancellationException) {
                 throw error
             } catch (failure: MailFailure) {
@@ -3043,20 +3060,21 @@ class IndexModel(
     }
 
     private suspend fun loadThreadPage(): List<IndexRow> {
-        val visible = indexedRange(order, pageAnchor * IndexPageSize, IndexPageSize)
-        val prefetch = indexedRange(order, (pageAnchor + 1) * IndexPageSize, IndexPageSize)
+        val page = indexPage()
+        val visible = indexedRange(order, pageAnchor * page, page)
+        val prefetch = indexedRange(order, (pageAnchor + 1) * page, page)
         val pageRoots = ArrayList<Long>(visible.size + prefetch.size)
         pageRoots.addAll(visible)
         pageRoots.addAll(prefetch)
         val loaded = ArrayList<IndexRow>(pageRoots.size)
-        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible, includePreview))
-        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch, includePreview))
+        if (visible.isNotEmpty()) loaded += align(visible, fetchByUid(visible, includePreview, page = page))
+        if (prefetch.isNotEmpty()) loaded += align(prefetch, fetchByUid(prefetch, includePreview, page = page))
         val byRoot = threadPlan.associateBy { it.rootUid }
         val hiddenUids = pageRoots.flatMap { byRoot[it]?.hiddenUids.orEmpty() }
         val hiddenRows = if (hiddenUids.isEmpty()) {
             emptyList()
         } else {
-            fetchByUid(hiddenUids, preview = false)
+            fetchByUid(hiddenUids, preview = false, page = page)
         }
         val next = keptMembers(hiddenRows, pageRoots)
         memberRows = next
@@ -3101,6 +3119,12 @@ class IndexModel(
 
 /** UIDs per MOVE/COPY command for big moves (review 3.7: 10,000 in one command took 40 s with no feedback). */
 const val MoveChunk = 1000
+
+fun moveChunkSize(): Int {
+    LabTestHooks.moveChunk()?.let { return it }
+    val stored = InstalledGlobals.moveChunk.get()
+    return if (stored >= 1) stored else MoveChunk
+}
 
 /** Search kind for "Move entire folder": UNDELETED by default, ALL when the account includes \Deleted. */
 fun moveAllKind(settings: AccountSettings): String = if (settings.moveAllIncludesDeleted) "All" else "NotDeleted"

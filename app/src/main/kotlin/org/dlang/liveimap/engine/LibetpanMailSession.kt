@@ -51,6 +51,7 @@ import org.dlang.liveimap.session.plusFallback
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.compressionWanted
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.SmtpNoAuth
 import org.dlang.liveimap.settings.SortKey
@@ -1357,11 +1358,12 @@ class LibetpanMailSession : MailSession {
         doneBase: Int,
     ): List<SortPiece> {
         val code = sortFieldCode(key)
+        val chunk = clientSortChunk()
         val out = ArrayList<SortPiece>()
         var at = 0
         while (at < uids.size) {
             if (cancelled()) throw MailFailure("sort cancelled")
-            val end = minOf(uids.size, at + ClientSortChunk)
+            val end = minOf(uids.size, at + chunk)
             val slice = uids.copyOfRange(at, end)
             val fetched = keeper.read("client-sort") {
                 nativeFetchSortChunk(requireHandle(), slice, code) ?: throw MailFailure("sort failed")
@@ -1712,10 +1714,11 @@ class LibetpanMailSession : MailSession {
     }
 
     private suspend fun fetchThreadHeaders(uids: LongArray): ClientHeaders {
+        val chunk = clientSortChunk()
         var acc = ClientHeaders(LongArray(0), emptyArray(), emptyArray(), emptyArray(), emptyArray(), emptyArray())
         var at = 0
         while (at < uids.size) {
-            val end = minOf(uids.size, at + ClientSortChunk)
+            val end = minOf(uids.size, at + chunk)
             val slice = uids.copyOfRange(at, end)
             val rows = keeper.read("client-thread") {
                 nativeFetchThreadChunk(requireHandle(), slice) ?: throw MailFailure("thread failed")
@@ -2673,6 +2676,11 @@ internal fun uidWindowOf(raw: LongArray): UidWindow {
 }
 
 internal const val ClientSortChunk = 5000
+
+internal fun clientSortChunk(): Int {
+    val stored = InstalledGlobals.clientSortChunk.get()
+    return if (stored >= 1) stored else ClientSortChunk
+}
 
 /** True when the active network is cellular (Auto compression); false if unknown. */
 internal fun onCellular(): Boolean {

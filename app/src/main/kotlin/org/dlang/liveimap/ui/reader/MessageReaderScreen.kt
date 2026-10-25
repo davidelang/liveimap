@@ -193,7 +193,7 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.index.MailUndo
 import org.dlang.liveimap.ui.index.OpenMessageOrder
-import org.dlang.liveimap.ui.index.SwipeWidthPercent
+import org.dlang.liveimap.ui.index.swipeWidthPercent
 import org.dlang.liveimap.ui.index.followingUid
 import org.dlang.liveimap.ui.index.precedingUid
 import org.dlang.liveimap.ui.index.swipeBindingForOffset
@@ -2267,7 +2267,7 @@ private fun MessageReaderLoaded(
     var swipeWidth by remember { mutableIntStateOf(0) }
     val swipeHolder = remember { ReaderSwipeBox() }
     val dismissState = rememberSwipeToDismissBoxState(
-        positionalThreshold = { distance -> distance * SwipeWidthPercent / 100f },
+        positionalThreshold = { distance -> distance * swipeWidthPercent() / 100f },
         confirmValueChange = { target ->
             if (target == SwipeToDismissBoxValue.Settled) {
                 true

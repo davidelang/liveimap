@@ -3834,3 +3834,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - The result UID cap is a setting.
 
 ## 2026-10-25 - The raw view and image trust caps are settings.
+
+## 2026-10-25 - Page size, swipe, reconnect, and the two chunks are settings.
