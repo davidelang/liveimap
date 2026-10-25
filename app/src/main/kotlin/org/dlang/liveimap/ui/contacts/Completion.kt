@@ -11,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.getCompletionExceptionOrNull
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
