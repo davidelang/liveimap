@@ -81,6 +81,7 @@ searchAskSkip|StringList|account|subscreen|Search ask skip||
 fallbackAskSkip|StringList|account|subscreen|Fallback ask skip||
 savedSearches|Encoded|account|subscreen|Saved searches||
 savedAdvanced|Encoded|account|subscreen|Saved advanced searches||
+maxResultUids|Int|account|number|Result UIDs||
 markSeenOnOpen|Bool|account|bool|Mark seen on open||
 bodyView|Enum|account|choice|Body view|PlainOrHtml,PlainOrText,PlainOrError,Headers,Raw|
 preferHtml|Bool|account|bool|Prefer HTML||

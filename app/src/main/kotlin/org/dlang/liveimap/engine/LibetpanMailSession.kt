@@ -325,6 +325,7 @@ class LibetpanMailSession : MailSession {
                     finishTraffic(account)
                     this.account = account
                     nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
+                    nativeSetMaxResultUids(handle, account.maxResultUids)
                     return OpenResult.Connected
                 }
             }
@@ -393,6 +394,7 @@ class LibetpanMailSession : MailSession {
             keeper.forgetFolder()
             keeper.markUsed()
             nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
+            nativeSetMaxResultUids(handle, account.maxResultUids)
         }
         return opened
     }
@@ -2338,6 +2340,8 @@ class LibetpanMailSession : MailSession {
     ): SessionOpen
 
     private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
+
+    private external fun nativeSetMaxResultUids(handle: Long, cap: Int)
 
     private external fun nativeSessionDead(handle: Long): Boolean
 

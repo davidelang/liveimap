@@ -180,6 +180,10 @@ std::string tlsFailureReason();
 
 extern thread_local JNIEnv * mimeEnv;
 
+thread_local uint64_t tlsMaxResultUids = 0;
+thread_local bool tlsResultUidCap = false;
+uint64_t resultUidCap();
+
 namespace {
 
 struct LiveThread {
@@ -349,6 +353,7 @@ struct LiveSession {
     std::atomic<int> users{0};
     std::atomic<uint64_t> watchGeneration{0};
     std::atomic<bool> closed{false};
+    std::atomic<uint64_t> maxResultUids{2000000};
     std::chrono::steady_clock::time_point watchIdleSince{};
     int watchPollFd = -1;
     bool watchLost = false;
@@ -602,7 +607,12 @@ void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback
             }
         }
         const char * why = fallback != nullptr && fallback[0] != 0 ? fallback : "imap error";
-        throwConnectionLost(env, "IMAP connection to " + host + ":" + std::to_string(port) + " lost (" + why + ")");
+        std::string lost = "IMAP connection to " + host + ":" + std::to_string(port) + " lost (" + why + ")";
+        if (tlsResultUidCap) {
+            lost += ": maxResultUids";
+            tlsResultUidCap = false;
+        }
+        throwConnectionLost(env, lost);
         return;
     }
     mailimap * imap = session != nullptr ? session->imap : nullptr;
@@ -981,6 +991,7 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
         session->ownerAttachFailed.store(true);
         closeJobQueue(session.get());
         tlsOwner = nullptr;
+        tlsMaxResultUids = 0;
         // Not attached. selfHold stays until an attached caller drops it after joinOwner
         // joins, so this parameter is not the last ref and ~std::thread is not joinable.
         // Detach would let that caller clear selfHold while this parameter is still last.
@@ -1021,6 +1032,7 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
         ERR_clear_error();
     }
     tlsOwner = nullptr;
+    tlsMaxResultUids = 0;
     closeJobQueue(session.get());
     session->selfHold.reset();
     session->ownerFinished.store(true);
@@ -1214,6 +1226,7 @@ LiveSession * lockSession(JNIEnv * env, jlong handle) {
         throwFailure(env, "not connected");
         return nullptr;
     }
+    tlsMaxResultUids = session->maxResultUids.load();
     session->users.fetch_add(1);
     // OpenSSL keeps one error queue per thread, and libetpan's SSL read/write calls SSL_get_error without
     // clearing it. A stale entry (freeing a shut-down TLS watch on this thread: its LOGOUT and SSL_shutdown
@@ -2237,6 +2250,7 @@ char peekChar(MMAPString * buffer, size_t indx) {
 // and conversion are all iterative (explicit stacks), with no depth limit; only the total node count is bounded
 // against pathological responses.
 const size_t kMaxThreadNodes = 2000000;
+static_assert(kMaxThreadNodes == 2000000, "kMaxThreadNodes");
 
 // One top-level "( ... )" thread list (RFC 5256 thread-list), parsed without recursion. Members of a chain each
 // attach under the previous member; nested lists attach under the last member; a list that starts with "(" gets a
@@ -2253,7 +2267,7 @@ int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser
             if (r != MAILIMAP_NO_ERROR) return r;
             stack.push_back(cur);
             if (peekChar(buffer, *indx) == '(') {
-                if (++*nodes > kMaxThreadNodes) return MAILIMAP_ERROR_PARSE;
+                if (++*nodes > resultUidCap()) { tlsResultUidCap = true; return MAILIMAP_ERROR_PARSE; }
                 LiveThread * holder = newThread(0, 0);
                 if (holder == nullptr) return MAILIMAP_ERROR_MEMORY;
                 clist_append(cur->children, holder);
@@ -2272,7 +2286,7 @@ int parseThreadList(mailstream * fd, MMAPString * buffer, struct mailimap_parser
             uint32_t number = 0;
             r = mailimap_nz_number_parse(fd, buffer, ctx, indx, &number);
             if (r != MAILIMAP_NO_ERROR) return r;
-            if (++*nodes > kMaxThreadNodes) return MAILIMAP_ERROR_PARSE;
+            if (++*nodes > resultUidCap()) { tlsResultUidCap = true; return MAILIMAP_ERROR_PARSE; }
             LiveThread * node = newThread(1, number);
             if (node == nullptr) return MAILIMAP_ERROR_MEMORY;
             clist_append(cur->children, node);
@@ -2850,6 +2864,7 @@ bool beginWatchIdle(LiveSession * session) {
 
 // One IDLE poll on the owner. A queued command wakes jobFd and returns so that command runs next.
 bool watchStep(LiveSession * session) {
+    if (session != nullptr) tlsMaxResultUids = session->maxResultUids.load();
     if (session == nullptr || session->watch == nullptr || session->watchPhase.load() != 2) return false;
     if (session->ownerStop.load() || session->watchStop.load() || session->watchPhase.load() == 3) {
         finishIdleStop(session);
@@ -4583,6 +4598,7 @@ bool appendUid(clist * list, uint32_t uid) {
 }
 
 constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jelly has 200k
+static_assert(kMaxSeqSetUids == 2000000, "kMaxSeqSetUids");
 
 // F99: set when a '*' was read. '*' is not rewritten to uidnext-1 and is not expanded into the list.
 thread_local bool tlsSeqSawStar = false;
@@ -4626,9 +4642,9 @@ int parseSeqSet(mailstream * fd, MMAPString * buffer, struct mailimap_parser_con
                 last = tmp;
             }
             // F49: never squeeze a wide range to its endpoints (select-all would then act on two messages). Every
-            // range is expanded; past kMaxSeqSetUids in total the answer fails clearly instead of being lossy.
+            // range is expanded; past the result UID cap in total the answer fails clearly instead of being lossy.
             total += static_cast<uint64_t>(last) - first + 1;
-            if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;
+            if (total > resultUidCap()) { tlsResultUidCap = true; return MAILIMAP_ERROR_PARSE; }
             {
                 uint32_t n = first;
                 for (;;) {
@@ -7941,33 +7957,38 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
     return true;
 }
 
-// UIDs named by a request set; '*' (set_last 0) or a huge range counts as kMaxSetExpand.
+// UIDs named by a request set. '*' (set_first 0 or set_last 0) counts as the result UID cap.
+// A finite total above the cap is returned as that total.
 constexpr uint64_t kMaxSetExpand = 2000000;
+static_assert(kMaxSetExpand == 2000000, "kMaxSetExpand");
+
+uint64_t resultUidCap() {
+    if (tlsMaxResultUids >= 1) return tlsMaxResultUids;
+    return kMaxSetExpand;
+}
+
 uint64_t requestedCount(struct mailimap_set * set) {
     uint64_t n = 0;
     if (set == nullptr || set->set_list == nullptr) return 0;
     for (clistiter * cur = clist_begin(set->set_list); cur != nullptr; cur = clist_next(cur)) {
         auto * item = static_cast<struct mailimap_set_item *>(clist_content(cur));
         if (item == nullptr) continue;
-        if (item->set_first == 0 || item->set_last == 0) return kMaxSetExpand;
+        if (item->set_first == 0 || item->set_last == 0) return resultUidCap();
         uint32_t a = item->set_first, b = item->set_last;
         n += (a > b ? a - b : b - a) + 1ULL;
-        if (n >= kMaxSetExpand) return kMaxSetExpand;
     }
     return n;
 }
 
-// COPYUID's destination set, expanded. A server cannot make the client expand more UIDs than it asked to copy
-// (a dest of 1:4294967295 once meant 4 billion push_backs); an oversized or inconsistent set is dropped.
+// COPYUID's destination set, expanded. A range that would pass limit stops; UIDs already pushed stay.
 struct CopyMoveOut {
     std::vector<uint32_t> uids;
     uint32_t uidvalidity = 0;
 };
 
-void rememberDestUids(CopyMoveOut * out, struct mailimap_set * dest, uint64_t limit) {
+bool rememberDestUids(CopyMoveOut * out, struct mailimap_set * dest, uint64_t limit) {
     out->uids.clear();
-    if (dest == nullptr || dest->set_list == nullptr) return;
-    if (limit > kMaxSetExpand) limit = kMaxSetExpand;
+    if (dest == nullptr || dest->set_list == nullptr) return true;
     for (clistiter * cur = clist_begin(dest->set_list); cur != nullptr; cur = clist_next(cur)) {
         auto * item = static_cast<struct mailimap_set_item *>(clist_content(cur));
         if (item == nullptr || item->set_last == 0) continue;
@@ -7978,15 +7999,13 @@ void rememberDestUids(CopyMoveOut * out, struct mailimap_set * dest, uint64_t li
             first = last;
             last = swap;
         }
-        if (static_cast<uint64_t>(last) - first + 1 + out->uids.size() > limit) {
-            out->uids.clear();
-            return;
-        }
+        if (static_cast<uint64_t>(last) - first + 1 + out->uids.size() > limit) return false;
         for (uint32_t uid = first;; ++uid) {
             if (uid != 0) out->uids.push_back(uid);
             if (uid == last) break;
         }
     }
+    return true;
 }
 
 jobject newCopyMove(JNIEnv * env, const CopyMoveOut & out) {
@@ -8035,6 +8054,11 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
     const char * destMailbox, const char * kind, CopyMoveOut * out) {
     out->uids.clear();
     out->uidvalidity = 0;
+    uint64_t asked = requestedCount(set);
+    if (asked > resultUidCap()) {
+        throwFailure(env, "maxResultUids");
+        return false;
+    }
     uint32_t uidvalidity = 0;
     struct mailimap_set * source = nullptr;
     struct mailimap_set * copied = nullptr;
@@ -8048,9 +8072,13 @@ bool copyOrMoveSet(JNIEnv * env, LiveSession * session, struct mailimap_set * se
         throwImap(env, session, r, move ? "move failed" : "copy failed");
         return false;
     }
-    rememberDestUids(out, copied, requestedCount(set));
-    if (!out->uids.empty()) out->uidvalidity = uidvalidity;
+    bool kept = rememberDestUids(out, copied, asked);
     freeUidSets(source, copied);
+    if (!kept) {
+        throwFailure(env, "COPYUID larger than the request");
+        return false;
+    }
+    if (!out->uids.empty()) out->uidvalidity = uidvalidity;
     if (move || copyOnly) return true;
     struct mailimap_flag_list * flags = mailimap_flag_list_new_empty();
     mailimap_flag_list_add(flags, mailimap_flag_new_deleted());
@@ -10925,6 +10953,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetWatchWakeMillis(JNIE
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetIdleRenewSeconds(JNIEnv *, jclass, jint seconds) {
     gIdleRenewSec.store(seconds > 0 ? seconds : 9 * 60);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetMaxResultUids(JNIEnv *, jobject, jlong handle, jint cap) {
+    auto * session = reinterpret_cast<LiveSession *>(handle);
+    std::shared_ptr<LiveSession> kept = retainSession(session);
+    if (!kept) return;
+    session->maxResultUids.store(cap >= 1 ? static_cast<uint64_t>(cap) : 2000000ULL);
+    releaseUsers(session);
 }
 
 extern "C" JNIEXPORT jint JNICALL

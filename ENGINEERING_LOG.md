@@ -3830,3 +3830,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - Account timeouts replace the fixed waits.
 
 ## 2026-10-25 - The timeout leaves are editable, and the JMAP body cap is a setting.
+
+## 2026-10-25 - The result UID cap is a setting.

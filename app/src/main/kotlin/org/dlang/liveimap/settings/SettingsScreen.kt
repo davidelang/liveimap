@@ -2089,6 +2089,14 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
                 )
             }
         }
+        "maxResultUids" -> NumberLeaf(
+            stringResource(SettingsTreeGenerated.regTitle(key)),
+            settings.maxResultUids,
+            editor.ready,
+            { it >= 1 },
+        ) { number ->
+            editor.persist(editor.settings.copy(maxResultUids = number))
+        }
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
 }

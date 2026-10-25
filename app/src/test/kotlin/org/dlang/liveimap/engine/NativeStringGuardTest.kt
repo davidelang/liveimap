@@ -36,7 +36,7 @@ class NativeStringGuardTest {
         val src = File("src/main/cpp/liveimap_jni.cpp").readText()
         val body = src.substringAfter("int parseSeqSet(").substringBefore("\n}\n")
         assertTrue(!body.contains("1000000u"))
-        assertTrue(body.contains("if (total > kMaxSeqSetUids) return MAILIMAP_ERROR_PARSE;"))
+        assertTrue(body.contains("if (total > resultUidCap()) { tlsResultUidCap = true; return MAILIMAP_ERROR_PARSE; }"))
     }
 
     /** F31: APPEND completion is matched against the current tag, not any tagged-looking line. */

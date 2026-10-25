@@ -462,6 +462,8 @@ data class AccountSettings(
     val jmapFolders: Boolean = false,
     /** Largest JMAP response or download. A missing line is [JmapMaxBody]. */
     val maxJmapResponseBytes: Int = JmapMaxBody,
+    /** Largest UID result. A missing line stays 2000000. */
+    val maxResultUids: Int = 2000000,
     val askSort: Int = DefaultAskLimit,
     val askThread: Int = DefaultAskLimit,
     val askSearch: Int = DefaultAskLimit,
@@ -486,6 +488,7 @@ data class AccountSettings(
         if (longSearchProgressSec < 1) throw IllegalArgumentException("longSearchProgressSec")
         if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
         if (maxJmapResponseBytes < 1) throw IllegalArgumentException("maxJmapResponseBytes")
+        if (maxResultUids < 1) throw IllegalArgumentException("maxResultUids")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -655,6 +658,7 @@ private val fieldNames = listOf(
     "emailSubmission",
     "jmapFolders",
     "maxJmapResponseBytes",
+    "maxResultUids",
     "askSort",
     "askThread",
     "askSearch",
@@ -824,6 +828,7 @@ fun AccountSettings.encode(): String = buildString {
     put("emailSubmission=$emailSubmission")
     put("jmapFolders=$jmapFolders")
     put("maxJmapResponseBytes=$maxJmapResponseBytes")
+    put("maxResultUids=$maxResultUids")
     put("askSort=$askSort")
     put("askThread=$askThread")
     put("askSearch=$askSearch")
@@ -975,6 +980,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             key == "emailSubmission" ||
             key == "jmapFolders" ||
             key == "maxJmapResponseBytes" ||
+            key == "maxResultUids" ||
             key == "askSort" ||
             key == "askThread" ||
             key == "askSearch" ||
@@ -1170,6 +1176,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         emailSubmission = field("emailSubmission", d.emailSubmission) { parseBoolean(values.getValue("emailSubmission")) },
         jmapFolders = field("jmapFolders", d.jmapFolders) { parseBoolean(values.getValue("jmapFolders")) },
         maxJmapResponseBytes = field("maxJmapResponseBytes", d.maxJmapResponseBytes) { parseIntField(values.getValue("maxJmapResponseBytes")) },
+        maxResultUids = field("maxResultUids", d.maxResultUids) { parseIntField(values.getValue("maxResultUids")) },
         askSort = field("askSort", d.askSort) { parseAskLimit(values.getValue("askSort")) },
         askThread = field("askThread", d.askThread) { parseAskLimit(values.getValue("askThread")) },
         askSearch = field("askSearch", d.askSearch) { parseAskLimit(values.getValue("askSearch")) },

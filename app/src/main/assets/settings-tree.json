@@ -362,6 +362,10 @@
           {
             "setting": "savedAdvanced",
             "default": ""
+          },
+          {
+            "setting": "maxResultUids",
+            "default": 2000000
           }
         ]
       }
