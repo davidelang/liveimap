@@ -287,7 +287,7 @@ private class SettingsEditor(
     fun load() {
         settingsIo.launch {
             val epoch = captureEpochs()
-            store.onAccount(publish = { loaded ->
+            store.onAccount(publish = { loaded: EditorLoad ->
                 applyReload(loaded, epoch, force = false)
             }) {
                 computeReload(editingMirror.get())
@@ -298,7 +298,7 @@ private class SettingsEditor(
     fun selectAccount(id: String) {
         settingsIo.launch {
             val epoch = captureEpochs()
-            store.onAccount(publish = { loaded ->
+            store.onAccount(publish = { loaded: EditorLoad ->
                 editingId = id // F121: edit it; the active account is unchanged
                 applyReload(loaded, epoch, force = true)
             }) {
@@ -310,7 +310,7 @@ private class SettingsEditor(
     fun addAccount() {
         settingsIo.launch {
             val epoch = captureEpochs()
-            store.onAccount(publish = { loaded ->
+            store.onAccount(publish = { loaded: EditorLoad ->
                 applyReload(loaded, epoch, force = true)
             }) {
                 val created = store.addAccount().ifEmpty { null } // F121: edit the new account; not made active
