@@ -1503,7 +1503,17 @@ private fun ComposeLoaded(
                 notice = error.message ?: unsentGone
                 return null
             }
-            applyEditor(loadEditor(bytes, account.unlabeledCharset))
+            // This runs before the open effect assigns account.
+            val charset = try {
+                val loaded = store.load()
+                account = loaded
+                loaded.unlabeledCharset
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                account.unlabeledCharset
+            }
+            applyEditor(loadEditor(bytes, charset))
         }
         held = copy
         if (!baselineReady) captureBaseline()
