@@ -3798,3 +3798,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: a gap line is the last disk line, so the next accepted record or note is written after it. A write error does not end the traffic-log thread.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Settings registry.
+
+- Settings live in app/src/main/assets/settings-tree.json. The build checks that tree against SettingsRegistry and generates group ids and en-US titles. A missing tlsMode loads as None and is not rewritten to Implicit. A new account uses the tree default, Implicit TLS. Ask thresholds default to -1.

@@ -26,6 +26,7 @@ import org.dlang.liveimap.ui.toolbar.moveReaderAction
 import org.dlang.liveimap.ui.toolbar.moveSelectionAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -67,8 +68,8 @@ class AccountSettingsTest {
     fun defaultsRoundTrip() {
         val text = AccountSettings().encode()
         val keys = text.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals(
-            listOf(
+        assertTrue(
+            keys.containsAll(listOf(
                 "imapHost",
                 "imapPort",
                 "smtpHost",
@@ -114,18 +115,17 @@ class AccountSettingsTest {
                 "pinercStartDefault",
                 "nonAsciiDisplay",
                 "altAddresses",
-            ),
-            keys,
+            )),
         )
-        assertTrue(text.contains("imapPort=143"))
-        assertTrue(text.contains("smtpPort=25"))
+        assertTrue(text.contains("imapPort=993"))
+        assertTrue(text.contains("smtpPort=465"))
         assertTrue(text.contains("density=Compact"))
         assertTrue(text.contains("defaultView=Arrival|newest"))
         assertTrue(text.contains("\nfolderViews=\n"))
         assertTrue(text.contains("swipeTrailing=Delete||"))
         assertTrue(text.contains("swipeLeading=ReplyAll||"))
-        assertFalse(keys.contains("readerSwipeTrailing"))
-        assertFalse(keys.contains("readerSwipeLeading"))
+        assertTrue(keys.contains("readerSwipeTrailing"))
+        assertTrue(keys.contains("readerSwipeLeading"))
         assertEquals(SwipeBinding(SwipeAction.Next), decodeAccountSettings(text).readerSwipeTrailing)
         assertEquals(SwipeBinding(SwipeAction.Previous), decodeAccountSettings(text).readerSwipeLeading)
         assertTrue(text.contains("bounceFcc=false"))
@@ -147,11 +147,11 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("showRecentRules=true"))
         assertTrue(text.lines().contains("openAtInIndexMenu=false"))
         assertTrue(text.lines().contains("pinercStartDefault=LeaveUnchanged"))
-        assertFalse(keys.contains("readerTextLayout")) // omitted while Text
+        assertTrue(keys.contains("readerTextLayout"))
         assertTrue(text.lines().contains("altAddresses="))
-        assertFalse(keys.contains("completionSources"))
-        assertFalse(keys.contains("addressBookHistory"))
-        assertFalse(keys.contains("addressBookNeverTrim"))
+        assertTrue(keys.contains("completionSources"))
+        assertTrue(keys.contains("addressBookHistory"))
+        assertTrue(keys.contains("addressBookNeverTrim"))
         assertEquals(AccountSettings(), decodeAccountSettings(text))
     }
 
@@ -166,9 +166,9 @@ class AccountSettingsTest {
     @Test
     fun multiPaneOffRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("multiPane="))
-        assertEquals(MultiPane.Off, decodeAccountSettings(text).multiPane)
-        val offText = text.trimEnd() + "\nmultiPane=Off\n"
+        assertTrue(text.contains("multiPane=Auto"))
+        assertEquals(MultiPane.Auto, decodeAccountSettings(text).multiPane)
+        val offText = text.lineSequence().filter { !it.startsWith("multiPane=") }.joinToString("\n") + "\nmultiPane=Off\n"
         assertEquals(MultiPane.Off, decodeAccountSettings(offText).multiPane)
         val wide = AccountSettings(multiPane = MultiPane.Wide).encode()
         assertTrue(wide.contains("multiPane=Wide"))
@@ -178,9 +178,9 @@ class AccountSettingsTest {
     @Test
     fun layoutChoiceOffRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("folderPane="))
-        assertFalse(text.contains("foldPosture="))
-        val offText = text.trimEnd() + "\nfolderPane=Off\nfoldPosture=Off\n"
+        assertTrue(text.contains("folderPane=Auto"))
+        assertTrue(text.contains("foldPosture=Off"))
+        val offText = text.lineSequence().filter { !it.startsWith("folderPane=") && !it.startsWith("foldPosture=") }.joinToString("\n") + "\nfolderPane=Off\nfoldPosture=Off\n"
         val off = decodeAccountSettings(offText)
         assertEquals(LayoutChoice.Off, off.folderPane)
         assertEquals(LayoutChoice.Off, off.foldPosture)
@@ -195,8 +195,8 @@ class AccountSettingsTest {
     @Test
     fun sieveEndpointRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("sieveHost="))
-        assertFalse(defaults.contains("sievePort="))
+        assertTrue(defaults.contains("sieveHost="))
+        assertTrue(defaults.contains("sievePort="))
         val blank = AccountSettings(imapHost = "imap.example.com", sieveHost = "  ")
         assertEquals("imap.example.com" to 4190, sieveEndpoint(blank))
         val set = AccountSettings(
@@ -220,10 +220,9 @@ class AccountSettingsTest {
     @Test
     fun allowPlaintextAuthRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("allowPlaintextAuth="))
+        assertTrue(defaults.contains("allowPlaintextAuth=false"))
         val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals("altAddresses", keys.last())
-        assertFalse(keys.contains("allowPlaintextAuth"))
+        assertTrue(keys.contains("allowPlaintextAuth"))
         assertFalse(decodeAccountSettings(defaults).allowPlaintextAuth)
         val set = AccountSettings(allowPlaintextAuth = true)
         val text = set.encode()
@@ -236,10 +235,9 @@ class AccountSettingsTest {
     @Test
     fun certPinRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("certPin="))
+        assertTrue(defaults.lines().contains("certPin="))
         val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals("altAddresses", keys.last())
-        assertFalse(keys.contains("certPin"))
+        assertTrue(keys.contains("certPin"))
         assertEquals("", decodeAccountSettings(defaults).certPin)
         val pin = "ab cd:ef"
         val set = AccountSettings(certPin = pin)
@@ -253,7 +251,7 @@ class AccountSettingsTest {
     @Test
     fun sieveCertPinRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("sieveCertPin="))
+        assertTrue(defaults.lines().contains("sieveCertPin="))
         assertEquals("", decodeAccountSettings(defaults).sieveCertPin)
         val pin = "ab cd:ef"
         val text = AccountSettings(sieveCertPin = pin).encode()
@@ -268,7 +266,7 @@ class AccountSettingsTest {
     @Test
     fun smtpUsernameRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("smtpUsername="))
+        assertTrue(defaults.lines().contains("smtpUsername="))
         assertEquals("", decodeAccountSettings(defaults).smtpUsername)
         val set = AccountSettings(smtpUsername = "post master")
         val text = set.encode()
@@ -281,8 +279,8 @@ class AccountSettingsTest {
     @Test
     fun tlsModeRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("tlsMode="))
-        assertEquals(TlsMode.None, decodeAccountSettings(defaults).tlsMode)
+        assertTrue(defaults.contains("tlsMode=Implicit"))
+        assertEquals(TlsMode.Implicit, decodeAccountSettings(defaults).tlsMode)
         val start = AccountSettings(tlsMode = TlsMode.StartTls)
         val startText = start.encode()
         assertTrue(startText.contains("tlsMode=StartTls"))
@@ -307,11 +305,15 @@ class AccountSettingsTest {
     @Test
     fun missingTlsModeStaysPlaintext() {
         val stored = AccountSettings(imapPort = 1143, smtpPort = 2525).encode()
+            .lineSequence().filter { !it.startsWith("tlsMode=") }.joinToString("\n")
         assertFalse(stored.contains("tlsMode="))
         val loaded = decodeAccountSettings(stored)
         assertEquals(TlsMode.None, loaded.tlsMode)
         assertEquals(1143, loaded.imapPort)
         assertEquals(2525, loaded.smtpPort)
+        val saved = loaded.encode()
+        assertTrue(saved.contains("tlsMode=None"))
+        assertFalse(saved.contains("tlsMode=Implicit"))
     }
 
     @Test
@@ -331,7 +333,7 @@ class AccountSettingsTest {
     @Test
     fun fullScreenRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("fullScreen="))
+        assertTrue(defaults.contains("fullScreen=false"))
         val text = AccountSettings(fullScreen = true).encode()
         assertTrue(text.contains("fullScreen=true"))
         val decoded = decodeAccountSettings(text)
@@ -664,10 +666,10 @@ class AccountSettingsTest {
         assertEquals("Move", moveCommandKind(MoveMethod.ImapMove, true))
         assertEquals("CopyThenDelete", moveCommandKind(MoveMethod.ImapMove, false))
         val text = AccountSettings().encode()
-        assertFalse(text.contains("autoExpunge="))
-        assertFalse(text.contains("deletePolicy="))
-        assertFalse(text.contains("moveMethod="))
-        assertFalse(text.contains("trashMailbox="))
+        assertTrue(text.contains("autoExpunge=false"))
+        assertTrue(text.contains("deletePolicy=MarkDeleted"))
+        assertTrue(text.contains("moveMethod=CopyThenMarkDeleted"))
+        assertTrue(text.lines().contains("trashMailbox="))
         val decoded = decodeAccountSettings(text)
         assertFalse(decoded.autoExpunge)
         assertEquals(DeletePolicy.MarkDeleted, decoded.deletePolicy)
@@ -692,7 +694,7 @@ class AccountSettingsTest {
     @Test
     fun savedMailboxRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("savedMailbox="))
+        assertTrue(text.lines().contains("savedMailbox="))
         assertEquals("", decodeAccountSettings(text).savedMailbox)
         val saved = AccountSettings(savedMailbox = "Saved Mail")
         val encoded = saved.encode()
@@ -704,8 +706,8 @@ class AccountSettingsTest {
     @Test
     fun saveNameRuleRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("saveNameRule="))
-        assertFalse(text.contains("lastSaveMailbox="))
+        assertTrue(text.contains("saveNameRule=DefaultFolder"))
+        assertTrue(text.lines().contains("lastSaveMailbox="))
         assertEquals(SaveNameRule.DefaultFolder, decodeAccountSettings(text).saveNameRule)
         assertEquals("", decodeAccountSettings(text).lastSaveMailbox)
         val saved = AccountSettings(saveNameRule = SaveNameRule.ByFrom, lastSaveMailbox = "Archive")
@@ -728,14 +730,14 @@ class AccountSettingsTest {
         val spaced = AccountSettings(lastSaveMailbox = "My Archive")
         val spacedText = spaced.encode()
         assertTrue(spacedText.contains("lastSaveMailbox=My%20Archive"))
-        assertFalse(spacedText.contains("saveNameRule="))
+        assertTrue(spacedText.contains("saveNameRule=DefaultFolder"))
         assertEquals(spaced, decodeAccountSettings(spacedText))
     }
 
     @Test
     fun indexBarRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("indexBar"))
+        assertTrue(text.contains("indexBar="))
         assertEquals(defaultIndexBar(), decodeAccountSettings(text).indexBar)
         val explicit = text.trimEnd() + "\nindexBar=T:Refresh,Search,Filter|O:|H:\n"
         val storedIndex = decodeAccountSettings(explicit).indexBar
@@ -766,7 +768,7 @@ class AccountSettingsTest {
     @Test
     fun selectionBarRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("selectionBar"))
+        assertTrue(text.contains("selectionBar="))
         assertEquals(defaultSelectionBar(), decodeAccountSettings(text).selectionBar)
         val explicit = text.trimEnd() + "\nselectionBar=T:Seen,Flag,Move,Delete|O:|H:\n"
         val storedSelection = decodeAccountSettings(explicit).selectionBar
@@ -784,7 +786,7 @@ class AccountSettingsTest {
         val moved = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Delete, BarSection.Overflow)
         val saved = AccountSettings(selectionBar = moved)
         val encoded = saved.encode()
-        assertFalse(encoded.contains("indexBar"))
+        assertTrue(encoded.contains("indexBar="))
         assertTrue(encoded.contains("selectionBar=T:|O:Seen,Flag,Move,Delete|H:"))
         assertEquals(moved, decodeAccountSettings(encoded).selectionBar)
         assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
@@ -804,15 +806,15 @@ class AccountSettingsTest {
     @Test
     fun folderBarRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("folderBar"))
+        assertTrue(text.contains("folderBar="))
         assertEquals(defaultFolderBar(), decodeAccountSettings(text).folderBar)
         val explicit = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:\n"
         assertEquals(defaultFolderBar(), decodeAccountSettings(explicit).folderBar)
         val moved = moveFolderAction(defaultFolderBar(), FolderBarAction.Refresh, BarSection.Overflow)
         val saved = AccountSettings(folderBar = moved)
         val encoded = saved.encode()
-        assertFalse(encoded.contains("indexBar"))
-        assertFalse(encoded.contains("selectionBar"))
+        assertTrue(encoded.contains("indexBar="))
+        assertTrue(encoded.contains("selectionBar="))
         assertTrue(encoded.contains("folderBar=T:|O:CollapseAll,SaveDefault,ResetDefault,Refresh|H:"))
         assertEquals(moved, decodeAccountSettings(encoded).folderBar)
         assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
@@ -825,7 +827,7 @@ class AccountSettingsTest {
     @Test
     fun readerToolbarRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("readerToolbar"))
+        assertTrue(text.lines().contains("readerToolbar="))
         assertFalse(text.contains("readerBar="))
         assertNull(decodeAccountSettings(text).readerToolbar)
         val layout = ReaderToolbarLayout(
@@ -881,7 +883,7 @@ class AccountSettingsTest {
             ),
             hidden = emptyList(),
         )
-        val stored = AccountSettings().encode().trimEnd() + "\nreaderBar=Reply\n"
+        val stored = AccountSettings().encode().lineSequence().filter { !it.startsWith("readerToolbar=") }.joinToString("\n") + "\nreaderBar=Reply\n"
         val decoded = decodeAccountSettings(stored)
         assertEquals(replyOnly, decoded.readerToolbar)
         val encoded = decoded.encode()
@@ -907,13 +909,13 @@ class AccountSettingsTest {
 
     @Test
     fun defaultStoredReaderBarStaysNull() {
-        val stored = AccountSettings().encode().trimEnd() +
+        val stored = AccountSettings().encode().lineSequence().filter { !it.startsWith("readerToolbar=") }.joinToString("\n") +
             "\nreaderBar=Reply;ReplyAll;Forward;Delete;Move\n"
         val decoded = decodeAccountSettings(stored)
         assertNull(decoded.readerToolbar)
         val encoded = decoded.encode()
         assertFalse(encoded.contains("readerBar="))
-        assertFalse(encoded.contains("readerToolbar="))
+        assertTrue(encoded.lines().contains("readerToolbar="))
         assertFalse(encodePinerc(decoded).contains("# toolbar"))
         val kept = ReaderToolbarLayout(
             toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
@@ -937,7 +939,7 @@ class AccountSettingsTest {
     @Test
     fun composeBarRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("composeBar"))
+        assertTrue(text.contains("composeBar="))
         assertEquals(defaultComposeBar(), decodeAccountSettings(text).composeBar)
         val explicit = text.trimEnd() + "\ncomposeBar=T:|O:Postpone|H:\n"
         assertEquals(defaultComposeBar(), decodeAccountSettings(explicit).composeBar)
@@ -962,7 +964,7 @@ class AccountSettingsTest {
     @Test
     fun quellFlowedRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("quellFlowed="))
+        assertTrue(text.contains("quellFlowed=false"))
         assertFalse(decodeAccountSettings(text).quellFlowed)
         val saved = AccountSettings(quellFlowed = true)
         val encoded = saved.encode()
@@ -974,7 +976,7 @@ class AccountSettingsTest {
     @Test
     fun composerWrapColumnRoundTrips() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("composerWrapColumn"))
+        assertTrue(text.contains("composerWrapColumn=74"))
         assertEquals(74, decodeAccountSettings(text).composerWrapColumn)
         val saved = AccountSettings(composerWrapColumn = 72)
         val encoded = saved.encode()
@@ -997,7 +999,7 @@ class AccountSettingsTest {
     @Test
     fun toolbarRowsRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("toolbarRows"))
+        assertTrue(text.contains("toolbarRows=2"))
         assertEquals(2, decodeAccountSettings(text).toolbarRows)
         val stored = text.trimEnd() + "\ntoolbarRows=3\n"
         assertEquals(3, decodeAccountSettings(stored).toolbarRows)
@@ -1028,10 +1030,10 @@ class AccountSettingsTest {
     @Test
     fun watchedFoldersRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("watchedFolders="))
-        assertFalse(defaults.contains("extraIdleBudget="))
+        assertTrue(defaults.lines().contains("watchedFolders="))
+        assertTrue(defaults.contains("extraIdleBudget=2"))
         val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals("altAddresses", keys.last())
+        assertTrue(keys.contains("watchedFolders"))
         val decodedDefaults = decodeAccountSettings(defaults)
         assertEquals(emptyList<String>(), decodedDefaults.watchedFolders)
         assertEquals(2, decodedDefaults.extraIdleBudget)
@@ -1051,7 +1053,7 @@ class AccountSettingsTest {
         )
         val fourText = four.encode()
         assertTrue(fourText.contains("watchedFolders=A,B,C,D"))
-        assertFalse(fourText.contains("extraIdleBudget="))
+        assertTrue(fourText.contains("extraIdleBudget=2"))
         assertEquals(four, decodeAccountSettings(fourText))
 
         val duplicates = AccountSettings(
@@ -1078,9 +1080,9 @@ class AccountSettingsTest {
     @Test
     fun savedSearchesRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("savedSearches="))
+        assertTrue(defaults.lines().contains("savedSearches="))
         val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals("altAddresses", keys.last())
+        assertTrue(keys.contains("savedSearches"))
         assertEquals(emptyList<SavedSearch>(), decodeAccountSettings(defaults).savedSearches)
 
         val saved = listOf(
@@ -1107,9 +1109,9 @@ class AccountSettingsTest {
     @Test
     fun savedAdvancedRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("savedAdvanced="))
+        assertTrue(defaults.lines().contains("savedAdvanced="))
         val keys = defaults.lines().filter { it.isNotEmpty() }.map { it.substringBefore('=') }
-        assertEquals("altAddresses", keys.last())
+        assertTrue(keys.contains("savedAdvanced"))
         assertEquals(emptyList<SavedAdvanced>(), decodeAccountSettings(defaults).savedAdvanced)
 
         val one = SavedAdvanced("News", "And\nYes\tSubject\tada", SearchScope.Current)
@@ -1151,7 +1153,7 @@ class AccountSettingsTest {
     @Test
     fun emailSubmissionRoundTrip() {
         val text = AccountSettings().encode()
-        assertFalse(text.contains("emailSubmission"))
+        assertTrue(text.contains("emailSubmission=false"))
         assertFalse(decodeAccountSettings(text).emailSubmission)
         val saved = AccountSettings(emailSubmission = true)
         val encoded = saved.encode()
@@ -1165,14 +1167,14 @@ class AccountSettingsTest {
     @Test
     fun askThresholdsRoundTrip() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("askSort="))
-        assertFalse(defaults.contains("askThread="))
-        assertFalse(defaults.contains("askSearch="))
-        assertFalse(defaults.contains("askFallback="))
-        assertFalse(defaults.contains("sortAskSkip="))
-        assertFalse(defaults.contains("threadAskSkip="))
-        assertFalse(defaults.contains("searchAskSkip="))
-        assertFalse(defaults.contains("fallbackAskSkip="))
+        assertTrue(defaults.contains("askSort=-1"))
+        assertTrue(defaults.contains("askThread=-1"))
+        assertTrue(defaults.contains("askSearch=-1"))
+        assertTrue(defaults.contains("askFallback=-1"))
+        assertTrue(defaults.lines().contains("sortAskSkip="))
+        assertTrue(defaults.lines().contains("threadAskSkip="))
+        assertTrue(defaults.lines().contains("searchAskSkip="))
+        assertTrue(defaults.lines().contains("fallbackAskSkip="))
         val decoded = decodeAccountSettings(defaults)
         assertEquals(-1, decoded.askSort)
         assertEquals(-1, decoded.askThread)
@@ -1185,13 +1187,13 @@ class AccountSettingsTest {
         val saved = AccountSettings(askSort = 20, threadAskSkip = setOf("Sent Mail"))
         val text = saved.encode()
         assertTrue(text.contains("askSort=20"))
-        assertFalse(text.contains("askThread="))
-        assertFalse(text.contains("askSearch="))
-        assertFalse(text.contains("askFallback="))
+        assertTrue(text.contains("askThread=-1"))
+        assertTrue(text.contains("askSearch=-1"))
+        assertTrue(text.contains("askFallback=-1"))
         assertTrue(text.contains("threadAskSkip=Sent%20Mail"))
-        assertFalse(text.contains("sortAskSkip="))
-        assertFalse(text.contains("searchAskSkip="))
-        assertFalse(text.contains("fallbackAskSkip="))
+        assertTrue(text.lines().contains("sortAskSkip="))
+        assertTrue(text.lines().contains("searchAskSkip="))
+        assertTrue(text.lines().contains("fallbackAskSkip="))
         assertEquals(saved, decodeAccountSettings(text))
         assertEquals(-1, decodeAccountSettings(defaults.trimEnd() + "\naskFallback=-7\n").askFallback)
         assertFalse(overAskThreshold(5001, -1))
@@ -1308,7 +1310,7 @@ class AccountSettingsTest {
     @Test
     fun sieveTlsModeIsSeparateFromSecurity() {
         val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("sieveTlsMode="))
+        assertTrue(defaults.contains("sieveTlsMode=StartTls"))
         assertEquals(TlsMode.StartTls, decodeAccountSettings(defaults).sieveTlsMode)
         assertNull(decodeAccountSettings(defaults).preservedSieveTlsKey())
         val implicit = AccountSettings(sieveTlsMode = TlsMode.Implicit)
@@ -1360,6 +1362,73 @@ class AccountSettingsTest {
         assertTrue(encoded.contains("favorites=0|INBOX|%2F|In"))
         assertFalse(encoded.contains(raw))
         assertFalse(encoded.contains("nope"))
+    }
+
+    @Test
+    fun realTreeMatchesRegistry() {
+        val errors = validateSettingsTree(settingsTreeText())
+        assertEquals(emptyList<String>(), errors)
+        assertEquals(TlsMode.Implicit, AccountSettings().tlsMode)
+        assertEquals(993, AccountSettings().imapPort)
+        assertEquals(465, AccountSettings().smtpPort)
+        assertEquals(MultiPane.Auto, AccountSettings().multiPane)
+        assertEquals(LayoutChoice.Auto, AccountSettings().folderPane)
+        assertEquals(ArrangementChoice.Auto, AccountSettings().paneArrangement)
+        assertEquals(PreviewChoice.Auto, AccountSettings().previewSize)
+        assertEquals(FolderPositionChoice.Auto, AccountSettings().folderPosition)
+        assertEquals(AccountSettings(), newAccountSettings())
+    }
+
+    @Test
+    fun missingOrdinaryKeyUsesTreeDefault() {
+        val raw = AccountSettings().encode().lineSequence().filter { !it.startsWith("pollSeconds=") }.joinToString("\n")
+        assertEquals(60, decodeAccountSettings(raw).pollSeconds)
+        val panes = AccountSettings().encode().lineSequence().filter { !it.startsWith("multiPane=") }.joinToString("\n")
+        assertEquals(MultiPane.Auto, decodeAccountSettings(panes).multiPane)
+    }
+
+    @Test
+    fun hardLimitMismatchNamesBothValues() {
+        val json = """[{"setting":"moveChunk","default":1000,"hardLimit":{"min":1,"max":100000}}]"""
+        val message = validateSettingsTree(json, complete = false).single { "moveChunk" in it && "hardLimit" in it }
+        assertTrue(message.contains("`moveChunk`"))
+        assertTrue(message.contains("100000"))
+        assertTrue(message.contains("2147483647"))
+        assertTrue(message.contains("edit the JSON or the registry"))
+    }
+
+    @Test
+    fun missingAndExtraHardLimitNameBothValues() {
+        val missing = """[{"setting":"imapPort","default":993}]"""
+        val miss = validateSettingsTree(missing, complete = false).single { "imapPort" in it && "hardLimit" in it }
+        assertTrue(miss.contains("none"))
+        assertTrue(miss.contains("65535"))
+        assertTrue(miss.contains("edit the JSON or the registry"))
+        val extra = """[{"setting":"pollSeconds","default":60,"hardLimit":{"min":1,"max":10}}]"""
+        val ex = validateSettingsTree(extra, complete = false).single { "pollSeconds" in it && "hardLimit" in it }
+        assertTrue(ex.contains("none"))
+        assertTrue(ex.contains("10"))
+        assertTrue(ex.contains("`pollSeconds`"))
+    }
+
+    @Test
+    fun portOutsideHardLimitIsRejectedWithoutLeafMin() {
+        val tree = settingsTreeText()
+        val rejected = rejectedNumber(tree, "imapPort", 70000)
+        assertNotNull(rejected)
+        assertTrue(rejected!!.contains("imapPort"))
+        assertTrue(rejected.contains("70000"))
+        assertNull(rejectedNumber(tree, "imapPort", 993))
+        val connections = rejectedNumber(tree, "maxConnections", 1)
+        assertNotNull(connections)
+        assertTrue(connections!!.contains("maxConnections"))
+        assertNull(rejectedNumber(tree, "maxConnections", 8))
+    }
+
+    private fun settingsTreeText(): String {
+        val file = listOf(File("src/main/assets/settings-tree.json"), File("app/src/main/assets/settings-tree.json"))
+            .first { it.isFile }
+        return file.readText()
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

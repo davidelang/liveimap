@@ -136,9 +136,8 @@ import org.dlang.liveimap.settings.FolderViewsScreen
 import org.dlang.liveimap.settings.LayoutChoice
 import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.LayoutApply
-import org.dlang.liveimap.settings.SettingsGroup
-import org.dlang.liveimap.settings.SettingsGroupScreen
 import org.dlang.liveimap.settings.SettingsTree
+import org.dlang.liveimap.settings.rememberSettingsGate
 import org.dlang.liveimap.settings.ToolbarRevision
 import org.dlang.liveimap.settings.favoriteLabel
 import org.dlang.liveimap.ui.about.AboutScreen
@@ -271,6 +270,16 @@ internal val LocalScreenAccounts = staticCompositionLocalOf<ScreenAccounts> {
 
 @Composable
 fun LiveImapNavHost() {
+    val gate = rememberSettingsGate()
+    if (!gate.isNullOrEmpty()) {
+        Text(gate)
+    } else if (gate == null) {
+        LiveImapNavHostReady()
+    }
+}
+
+@Composable
+private fun LiveImapNavHostReady() {
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
     // Custom panel layout (null = Auto); design-decisions.md "Custom panel layout".
     var customTree by remember { mutableStateOf<PaneNode?>(null) }
@@ -923,47 +932,23 @@ fun LiveImapNavHost() {
             }
             composable("settings/folders/expanded") {
                 UpPage(stringResource(R.string.settings_expanded_folders), onUp = {
-                    navController.popBackStack("settings/{group}", inclusive = false)
+                    navController.popBackStack("settings", inclusive = false)
                 }) {
                     ExpandedFoldersScreen()
                 }
             }
             composable("settings/folders/views") {
                 UpPage(stringResource(R.string.settings_folder_views), onUp = {
-                    navController.popBackStack("settings/{group}", inclusive = false)
+                    navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderViewsScreen()
                 }
             }
             composable("settings/folders/starts") {
                 UpPage(stringResource(R.string.settings_start_per_folder), onUp = {
-                    navController.popBackStack("settings/{group}", inclusive = false)
+                    navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderStartsScreen()
-                }
-            }
-            composable(
-                route = "settings/{group}",
-                arguments = listOf(navArgument("group") { type = NavType.StringType }),
-            ) { entry ->
-                val name = entry.arguments?.getString("group")
-                val group = name?.let(SettingsGroup::fromRoute)
-                if (group == null) {
-                    LaunchedEffect(Unit) { navController.popBackStack() }
-                } else {
-                    UpPage(group.title, onUp = {
-                        navController.popBackStack("settings", inclusive = false)
-                    }) {
-                        SettingsGroupScreen(
-                            group = group,
-                            onOpenExpanded = { navController.navigate("settings/folders/expanded") },
-                            onOpenViews = { navController.navigate("settings/folders/views") },
-                            onOpenStarts = { navController.navigate("settings/folders/starts") },
-                            onCopyContacts = { navController.navigate("contacts") },
-                            onEditBook = { navController.navigate("addressbook") },
-                            onOpenPanel = { name, accountId -> openToolbar(name, accountId) },
-                        )
-                    }
                 }
             }
             composable("addressbook") {

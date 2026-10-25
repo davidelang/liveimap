@@ -361,21 +361,18 @@ Avoid:
 
 ## Settings
 
-* Settings are many, so they are organized in three levels: a list of groups;
-  one screen per group, with its settings in collapsible sections (the first
-  open, the others collapsed with a summary of their values); and sub-screens
-  for lists and editors. Rarely used settings go in a collapsed Advanced
-  section at the end of their group. Every setting has one home; no screen is
-  a long flat list.
+* Settings live in `app/src/main/assets/settings-tree.json`. The screen renders
+  that one tree. A leaf's `default` is the value for a new account and for a
+  key missing from a stored account. Changing the tree takes a rebuild. Lists
+  and editors still open as their own screens.
 * A text field saves on Done or when it loses focus, not on every keystroke.
 * Mailbox names (Sent, Postponed, the address book, Trash) are configured, or
   taken from the server's special-use marks. They are never guessed.
 * Slower fallbacks are listed in their own settings section, each off by
   default.
-* **Thresholds for asking are settings.** "Ask before sorting / threading /
-  a body or full-text search / a client-side fallback in folders larger than N
-  messages" (default 5000 each). 0 means always ask. The question offers "Just
-  this once" and "Always for this folder".
+* **Thresholds for asking are settings.** The default is -1 (never ask), 0
+  always asks, and the user can change it. The question offers "Just this once"
+  and "Always for this folder".
 
 ## Toolbars and menus
 
@@ -567,8 +564,8 @@ trivial, complex things are possible, and roles are built on the same rules.
   ManageSieve. TLS modes: Implicit TLS (993 / 465), STARTTLS required,
   STARTTLS if offered (labelled as open to downgrade), or None (plaintext, with
   a warning). New accounts default to Implicit TLS, IMAP port 993 and SMTP port
-  465. An account saved without a TLS mode loads as None and keeps
-  working until the user picks another mode.
+  465. An account saved without a TLS mode loads as None and is not rewritten
+  to Implicit on load. It keeps working until the user picks another mode.
 * After STARTTLS or AUTH, capabilities are read again. No STARTTLS after
   PREAUTH.
 * SASL through libetpan and cyrus-sasl, strongest first among what the server

@@ -1,0 +1,773 @@
+[
+  {
+    "title": "Account",
+    "children": [
+      {
+        "title": "Identity",
+        "children": [
+          {
+            "setting": "friendlyName",
+            "default": ""
+          },
+          {
+            "setting": "email",
+            "default": ""
+          },
+          {
+            "setting": "displayName",
+            "default": ""
+          },
+          {
+            "setting": "altAddresses",
+            "default": []
+          }
+        ]
+      },
+      {
+        "title": "Mail access",
+        "children": [
+          {
+            "setting": "jmapFolders",
+            "default": false
+          }
+        ]
+      },
+      {
+        "title": "Server",
+        "children": [
+          {
+            "setting": "imapHost",
+            "default": ""
+          },
+          {
+            "setting": "imapPort",
+            "default": 993,
+            "hardLimit": {
+              "min": 1,
+              "max": 65535
+            }
+          },
+          {
+            "setting": "username",
+            "default": ""
+          },
+          {
+            "setting": "tlsMode",
+            "default": "Implicit"
+          },
+          {
+            "setting": "allowPlaintextAuth",
+            "default": false
+          },
+          {
+            "setting": "acceptInvalidCert",
+            "default": false
+          },
+          {
+            "setting": "allowOldTls",
+            "default": false
+          },
+          {
+            "setting": "authMechanism",
+            "default": ""
+          },
+          {
+            "setting": "clientCert",
+            "default": ""
+          },
+          {
+            "setting": "clientCertAlias",
+            "default": ""
+          },
+          {
+            "setting": "certPin",
+            "default": ""
+          },
+          {
+            "setting": "jmapCertPin",
+            "default": ""
+          },
+          {
+            "setting": "pipelineCommands",
+            "default": true
+          }
+        ]
+      },
+      {
+        "title": "Sending",
+        "children": [
+          {
+            "setting": "emailSubmission",
+            "default": false
+          },
+          {
+            "setting": "smtpHost",
+            "default": ""
+          },
+          {
+            "setting": "smtpPort",
+            "default": 465,
+            "hardLimit": {
+              "min": 1,
+              "max": 65535
+            }
+          },
+          {
+            "setting": "smtpUsername",
+            "default": ""
+          },
+          {
+            "setting": "smtpSameAsImap",
+            "default": false
+          },
+          {
+            "setting": "sieveHost",
+            "default": ""
+          },
+          {
+            "setting": "sievePort",
+            "default": 4190,
+            "hardLimit": {
+              "min": 1,
+              "max": 65535
+            }
+          },
+          {
+            "setting": "sieveTlsMode",
+            "default": "StartTls"
+          },
+          {
+            "setting": "sieveCertPin",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "title": "Watched folders",
+        "children": [
+          {
+            "setting": "watchedFolders",
+            "default": []
+          },
+          {
+            "setting": "extraIdleBudget",
+            "default": 2,
+            "min": 0,
+            "max": 8,
+            "hardLimit": {
+              "min": 0,
+              "max": 8
+            }
+          },
+          {
+            "setting": "maxConnections",
+            "default": 8,
+            "hardLimit": {
+              "min": 2,
+              "max": 20
+            }
+          }
+        ]
+      },
+      {
+        "title": "Sending rules",
+        "children": [
+          {
+            "setting": "sendingRules",
+            "default": ""
+          },
+          {
+            "setting": "signature",
+            "default": ""
+          },
+          {
+            "setting": "sigDashes",
+            "default": true
+          },
+          {
+            "setting": "sigAtBottom",
+            "default": false
+          },
+          {
+            "setting": "quotePrefix",
+            "default": "> "
+          },
+          {
+            "setting": "replyLeadIn",
+            "default": "On {date}, {from} wrote:"
+          },
+          {
+            "setting": "dsnMode",
+            "default": "Off"
+          },
+          {
+            "setting": "composerHeaders",
+            "default": ""
+          },
+          {
+            "setting": "inboundRules",
+            "default": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Mailboxes",
+    "children": [
+      {
+        "title": "Special-use",
+        "children": [
+          {
+            "setting": "sentMailbox",
+            "default": ""
+          },
+          {
+            "setting": "postponedMailbox",
+            "default": ""
+          },
+          {
+            "setting": "addressBookMailbox",
+            "default": ""
+          },
+          {
+            "setting": "spamMailbox",
+            "default": ""
+          },
+          {
+            "setting": "trashMailbox",
+            "default": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Folders",
+    "children": [
+      {
+        "title": "Folder list",
+        "children": [
+          {
+            "setting": "showUnreadCounts",
+            "default": false
+          },
+          {
+            "setting": "expandedFolders",
+            "default": []
+          }
+        ]
+      },
+      {
+        "title": "Folder views",
+        "children": [
+          {
+            "setting": "defaultView",
+            "default": "Arrival|newest"
+          },
+          {
+            "setting": "folderViews",
+            "default": ""
+          },
+          {
+            "setting": "threadIndexStyle",
+            "default": "Expanded"
+          }
+        ]
+      },
+      {
+        "title": "Start position",
+        "children": [
+          {
+            "setting": "inboxStart",
+            "default": "Newest"
+          },
+          {
+            "setting": "folderStart",
+            "default": "Newest"
+          },
+          {
+            "setting": "folderStarts",
+            "default": ""
+          },
+          {
+            "setting": "startAfterChange",
+            "default": "RerunRule"
+          },
+          {
+            "setting": "showRecentRules",
+            "default": true
+          },
+          {
+            "setting": "openAtInIndexMenu",
+            "default": false
+          },
+          {
+            "setting": "pinercStartDefault",
+            "default": "LeaveUnchanged"
+          }
+        ]
+      },
+      {
+        "title": "Large folders",
+        "children": [
+          {
+            "setting": "askSort",
+            "default": -1
+          },
+          {
+            "setting": "askThread",
+            "default": -1
+          },
+          {
+            "setting": "askSearch",
+            "default": -1
+          },
+          {
+            "setting": "askFallback",
+            "default": -1
+          },
+          {
+            "setting": "sortAskSkip",
+            "default": []
+          },
+          {
+            "setting": "threadAskSkip",
+            "default": []
+          },
+          {
+            "setting": "searchAskSkip",
+            "default": []
+          },
+          {
+            "setting": "fallbackAskSkip",
+            "default": []
+          },
+          {
+            "setting": "savedSearches",
+            "default": ""
+          },
+          {
+            "setting": "savedAdvanced",
+            "default": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Reading",
+    "children": [
+      {
+        "title": "Opening",
+        "children": [
+          {
+            "setting": "markSeenOnOpen",
+            "default": true
+          },
+          {
+            "setting": "bodyView",
+            "default": "PlainOrError"
+          },
+          {
+            "setting": "preferHtml",
+            "default": false
+          },
+          {
+            "setting": "readerTextLayout",
+            "default": "Text"
+          },
+          {
+            "setting": "readerTextZoom",
+            "default": 100,
+            "min": 50,
+            "max": 300,
+            "hardLimit": {
+              "min": 50,
+              "max": 300
+            }
+          },
+          {
+            "setting": "viewerHeaders",
+            "default": ""
+          },
+          {
+            "setting": "nonAsciiDisplay",
+            "default": "HighlightSuspicious"
+          }
+        ]
+      },
+      {
+        "title": "Deleting",
+        "children": [
+          {
+            "setting": "showDeleted",
+            "default": true
+          },
+          {
+            "setting": "autoExpunge",
+            "default": false
+          },
+          {
+            "setting": "askBeforeExpunge",
+            "default": true
+          },
+          {
+            "setting": "deletePolicy",
+            "default": "MarkDeleted"
+          },
+          {
+            "setting": "moveMethod",
+            "default": "CopyThenMarkDeleted"
+          },
+          {
+            "setting": "moveAllIncludesDeleted",
+            "default": false
+          },
+          {
+            "setting": "compression",
+            "default": "On"
+          }
+        ]
+      },
+      {
+        "title": "Actions",
+        "children": [
+          {
+            "setting": "swipeTrailing",
+            "default": "Delete||"
+          },
+          {
+            "setting": "swipeLeading",
+            "default": "ReplyAll||"
+          },
+          {
+            "setting": "readerSwipeTrailing",
+            "default": "Next||"
+          },
+          {
+            "setting": "readerSwipeLeading",
+            "default": "Previous||"
+          },
+          {
+            "setting": "bounceFcc",
+            "default": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Compose",
+    "children": [
+      {
+        "title": "Composing",
+        "children": [
+          {
+            "setting": "composerWrapColumn",
+            "default": 74,
+            "min": 0,
+            "max": 998,
+            "hardLimit": {
+              "min": 0,
+              "max": 998
+            }
+          },
+          {
+            "setting": "quellFlowed",
+            "default": false
+          }
+        ]
+      },
+      {
+        "title": "Replying",
+        "children": [
+          {
+            "setting": "replyAboveQuote",
+            "default": false
+          }
+        ]
+      },
+      {
+        "title": "Forwarding",
+        "children": [
+          {
+            "setting": "includeForwardAttachments",
+            "default": true
+          },
+          {
+            "setting": "forwardAsAttachment",
+            "default": false
+          }
+        ]
+      },
+      {
+        "title": "Fcc",
+        "children": [
+          {
+            "setting": "savedMailbox",
+            "default": ""
+          },
+          {
+            "setting": "saveNameRule",
+            "default": "DefaultFolder"
+          },
+          {
+            "setting": "lastSaveMailbox",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "title": "Address completion",
+        "children": [
+          {
+            "setting": "completionSources",
+            "default": [
+              "pine"
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Address book",
+        "children": [
+          {
+            "setting": "addressBookHistory",
+            "default": 3
+          },
+          {
+            "setting": "addressBookNeverTrim",
+            "default": false
+          },
+          {
+            "setting": "extraAddressBooks",
+            "default": []
+          },
+          {
+            "setting": "globalAddressBooks",
+            "default": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Appearance",
+    "children": [
+      {
+        "title": "Theme",
+        "children": [
+          {
+            "setting": "theme",
+            "default": "FollowSystem"
+          },
+          {
+            "setting": "dynamicColor",
+            "default": true
+          }
+        ]
+      },
+      {
+        "title": "Display",
+        "children": [
+          {
+            "setting": "density",
+            "default": "Compact"
+          },
+          {
+            "setting": "dateFormat",
+            "default": "Short"
+          },
+          {
+            "setting": "datePattern",
+            "default": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Layout",
+    "children": [
+      {
+        "title": "Custom panel layout",
+        "children": [
+          {
+            "setting": "customLayout",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "setting": "multiPane",
+        "default": "Auto"
+      },
+      {
+        "setting": "folderPane",
+        "default": "Auto"
+      },
+      {
+        "setting": "foldPosture",
+        "default": "Off"
+      },
+      {
+        "setting": "fullScreen",
+        "default": false
+      },
+      {
+        "setting": "paneArrangement",
+        "default": "Auto"
+      },
+      {
+        "setting": "previewSize",
+        "default": "Auto"
+      },
+      {
+        "setting": "folderPosition",
+        "default": "Auto"
+      }
+    ]
+  },
+  {
+    "title": "Slower",
+    "children": [
+      {
+        "setting": "clientSort",
+        "default": false
+      },
+      {
+        "setting": "clientThread",
+        "default": false
+      },
+      {
+        "setting": "pollForNewMail",
+        "default": false
+      },
+      {
+        "setting": "pollSeconds",
+        "default": 60
+      },
+      {
+        "setting": "statusVisibleCounts",
+        "default": false
+      },
+      {
+        "setting": "forceSlowerFallbacks",
+        "default": false
+      }
+    ]
+  },
+  {
+    "title": "Debug",
+    "children": [
+      {
+        "title": "Logging",
+        "children": [
+          {
+            "setting": "logImapTraffic",
+            "default": false
+          },
+          {
+            "setting": "showUserInDebugReport",
+            "default": false
+          },
+          {
+            "setting": "idleWakeSeconds",
+            "default": 5,
+            "choices": [
+              1,
+              2,
+              5,
+              10,
+              30,
+              60
+            ],
+            "hardLimit": {
+              "min": 1,
+              "max": 60
+            }
+          }
+        ]
+      },
+      {
+        "title": "Hide capabilities",
+        "children": [
+          {
+            "setting": "hiddenCapabilities",
+            "default": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Toolbars",
+    "children": [
+      {
+        "title": "Index toolbar",
+        "children": [
+          {
+            "setting": "indexBar",
+            "default": "T:Search|O:Refresh,Filter|H:"
+          }
+        ]
+      },
+      {
+        "title": "Selection toolbar",
+        "children": [
+          {
+            "setting": "selectionBar",
+            "default": "T:Delete|O:Seen,Flag,Move|H:"
+          }
+        ]
+      },
+      {
+        "title": "Folder toolbar",
+        "children": [
+          {
+            "setting": "folderBar",
+            "default": "T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:"
+          }
+        ]
+      },
+      {
+        "title": "Reader toolbar",
+        "children": [
+          {
+            "setting": "readerToolbar",
+            "default": ""
+          }
+        ]
+      },
+      {
+        "title": "Compose toolbar",
+        "children": [
+          {
+            "setting": "composeBar",
+            "default": "T:|O:Postpone|H:"
+          }
+        ]
+      },
+      {
+        "setting": "toolbarRows",
+        "default": 2,
+        "min": 1,
+        "max": 4,
+        "hardLimit": {
+          "min": 1,
+          "max": 4
+        }
+      }
+    ]
+  },
+  {
+    "title": "Favorites",
+    "children": [
+      {
+        "setting": "favorites",
+        "default": ""
+      }
+    ]
+  }
+]

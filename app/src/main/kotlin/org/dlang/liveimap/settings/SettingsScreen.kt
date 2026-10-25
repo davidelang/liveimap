@@ -174,26 +174,6 @@ private fun unbindSettingsEditor(editor: SettingsEditor) {
 private fun sameSieveAccount(openId: String?, capturedId: String?): Boolean =
     openId.orEmpty() == capturedId.orEmpty()
 
-enum class SettingsGroup(val route: String, private val titleRes: Int) {
-    Account("account", R.string.settings_account),
-    Mailboxes("mailboxes", R.string.settings_mailboxes),
-    Folders("folders", R.string.settings_folders),
-    Reading("reading", R.string.settings_reading),
-    Compose("compose", R.string.compose_new),
-    Appearance("appearance", R.string.settings_appearance),
-    Layout("layout", R.string.settings_layout),
-    Slower("slower", R.string.settings_slower),
-    Debug("debug", R.string.settings_debug),
-    ;
-
-    val title: String
-        @Composable get() = stringResource(titleRes)
-
-    companion object {
-        fun fromRoute(route: String): SettingsGroup? = entries.firstOrNull { it.route == route }
-    }
-}
-
 private class EditorEpoch(val settings: Int, val password: Int, val smtp: Int)
 
 private class EditorLoad(
@@ -242,6 +222,11 @@ private class SettingsEditor(
 
     fun persist(next: AccountSettings) {
         if (!ready) return
+        val rejected = rejectedAccountSettings(next)
+        if (rejected != null) {
+            settingsSaveFailure.value = rejected
+            return
+        }
         // F32: the store drops passwords/pins when a server moves; show that here instead of a stale password
         val retarget = org.dlang.liveimap.accounts.retargetCredentials(settings, next)
         if (retarget.dropImapPassword) {
@@ -451,6 +436,18 @@ internal object LayoutApply {
 }
 
 @Composable
+internal fun rememberSettingsGate(): String? {
+    val context = LocalContext.current.applicationContext
+    var error by remember { mutableStateOf<String?>(null) }
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(context) {
+        error = startupSettingsError(context)
+        ready = true
+    }
+    return if (!ready) "" else error
+}
+
+@Composable
 private fun rememberSettingsEditor(): SettingsEditor {
     val appContext = LocalContext.current.applicationContext
     val ui = rememberCoroutineScope()
@@ -482,39 +479,18 @@ private fun rememberSectionOpen(): SectionOpen {
 }
 
 @Composable
-fun SettingsGroupScreen(
-    group: SettingsGroup,
-    onOpenExpanded: () -> Unit,
-    onOpenViews: () -> Unit,
-    onOpenStarts: () -> Unit,
-    onCopyContacts: () -> Unit,
-    onEditBook: () -> Unit = {},
-    onOpenPanel: (String, String) -> Unit = { _, _ -> },
-) {
-    val editor = rememberSettingsEditor()
-    if (!editor.ready) return
-    SettingsPage {
-        when (group) {
-            SettingsGroup.Account -> AccountGroup(editor, 0)
-            SettingsGroup.Mailboxes -> MailboxesGroup(editor, 0)
-            SettingsGroup.Folders -> FoldersGroup(editor, 0)
-            SettingsGroup.Reading -> ReadingGroup(editor, 0)
-            SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook, 0)
-            SettingsGroup.Appearance -> AppearanceGroup(editor, 0)
-            SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel, 0)
-            SettingsGroup.Slower -> SlowerGroup(editor)
-            SettingsGroup.Debug -> DebugGroup(editor, 0)
-        }
-    }
-}
-
-@Composable
 fun SettingsTree(
     onCopyContacts: () -> Unit,
     onEditBook: () -> Unit,
     onOpenPanel: (String, String) -> Unit,
 ) {
+    val gate = rememberSettingsGate()
     val editor = rememberSettingsEditor()
+    if (!gate.isNullOrEmpty()) {
+        Text(gate)
+        return
+    }
+    if (gate == "") return
     if (!editor.ready) return
     val sections = rememberSectionOpen()
     val settings = editor.settings
@@ -537,34 +513,43 @@ fun SettingsTree(
             if (saveFailure != null) {
                 Text(saveFailure)
             }
-            for (group in SettingsGroup.entries) {
-                SettingsNode(
-                    title = group.title,
-                    depth = depth,
-                    summary = groupSummary(group, settings),
-                    expanded = group.route in sections.open,
-                    onToggle = { sections.toggle(group.route) },
-                ) {
-                    when (group) {
-                        SettingsGroup.Account -> AccountGroup(editor, depth + 1)
-                        SettingsGroup.Mailboxes -> MailboxesGroup(editor, depth + 1)
-                        SettingsGroup.Folders -> FoldersGroup(editor, depth + 1)
-                        SettingsGroup.Reading -> ReadingGroup(editor, depth + 1)
-                        SettingsGroup.Compose -> ComposeGroup(editor, onCopyContacts, onEditBook, depth + 1)
-                        SettingsGroup.Appearance -> AppearanceGroup(editor, depth + 1)
-                        SettingsGroup.Layout -> LayoutGroup(editor, onOpenPanel, depth + 1)
-                        SettingsGroup.Slower -> SlowerGroup(editor)
-                        SettingsGroup.Debug -> DebugGroup(editor, depth + 1)
-                    }
+            for (node in installedSettingsRoots()) {
+                if (node !is TreeNode.Group) continue
+                val title = node.title
+                if (title == "Toolbars") {
+                    ToolbarsSection(editor, depth, scroll)
+                    continue
                 }
-            }
-            ToolbarsSection(editor, depth, scroll)
-            FavoritesSection(editor, depth) { favorite ->
-                editingFavorite = favorite
-                favoriteDraft = if (favorite.label.isNotBlank()) {
-                    favorite.label
-                } else {
-                    favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+                if (title == "Favorites") {
+                    FavoritesSection(editor, depth) { favorite ->
+                        editingFavorite = favorite
+                        favoriteDraft = if (favorite.label.isNotBlank()) {
+                            favorite.label
+                        } else {
+                            favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+                        }
+                    }
+                    continue
+                }
+                val id = SettingsTreeIndex.id(title)
+                SettingsNode(
+                    title = stringResource(SettingsTreeGenerated.titleOf(id)),
+                    depth = depth,
+                    summary = groupSummary(title, settings),
+                    expanded = id in sections.open,
+                    onToggle = { sections.toggle(id) },
+                ) {
+                    when (title) {
+                        "Account" -> AccountGroup(editor, depth + 1)
+                        "Mailboxes" -> MailboxesGroup(editor, depth + 1)
+                        "Folders" -> FoldersGroup(editor, depth + 1)
+                        "Reading" -> ReadingGroup(editor, depth + 1)
+                        "Compose" -> ComposeGroup(editor, onCopyContacts, onEditBook, depth + 1)
+                        "Appearance" -> AppearanceGroup(editor, depth + 1)
+                        "Layout" -> LayoutGroup(editor, onOpenPanel, depth + 1)
+                        "Slower" -> SlowerGroup(editor)
+                        "Debug" -> DebugGroup(editor, depth + 1)
+                    }
                 }
             }
         }
@@ -645,12 +630,13 @@ private fun ToolbarsSection(editor: SettingsEditor, depth: Int, scroll: ScrollSt
             previous = loaded
         }
     }
+    val toolbarId = SettingsTreeIndex.id("Toolbars")
     SettingsNode(
-        title = stringResource(R.string.settings_toolbars),
+        title = stringResource(SettingsTreeGenerated.titleOf(toolbarId)),
         depth = depth,
-        summary = stringResource(R.string.settings_toolbars),
-        expanded = "toolbars" in bars.open,
-        onToggle = { bars.toggle("toolbars") },
+        summary = stringResource(SettingsTreeGenerated.titleOf(toolbarId)),
+        expanded = toolbarId in bars.open,
+        onToggle = { bars.toggle(toolbarId) },
     ) {
         ToolbarBlock(R.string.settings_panel_index, "index", bars, ToolbarScreen.Index, accountId, depth + 1, scroll)
         ToolbarBlock(R.string.settings_panel_selection, "selection", bars, ToolbarScreen.Selection, accountId, depth + 1, scroll)
@@ -688,12 +674,13 @@ private fun ToolbarBlock(
 private fun FavoritesSection(editor: SettingsEditor, depth: Int, onEdit: (FolderFavorite) -> Unit) {
     val sections = rememberSectionOpen()
     val favorites = editor.settings.favorites
+    val favoritesId = SettingsTreeIndex.id("Favorites")
     SettingsNode(
-        title = stringResource(R.string.settings_favorites),
+        title = stringResource(SettingsTreeGenerated.titleOf(favoritesId)),
         depth = depth,
         summary = favorites.size.toString(),
-        expanded = "favorites" in sections.open,
-        onToggle = { sections.toggle("favorites") },
+        expanded = favoritesId in sections.open,
+        onToggle = { sections.toggle(favoritesId) },
     ) {
         for (favorite in favorites) {
             val shown = if (favorite.label.isNotBlank()) {
@@ -2795,20 +2782,20 @@ private fun OpenRow(title: String, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun groupSummary(group: SettingsGroup, settings: AccountSettings): String = when (group) {
-    SettingsGroup.Account -> {
+private fun groupSummary(title: String, settings: AccountSettings): String = when (title) {
+    "Account" -> {
         val noServer = stringResource(R.string.settings_no_server)
         settings.imapHost.ifBlank { noServer }
     }
-    SettingsGroup.Mailboxes -> mailboxSetCount(settings)
-    SettingsGroup.Folders -> sortDirection(settings)
-    SettingsGroup.Reading -> bodyViewName(settings.bodyView)
-    SettingsGroup.Compose -> stringResource(
+    "Mailboxes" -> mailboxSetCount(settings)
+    "Folders" -> sortDirection(settings)
+    "Reading" -> bodyViewName(settings.bodyView)
+    "Compose" -> stringResource(
         if (settings.replyAboveQuote) R.string.settings_reply_above else R.string.settings_reply_below,
     )
-    SettingsGroup.Appearance -> themeName(settings.theme)
-    SettingsGroup.Layout -> multiPaneName(settings.multiPane)
-    SettingsGroup.Slower -> stringResource(
+    "Appearance" -> themeName(settings.theme)
+    "Layout" -> multiPaneName(settings.multiPane)
+    "Slower" -> stringResource(
         if (
             settings.clientSort ||
             settings.clientThread ||
@@ -2820,9 +2807,10 @@ private fun groupSummary(group: SettingsGroup, settings: AccountSettings): Strin
             R.string.settings_slower_off
         },
     )
-    SettingsGroup.Debug -> stringResource(
+    "Debug" -> stringResource(
         if (settings.logImapTraffic) R.string.settings_traffic_on else R.string.settings_traffic_off,
     )
+    else -> ""
 }
 
 @Composable

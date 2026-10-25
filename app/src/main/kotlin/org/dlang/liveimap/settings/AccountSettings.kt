@@ -287,16 +287,8 @@ fun defaultSmtpPort(mode: TlsMode): Int = when (mode) {
     TlsMode.Implicit -> 465
 }
 
-fun newAccountSettings(): AccountSettings = AccountSettings(
-    imapPort = defaultImapPort(TlsMode.Implicit),
-    smtpPort = defaultSmtpPort(TlsMode.Implicit),
-    tlsMode = TlsMode.Implicit,
-    multiPane = MultiPane.Auto,
-    folderPane = LayoutChoice.Auto,
-    paneArrangement = ArrangementChoice.Auto,
-    previewSize = PreviewChoice.Auto,
-    folderPosition = FolderPositionChoice.Auto,
-)
+/** AccountStore still calls this. A new account is [AccountSettings], whose defaults are the tree. */
+fun newAccountSettings(): AccountSettings = AccountSettings()
 
 fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
     tlsMode = mode,
@@ -311,9 +303,9 @@ fun overAskThreshold(exists: Int, threshold: Int): Boolean =
 
 data class AccountSettings(
     val imapHost: String = "",
-    val imapPort: Int = 143,
+    val imapPort: Int = SettingsDefaults.imapPort,
     val smtpHost: String = "",
-    val smtpPort: Int = 25,
+    val smtpPort: Int = SettingsDefaults.smtpPort,
     val smtpUsername: String = "",
     /** F52 (David): use the IMAP password for SMTP only when this is ticked; never assumed. */
     val smtpSameAsImap: Boolean = false,
@@ -396,15 +388,14 @@ data class AccountSettings(
     val toolbarRows: Int = 2,
     val composerWrapColumn: Int = 74,
     val quellFlowed: Boolean = false,
-    // Off here so stored accounts without the key keep Off; new accounts get Auto from [newAccountSettings].
-    val multiPane: MultiPane = MultiPane.Off,
-    val folderPane: LayoutChoice = LayoutChoice.Off,
+    val multiPane: MultiPane = enumValueOf(SettingsDefaults.multiPane),
+    val folderPane: LayoutChoice = enumValueOf(SettingsDefaults.folderPane),
     val foldPosture: LayoutChoice = LayoutChoice.Off,
     val fullScreen: Boolean = false,
-    /** Auto = [planLayout]; stored accounts without the key keep SideBySide. */
-    val paneArrangement: ArrangementChoice = ArrangementChoice.SideBySide,
-    val previewSize: PreviewChoice = PreviewChoice.Density,
-    val folderPosition: FolderPositionChoice = FolderPositionChoice.Beside,
+    /** Auto = [planLayout]. */
+    val paneArrangement: ArrangementChoice = enumValueOf(SettingsDefaults.paneArrangement),
+    val previewSize: PreviewChoice = enumValueOf(SettingsDefaults.previewSize),
+    val folderPosition: FolderPositionChoice = enumValueOf(SettingsDefaults.folderPosition),
     /** Custom panel layout (PaneLayout.kt text form); empty = Auto. */
     val customLayout: String = "",
     // Account-default sending fields (design-decisions.md "Sending rules and roles").
@@ -421,7 +412,7 @@ data class AccountSettings(
     val sieveHost: String = "",
     val sievePort: Int = 4190,
     val sieveTlsMode: TlsMode = TlsMode.StartTls,
-    val tlsMode: TlsMode = TlsMode.None,
+    val tlsMode: TlsMode = enumValueOf(SettingsDefaults.tlsMode),
     val certPin: String = "",
     val sieveCertPin: String = "",
     /** F63: the JMAP (HTTPS) server's own pin; never the IMAP one. */
@@ -645,6 +636,8 @@ private val fieldNames = listOf(
 private const val HEX = "0123456789ABCDEF"
 
 // Lines a fresh account writes. A preserved key still at that line stays omitted.
+private fun failureEncodedLine(key: String): String? = if (key == "tlsMode") "tlsMode=None" else null
+
 private val defaultEncodedLines: Map<String, String> by lazy {
     AccountSettings().encode().lineSequence().filter { it.isNotEmpty() }.associate { line ->
         val eq = line.indexOf('=')
@@ -666,7 +659,7 @@ fun AccountSettings.encode(): String = buildString {
         if (eq > 0) {
             val key = first.substring(0, eq)
             // A later edit replaces the raw line. The failed-decode default does not.
-            if (key in preserved && defaultEncodedLines[key] == first) return
+            if (key in preserved && (defaultEncodedLines[key] == first || failureEncodedLine(key) == first)) return
             written.add(key)
         }
         appendLine(line)
@@ -675,8 +668,8 @@ fun AccountSettings.encode(): String = buildString {
     put("imapPort=$imapPort")
     put("smtpHost=${percentEncode(smtpHost)}")
     put("smtpPort=$smtpPort")
-    if (smtpUsername.isNotEmpty()) put("smtpUsername=${percentEncode(smtpUsername)}")
-    if (smtpSameAsImap) put("smtpSameAsImap=true")
+    put("smtpUsername=${percentEncode(smtpUsername)}")
+    put("smtpSameAsImap=$smtpSameAsImap")
     put("username=${percentEncode(username)}")
     put("displayName=${percentEncode(displayName)}")
     put("email=${percentEncode(email)}")
@@ -716,115 +709,89 @@ fun AccountSettings.encode(): String = buildString {
     put("showRecentRules=$showRecentRules")
     put("openAtInIndexMenu=$openAtInIndexMenu")
     put("pinercStartDefault=${pinercStartDefault.name}")
-    if (readerTextLayout != TextLayout.Text) put("readerTextLayout=${readerTextLayout.name}")
-    if (readerSwipeTrailing != SwipeBinding(SwipeAction.Next)) put("readerSwipeTrailing=${encodeSwipe(readerSwipeTrailing)}")
-    if (readerSwipeLeading != SwipeBinding(SwipeAction.Previous)) put("readerSwipeLeading=${encodeSwipe(readerSwipeLeading)}")
-    if (readerTextZoom != 100) put("readerTextZoom=$readerTextZoom")
-    if (idleWakeSeconds != 5) put("idleWakeSeconds=$idleWakeSeconds")
-    // Always written (still optional on decode), so each account stores its look-alike choice explicitly.
+    put("readerTextLayout=${readerTextLayout.name}")
+    put("readerSwipeTrailing=${encodeSwipe(readerSwipeTrailing)}")
+    put("readerSwipeLeading=${encodeSwipe(readerSwipeLeading)}")
+    put("readerTextZoom=$readerTextZoom")
+    put("idleWakeSeconds=$idleWakeSeconds")
     put("nonAsciiDisplay=${nonAsciiDisplay.name}")
     put("altAddresses=${encodeAltAddresses(altAddresses)}")
-    // Defaults omitted: smtpUsername when empty, completionSources, addressBookHistory, addressBookNeverTrim, the slower-fallback fields, the delete fields, savedMailbox when empty, saveNameRule when DefaultFolder, lastSaveMailbox when empty, threadIndexStyle when Expanded, indexBar when it is the default, selectionBar when it is the default, folderBar when it is the default, readerToolbar while it is null, composeBar when it is the default, toolbarRows when it is 2, composerWrapColumn when it is 74, quellFlowed when false, readerTextLayout when Text, readerSwipeTrailing when Next, readerSwipeLeading when Previous, multiPane when Off, folderPane when Off, foldPosture when Off, full screen when false, sieve host when empty, sieve port when 4190, tls mode when None, cert pin when blank, allowPlaintextAuth when false, inboundRules when empty, watchedFolders when empty, extraIdleBudget when 2, savedSearches when empty, savedAdvanced when empty, emailSubmission when false, ask thresholds when -1, and ask skip sets when empty.
-    if (completionSources != listOf(pineSourceId)) {
-        put("completionSources=${encodeCompletionSources(completionSources)}")
-    }
-    if (extraAddressBooks.isNotEmpty()) put("extraAddressBooks=${encodeCompletionSources(extraAddressBooks)}")
-    if (globalAddressBooks.isNotEmpty()) put("globalAddressBooks=${encodeCompletionSources(globalAddressBooks)}")
-    if (addressBookHistory != 3) put("addressBookHistory=$addressBookHistory")
-    if (addressBookNeverTrim) put("addressBookNeverTrim=true")
-    if (clientSort) put("clientSort=true")
-    if (clientThread) put("clientThread=true")
-    if (pollForNewMail) put("pollForNewMail=true")
-    if (pollSeconds != 60) put("pollSeconds=$pollSeconds")
-    if (statusVisibleCounts) put("statusVisibleCounts=true")
-    if (forceSlowerFallbacks) put("forceSlowerFallbacks=true")
-    if (hiddenCapabilities.isNotEmpty()) {
-        put("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
-    }
-    if (autoExpunge) put("autoExpunge=true")
-    if (deletePolicy != DeletePolicy.MarkDeleted) put("deletePolicy=${deletePolicy.name}")
-    if (moveMethod != MoveMethod.CopyThenMarkDeleted) put("moveMethod=${moveMethod.name}")
-    if (compression != Compression.On) put("compression=${compression.name}")
-    if (moveAllIncludesDeleted) put("moveAllIncludesDeleted=true")
-    if (trashMailbox.isNotEmpty()) put("trashMailbox=${percentEncode(trashMailbox)}")
-    if (savedMailbox.isNotEmpty()) put("savedMailbox=${percentEncode(savedMailbox)}")
-    if (saveNameRule != SaveNameRule.DefaultFolder) put("saveNameRule=${saveNameRule.name}")
-    if (lastSaveMailbox.isNotEmpty()) put("lastSaveMailbox=${percentEncode(lastSaveMailbox)}")
-    if (threadIndexStyle != ThreadIndexStyle.Expanded) {
-        put("threadIndexStyle=${threadIndexStyle.name}")
-    }
-    if (indexBar != defaultIndexBar()) {
-        put("indexBar=${encodeIndexBar(indexBar)}")
-    }
-    if (selectionBar != defaultSelectionBar()) {
-        put("selectionBar=${encodeSelectionBar(selectionBar)}")
-    }
-    if (folderBar != defaultFolderBar()) {
-        put("folderBar=${encodeFolderBar(folderBar)}")
-    }
-    if (readerToolbar != null) {
-        put("readerToolbar=${encodeReaderToolbar(readerToolbar)}")
-    }
-    if (composeBar != defaultComposeBar()) {
-        put("composeBar=${encodeComposeBar(composeBar)}")
-    }
-    if (toolbarRows != 2) put("toolbarRows=$toolbarRows")
-    if (composerWrapColumn != 74) put("composerWrapColumn=$composerWrapColumn")
-    if (quellFlowed) put("quellFlowed=true")
-    if (multiPane != MultiPane.Off) put("multiPane=${multiPane.name}")
-    if (folderPane != LayoutChoice.Off) put("folderPane=${folderPane.name}")
-    if (foldPosture != LayoutChoice.Off) put("foldPosture=${foldPosture.name}")
-    if (fullScreen) put("fullScreen=true")
-    if (paneArrangement != ArrangementChoice.SideBySide) put("paneArrangement=${paneArrangement.name}")
-    if (previewSize != PreviewChoice.Density) put("previewSize=${previewSize.name}")
-    if (folderPosition != FolderPositionChoice.Beside) put("folderPosition=${folderPosition.name}")
-    if (customLayout.isNotEmpty()) put("customLayout=${percentEncode(customLayout)}")
-    if (sendingRules.isNotEmpty()) put("sendingRules=${percentEncode(sendingRules)}")
-    if (signature.isNotEmpty()) put("signature=${percentEncode(signature)}")
-    if (!sigDashes) put("sigDashes=${sigDashes}")
-    if (sigAtBottom) put("sigAtBottom=${sigAtBottom}")
-    if (quotePrefix != org.dlang.liveimap.ui.compose.DefaultQuotePrefix) put("quotePrefix=${percentEncode(quotePrefix)}")
-    if (replyLeadIn != org.dlang.liveimap.ui.compose.DefaultLeadIn) put("replyLeadIn=${percentEncode(replyLeadIn)}")
-    if (dsnMode != org.dlang.liveimap.ui.compose.DsnMode.Off) put("dsnMode=${dsnMode.name}")
-    if (composerHeaders.isNotEmpty()) put("composerHeaders=${percentEncode(composerHeaders)}")
-    if (viewerHeaders.isNotEmpty()) put("viewerHeaders=${percentEncode(viewerHeaders)}")
-    if (sieveHost.isNotEmpty()) put("sieveHost=${percentEncode(sieveHost)}")
-    if (sievePort != 4190) put("sievePort=$sievePort")
-    if (sieveTlsMode != TlsMode.StartTls) put("sieveTlsMode=${sieveTlsMode.name}")
-    if (tlsMode != TlsMode.None) put("tlsMode=${tlsMode.name}")
-    if (certPin.isNotBlank()) put("certPin=${percentEncode(certPin)}")
-    if (sieveCertPin.isNotBlank()) put("sieveCertPin=${percentEncode(sieveCertPin)}")
-    if (jmapCertPin.isNotBlank()) put("jmapCertPin=${percentEncode(jmapCertPin)}")
-    if (allowPlaintextAuth) put("allowPlaintextAuth=true")
-    if (acceptInvalidCert) put("acceptInvalidCert=true")
-    if (allowOldTls) put("allowOldTls=true")
-    if (authMechanism.isNotBlank()) put("authMechanism=${percentEncode(authMechanism)}")
-    if (clientCert.isNotBlank()) put("clientCert=${percentEncode(clientCert)}")
-    if (clientCertAlias.isNotBlank()) put("clientCertAlias=${percentEncode(clientCertAlias)}")
-    if (inboundRules.isNotEmpty()) put("inboundRules=${encodeInboundRules(inboundRules)}")
-    if (watchedFolders.isNotEmpty()) {
-        put("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
-    }
-    if (extraIdleBudget != 2) put("extraIdleBudget=$extraIdleBudget")
-    if (maxConnections != org.dlang.liveimap.session.DefaultMaxConnections) put("maxConnections=$maxConnections")
-    if (savedSearches.isNotEmpty()) {
-        put("savedSearches=${encodeSavedSearches(savedSearches)}")
-    }
-    if (savedAdvanced.isNotEmpty()) {
-        put("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
-    }
-    if (emailSubmission) put("emailSubmission=true")
-    if (jmapFolders) put("jmapFolders=true")
-    if (askSort != DefaultAskLimit) put("askSort=$askSort")
-    if (askThread != DefaultAskLimit) put("askThread=$askThread")
-    if (askSearch != DefaultAskLimit) put("askSearch=$askSearch")
-    if (askFallback != DefaultAskLimit) put("askFallback=$askFallback")
-    if (sortAskSkip.isNotEmpty()) put("sortAskSkip=${encodeWatchedFolders(sortAskSkip.sorted())}")
-    if (threadAskSkip.isNotEmpty()) put("threadAskSkip=${encodeWatchedFolders(threadAskSkip.sorted())}")
-    if (searchAskSkip.isNotEmpty()) put("searchAskSkip=${encodeWatchedFolders(searchAskSkip.sorted())}")
-    if (fallbackAskSkip.isNotEmpty()) {
-        put("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
-    }
+    put("completionSources=${encodeCompletionSources(completionSources)}")
+    put("extraAddressBooks=${encodeCompletionSources(extraAddressBooks)}")
+    put("globalAddressBooks=${encodeCompletionSources(globalAddressBooks)}")
+    put("addressBookHistory=$addressBookHistory")
+    put("addressBookNeverTrim=$addressBookNeverTrim")
+    put("clientSort=$clientSort")
+    put("clientThread=$clientThread")
+    put("pollForNewMail=$pollForNewMail")
+    put("pollSeconds=$pollSeconds")
+    put("statusVisibleCounts=$statusVisibleCounts")
+    put("forceSlowerFallbacks=$forceSlowerFallbacks")
+    put("hiddenCapabilities=${encodeHiddenCapabilities(hiddenCapabilities)}")
+    put("autoExpunge=$autoExpunge")
+    put("deletePolicy=${deletePolicy.name}")
+    put("moveMethod=${moveMethod.name}")
+    put("compression=${compression.name}")
+    put("moveAllIncludesDeleted=$moveAllIncludesDeleted")
+    put("trashMailbox=${percentEncode(trashMailbox)}")
+    put("savedMailbox=${percentEncode(savedMailbox)}")
+    put("saveNameRule=${saveNameRule.name}")
+    put("lastSaveMailbox=${percentEncode(lastSaveMailbox)}")
+    put("threadIndexStyle=${threadIndexStyle.name}")
+    put("indexBar=${encodeIndexBar(indexBar)}")
+    put("selectionBar=${encodeSelectionBar(selectionBar)}")
+    put("folderBar=${encodeFolderBar(folderBar)}")
+    put("readerToolbar=${readerToolbar?.let { encodeReaderToolbar(it) }.orEmpty()}")
+    put("composeBar=${encodeComposeBar(composeBar)}")
+    put("toolbarRows=$toolbarRows")
+    put("composerWrapColumn=$composerWrapColumn")
+    put("quellFlowed=$quellFlowed")
+    put("multiPane=${multiPane.name}")
+    put("folderPane=${folderPane.name}")
+    put("foldPosture=${foldPosture.name}")
+    put("fullScreen=$fullScreen")
+    put("paneArrangement=${paneArrangement.name}")
+    put("previewSize=${previewSize.name}")
+    put("folderPosition=${folderPosition.name}")
+    put("customLayout=${percentEncode(customLayout)}")
+    put("sendingRules=${percentEncode(sendingRules)}")
+    put("signature=${percentEncode(signature)}")
+    put("sigDashes=$sigDashes")
+    put("sigAtBottom=$sigAtBottom")
+    put("quotePrefix=${percentEncode(quotePrefix)}")
+    put("replyLeadIn=${percentEncode(replyLeadIn)}")
+    put("dsnMode=${dsnMode.name}")
+    put("composerHeaders=${percentEncode(composerHeaders)}")
+    put("viewerHeaders=${percentEncode(viewerHeaders)}")
+    put("sieveHost=${percentEncode(sieveHost)}")
+    put("sievePort=$sievePort")
+    put("sieveTlsMode=${sieveTlsMode.name}")
+    put("tlsMode=${tlsMode.name}")
+    put("certPin=${percentEncode(certPin)}")
+    put("sieveCertPin=${percentEncode(sieveCertPin)}")
+    put("jmapCertPin=${percentEncode(jmapCertPin)}")
+    put("allowPlaintextAuth=$allowPlaintextAuth")
+    put("acceptInvalidCert=$acceptInvalidCert")
+    put("allowOldTls=$allowOldTls")
+    put("authMechanism=${percentEncode(authMechanism)}")
+    put("clientCert=${percentEncode(clientCert)}")
+    put("clientCertAlias=${percentEncode(clientCertAlias)}")
+    put("inboundRules=${encodeInboundRules(inboundRules)}")
+    put("watchedFolders=${encodeWatchedFolders(watchedFolders)}")
+    put("extraIdleBudget=$extraIdleBudget")
+    put("maxConnections=$maxConnections")
+    put("savedSearches=${encodeSavedSearches(savedSearches)}")
+    put("savedAdvanced=${encodeSavedAdvanced(savedAdvanced)}")
+    put("emailSubmission=$emailSubmission")
+    put("jmapFolders=$jmapFolders")
+    put("askSort=$askSort")
+    put("askThread=$askThread")
+    put("askSearch=$askSearch")
+    put("askFallback=$askFallback")
+    put("sortAskSkip=${encodeWatchedFolders(sortAskSkip.sorted())}")
+    put("threadAskSkip=${encodeWatchedFolders(threadAskSkip.sorted())}")
+    put("searchAskSkip=${encodeWatchedFolders(searchAskSkip.sorted())}")
+    put("fallbackAskSkip=${encodeWatchedFolders(fallbackAskSkip.sorted())}")
     for (entry in unknownSettings) {
         val first = entry.substringBefore('\n')
         val eq = first.indexOf('=')
@@ -983,6 +950,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
     // A throw keeps the raw line. A list that skips every element of a non-empty value does too.
     fun <T> field(key: String, default: T, read: () -> T): T {
         val raw = values[key]
+        if (raw == null && key != "bodyView") return default
         return try {
             val value = read()
             if (raw != null && raw.isNotEmpty() && listDroppedAll(key, value)) unknown += "$key=$raw"
@@ -1079,7 +1047,8 @@ fun decodeAccountSettings(text: String): AccountSettings {
         selectionBar = field("selectionBar", d.selectionBar) { values["selectionBar"]?.let { parseSelectionBar(it) } ?: defaultSelectionBar() },
         folderBar = field("folderBar", d.folderBar) { values["folderBar"]?.let { parseFolderBar(it) } ?: defaultFolderBar() },
         readerToolbar = field("readerToolbar", d.readerToolbar) {
-            values["readerToolbar"]?.let { parseReaderToolbar(it) }
+            val raw = values["readerToolbar"]
+            if (raw.isNullOrEmpty()) null else parseReaderToolbar(raw)
         }.let { parsed ->
             // A stored readerBar is applied once, and only when readerToolbar is absent.
             // The historical default bar stays null so the default toolbar is used.
@@ -1122,7 +1091,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         sieveTlsMode = field("sieveTlsMode", d.sieveTlsMode) {
             values["sieveTlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.StartTls
         },
-        tlsMode = field("tlsMode", d.tlsMode) { values["tlsMode"]?.let { enumValueOf<TlsMode>(it) } ?: TlsMode.None },
+        tlsMode = field("tlsMode", TlsMode.None) { enumValueOf<TlsMode>(values.getValue("tlsMode")) },
         certPin = field("certPin", d.certPin) { values["certPin"]?.let { percentDecode(it) } ?: "" },
         sieveCertPin = field("sieveCertPin", d.sieveCertPin) { values["sieveCertPin"]?.let { percentDecode(it) } ?: "" },
         jmapCertPin = field("jmapCertPin", d.jmapCertPin) { values["jmapCertPin"]?.let { percentDecode(it) } ?: "" },
