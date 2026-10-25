@@ -108,6 +108,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -193,23 +194,49 @@ enum class SettingsGroup(val route: String, private val titleRes: Int) {
     }
 }
 
+private class EditorEpoch(val settings: Int, val password: Int, val smtp: Int)
+
+private class EditorLoad(
+    val editingId: String?,
+    val settings: AccountSettings,
+    val password: String,
+    val smtpPassword: String,
+    val accounts: List<AccountChoice>,
+)
+
 private class SettingsEditor(
     val store: DataStoreSettingsStore,
     val appContext: Context,
     val ui: CoroutineScope,
 ) {
     val settingsState = mutableStateOf(AccountSettings())
+    private val settingsMirror = AtomicReference(AccountSettings())
+    private val settingsEpoch = AtomicInteger(0)
+    private val passwordEpoch = AtomicInteger(0)
+    private val smtpEpoch = AtomicInteger(0)
+    private val editingMirror = AtomicReference<String?>(null)
+    private val editingIdState = mutableStateOf<String?>(null)
     val passwordState = mutableStateOf("")
     val smtpPasswordState = mutableStateOf("")
     val accountsState = mutableStateOf<List<AccountChoice>>(emptyList())
     var ready by mutableStateOf(false)
-    var settings by settingsState
+    var settings: AccountSettings
+        get() = settingsState.value
+        set(value) {
+            settingsMirror.set(value)
+            settingsState.value = value
+        }
     var password by passwordState
     var smtpPassword by smtpPasswordState
     var accounts by accountsState
 
     /** F121: the account Settings is editing. Settings never changes the drawer's active account. */
-    var editingId by mutableStateOf<String?>(null)
+    var editingId: String?
+        get() = editingIdState.value
+        set(value) {
+            editingMirror.set(value)
+            editingIdState.value = value
+        }
     val bound: DataStoreSettingsStore
         get() = editingId?.let { store.forAccount(it) } ?: store
 
@@ -217,81 +244,134 @@ private class SettingsEditor(
         if (!ready) return
         // F32: the store drops passwords/pins when a server moves; show that here instead of a stale password
         val retarget = org.dlang.liveimap.accounts.retargetCredentials(settings, next)
-        if (retarget.dropImapPassword) password = ""
-        if (retarget.dropSmtpPassword) smtpPassword = ""
+        if (retarget.dropImapPassword) {
+            passwordEpoch.incrementAndGet()
+            password = ""
+        }
+        if (retarget.dropSmtpPassword) {
+            smtpEpoch.incrementAndGet()
+            smtpPassword = ""
+        }
+        settingsEpoch.incrementAndGet()
         settings = retarget.settings
         val target = bound // F121: the account being edited now, even if another is picked before this runs
         settingsSaveFailure.value = null
         settingsIo.launch {
-            target.onAccount { saveKeepingToolbars(target) }
+            saveKeepingToolbars(target)
             SettingsRevision.bump()
         }
     }
 
     fun persistPassword(value: String) {
         if (!ready) return
+        passwordEpoch.incrementAndGet()
         password = value
         val target = bound // F121: the account being edited now, even if another is picked before this runs
+        val saving = password
         settingsIo.launch {
-            target.onAccount { target.setPassword(passwordState.value) }
+            target.onAccount { target.setPassword(saving) }
         }
     }
 
     fun persistSmtpPassword(value: String) {
         if (!ready) return
+        smtpEpoch.incrementAndGet()
         smtpPassword = value
         val target = bound // F121: the account being edited now, even if another is picked before this runs
+        val saving = smtpPassword
         settingsIo.launch {
-            target.onAccount { target.setSmtpPassword(smtpPasswordState.value) }
+            target.onAccount { target.setSmtpPassword(saving) }
         }
     }
 
     fun load() {
         settingsIo.launch {
-            store.onAccount { reloadLocked() }
+            val epoch = captureEpochs()
+            store.onAccount(publish = { loaded ->
+                applyReload(loaded, epoch, force = false)
+            }) {
+                computeReload(editingMirror.get())
+            }
         }
     }
 
     fun selectAccount(id: String) {
         settingsIo.launch {
-            store.onAccount {
+            val epoch = captureEpochs()
+            store.onAccount(publish = { loaded ->
                 editingId = id // F121: edit it; the active account is unchanged
-                reloadLocked()
+                applyReload(loaded, epoch, force = true)
+            }) {
+                computeReload(id)
             }
         }
     }
 
     fun addAccount() {
         settingsIo.launch {
-            store.onAccount {
-                editingId = store.addAccount().ifEmpty { null } // F121: edit the new account; not made active
-                reloadLocked()
+            val epoch = captureEpochs()
+            store.onAccount(publish = { loaded ->
+                applyReload(loaded, epoch, force = true)
+            }) {
+                val created = store.addAccount().ifEmpty { null } // F121: edit the new account; not made active
+                computeReload(created)
             }
         }
     }
 
     fun removeAccount(id: String) {
         settingsIo.launch {
-            store.onAccount {
-                if (!store.removeAccount(id)) return@onAccount
+            val epoch = captureEpochs()
+            store.onAccount(publish = { loaded: EditorLoad? ->
+                if (loaded != null) applyReload(loaded, epoch, force = true)
+            }) {
+                if (!store.removeAccount(id)) return@onAccount null
                 dropMailSession(id)
-                if (editingId == id) editingId = null
-                reloadLocked()
+                val current = editingMirror.get()
+                computeReload(if (current == id) null else current)
             }
         }
     }
 
-    private suspend fun reloadLocked() {
+    private fun captureEpochs() = EditorEpoch(settingsEpoch.get(), passwordEpoch.get(), smtpEpoch.get())
+
+    private suspend fun computeReload(preferred: String?): EditorLoad {
         val listed = store.listAccounts()
-        if (editingId == null || listed.none { it.id == editingId }) {
-            editingId = listed.firstOrNull { it.chosen }?.id ?: listed.firstOrNull()?.id
+        val editing = if (preferred == null || listed.none { it.id == preferred }) {
+            listed.firstOrNull { it.chosen }?.id ?: listed.firstOrNull()?.id
+        } else {
+            preferred
         }
-        settings = bound.load()
-        password = bound.password()
-        smtpPassword = bound.smtpPassword()
-        // "chosen" here marks the account being edited (Settings' own selection), not the active one
-        accounts = listed.map { it.copy(chosen = it.id == editingId) }
+        val boundStore = editing?.let { store.forAccount(it) } ?: store
+        return EditorLoad(
+            editingId = editing,
+            settings = boundStore.load(),
+            password = boundStore.password(),
+            smtpPassword = boundStore.smtpPassword(),
+            // "chosen" here marks the account being edited (Settings' own selection), not the active one
+            accounts = listed.map { it.copy(chosen = it.id == editing) },
+        )
+    }
+
+    private fun applyReload(loaded: EditorLoad, epoch: EditorEpoch, force: Boolean) {
+        if (force || settingsEpoch.get() == epoch.settings) {
+            editingId = loaded.editingId
+            settings = loaded.settings
+        }
+        if (force || passwordEpoch.get() == epoch.password) password = loaded.password
+        if (force || smtpEpoch.get() == epoch.smtp) smtpPassword = loaded.smtpPassword
+        accounts = loaded.accounts
         ready = true
+    }
+
+    // The mirror is written on Main with the editor. Publish the write-back on the caller before the next command.
+    suspend fun saveKeepingToolbars(target: DataStoreSettingsStore) {
+        target.onAccount(publish = { saved ->
+            settings = settings.keepingStoredToolbars(saved)
+        }) {
+            val snapshot = settingsMirror.get()
+            target.update { stored -> snapshot.keepingStoredToolbars(stored) }
+        }
     }
 }
 
@@ -301,14 +381,15 @@ private class SettingsEditor(
  */
 internal suspend fun persistSievePin(store: DataStoreSettingsStore, editingId: String?, fingerprint: String) {
     val target = if (editingId.isNullOrEmpty()) store else store.forAccount(editingId)
-    // Same command as editor.persist's read of settingsState. A save cannot encode the old pin after this write.
-    target.onAccount {
-        target.update { it.copy(sieveCertPin = fingerprint) }
+    // The pin is stored in this command and published on the caller before the next one, so a save cannot encode the old pin.
+    target.onAccount(publish = {
         val editors = openSettingsEditors.get()
         for (editor in editors) {
             if (!sameSieveAccount(editor.editingId, editingId)) continue
             editor.settings = editor.settings.copy(sieveCertPin = fingerprint)
         }
+    }) {
+        target.update { it.copy(sieveCertPin = fingerprint) }
     }
     SettingsRevision.bump()
 }
@@ -355,15 +436,6 @@ private fun toolbarsDiffer(left: AccountSettings, right: AccountSettings) =
         left.readerToolbar != right.readerToolbar ||
         left.composeBar != right.composeBar ||
         left.toolbarRows != right.toolbarRows
-
-/** Writes [settingsState] without putting stale toolbar fields over a newer toolbar save. */
-private suspend fun SettingsEditor.saveKeepingToolbars(target: DataStoreSettingsStore) {
-    // update's edit runs on Dispatchers.IO. Read the snapshot here, on settingsIo (Main).
-    val snapshot = settingsState.value
-    val saved = target.update { stored -> snapshot.keepingStoredToolbars(stored) }
-    // A newer edit may have assigned settingsState while the store write ran.
-    settingsState.value = settingsState.value.keepingStoredToolbars(saved)
-}
 
 /**
  * Change layout is the only in-process apply. [generation] starts at 0.
@@ -562,8 +634,9 @@ private fun ToolbarsSection(editor: SettingsEditor, depth: Int, scroll: ScrollSt
             val loaded = target.load()
             val rowsChanged = previous.toolbarRows != loaded.toolbarRows
             if (toolbarsDiffer(previous, loaded)) {
-                target.onAccount {
+                target.onAccount(publish = {
                     editor.settings = editor.settings.keepingStoredToolbars(loaded)
+                }) {
                 }
             }
             // Recreate open copies only for the shared row count. A bar edit is already on screen
@@ -2441,7 +2514,7 @@ private fun LayoutGroup(editor: SettingsEditor, onOpenPanel: (String, String) ->
             onClick = {
                 val target = editor.bound
                 settingsIo.launch {
-                    target.onAccount { editor.saveKeepingToolbars(target) }
+                    editor.saveKeepingToolbars(target)
                     LayoutApply.request()
                 }
             },
@@ -2641,11 +2714,12 @@ private fun MailboxPickDialog(
         },
         onPick = { mailbox ->
             settingsIo.launch {
-                editor.bound.onAccount {
-                    val saved = editor.bound.update { assignMailbox(it, field, mailbox) }
+                editor.bound.onAccount(publish = { saved ->
                     editor.settings = editor.settings.keepingStoredToolbars(saved).let { current ->
                         assignMailbox(current, field, mailbox)
                     }
+                }) {
+                    editor.bound.update { assignMailbox(it, field, mailbox) }
                 }
                 onPicking(null)
             }

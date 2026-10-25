@@ -111,6 +111,9 @@ class DataStoreSettingsStore(
 
     suspend fun <T> onAccount(block: suspend () -> T): T = store.onAccount(block)
 
+    /** See [AccountStore.onAccount]. [publish] runs on the caller before the next command. */
+    suspend fun <T> onAccount(publish: (T) -> Unit, block: suspend () -> T): T = store.onAccount(publish, block)
+
     fun chosenAccountIdFlow(): Flow<String?> = store.chosenAccountIdFlow()
 
     /** F121: a store bound to [accountId]. */
@@ -121,6 +124,17 @@ internal suspend fun <T> SettingsStore.accountCommand(block: suspend () -> T): T
     val data = this as? DataStoreSettingsStore
     if (data == null) return block()
     return data.onAccount(block)
+}
+
+/** [publish] runs on the caller, still on the caller's [Job], before the next account command. */
+internal suspend fun <T> SettingsStore.accountCommand(publish: (T) -> Unit, block: suspend () -> T): T {
+    val data = this as? DataStoreSettingsStore
+    if (data == null) {
+        val value = block()
+        publish(value)
+        return value
+    }
+    return data.onAccount(publish, block)
 }
 
 /** F75: open [session] as the account [store] is bound to, so the session fixes that account as its owner. */

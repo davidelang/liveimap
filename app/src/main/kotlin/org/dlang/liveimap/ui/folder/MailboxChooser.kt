@@ -276,9 +276,11 @@ private fun MailboxChooserLoaded(
                                         held.turn {
                                             if (stopped) return@turn
                                             try {
-                                                store.accountCommand {
+                                                store.accountCommand(publish = { loaded ->
+                                                    onStored(loaded)
+                                                }) {
                                                     model.toggleExpanded(row.mailbox)
-                                                    onStored(store.load())
+                                                    store.load()
                                                 }
                                             } catch (error: CancellationException) {
                                                 throw error

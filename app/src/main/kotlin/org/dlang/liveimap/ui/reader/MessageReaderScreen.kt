@@ -2864,9 +2864,10 @@ private fun MessageReaderLoaded(
                 }
             if (!copied) return@launch
             try {
-                store.onAccount {
-                    val updated = store.update { it.copy(lastSaveMailbox = destination) }
+                store.onAccount(publish = { updated ->
                     account = updated
+                }) {
+                    store.update { it.copy(lastSaveMailbox = destination) }
                 }
             } catch (error: CancellationException) {
                 throw error

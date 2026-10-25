@@ -87,20 +87,45 @@ class AccountStore private constructor(private val context: Context) {
         companion object Key : CoroutineContext.Key<OnAccount>
     }
 
-    internal suspend fun <T> onAccount(block: suspend () -> T): T {
-        if (coroutineContext[OnAccount]?.owner === this) return block()
+    internal suspend fun <T> onAccount(block: suspend () -> T): T = onAccountGated(block, null)
+
+    /**
+     * [publish] runs on the caller, before the next command starts.
+     * It must not call [onAccount]: the actor is waiting for this call to return.
+     * The block stays on the actor. Hopping to Main from there deadlocks, because the caller is
+     * already on Main waiting for the command.
+     */
+    internal suspend fun <T> onAccount(publish: (T) -> Unit, block: suspend () -> T): T =
+        onAccountGated(block, publish)
+
+    private suspend fun <T> onAccountGated(block: suspend () -> T, publish: ((T) -> Unit)?): T {
+        if (coroutineContext[OnAccount]?.owner === this) {
+            val value = block()
+            publish?.invoke(value)
+            return value
+        }
         val carried = coroutineContext.minusKey(Job).minusKey(ContinuationInterceptor)
         val done = CompletableDeferred<T>()
+        val release = CompletableDeferred<Unit>()
         accountCommands.send {
             try {
-                withContext(carried + OnAccount(this@AccountStore)) {
-                    done.complete(block())
-                }
+                val value = withContext(carried + OnAccount(this@AccountStore)) { block() }
+                done.complete(value)
             } catch (error: Throwable) {
                 done.completeExceptionally(error)
+                release.complete(Unit)
+                return@send
             }
+            // The caller publishes Compose state, then releases. The next command sees that write.
+            release.await()
         }
-        return done.await()
+        try {
+            val value = done.await()
+            publish?.invoke(value)
+            return value
+        } finally {
+            release.complete(Unit)
+        }
     }
 
     private fun abandon() {
