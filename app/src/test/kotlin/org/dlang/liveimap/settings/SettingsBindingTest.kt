@@ -50,7 +50,7 @@ class SettingsBindingTest {
             val start = store.indexOf("suspend fun $name")
             val next = store.indexOf("\n    suspend fun ", start + 1)
             val body = store.substring(start, next)
-            val lock = body.indexOf("gate.withLock")
+            val lock = body.indexOf("onAccount")
             val write = body.indexOf("writePreferences()")
             val close = body.lastIndexOf("\n    }")
             assertTrue("$name inside", lock >= 0 && write > lock && write < close)

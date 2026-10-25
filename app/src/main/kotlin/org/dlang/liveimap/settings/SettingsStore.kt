@@ -109,10 +109,18 @@ class DataStoreSettingsStore(
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 
+    suspend fun <T> onAccount(block: suspend () -> T): T = store.onAccount(block)
+
     fun chosenAccountIdFlow(): Flow<String?> = store.chosenAccountIdFlow()
 
     /** F121: a store bound to [accountId]. */
     fun forAccount(accountId: String): DataStoreSettingsStore = DataStoreSettingsStore(context, accountId)
+}
+
+internal suspend fun <T> SettingsStore.accountCommand(block: suspend () -> T): T {
+    val data = this as? DataStoreSettingsStore
+    if (data == null) return block()
+    return data.onAccount(block)
 }
 
 /** F75: open [session] as the account [store] is bound to, so the session fixes that account as its owner. */

@@ -1,5 +1,8 @@
 package org.dlang.liveimap.accounts
 
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
 import android.accounts.Account
 import android.accounts.AccountManager
@@ -17,17 +20,24 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.File
 import java.security.KeyStore
+import java.util.concurrent.atomic.AtomicReference
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.recordingWanted
@@ -53,19 +63,58 @@ private const val gcmTagBits = 128
 private val Context.accountSettingsDataStore by preferencesDataStore(name = "account_settings")
 
 class AccountStore private constructor(private val context: Context) {
-    private val gate = Mutex()
+    private val accountCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val accountActor = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cipher = AndroidAccountCipher()
 
     // Tink-sealed secrets (F20). No EncryptedSharedPreferences read: old secrets are not carried over (David).
     private val secretPrefs: SecretBox by lazy { SecretBox(context) }
 
+    init {
+        accountActor.launch {
+            for (command in accountCommands) {
+                try {
+                    command()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    private class OnAccount(val owner: AccountStore) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<OnAccount>
+    }
+
+    internal suspend fun <T> onAccount(block: suspend () -> T): T {
+        if (coroutineContext[OnAccount]?.owner === this) return block()
+        val carried = coroutineContext.minusKey(Job).minusKey(ContinuationInterceptor)
+        val done = CompletableDeferred<T>()
+        accountCommands.send {
+            try {
+                withContext(carried + OnAccount(this@AccountStore)) {
+                    done.complete(block())
+                }
+            } catch (error: Throwable) {
+                done.completeExceptionally(error)
+            }
+        }
+        return done.await()
+    }
+
+    private fun abandon() {
+        accountActor.cancel()
+        accountCommands.close()
+    }
+
     suspend fun load(): AccountSettings {
-        return gate.withLock { withContext(Dispatchers.IO) { loadLocked() } }
+        return onAccount { withContext(Dispatchers.IO) { loadLocked() } }
     }
 
     suspend fun save(settings: AccountSettings) {
         val encoded = settings.encode()
-        gate.withLock {
+        onAccount {
             val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
             writePreferences()
             TrafficLog.setRecording(recordingWanted(logImapTrafficFlags()))
@@ -75,7 +124,7 @@ class AccountStore private constructor(private val context: Context) {
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
     suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
         var next: AccountSettings? = null
-        gate.withLock {
+        onAccount {
             val writePreferences = withContext(Dispatchers.IO) {
                 val updated = edit(loadLocked())
                 next = updated
@@ -88,18 +137,18 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun password(): String {
-        return gate.withLock { withContext(Dispatchers.IO) { passwordLocked() } }
+        return onAccount { withContext(Dispatchers.IO) { passwordLocked() } }
     }
 
     suspend fun setPassword(value: String) {
-        gate.withLock {
+        onAccount {
             val writePreferences = withContext(Dispatchers.IO) { stagePassword(value) }
             writePreferences()
         }
     }
 
     suspend fun smtpPassword(): String {
-        return gate.withLock {
+        return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val chosen = pick(accounts)
@@ -117,7 +166,7 @@ class AccountStore private constructor(private val context: Context) {
      * message through another account's servers. Null when there is no such account (multi-account store only).
      */
     suspend fun accountById(accountId: String): AccountCredentials? {
-        return gate.withLock {
+        return onAccount {
             withContext(Dispatchers.IO) {
                 val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId }
                     ?: return@withContext null
@@ -131,7 +180,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun setSmtpPassword(value: String) {
-        gate.withLock {
+        onAccount {
             withContext(Dispatchers.IO) {
                 val id = smtpAccountId()
                 val key = smtpPasswordKeyFor(id)
@@ -147,7 +196,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun listAccounts(): List<AccountChoice> {
-        return gate.withLock {
+        return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val chosen = chooseAccount(accounts, selectedId())
@@ -165,7 +214,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun listDrawerAccounts(): List<DrawerAccount> {
-        return gate.withLock {
+        return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val chosen = chooseAccount(accounts, selectedId())
@@ -187,7 +236,7 @@ class AccountStore private constructor(private val context: Context) {
 
     suspend fun selectAccount(accountId: String) {
         if (accountId.isBlank()) return
-        gate.withLock {
+        onAccount {
             withContext(Dispatchers.IO) {
                 val known = readAccounts().any { it.userData[userAccountId] == accountId }
                 if (!known) return@withContext
@@ -197,7 +246,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun addAccount(): String {
-        return gate.withLock {
+        return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val settings = newAccountSettings()
@@ -217,7 +266,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun removeAccount(accountId: String): Boolean {
-        return gate.withLock {
+        return onAccount {
             val removed = withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
                 val selected = selectedId()
@@ -508,7 +557,7 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
-    /** Remaining accounts' log flags. Does not take [gate]; callers already inside it must not re-enter. */
+    /** Remaining accounts' log flags. Does not take [onAccount]; callers already inside it must not re-enter. */
     internal suspend fun logImapTrafficFlags(): List<Boolean> {
         return withContext(Dispatchers.IO) {
             readAccounts().mapNotNull { account ->
@@ -526,17 +575,14 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     companion object {
-        private val instanceGate = Any()
-
-        @Volatile
-        private var instance: AccountStore? = null
+        private val instance = AtomicReference<AccountStore?>(null)
 
         fun shared(context: Context): AccountStore {
-            instance?.let { return it }
-            synchronized(instanceGate) {
-                instance?.let { return it }
-                return AccountStore(context.applicationContext).also { instance = it }
-            }
+            instance.get()?.let { return it }
+            val created = AccountStore(context.applicationContext)
+            if (instance.compareAndSet(null, created)) return created
+            created.abandon()
+            return instance.get()!!
         }
     }
 }

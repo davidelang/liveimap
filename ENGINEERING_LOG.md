@@ -3775,3 +3775,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: a stored settings row that does not decode aborts the save and writes nothing. Removing an account drops its session and its address-book cache only after the account is gone. A certificate that cannot be deleted leaves the account listed. After Android has already removed the account, a certificate failure is reported with the alias and the rest of the cleanup still runs.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Account writes run on one actor.
