@@ -247,6 +247,24 @@ private class SettingsEditor(
         }
     }
 
+    // saveKeepingToolbars copies the stored row count over the snapshot, so this leaf writes the store itself.
+    fun persistToolbarRows(number: Int) {
+        if (!ready || number !in 1..4 || number == settings.toolbarRows) return
+        val next = settings.copy(toolbarRows = number)
+        val rejected = rejectedAccountSettings(next)
+        if (rejected != null) {
+            settingsSaveFailure.value = rejected
+            return
+        }
+        settingsEpoch.incrementAndGet()
+        settings = next
+        val target = bound
+        settingsSaveFailure.value = null
+        settingsIo.launch {
+            target.update { it.copy(toolbarRows = number) }
+        }
+    }
+
     fun persistPassword(value: String) {
         if (!ready) return
         passwordEpoch.incrementAndGet()
@@ -1974,7 +1992,7 @@ private fun settingLeaf(key: String, walk: SettingsWalk) {
             editor.ready,
             { it in 1..4 },
         ) { number ->
-            editor.persist(editor.settings.copy(toolbarRows = number))
+            editor.persistToolbarRows(number)
         }
         "favorites" -> {
             for (favorite in settings.favorites) {

@@ -3808,3 +3808,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fixup: SettingsScreen renders nested groups and leaves from settings-tree.json. The hand-written group composables are gone, so nonAsciiDisplay is the Reading leaf.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Toolbar row count is written on the store.
+
+- Approved plan: sandbox/plans/settings-registry-20261024-0535-plan.md
+- Fixup: the toolbarRows leaf writes the count with update, like the toolbar editor. saveKeepingToolbars still copies the stored count, so persist was dropping the new value.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
