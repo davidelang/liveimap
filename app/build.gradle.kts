@@ -89,10 +89,6 @@ android {
             version = "3.22.1"
         }
     }
-    sourceSets.getByName("main") {
-        java.srcDir(file("build/generated/settingsTree"))
-        res.srcDir(file("build/generated/settingsTreeRes"))
-    }
 }
 
 // The play flavor is for the release bundle only; debug builds stay one APK per ABI.
@@ -478,23 +474,31 @@ xml = '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n' + "\n".join(string
 print("groups", len(groups), "leaves", len(seen), "fingerprint", fingerprint)
 """
 
-tasks.register("generateSettingsTree") {
-    val registryFile = file("src/main/kotlin/org/dlang/liveimap/settings/SettingsRegistry.kt")
-    val treeFile = file("src/main/assets/settings-tree.json")
-    inputs.files(registryFile, treeFile)
-    val ktOut = layout.buildDirectory.dir("generated/settingsTree")
-    val resOut = layout.buildDirectory.dir("generated/settingsTreeRes")
-    outputs.dir(ktOut)
-    outputs.dir(resOut)
-    doLast {
-        val script = layout.buildDirectory.file("generated/gen-settings-tree.py").get().asFile
-        script.parentFile.mkdirs()
-        script.writeText(settingsTreePython)
+abstract class GenerateSettingsTreeTask : DefaultTask() {
+    @get:InputFile
+    abstract val registryFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val treeFile: RegularFileProperty
+
+    @get:Input
+    abstract val python: Property<String>
+
+    @get:OutputDirectory
+    abstract val ktOut: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val resOut: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val script = temporaryDir.resolve("gen-settings-tree.py")
+        script.writeText(python.get())
         val proc = ProcessBuilder(
             "python3",
             script.absolutePath,
-            registryFile.absolutePath,
-            treeFile.absolutePath,
+            registryFile.get().asFile.absolutePath,
+            treeFile.get().asFile.absolutePath,
             ktOut.get().asFile.absolutePath,
             resOut.get().asFile.absolutePath,
         ).redirectErrorStream(true).start()
@@ -504,14 +508,17 @@ tasks.register("generateSettingsTree") {
     }
 }
 
-tasks.configureEach {
-    if (name == "preBuild" || (name.startsWith("pre") && name.endsWith("Build"))) {
-        dependsOn("generateSettingsTree")
-    }
-    if (name.startsWith("compile") && name.contains("Kotlin")) {
-        dependsOn("generateSettingsTree")
-    }
-    if (name.startsWith("process") && name.endsWith("Resources")) {
-        dependsOn("generateSettingsTree")
+val generateSettingsTree = tasks.register<GenerateSettingsTreeTask>("generateSettingsTree") {
+    registryFile.set(file("src/main/kotlin/org/dlang/liveimap/settings/SettingsRegistry.kt"))
+    treeFile.set(file("src/main/assets/settings-tree.json"))
+    python.set(settingsTreePython)
+    ktOut.set(layout.buildDirectory.dir("generated/settingsTree"))
+    resOut.set(layout.buildDirectory.dir("generated/settingsTreeRes"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.kotlin.addGeneratedSourceDirectory(generateSettingsTree) { it.ktOut }
+        variant.sources.res.addGeneratedSourceDirectory(generateSettingsTree) { it.resOut }
     }
 }

@@ -661,7 +661,7 @@ private fun checkDefault(spec: SettingSpec, leaf: TreeLeaf): List<String> {
         SettingType.Bool -> if (value is JsonValue.Bool) emptyList() else bad()
         SettingType.Int, SettingType.Long -> {
             if (value !is JsonValue.Num) return bad()
-            val why = numberRejection(key, leaf, value.value, forDefault = true)
+            val why = numberRejection(key, leaf, value.value)
             if (why != null) listOf("settings-tree.json leaf $key default") else emptyList()
         }
         SettingType.String, SettingType.Encoded -> if (value is JsonValue.Str) emptyList() else bad()
@@ -830,22 +830,28 @@ fun globalRecordError(text: String): String? {
     return null
 }
 
-private fun globalValueOk(spec: SettingSpec, value: String): Boolean = when (spec.type) {
-    SettingType.Bool -> value == "true" || value == "false"
-    SettingType.Int, SettingType.Long -> value.toLongOrNull()?.let { numberRejection(spec.key, syntheticLeaf(spec), it) == null } == true
-    SettingType.String, SettingType.Encoded -> true
-    SettingType.Enum -> value in spec.enumValues
-    SettingType.IntList -> {
-        if (value.isEmpty()) return spec.hard?.minItems == null || spec.hard.minItems <= 0
-        val nums = value.split(",").map { it.toLongOrNull() ?: return false }
-        val hard = spec.hard
-        if (hard?.minItems != null && nums.size < hard.minItems) return false
-        if (hard?.maxItems != null && nums.size > hard.maxItems) return false
-        val itemMin = hard?.itemMin
-        val itemMax = hard?.itemMax
-        nums.all { (itemMin == null || it >= itemMin) && (itemMax == null || it <= itemMax) }
+private fun globalValueOk(spec: SettingSpec, value: String): Boolean {
+    return when (spec.type) {
+        SettingType.Bool -> value == "true" || value == "false"
+        SettingType.Int, SettingType.Long -> value.toLongOrNull()?.let { numberRejection(spec.key, syntheticLeaf(spec), it) == null } == true
+        SettingType.String, SettingType.Encoded -> true
+        SettingType.Enum -> value in spec.enumValues
+        SettingType.IntList -> {
+            if (value.isEmpty()) {
+                val minItems = spec.hard?.minItems
+                minItems == null || minItems <= 0
+            } else {
+                val nums = value.split(",").map { it.toLongOrNull() ?: return false }
+                val hard = spec.hard
+                if (hard?.minItems != null && nums.size < hard.minItems) return false
+                if (hard?.maxItems != null && nums.size > hard.maxItems) return false
+                val itemMin = hard?.itemMin
+                val itemMax = hard?.itemMax
+                nums.all { (itemMin == null || it >= itemMin) && (itemMax == null || it <= itemMax) }
+            }
+        }
+        SettingType.StringList -> true
     }
-    SettingType.StringList -> true
 }
 
 private fun syntheticLeaf(spec: SettingSpec) = TreeLeaf(
