@@ -585,7 +585,7 @@ class JmapMailSession(
                 accountKey = accountKey,
             )
         }
-        -1
+        return -1
     }
 
     // ---- push (RFC 8620 §7.3 EventSource) ----
