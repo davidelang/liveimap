@@ -2,16 +2,23 @@ package org.dlang.liveimap.session
 
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
@@ -47,17 +54,57 @@ class SerialMailSession(
     private val lifecycleClock = LifecycleClock()
     // F84: one lane thread per session, created on demand and shut down by close(); a session that is
     // opened again after close() gets a fresh lane.
-    private val laneLock = Any()
-    private var laneDispatcher: kotlinx.coroutines.ExecutorCoroutineDispatcher? = null
+    private val laneDispatcher = AtomicReference<kotlinx.coroutines.ExecutorCoroutineDispatcher?>(null)
+    private val commands = Channel<LaneCall>(Channel.UNLIMITED)
+    private val commandScope = AtomicReference<CoroutineScope?>(null)
+    private val consumerId = AtomicInteger(0)
 
-    private val lane: kotlinx.coroutines.ExecutorCoroutineDispatcher
-        get() = synchronized(laneLock) {
-            laneDispatcher ?: Executors.newSingleThreadExecutor { runnable ->
-                Thread(runnable, "liveimap-imap").apply { isDaemon = true }
-            }.asCoroutineDispatcher().also { laneDispatcher = it }
+    private class LaneCall(
+        val block: suspend () -> Any?,
+        val result: CompletableDeferred<Any?>,
+    )
+
+    private fun newLaneDispatcher(): kotlinx.coroutines.ExecutorCoroutineDispatcher =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "liveimap-imap").apply { isDaemon = true }
+        }.asCoroutineDispatcher()
+
+    private fun ensureLane(): kotlinx.coroutines.ExecutorCoroutineDispatcher {
+        while (true) {
+            laneDispatcher.get()?.let { return it }
+            val created = newLaneDispatcher()
+            if (!laneDispatcher.compareAndSet(null, created)) {
+                created.close()
+                continue
+            }
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            commandScope.getAndSet(scope)?.cancel()
+            val id = consumerId.incrementAndGet()
+            scope.launch {
+                for (call in commands) {
+                    if (consumerId.get() != id) {
+                        call.result.completeExceptionally(CancellationException("session closed"))
+                        break
+                    }
+                    val lane = laneDispatcher.get()
+                    if (lane == null) {
+                        call.result.completeExceptionally(CancellationException("session closed"))
+                        continue
+                    }
+                    try {
+                        val value = withContext(lane + LaneHolder(this@SerialMailSession)) { call.block() }
+                        call.result.complete(value)
+                    } catch (error: Throwable) {
+                        call.result.completeExceptionally(error)
+                        if (error is CancellationException && consumerId.get() != id) throw error
+                    }
+                }
+            }
+            if (laneDispatcher.get() === created) return created
         }
+    }
 
-    internal fun laneOpen(): Boolean = synchronized(laneLock) { laneDispatcher != null }
+    internal fun laneOpen(): Boolean = laneDispatcher.get() != null
 
     override val capabilities: Set<String>
         get() = inner.capabilities
@@ -284,9 +331,13 @@ class SerialMailSession(
 
     override fun close() {
         inner.close()
-        synchronized(laneLock) {
-            laneDispatcher?.close()
-            laneDispatcher = null
+        consumerId.incrementAndGet()
+        commandScope.get()?.cancel()
+        val dispatcher = laneDispatcher.getAndSet(null)
+        dispatcher?.close()
+        while (true) {
+            val queued = commands.tryReceive().getOrNull() ?: break
+            queued.result.completeExceptionally(CancellationException("session closed"))
         }
     }
 
@@ -294,8 +345,6 @@ class SerialMailSession(
      * Lowest-layer serialisation (internal; nobody above coordinates on it). One lane call at a time, so the
      * select-or-verify and the command of an [inFolder] call can never be split by another caller.
      */
-    private val laneMutex = Mutex()
-
     private class LaneHolder(val owner: SerialMailSession) : AbstractCoroutineContextElement(Key) {
         companion object Key : CoroutineContext.Key<LaneHolder>
     }
@@ -313,6 +362,10 @@ class SerialMailSession(
     private suspend fun <T> onLane(block: suspend () -> T): T {
         // An op given to inFolder must use the session it is handed, never this one again (it would deadlock).
         check(coroutineContext[LaneHolder]?.owner !== this) { "re-entrant session call inside inFolder" }
-        return laneMutex.withLock { val l = lane; withContext(l + LaneHolder(this)) { block() } }
+        ensureLane()
+        val result = CompletableDeferred<Any?>()
+        commands.send(LaneCall({ block() }, result))
+        @Suppress("UNCHECKED_CAST")
+        return result.await() as T
     }
 }

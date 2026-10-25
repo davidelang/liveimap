@@ -109,11 +109,11 @@ import androidx.navigation.navArgument
 import kotlin.math.roundToInt
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.seedCriteria
@@ -164,6 +164,35 @@ private class PendingCert(
     val prompt: CertPrompt,
     val resume: (Boolean) -> Unit,
 )
+
+/** One prompt command at a time. The consumer runs on the main dispatcher and stops when the composition leaves. */
+private class PromptTurns {
+    private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    suspend fun consume() {
+        for (command in commands) {
+            try {
+                command()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    suspend operator fun <T> invoke(block: suspend () -> T): T {
+        val result = CompletableDeferred<T>()
+        commands.send {
+            try {
+                result.complete(block())
+            } catch (error: Throwable) {
+                result.completeExceptionally(error)
+                if (error is CancellationException) throw error
+            }
+        }
+        return result.await()
+    }
+}
 
 /**
  * F76: certificate fields are chosen by whoever presents the certificate. Show them on one line, without
@@ -288,10 +317,12 @@ fun LiveImapNavHost() {
     val store = remember { DataStoreSettingsStore(appContext) }
     val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
     // F74: one prompt at a time; a second caller waits its turn instead of replacing (and stranding) the first.
-    val certGate = remember { kotlinx.coroutines.sync.Mutex() }
-    val plaintextGate = remember { kotlinx.coroutines.sync.Mutex() }
+    val promptTurn = remember { PromptTurns() }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.Main.immediate) { promptTurn.consume() }
+    }
     DisposableEffect(Unit) {
-        setMailCertConfirmer { prompt -> certGate.withLock {
+        setMailCertConfirmer { prompt -> promptTurn {
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     certPrompt.value = PendingCert(prompt) { accepted ->
@@ -311,7 +342,7 @@ fun LiveImapNavHost() {
     }
     val plaintextPrompt = remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
     DisposableEffect(Unit) {
-        setMailPlaintextConfirmer { plaintextGate.withLock {
+        setMailPlaintextConfirmer { promptTurn {
             withContext(Dispatchers.Main.immediate) {
                 suspendCancellableCoroutine { cont ->
                     plaintextPrompt.value = { accepted ->
@@ -369,7 +400,6 @@ fun LiveImapNavHost() {
     var editingAccountId by remember { mutableStateOf<String?>(null) }
     var editingFavorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var editingWhere by remember { mutableStateOf(FavoriteWhere("", "", "")) }
-    val favoriteMutex = remember { Mutex() }
     val availableDpState = remember { mutableIntStateOf(0) }
     var readerOpen by remember { mutableStateOf(false) }
     var userSized by rememberSaveable { mutableStateOf(false) }
@@ -1025,9 +1055,7 @@ fun LiveImapNavHost() {
         scope.launch {
             val active = store.chosenAccountId()
             if (id == active) favorites = next
-            favoriteMutex.withLock {
-                store.forAccount(id).update { it.copy(favorites = next) }
-            }
+            store.forAccount(id).update { it.copy(favorites = next) }
             drawerAccounts = store.listDrawerAccounts()
         }
     }

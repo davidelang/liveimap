@@ -18,8 +18,10 @@ class CertPromptDisplayTest {
 
     @Test fun promptsQueue() {
         val src = File("src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt").readText()
-        assertTrue(src.contains("setMailCertConfirmer { prompt -> certGate.withLock {"))
-        assertTrue(src.contains("setMailPlaintextConfirmer { plaintextGate.withLock {"))
+        assertTrue(src.contains("setMailCertConfirmer { prompt -> promptTurn {"))
+        assertTrue(src.contains("setMailPlaintextConfirmer { promptTurn {"))
+        assertFalse(src.contains("certGate.withLock"))
+        assertFalse(src.contains("plaintextGate.withLock"))
         assertFalse(src.contains(" Text(pendingCert.prompt.subject)"))
     }
 }
