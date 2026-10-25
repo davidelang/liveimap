@@ -3701,3 +3701,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
 - Send and discard delete the draft message directory. A kept unsent copy is left in place. Assemble reads a picked file on Dispatchers.IO.
 - No install, and no message sent
+
+## 2026-10-24 - Bounce send closes its draft directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- A finished bounce applies the send life. That removes the draft id from the open set and deletes the message directory. A bounce that stops early leaves the id open.
+- No install, and no message sent

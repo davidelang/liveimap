@@ -2140,6 +2140,8 @@ private fun ComposeLoaded(
                         }
                     }
                     notice = null
+                    // The bounce copy id is not this draft, so clearShownCopy does not close it.
+                    applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
                     deliveryDone = true
                     status = if (account.bounceFcc) {
                         sentStatus(statusLeaf(account.sentMailbox))
