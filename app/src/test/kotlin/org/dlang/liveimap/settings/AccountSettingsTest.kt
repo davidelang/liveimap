@@ -394,10 +394,10 @@ class AccountSettingsTest {
     fun garbageIsToleratedFieldByField() {
         // F69: nothing here bricks the account any more; each bad field takes its default
         val d = AccountSettings()
-        assertEquals(d, decodeAccountSettings("garbage"))
+        assertEquals(d.copy(tlsMode = TlsMode.None), decodeAccountSettings("garbage"))
         assertEquals(listOf("notAKey=1"), decodeAccountSettings("notAKey=1").unknownSettings)
         assertTrue(decodeAccountSettings(d.encode() + "password=secret\n").unknownSettings.isEmpty())
-        assertEquals(d.imapPort, decodeAccountSettings(d.encode().replace("imapPort=143", "imapPort=nope")).imapPort)
+        assertEquals(d.imapPort, decodeAccountSettings(d.encode().replace("imapPort=993", "imapPort=nope")).imapPort)
         assertEquals(d.density, decodeAccountSettings(d.encode().replace("density=Compact", "density=Huge")).density)
         assertEquals(d.dateFormat, decodeAccountSettings(d.encode().replace("dateFormat=Short", "dateFormat=Huge")).dateFormat)
         assertEquals(d.bodyView, decodeAccountSettings(d.encode().replace("bodyView=PlainOrError", "bodyView=Nope")).bodyView)
