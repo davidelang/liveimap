@@ -153,14 +153,12 @@ import org.dlang.liveimap.ui.toolbar.notePaneScroll
  * F96: a failed save (e.g. Keystore unavailable, so a password is refused) is shown, never an uncaught
  * exception that ends the process.
  */
+internal val settingsSaveFailure = androidx.compose.runtime.mutableStateOf<String?>(null)
 private val settingsIo = CoroutineScope(
     SupervisorJob() + Dispatchers.Main.immediate +
         kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
-            val app = org.dlang.liveimap.engine.currentApplication()
             android.util.Log.w("liveimap", "settings save failed", error)
-            if (app != null) {
-                android.widget.Toast.makeText(app, error.message ?: error.toString(), android.widget.Toast.LENGTH_LONG).show()
-            }
+            settingsSaveFailure.value = error.message ?: error.toString()
         },
 )
 private val settingsMutex = Mutex()
@@ -225,6 +223,7 @@ private class SettingsEditor(
         if (retarget.dropSmtpPassword) smtpPassword = ""
         settings = retarget.settings
         val target = bound // F121: the account being edited now, even if another is picked before this runs
+        settingsSaveFailure.value = null
         settingsIo.launch {
             settingsMutex.withLock { saveKeepingToolbars(target) }
             SettingsRevision.bump()
@@ -464,6 +463,10 @@ fun SettingsTree(
             .padding(16.dp)
             .testTag("smoke-settings"),
     ) {
+            val saveFailure = settingsSaveFailure.value
+            if (saveFailure != null) {
+                Text(saveFailure)
+            }
             for (group in SettingsGroup.entries) {
                 SettingsNode(
                     title = group.title,

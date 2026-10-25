@@ -292,9 +292,13 @@ class AccountStore private constructor(private val context: Context) {
         val existing = pick(readAccounts())
         val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
             ?: java.util.UUID.randomUUID().toString()
-        // F32/F87: a moved server never inherits the old server's password, pin or client certificate
-        val previous = if (existing == null) null else storedPreference(accountId)?.let {
-            runCatching { overlayAccountFields(decodeAccountSettings(it), existing.userData) }.getOrNull()
+        // F32/F87: a moved server never inherits the old server's password, pin or client certificate.
+        // A stored row that does not decode throws here, before any write.
+        val storedText = if (existing == null) null else storedPreference(accountId)
+        val previous = if (existing == null || storedText == null) {
+            null
+        } else {
+            overlayAccountFields(decodeAccountSettings(storedText), existing.userData)
         }
         val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
         if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)

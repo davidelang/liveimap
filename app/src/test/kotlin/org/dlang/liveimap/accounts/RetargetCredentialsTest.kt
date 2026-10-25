@@ -67,6 +67,10 @@ class RetargetCredentialsTest {
         assertTrue(store.contains("planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: \"\")"))
         assertTrue(store.contains("writeAccount(name, plan.userData, plan.passwordSlot)"))
         assertTrue(store.contains("if (plan.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()"))
+        val stageStart = store.indexOf("private suspend fun stageSave")
+        val stageEnd = store.indexOf("private suspend fun passwordLocked")
+        assertTrue(stageStart >= 0 && stageEnd > stageStart)
+        assertFalse(store.substring(stageStart, stageEnd).contains("runCatching { overlayAccountFields(decodeAccountSettings"))
         assertTrue(File("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt").readText().contains("retargetCredentials(settings, next)"))
     }
 }
