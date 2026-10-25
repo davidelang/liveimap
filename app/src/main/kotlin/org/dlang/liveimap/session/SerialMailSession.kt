@@ -1,5 +1,6 @@
 package org.dlang.liveimap.session
 
+import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -260,11 +261,24 @@ class SerialMailSession(
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
         onLane { inner.appendReturningUid(mailbox, rfc822, flags) }
 
+    override suspend fun appendFile(mailbox: String, file: File, flags: Set<String>) {
+        onLane { inner.appendFile(mailbox, file, flags) }
+    }
+
+    override suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String>): Long =
+        onLane { inner.appendReturningUidFile(mailbox, file, flags) }
+
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
         onLane { inner.smtpSend(rfc822, recipients, dsnNotify) }
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         onLane { inner.smtpSendFrom(rfc822, recipients, dsnNotify, envelopeFrom) }
+
+    override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int =
+        onLane { inner.smtpSendFile(file, recipients, dsnNotify) }
+
+    override suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
+        onLane { inner.smtpSendFromFile(file, recipients, dsnNotify, envelopeFrom) }
 
     override suspend fun smtpLoginCheck(): SmtpLoginCheck = onLane { inner.smtpLoginCheck() }
 

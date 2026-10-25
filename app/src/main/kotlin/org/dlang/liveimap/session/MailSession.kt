@@ -1,5 +1,6 @@
 package org.dlang.liveimap.session
 
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.settings.AccountSettings
@@ -162,11 +163,20 @@ interface MailSession {
         append(mailbox, rfc822, flags)
         return 0
     }
+    suspend fun appendFile(mailbox: String, file: File, flags: Set<String> = emptySet()) {
+        append(mailbox, file.readBytes(), flags)
+    }
+    suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String> = emptySet()): Long =
+        appendReturningUid(mailbox, file.readBytes(), flags)
     /** [dsnNotify]: RFC 3461 NOTIFY mask, 0 = none. Returns 1 DSN requested, -1 asked but not offered, 0 none. */
     suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int = 0): Int
     /** As [smtpSend] with MAIL FROM [envelopeFrom]; empty = the account address. Sessions without SMTP ignore it. */
     suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         smtpSend(rfc822, recipients, dsnNotify)
+    suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int = 0): Int =
+        smtpSend(file.readBytes(), recipients, dsnNotify)
+    suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
+        smtpSendFile(file, recipients, dsnNotify)
     /** SMTP login only, nothing sent (Test account). */
     suspend fun smtpLoginCheck(): SmtpLoginCheck = throw MailFailure("not supported")
     fun close()

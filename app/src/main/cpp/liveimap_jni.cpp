@@ -8314,16 +8314,46 @@ jlong appendUidFromBuffer(mailimap * imap) {
     return appendUidInText(imap->imap_stream_buffer->str);
 }
 
+// Empty path or empty file: out stays empty, the same as an empty byte array. A file that cannot be read fails.
+bool loadMessageFile(const std::string & path, std::vector<char> & out) {
+    out.clear();
+    if (path.empty()) return true;
+    FILE * file = fopen(path.c_str(), "rb");
+    if (file == nullptr) return false;
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return false;
+    }
+    long end = ftell(file);
+    if (end < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return false;
+    }
+    if (end == 0) {
+        fclose(file);
+        return true;
+    }
+    out.resize(static_cast<size_t>(end));
+    size_t got = fread(out.data(), 1, out.size(), file);
+    int bad = ferror(file);
+    fclose(file);
+    if (bad != 0 || got != out.size()) {
+        out.clear();
+        return false;
+    }
+    return true;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jobject, jlong handle,
-    jstring mailbox, jbyteArray message, jobjectArray flags) {
+    jstring mailbox, jstring path, jobjectArray flags) {
     jstring g_mailbox = mailbox != nullptr ? static_cast<jstring>(env->NewGlobalRef(mailbox)) : nullptr;
-    jbyteArray g_message = message != nullptr ? static_cast<jbyteArray>(env->NewGlobalRef(message)) : nullptr;
+    jstring g_path = path != nullptr ? static_cast<jstring>(env->NewGlobalRef(path)) : nullptr;
     jobjectArray g_flags = flags != nullptr ? static_cast<jobjectArray>(env->NewGlobalRef(flags)) : nullptr;
-    struct OwnerRefs { JNIEnv * e; jstring p0; jbyteArray p1; jobjectArray p2; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); } } ownerRefs{env, g_mailbox, g_message, g_flags};
+    struct OwnerRefs { JNIEnv * e; jstring p0; jstring p1; jobjectArray p2; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); } } ownerRefs{env, g_mailbox, g_path, g_flags};
     return withOwnerCall(env, handle, [&](JNIEnv * env) -> jlong {
         jstring mailbox = g_mailbox;
-        jbyteArray message = g_message;
+        jstring path = g_path;
         jobjectArray flags = g_flags;
 
     LiveSession * session = lockImapSession(env, handle);
@@ -8345,11 +8375,23 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAppend(JNIEnv * env, jo
         unlockSession(session);
         return 0;
     }
-    jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
-    jbyte * bytes = n > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
+    std::vector<char> messageBytes;
+    if (path != nullptr) {
+        auto got = utf8FromJava(env, path);
+        if (!got) {
+            if (flagList != nullptr) mailimap_flag_list_free(flagList);
+            unlockSession(session);
+            return 0;
+        }
+        if (!loadMessageFile(*got, messageBytes)) {
+            if (flagList != nullptr) mailimap_flag_list_free(flagList);
+            throwFailure(env, "append failed");
+            unlockSession(session);
+            return 0;
+        }
+    }
     int r = appendLiteralPlus(session->imap, mb.c(),
-        bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n), flagList);
-    if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
+        messageBytes.empty() ? "" : messageBytes.data(), messageBytes.size(), flagList);
     if (flagList != nullptr) mailimap_flag_list_free(flagList);
     jlong uid = 0;
     if (!cmdOk(r)) {
@@ -10198,15 +10240,15 @@ void freeSmtp(LiveSession * session, mailsmtp * smtp) {
 
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
-    jbyteArray message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
-    jbyteArray g_message = message != nullptr ? static_cast<jbyteArray>(env->NewGlobalRef(message)) : nullptr;
+    jstring message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
+    jstring g_message = message != nullptr ? static_cast<jstring>(env->NewGlobalRef(message)) : nullptr;
     jobjectArray g_recipients = recipients != nullptr ? static_cast<jobjectArray>(env->NewGlobalRef(recipients)) : nullptr;
     jstring g_smtpUsername = smtpUsername != nullptr ? static_cast<jstring>(env->NewGlobalRef(smtpUsername)) : nullptr;
     jstring g_smtpPassword = smtpPassword != nullptr ? static_cast<jstring>(env->NewGlobalRef(smtpPassword)) : nullptr;
     jstring g_envelopeFrom = envelopeFrom != nullptr ? static_cast<jstring>(env->NewGlobalRef(envelopeFrom)) : nullptr;
-    struct OwnerRefs { JNIEnv * e; jbyteArray p0; jobjectArray p1; jstring p2; jstring p3; jstring p4; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); if (p3) e->DeleteGlobalRef(p3); if (p4) e->DeleteGlobalRef(p4); } } ownerRefs{env, g_message, g_recipients, g_smtpUsername, g_smtpPassword, g_envelopeFrom};
+    struct OwnerRefs { JNIEnv * e; jstring p0; jobjectArray p1; jstring p2; jstring p3; jstring p4; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); if (p3) e->DeleteGlobalRef(p3); if (p4) e->DeleteGlobalRef(p4); } } ownerRefs{env, g_message, g_recipients, g_smtpUsername, g_smtpPassword, g_envelopeFrom};
     return withOwnerCall(env, handle, [&](JNIEnv * env) -> jint {
-        jbyteArray message = g_message;
+        jstring message = g_message;
         jobjectArray recipients = g_recipients;
         jstring smtpUsername = g_smtpUsername;
         jstring smtpPassword = g_smtpPassword;
@@ -10568,13 +10610,19 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         if (!authUser.empty() && offeredAuth.empty()) return 3;
         return offeredAuth.empty() ? 3 : 4;
     }
-    jsize nmsg = message != nullptr ? env->GetArrayLength(message) : 0;
-    jbyte * raw = nmsg > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
-    if (env->ExceptionCheck()) {
-        if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
+    auto path = utf8FromJava(env, message);
+    if (!path) {
         freeSmtp(session, smtp);
         return 0;
     }
+    std::vector<char> messageBytes;
+    if (!loadMessageFile(*path, messageBytes)) {
+        freeSmtp(session, smtp);
+        throwFailure(env, "smtp error");
+        return 0;
+    }
+    const char * raw = messageBytes.empty() ? nullptr : messageBytes.data();
+    size_t nmsg = messageBytes.size();
     // SMTPUTF8 before 8BITMIME: a body rewrite cannot fix raw UTF-8 headers or addresses.
     // RFC 6531: non-ASCII addresses or raw UTF-8 headers need SMTPUTF8; without it, refuse before MAIL FROM
     // ("smtputf8") so the user is told instead of the server mangling or bouncing the message.
@@ -10592,14 +10640,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
     }
     if (needUtf8 && !smtpUtf8) {
-        if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         freeSmtp(session, smtp);
         throwFailure(env, "smtputf8");
         return 0;
     }
     if (!allow8bit && raw != nullptr &&
         messageHas8bitCte(reinterpret_cast<const char *>(raw), static_cast<size_t>(nmsg))) {
-        env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
         freeSmtp(session, smtp);
         throwFailure(env, "8bitmime");
         return 0;
@@ -10610,7 +10656,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         size_t len = static_cast<size_t>(nmsg);
         declare8bit = messageHas8bitCte(bytes, len) || bodyHas8bit(bytes, len);
     }
-    if (raw != nullptr) env->ReleaseByteArrayElements(message, raw, JNI_ABORT);
     const char * body8 = (declare8bit && allow8bit) ? " BODY=8BITMIME" : "";
     if (needUtf8) {
         std::string cmd = "MAIL FROM:<" + mailFrom + "> SMTPUTF8" + body8 +
@@ -10659,11 +10704,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     r = mailsmtp_data(smtp);
     bool bodySent = false;
     if (r == MAILSMTP_NO_ERROR) {
-        jsize n = message != nullptr ? env->GetArrayLength(message) : 0;
-        jbyte * bytes = n > 0 ? env->GetByteArrayElements(message, nullptr) : nullptr;
         bodySent = true;
-        r = mailsmtp_data_message(smtp, bytes != nullptr ? reinterpret_cast<char *>(bytes) : "", static_cast<size_t>(n));
-        if (bytes != nullptr) env->ReleaseByteArrayElements(message, bytes, JNI_ABORT);
+        r = mailsmtp_data_message(smtp, raw != nullptr ? const_cast<char *>(raw) : "", nmsg);
     }
     if (r != MAILSMTP_NO_ERROR) {
         // F50: a lost connection or timeout once the message was handed over leaves the result unknown (the server

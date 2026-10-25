@@ -1,5 +1,6 @@
 package org.dlang.liveimap.session
 
+import java.io.File
 import kotlinx.coroutines.flow.StateFlow
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
@@ -90,6 +91,12 @@ class RoutedMailSession(
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         sender().smtpSendFrom(rfc822, recipients, dsnNotify, envelopeFrom)
+
+    override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int =
+        sender().smtpSendFile(file, recipients, dsnNotify)
+
+    override suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
+        sender().smtpSendFromFile(file, recipients, dsnNotify, envelopeFrom)
 
     override suspend fun smtpLoginCheck(): SmtpLoginCheck = sender().smtpLoginCheck()
 
@@ -205,4 +212,9 @@ class RoutedMailSession(
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>): Unit = current().append(mailbox, rfc822, flags)
 
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long = current().appendReturningUid(mailbox, rfc822, flags)
+
+    override suspend fun appendFile(mailbox: String, file: File, flags: Set<String>): Unit = current().appendFile(mailbox, file, flags)
+
+    override suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String>): Long =
+        current().appendReturningUidFile(mailbox, file, flags)
 }

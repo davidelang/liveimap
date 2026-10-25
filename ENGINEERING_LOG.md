@@ -3707,3 +3707,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
 - A finished bounce applies the send life. That removes the draft id from the open set and deletes the message directory. A bounce that stops early leaves the id open.
 - No install, and no message sent
+
+## 2026-10-24 - Append and SMTP read the message file.
+
+- Approved plan: sandbox/plans/outgoing-send-file-20261024-1600-plan.md
+- IMAP append and SMTP send read the message from the file writeCopy wrote. The success path does not pass that message as a Java byte array.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

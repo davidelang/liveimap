@@ -1116,7 +1116,30 @@ private fun ComposeLoaded(
         return other
     }
 
-    suspend fun sendSmtp(bytes: ByteArray, envelope: List<String>, via: String = ""): ByteArray {
+    private fun copyRfc822(id: String): File =
+        File(unsentAccountDir(appContext.filesDir, accountId), "$id.rfc822")
+
+    /** Header bytes only, through the first blank line. The body stays in the file. */
+    private fun headerThroughBlankLine(file: File): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        file.inputStream().use { input ->
+            var atLineStart = true
+            while (true) {
+                val b = input.read()
+                if (b < 0) break
+                out.write(b)
+                if (b == '\n'.code) {
+                    if (atLineStart) break
+                    atLineStart = true
+                } else if (b != '\r'.code) {
+                    atLineStart = false
+                }
+            }
+        }
+        return out.toByteArray()
+    }
+
+    suspend fun sendSmtp(file: File, envelope: List<String>, via: String = ""): File {
         val out = outbound(via)
         // IDN domains go as punycode; non-ASCII local parts need SMTPUTF8 (refused natively as "smtputf8").
         val recipients = envelope.map(::asciiDomainAddress)
@@ -1125,24 +1148,25 @@ private fun ComposeLoaded(
             throw MailFailure(appContext.getString(R.string.compose_bad_envelope_address, unsafe.joinToString(", ") { it.map { c -> if (c < ' ' || c == '\u007f') '?' else c }.joinToString("") }))
         }
         val sender = (if (via.isEmpty() || via == accountId) account else store.accountById(via)?.settings ?: account)
-            .let { envelopeSender(headerFromAddress(bytes), it.email, it.altAddresses + knownFroms(accountRules(it), accountDefaultRule(it))) }
+            .let { envelopeSender(headerFromAddress(headerThroughBlankLine(file)), it.email, it.altAddresses + knownFroms(accountRules(it), accountDefaultRule(it))) }
         fun utf8Refused(error: MailFailure): Nothing =
             throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
         try {
-            noteDsn(out.smtpSendFrom(bytes, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
-            return bytes
+            noteDsn(out.smtpSendFromFile(file, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
+            return file
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
             if (error.text != "8bitmime") throw error
         }
-        val rewritten = withoutEightBit(bytes)
+        val rewritten = withoutEightBit(file.readBytes())
+        file.writeBytes(rewritten)
         try {
-            noteDsn(out.smtpSendFrom(rewritten, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
+            noteDsn(out.smtpSendFromFile(file, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
         } catch (error: MailFailure) {
             if (error.text == "smtputf8") utf8Refused(error)
             throw error
         }
-        return rewritten
+        return file
     }
 
     suspend fun retryCopy(copy: DeviceCopy): Boolean {
@@ -1153,7 +1177,7 @@ private fun ComposeLoaded(
                     return false
                 }
                 try {
-                    outbound(copy.via).append(copy.mailbox, copy.bytes)
+                    outbound(copy.via).appendFile(copy.mailbox, copyRfc822(copy.id))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1173,7 +1197,7 @@ private fun ComposeLoaded(
             }
             RetryDelivery.Smtp -> {
                 val accepted = try {
-                    sendSmtp(copy.bytes, copy.recipients, copy.via)
+                    sendSmtp(copyRfc822(copy.id), copy.recipients, copy.via)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
@@ -1184,11 +1208,11 @@ private fun ComposeLoaded(
                 storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
                 if (copy.mailbox.isNotEmpty()) {
                     try {
-                        outbound(copy.via).append(copy.mailbox, accepted)
+                        outbound(copy.via).appendFile(copy.mailbox, accepted)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted, via = copy.via)
+                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted.readBytes(), via = copy.via)
                         failAttachment(writeCopy(appContext, saved, accountId), saved.id, true)
                         if (held?.id == copy.id) held = saved
                         notice = error.text
@@ -1391,8 +1415,14 @@ private fun ComposeLoaded(
                 notice = error.text
                 return@launchLocked false
             }
+            val drafted = File.createTempFile("liveimap-", ".rfc822", appContext.cacheDir)
             try {
-                session.append(account.postponedMailbox, built.rfc822, setOf("\\Draft"))
+                try {
+                    drafted.writeBytes(built.rfc822)
+                    session.appendFile(account.postponedMailbox, drafted, setOf("\\Draft"))
+                } finally {
+                    drafted.delete()
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -1712,7 +1742,7 @@ private fun ComposeLoaded(
                     }
                     noteAssembledCopy(true, sending.id)
                     val accepted = try {
-                        sendSmtp(built.rfc822, built.recipients, via)
+                        sendSmtp(copyRfc822(sending.id), built.recipients, via)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
@@ -1728,11 +1758,11 @@ private fun ComposeLoaded(
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
                     if (account.sentMailbox.isNotEmpty()) try {
-                        outbound(via).append(account.sentMailbox, accepted)
+                        outbound(via).appendFile(account.sentMailbox, accepted)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
+                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted.readBytes(), via = via)
                         failAttachment(writeCopy(appContext, copy, accountId), copy.id, true)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
@@ -2041,7 +2071,7 @@ private fun ComposeLoaded(
                                     return@launchLocked false
                                 }
                                 val accepted = try {
-                                    sendSmtp(bounced, recipients)
+                                    sendSmtp(copyRfc822(id), recipients)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
@@ -2061,11 +2091,11 @@ private fun ComposeLoaded(
                                     continue
                                 }
                                 try {
-                                    session.append(account.sentMailbox, accepted)
+                                    session.appendFile(account.sentMailbox, accepted)
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted)
+                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted.readBytes())
                                     writeCopy(appContext, copy, accountId)
                                     held = copy
                                     notice = error.text

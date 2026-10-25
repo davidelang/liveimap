@@ -1893,24 +1893,69 @@ class LibetpanMailSession : MailSession {
     override suspend fun selectedInfo(): SelectResult = selected
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
-        keeper.write("append") {
-            forgetSelected()
-            writableForAppend(wire(mailbox))
-            nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
+        val spilled = spilledMessage(rfc822)
+        try {
+            keeper.write("append") {
+                forgetSelected()
+                writableForAppend(wire(mailbox))
+                nativeAppend(requireHandle(), wire(mailbox), spilled.absolutePath, requireFlags(flags))
+            }
+        } finally {
+            spilled.delete()
         }
     }
 
-    override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long =
+    override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long {
+        val spilled = spilledMessage(rfc822)
+        try {
+            return keeper.write("append") {
+                forgetSelected()
+                writableForAppend(wire(mailbox))
+                nativeAppend(requireHandle(), wire(mailbox), spilled.absolutePath, requireFlags(flags))
+            }
+        } finally {
+            spilled.delete()
+        }
+    }
+
+    override suspend fun appendFile(mailbox: String, file: File, flags: Set<String>) {
         keeper.write("append") {
             forgetSelected()
-            writableForAppend(wire(mailbox))
-            nativeAppend(requireHandle(), wire(mailbox), rfc822, requireFlags(flags))
+            val name = wire(mailbox)
+            writableForAppend(name)
+            val handle = requireHandle()
+            nativeAppend(handle, name, file.absolutePath, requireFlags(flags))
+        }
+    }
+
+    override suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String>): Long =
+        keeper.write("append") {
+            forgetSelected()
+            val name = wire(mailbox)
+            writableForAppend(name)
+            val handle = requireHandle()
+            nativeAppend(handle, name, file.absolutePath, requireFlags(flags))
         }
 
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
         smtpSendFrom(rfc822, recipients, dsnNotify, "")
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
+        val spilled = spilledMessage(rfc822)
+        try {
+            return sendMessageFile(spilled, recipients, dsnNotify, envelopeFrom)
+        } finally {
+            spilled.delete()
+        }
+    }
+
+    override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int =
+        smtpSendFromFile(file, recipients, dsnNotify, "")
+
+    override suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
+        sendMessageFile(file, recipients, dsnNotify, envelopeFrom)
+
+    private suspend fun sendMessageFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
         val key = refusedSecurityKey ?: account?.preservedSecurityKey()
         if (key != null) throw MailFailure("account settings need attention: $key")
         val context = currentApplication()
@@ -1925,7 +1970,7 @@ class LibetpanMailSession : MailSession {
             forgetSelected()
             nativeSmtp(
                 requireHandle(),
-                rfc822,
+                file.absolutePath,
                 recipients.toTypedArray(),
                 smtpUser,
                 smtpPassword,
@@ -2318,7 +2363,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeUidExpunge(handle: Long, uids: LongArray)
     private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String): CopyMoveResult?
     private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String): CopyMoveResult?
-    private external fun nativeAppend(handle: Long, mailbox: String, message: ByteArray, flags: Array<String>): Long
+    private external fun nativeAppend(handle: Long, mailbox: String, message: String, flags: Array<String>): Long
     private external fun nativeSearchText(handle: Long, query: String, useEsearch: Boolean, withCharset: Boolean): LongArray?
     private external fun nativeSearchCriterion(
         handle: Long,
@@ -2455,7 +2500,7 @@ class LibetpanMailSession : MailSession {
     private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(
         handle: Long,
-        message: ByteArray?,
+        message: String?,
         recipients: Array<String>,
         smtpUsername: String,
         smtpPassword: String,
@@ -2538,6 +2583,19 @@ private fun prepareTraffic(account: AccountSettings): String {
 
 private fun finishTraffic(account: AccountSettings) {
     // One account finishing must not turn another account's log off.
+}
+
+private fun spilledMessage(bytes: ByteArray): File {
+    val dir = currentApplication()?.cacheDir
+    val file = if (dir != null) File.createTempFile("liveimap-", ".rfc822", dir)
+        else File.createTempFile("liveimap-", ".rfc822")
+    try {
+        file.writeBytes(bytes)
+    } catch (error: Exception) {
+        file.delete()
+        throw error
+    }
+    return file
 }
 
 internal fun currentApplication(): Context? {
