@@ -3824,3 +3824,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - Settings registry.
 
 - Fixup: unknown enum text for paneArrangement, previewSize, folderPosition, readerTextLayout, compression, dsnMode, and nonAsciiDisplay throws out of decodeAccountSettings. stageSave writes nothing. A missing key still uses the tree default.
+
+## 2026-10-25 - SMTP mode, SMTP authentication, and the poll limit.

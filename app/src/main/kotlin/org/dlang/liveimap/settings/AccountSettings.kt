@@ -279,6 +279,12 @@ enum class TlsMode {
     Implicit,
 }
 
+enum class SmtpNoAuth {
+    Auto,
+    On,
+    Off,
+}
+
 fun defaultImapPort(mode: TlsMode): Int = if (mode == TlsMode.Implicit) 993 else 143
 
 fun defaultSmtpPort(mode: TlsMode): Int = when (mode) {
@@ -309,6 +315,9 @@ data class AccountSettings(
     val smtpUsername: String = "",
     /** F52 (David): use the IMAP password for SMTP only when this is ticked; never assumed. */
     val smtpSameAsImap: Boolean = false,
+    /** Missing stored line copies [tlsMode]. Not Implicit by itself. */
+    val smtpTlsMode: TlsMode = enumValueOf(SettingsDefaults.tlsMode),
+    val smtpNoAuth: SmtpNoAuth = SmtpNoAuth.Auto,
     val username: String = "",
     val displayName: String = "",
     val email: String = "",
@@ -462,6 +471,7 @@ data class AccountSettings(
     init {
         if (toolbarRows !in 1..4) throw IllegalArgumentException("bad toolbarRows")
         if (composerWrapColumn !in 0..998) throw IllegalArgumentException("bad composerWrapColumn")
+        if (pollSeconds !in 15..600) throw IllegalArgumentException("pollSeconds")
     }
 
     /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
@@ -506,8 +516,10 @@ private val fieldNames = listOf(
     "imapPort",
     "smtpHost",
     "smtpPort",
+    "smtpTlsMode",
     "smtpUsername",
     "smtpSameAsImap",
+    "smtpNoAuth",
     "username",
     "displayName",
     "email",
@@ -668,8 +680,10 @@ fun AccountSettings.encode(): String = buildString {
     put("imapPort=$imapPort")
     put("smtpHost=${percentEncode(smtpHost)}")
     put("smtpPort=$smtpPort")
+    put("smtpTlsMode=${smtpTlsMode.name}")
     put("smtpUsername=${percentEncode(smtpUsername)}")
     put("smtpSameAsImap=$smtpSameAsImap")
+    put("smtpNoAuth=${smtpNoAuth.name}")
     put("username=${percentEncode(username)}")
     put("displayName=${percentEncode(displayName)}")
     put("email=${percentEncode(email)}")
@@ -826,7 +840,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
     for (key in fieldNames) {
         if (
             key == "smtpUsername" ||
+            key == "smtpTlsMode" ||
             key == "smtpSameAsImap" ||
+            key == "smtpNoAuth" ||
             key == "friendlyName" ||
             key == "theme" ||
             key == "showUnreadCounts" ||
@@ -960,6 +976,12 @@ fun decodeAccountSettings(text: String): AccountSettings {
             default
         }
     }
+    val decodedTlsMode = field("tlsMode", TlsMode.None) { enumValueOf<TlsMode>(values.getValue("tlsMode")) }
+    val decodedSmtpTls = if ("smtpTlsMode" !in values) {
+        decodedTlsMode
+    } else {
+        field("smtpTlsMode", decodedTlsMode) { enumValueOf<TlsMode>(values.getValue("smtpTlsMode")) }
+    }
     return AccountSettings(
         imapHost = field("imapHost", d.imapHost) { percentDecode(values.getValue("imapHost")) },
         imapPort = field("imapPort", d.imapPort) { parseIntField(values.getValue("imapPort")) },
@@ -1023,7 +1045,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
         clientSort = field("clientSort", d.clientSort) { parseBoolean(values.getValue("clientSort")) },
         clientThread = field("clientThread", d.clientThread) { parseBoolean(values.getValue("clientThread")) },
         pollForNewMail = field("pollForNewMail", d.pollForNewMail) { parseBoolean(values.getValue("pollForNewMail")) },
-        pollSeconds = field("pollSeconds", d.pollSeconds) { clampPollSeconds(parseIntField(values.getValue("pollSeconds"))) },
+        pollSeconds = field("pollSeconds", d.pollSeconds) { parseIntField(values.getValue("pollSeconds")) },
         statusVisibleCounts = field("statusVisibleCounts", d.statusVisibleCounts) { parseBoolean(values.getValue("statusVisibleCounts")) },
         forceSlowerFallbacks = field("forceSlowerFallbacks", d.forceSlowerFallbacks) { parseBoolean(values.getValue("forceSlowerFallbacks")) },
         hiddenCapabilities = field("hiddenCapabilities", d.hiddenCapabilities) { decodeHiddenCapabilities(values.getValue("hiddenCapabilities")) },
@@ -1087,7 +1109,9 @@ fun decodeAccountSettings(text: String): AccountSettings {
         sieveHost = field("sieveHost", d.sieveHost) { percentDecode(values.getValue("sieveHost")) },
         sievePort = field("sievePort", d.sievePort) { parseSievePort(values.getValue("sievePort")) },
         sieveTlsMode = field("sieveTlsMode", d.sieveTlsMode) { enumValueOf<TlsMode>(values.getValue("sieveTlsMode")) },
-        tlsMode = field("tlsMode", TlsMode.None) { enumValueOf<TlsMode>(values.getValue("tlsMode")) },
+        tlsMode = decodedTlsMode,
+        smtpTlsMode = decodedSmtpTls,
+        smtpNoAuth = field("smtpNoAuth", SmtpNoAuth.Auto) { enumValueOf<SmtpNoAuth>(values.getValue("smtpNoAuth")) },
         certPin = field("certPin", d.certPin) { percentDecode(values.getValue("certPin")) },
         sieveCertPin = field("sieveCertPin", d.sieveCertPin) { percentDecode(values.getValue("sieveCertPin")) },
         jmapCertPin = field("jmapCertPin", d.jmapCertPin) { percentDecode(values.getValue("jmapCertPin")) },
@@ -1148,9 +1172,7 @@ fun slowerPoll(settings: AccountSettings): Boolean =
 fun slowerStatusCounts(settings: AccountSettings): Boolean =
     settings.forceSlowerFallbacks || settings.statusVisibleCounts
 
-fun pollIntervalSeconds(settings: AccountSettings): Int = clampPollSeconds(settings.pollSeconds)
-
-private fun clampPollSeconds(value: Int): Int = value.coerceIn(15, 600)
+fun pollIntervalSeconds(settings: AccountSettings): Int = settings.pollSeconds
 
 private fun encodeHiddenCapabilities(hidden: Set<String>): String =
     hidden.map { it.uppercase() }.distinct().sorted().joinToString(",") { percentEncode(it) }

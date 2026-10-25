@@ -33,8 +33,10 @@ pipelineCommands|Bool|account|bool|Pipeline commands||
 emailSubmission|Bool|account|bool|Email submission||
 smtpHost|String|server|text|SMTP host||
 smtpPort|Int|server|number|SMTP port||1..65535
+smtpTlsMode|Enum|server|choice|SMTP TLS|None,StartTls,Implicit|
 smtpUsername|String|server|text|SMTP username||
 smtpSameAsImap|Bool|account|bool|SMTP same as IMAP||
+smtpNoAuth|Enum|account|choice|SMTP authentication|Auto,On,Off|
 sieveHost|String|server|text|Sieve host||
 sievePort|Int|server|number|Sieve port||1..65535
 sieveTlsMode|Enum|server|choice|Sieve TLS|None,StartTls,Implicit|
@@ -126,7 +128,7 @@ customLayout|Encoded|account|subscreen|Custom layout||
 clientSort|Bool|account|bool|Client sort||
 clientThread|Bool|account|bool|Client thread||
 pollForNewMail|Bool|account|bool|Poll for new mail||
-pollSeconds|Int|account|number|Poll interval||
+pollSeconds|Int|account|number|Poll interval||15..600
 statusVisibleCounts|Bool|account|bool|Status visible counts||
 forceSlowerFallbacks|Bool|account|bool|Force slower fallbacks||
 logImapTraffic|Bool|account|bool|Log IMAP traffic||

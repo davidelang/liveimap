@@ -113,12 +113,20 @@
             }
           },
           {
+            "setting": "smtpTlsMode",
+            "default": "Implicit"
+          },
+          {
             "setting": "smtpUsername",
             "default": ""
           },
           {
             "setting": "smtpSameAsImap",
             "default": false
+          },
+          {
+            "setting": "smtpNoAuth",
+            "default": "Auto"
           },
           {
             "setting": "sieveHost",
@@ -646,7 +654,11 @@
       },
       {
         "setting": "pollSeconds",
-        "default": 60
+        "default": 60,
+        "hardLimit": {
+          "min": 15,
+          "max": 600
+        }
       },
       {
         "setting": "statusVisibleCounts",

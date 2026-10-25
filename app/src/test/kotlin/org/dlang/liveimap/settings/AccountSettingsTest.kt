@@ -394,7 +394,7 @@ class AccountSettingsTest {
     fun garbageIsToleratedFieldByField() {
         // F69: nothing here bricks the account any more; each bad field takes its default
         val d = AccountSettings()
-        assertEquals(d.copy(tlsMode = TlsMode.None), decodeAccountSettings("garbage"))
+        assertEquals(d.copy(tlsMode = TlsMode.None, smtpTlsMode = TlsMode.None), decodeAccountSettings("garbage"))
         assertEquals(listOf("notAKey=1"), decodeAccountSettings("notAKey=1").unknownSettings)
         assertTrue(decodeAccountSettings(d.encode() + "password=secret\n").unknownSettings.isEmpty())
         assertEquals(d.imapPort, decodeAccountSettings(d.encode().replace("imapPort=993", "imapPort=nope")).imapPort)
@@ -1380,6 +1380,30 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun smtpModeCopiesTlsAndPollNamesItself() {
+        val stored = AccountSettings(tlsMode = TlsMode.StartTls).encode()
+            .lineSequence().filter { !it.startsWith("smtpTlsMode=") }.joinToString("\n")
+        val loaded = decodeAccountSettings(stored)
+        assertEquals(TlsMode.StartTls, loaded.tlsMode)
+        assertEquals(TlsMode.StartTls, loaded.smtpTlsMode)
+        val saved = loaded.encode()
+        assertTrue(saved.contains("smtpTlsMode=StartTls"))
+        val noAuth = AccountSettings().encode().lineSequence()
+            .filter { !it.startsWith("smtpNoAuth=") }.joinToString("\n")
+        assertEquals(SmtpNoAuth.Auto, decodeAccountSettings(noAuth).smtpNoAuth)
+        val low = AccountSettings().encode().replace("pollSeconds=60", "pollSeconds=10")
+        try {
+            decodeAccountSettings(low)
+            fail("expected IllegalArgumentException")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message!!.contains("pollSeconds"))
+        }
+        val missingPoll = AccountSettings().encode().lineSequence()
+            .filter { !it.startsWith("pollSeconds=") }.joinToString("\n")
+        assertEquals(60, decodeAccountSettings(missingPoll).pollSeconds)
+    }
+
+    @Test
     fun missingOrdinaryKeyUsesTreeDefault() {
         val raw = AccountSettings().encode().lineSequence().filter { !it.startsWith("pollSeconds=") }.joinToString("\n")
         assertEquals(60, decodeAccountSettings(raw).pollSeconds)
@@ -1406,7 +1430,8 @@ class AccountSettingsTest {
         assertTrue(miss.contains("edit the JSON or the registry"))
         val extra = """[{"setting":"pollSeconds","default":60,"hardLimit":{"min":1,"max":10}}]"""
         val ex = validateSettingsTree(extra, complete = false).single { "pollSeconds" in it && "hardLimit" in it }
-        assertTrue(ex.contains("none"))
+        assertTrue(ex.contains("15"))
+        assertTrue(ex.contains("600"))
         assertTrue(ex.contains("10"))
         assertTrue(ex.contains("`pollSeconds`"))
     }
