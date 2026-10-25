@@ -324,6 +324,7 @@ class LibetpanMailSession : MailSession {
                     )
                     finishTraffic(account)
                     this.account = account
+                    nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
                     return OpenResult.Connected
                 }
             }
@@ -391,6 +392,7 @@ class LibetpanMailSession : MailSession {
             sequencesStale = false
             keeper.forgetFolder()
             keeper.markUsed()
+            nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
         }
         return opened
     }

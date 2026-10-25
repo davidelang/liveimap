@@ -20,8 +20,8 @@ class IdleFallbackTest {
 
     @Test
     fun fallbackIntervalUsesPollSettingOrSixtySeconds() {
-        assertEquals(300, idleFallbackSeconds(pollForNewMail = true, pollSeconds = 300))
-        assertEquals(60, idleFallbackSeconds(pollForNewMail = false, pollSeconds = 300))
+        assertEquals(300, idleFallbackSeconds(pollForNewMail = true, pollSeconds = 300, idleFallbackSeconds = 15))
+        assertEquals(15, idleFallbackSeconds(pollForNewMail = false, pollSeconds = 600, idleFallbackSeconds = 15))
     }
 
     @Test
@@ -29,24 +29,28 @@ class IdleFallbackTest {
         val settings = AccountSettings(
             pollForNewMail = false,
             forceSlowerFallbacks = false,
-            pollSeconds = 300,
+            pollSeconds = 600,
+            idleFallbackSeconds = 60,
         )
         assertFalse(slowerPoll(settings))
-        assertEquals(60, idleFallbackSeconds(slowerPoll(settings), pollIntervalSeconds(settings)))
+        assertEquals(
+            60,
+            idleFallbackSeconds(slowerPoll(settings), pollIntervalSeconds(settings), settings.idleFallbackSeconds),
+        )
     }
 
     @Test
     fun forcedFallbackUsesTheAccountPollInterval() {
         val polling = AccountSettings(pollForNewMail = true, pollSeconds = 300)
         assertTrue(slowerPoll(polling))
-        assertEquals(300, idleFallbackSeconds(slowerPoll(polling), pollIntervalSeconds(polling)))
+        assertEquals(300, idleFallbackSeconds(slowerPoll(polling), pollIntervalSeconds(polling), 60))
         val forced = AccountSettings(
             forceSlowerFallbacks = true,
             pollForNewMail = false,
             pollSeconds = 300,
         )
         assertTrue(slowerPoll(forced))
-        assertEquals(300, idleFallbackSeconds(slowerPoll(forced), pollIntervalSeconds(forced)))
+        assertEquals(300, idleFallbackSeconds(slowerPoll(forced), pollIntervalSeconds(forced), 60))
     }
 
     @Test

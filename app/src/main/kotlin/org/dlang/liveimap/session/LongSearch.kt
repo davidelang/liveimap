@@ -97,10 +97,3 @@ fun isLongSearch(kind: String, argument: String = ""): Boolean = when (kind) {
     "Advanced" -> advancedTextSearch.containsMatchIn(argument)
     else -> false
 }
-
-/**
- * Read timeout for the side connection. With INPROGRESS each progress line restarts the 60 s timeout, so a
- * search that keeps reporting never times out; without it a body search may be silent for minutes, so allow
- * 10 minutes (Cancel is always available).
- */
-fun longSearchTimeoutSec(inProgress: Boolean): Int = if (inProgress) 60 else 600

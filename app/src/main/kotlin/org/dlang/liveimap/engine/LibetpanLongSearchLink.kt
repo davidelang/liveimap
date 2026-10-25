@@ -8,7 +8,6 @@ import org.dlang.liveimap.session.confirmMailPlaintext
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchProgress
-import org.dlang.liveimap.session.longSearchTimeoutSec
 import org.dlang.liveimap.settings.AccountSettings
 
 /** A fresh libetpan connection for one long search in [folder]; never shared with the main session. */
@@ -39,7 +38,12 @@ class LibetpanLongSearchLink(
         }
         // Selects [folder] and refuses a UIDVALIDITY that is not the one the list was built in. No hits then.
         session.inFolder(folder) { _, _ -> }
-        session.prepareLongSearch(longSearchTimeoutSec("INPROGRESS" in session.capabilities))
+        val timeoutSec = if ("INPROGRESS" in session.capabilities) {
+            account.longSearchProgressSec
+        } else {
+            account.longSearchQuietSec
+        }
+        session.prepareLongSearch(timeoutSec)
     }
 
     override suspend fun search(kind: String, argument: String): List<Long> = session.longSearch(kind, argument)

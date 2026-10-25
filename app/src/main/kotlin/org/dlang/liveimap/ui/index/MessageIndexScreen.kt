@@ -169,7 +169,6 @@ import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.session.idleDroppedByServer
-import org.dlang.liveimap.session.KeepAliveSeconds
 import org.dlang.liveimap.session.idleFallbackSeconds
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
@@ -2104,6 +2103,7 @@ private fun MessageIndexLoaded(
                         val pollSeconds = idleFallbackSeconds(
                             slowerPoll(settings),
                             pollIntervalSeconds(settings),
+                            settings.idleFallbackSeconds,
                         )
                         suspend fun pollLoop(fixedSeconds: Int) {
                             while (true) {
@@ -2133,9 +2133,9 @@ private fun MessageIndexLoaded(
                                 postSnack(appContext.getString(R.string.index_idle_dropped, pollSeconds))
                                 pollLoop(pollSeconds)
                             }
-                            // Keep-alive NOOP on the main connection while the watch IDLEs (see KeepAliveSeconds).
+                            // Keep-alive NOOP on the main connection while the watch IDLEs.
                             while (true) {
-                                delay(KeepAliveSeconds * 1000L)
+                                delay(settings.keepAliveMinutes * 60 * 1000L)
                                 try {
                                     session.noop()
                                 } catch (error: CancellationException) {

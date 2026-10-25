@@ -94,8 +94,6 @@ class LongSearchTest {
         assertTrue(isLongSearch("Advanced", "And\nYes\tBody\tinvoice"))
         assertFalse(isLongSearch("Advanced", "Or\nYes\tSubject\tLiveIMAP"))
         assertFalse(isLongSearch("Subject"))
-        assertEquals(60, longSearchTimeoutSec(true))
-        assertEquals(600, longSearchTimeoutSec(false))
         assertEquals(null, SearchProgress(-1, 1000, 1).fraction)
     }
 }
