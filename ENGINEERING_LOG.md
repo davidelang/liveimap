@@ -3754,3 +3754,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The open order is the whole mailbox, and the held page was the only source of sequences. A neighbor in that order threw, and the reader called sequence outside delete, move, and spam, so the swipe crashed and the action was skipped. Every uid in the order now has a sequence. A row's sequence wins; otherwise the 1-based place. An unknown uid still throws, and the reader catches that on swipe and before those actions.
 - No install, and no message sent
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - The unsent list reads metadata.
+
+- Approved plan: sandbox/plans/unsent-meta-20261024-1813-plan.md
+- The unsent list reads each copy's meta and keeps the message path. The subject comes from the meta, or from header lines when an old meta has none. A meta that throws stays one row. Compose reads one draft file when it loads or sends. A failed address book is shown and is not cached; an empty book is.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master

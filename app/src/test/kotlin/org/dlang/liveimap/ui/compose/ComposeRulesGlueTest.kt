@@ -1,5 +1,6 @@
 package org.dlang.liveimap.ui.compose
 
+import java.io.File
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
@@ -102,8 +103,10 @@ class CrossAccountTest {
     fun unsentCopyKeepsSendingAccount() {
         val dir = java.nio.file.Files.createTempDirectory("unsent").toFile()
         try {
-            writeCopy(dir, DeviceCopy("c1", true, "Sent", listOf("b@x"), "x".toByteArray(), via = "acct-2"), "acct-1")
-            writeCopy(dir, DeviceCopy("c2", false, "Sent", listOf("b@x"), "y".toByteArray()), "acct-1")
+            val x = File(dir, "x.src").also { it.writeBytes("x".toByteArray()) }
+            val y = File(dir, "y.src").also { it.writeBytes("y".toByteArray()) }
+            writeCopy(dir, DeviceCopy("c1", true, "Sent", listOf("b@x"), x, via = "acct-2"), "acct-1")
+            writeCopy(dir, DeviceCopy("c2", false, "Sent", listOf("b@x"), y), "acct-1")
             val read = readCopies(dir, "acct-1").associateBy { it.id }
             assertEquals("acct-2", read.getValue("c1").via)
             assertTrue(read.getValue("c1").appendOnly)

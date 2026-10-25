@@ -12,7 +12,6 @@ class CompletionCacheTest {
         forgetCompletionCaches()
         val src = File("src/main/kotlin/org/dlang/liveimap/ui/contacts/Completion.kt").readText()
         assertTrue(src.contains("fun pineEntriesOnce(session: MailSession, accountId: String, mailbox: String)"))
-        assertTrue(src.contains("if (loaded.notice != null) return@withLock emptyList()"))
         assertTrue(File("src/main/kotlin/org/dlang/liveimap/ui/contacts/AlpineBook.kt").readText().contains("forgetCompletionCaches()"))
     }
 }

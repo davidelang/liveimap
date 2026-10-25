@@ -12,23 +12,31 @@ internal class DeviceCopy(
     val appendOnly: Boolean,
     val mailbox: String,
     val recipients: List<String>,
-    val bytes: ByteArray,
+    /** The `.rfc822` path. The unsent list does not read it. */
+    val file: File,
     val modifiedMillis: Long = 0,
     /** Account whose servers send this copy (a sending rule's "send through"); empty = this account. */
     val via: String = "",
     /** F50: sending started (or the server's answer after DATA was lost): it may already be sent; check Sent. */
     val uncertain: Boolean = false,
+    /** Decoded subject from the meta line. Null when an old meta has no subject line. */
+    val subject: String? = null,
+    /** The meta threw. The unsent row shows this text and is not dropped. */
+    val error: String? = null,
 )
 
 /** F50: native prefix on an SMTP failure that happened after the message was handed to the server. */
 internal const val SmtpUncertainPrefix = "smtp-uncertain: "
 
+/** Meta line after the mailbox. Absent on old copies, so a recipient line is not read as a subject. */
+private const val SubjectMeta = "subject:"
+
 /** F150: the same copy, sent with no Sent copy (the user chose "send without copy" on retry). */
 internal fun DeviceCopy.withoutSentCopy() =
-    DeviceCopy(id, appendOnly, "", recipients, bytes, modifiedMillis, via, uncertain)
+    DeviceCopy(id, appendOnly, "", recipients, file, modifiedMillis, via, uncertain, subject, error)
 
 internal fun DeviceCopy.copyWith(appendOnly: Boolean = this.appendOnly, uncertain: Boolean = this.uncertain) =
-    DeviceCopy(id, appendOnly, mailbox, recipients, bytes, modifiedMillis, via, uncertain)
+    DeviceCopy(id, appendOnly, mailbox, recipients, file, modifiedMillis, via, uncertain, subject, error)
 
 internal fun smtpUncertain(text: String): Boolean = text.startsWith(SmtpUncertainPrefix)
 
@@ -58,6 +66,40 @@ internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
         return decodeHeaderWords(line.substring(colon + 1).trim())
     }
     return missingSubject
+}
+
+/** Header bytes only, through the first blank line. The body stays in the file. */
+internal fun headerThroughBlankLine(file: File): ByteArray {
+    val out = java.io.ByteArrayOutputStream()
+    file.inputStream().use { input ->
+        var atLineStart = true
+        while (true) {
+            val b = input.read()
+            if (b < 0) break
+            out.write(b)
+            if (b == '\n'.code) {
+                if (atLineStart) break
+                atLineStart = true
+            } else if (b != '\r'.code) {
+                atLineStart = false
+            }
+        }
+    }
+    return out.toByteArray()
+}
+
+private fun headerThroughBlankLine(bytes: ByteArray): ByteArray {
+    var atLineStart = true
+    for (i in bytes.indices) {
+        val b = bytes[i].toInt() and 0xff
+        if (b == '\n'.code) {
+            if (atLineStart) return bytes.copyOf(i + 1)
+            atLineStart = true
+        } else if (b != '\r'.code) {
+            atLineStart = false
+        }
+    }
+    return bytes
 }
 
 /**
@@ -120,27 +162,42 @@ internal fun mergedAccountCopies(account: List<DeviceCopy>, legacy: List<DeviceC
 private fun copiesIn(dir: File): List<DeviceCopy> {
     if (!dir.isDirectory) return emptyList()
     val metas = dir.listFiles { file -> file.isFile && file.name.endsWith(".meta") } ?: return emptyList()
-    return metas.sortedBy { it.name }.mapNotNull { meta ->
+    return metas.sortedBy { it.name }.map { meta ->
+        val id = meta.name.removeSuffix(".meta")
+        val message = File(dir, "$id.rfc822")
         try {
             val lines = meta.readLines(Charsets.UTF_8)
-            if (lines.size < 2) return@mapNotNull null
-            val id = meta.name.removeSuffix(".meta")
-            val bytesFile = File(dir, "$id.rfc822")
-            if (!bytesFile.isFile) return@mapNotNull null
+            if (lines.size < 2) throw IllegalArgumentException("bad meta")
+            val subjectLine = lines.getOrNull(2)
+            val subject = if (subjectLine != null && subjectLine.startsWith(SubjectMeta)) {
+                subjectLine.removePrefix(SubjectMeta)
+            } else {
+                null
+            }
+            val recipients = if (subject != null) lines.drop(3) else lines.drop(2)
             DeviceCopy(
                 id = id,
                 appendOnly = lines[0].substringBefore(' ') == "append-only",
                 uncertain = lines[0].substringBefore(' ') == "uncertain",
                 via = lines[0].substringAfter(" via=", "").trim(),
                 mailbox = lines[1],
-                recipients = lines.drop(2).filter { it.isNotEmpty() },
-                bytes = bytesFile.readBytes(),
+                recipients = recipients.filter { it.isNotEmpty() },
+                file = message,
                 modifiedMillis = meta.lastModified(),
+                subject = subject,
             )
         } catch (error: CancellationException) {
             throw error
-        } catch (_: Exception) {
-            null
+        } catch (error: Exception) {
+            DeviceCopy(
+                id = id,
+                appendOnly = false,
+                mailbox = "",
+                recipients = emptyList(),
+                file = message,
+                modifiedMillis = meta.lastModified(),
+                error = error.message ?: error.toString(),
+            )
         }
     }
 }
@@ -182,7 +239,7 @@ internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCo
     readCopies(context.filesDir, accountId)
 
 /**
- * Writes the copy atomically (temp file + rename, bytes before meta, so a crash never leaves a meta pointing at
+ * Writes the copy atomically (temp file + rename, message file before meta, so a crash never leaves a meta pointing at
  * half a message). Returns false when it could not be written; the caller tells the user (F50).
  */
 internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boolean {
@@ -200,7 +257,11 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boo
                 throw java.io.IOException("rename failed")
             }
         }
-        atomic("${copy.id}.rfc822", copy.bytes)
+        val message = copy.file.readBytes()
+        atomic("${copy.id}.rfc822", message)
+        val subject = unsentSubject(headerThroughBlankLine(message), "")
+            .replace("\n", "")
+            .replace("\r", "")
         val text = buildString {
             append(
                 when {
@@ -212,6 +273,8 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boo
             if (copy.via.isNotEmpty()) append(" via=").append(copy.via.filter { it.isLetterOrDigit() || it == '-' })
             append('\n')
             appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
+            append(SubjectMeta)
+            appendLine(subject)
             for (recipient in copy.recipients) {
                 appendLine(recipient.replace("\n", "").replace("\r", ""))
             }

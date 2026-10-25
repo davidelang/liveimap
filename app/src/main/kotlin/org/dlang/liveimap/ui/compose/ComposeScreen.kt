@@ -117,7 +117,6 @@ import org.dlang.liveimap.ui.contacts.androidEntriesOnce
 import org.dlang.liveimap.ui.contacts.completeAddress
 import org.dlang.liveimap.ui.contacts.completionSourcesInOrder
 import org.dlang.liveimap.ui.contacts.hasReadContacts
-import org.dlang.liveimap.ui.contacts.pineBookIsLoaded
 import org.dlang.liveimap.ui.contacts.pineEntriesOnce
 import org.dlang.liveimap.ui.contacts.suggestionText
 import org.dlang.liveimap.ui.mailBarInsets
@@ -725,15 +724,14 @@ private fun ComposeLoaded(
 
     suspend fun readPlaintextBook(mailbox: String): List<AlpineEntry> {
         if (mailbox.isEmpty()) return emptyList()
-        val cached = pineBookIsLoaded(accountId, mailbox)
-        val entries = try {
+        return try {
             pineEntriesOnce(session, accountId, mailbox)
         } catch (error: CancellationException) {
             throw error
-        } catch (_: MailFailure) {
+        } catch (error: MailFailure) {
+            notice = error.text
             emptyList()
         }
-        return entries
     }
 
     suspend fun sourcesForCompose(settings: AccountSettings): List<CompletionSource> {
@@ -747,7 +745,8 @@ private fun ComposeLoaded(
                     pineEntriesOnce(session, accountId, book)
                 } catch (error: CancellationException) {
                     throw error
-                } catch (_: MailFailure) {
+                } catch (error: MailFailure) {
+                    notice = error.text
                     emptyList()
                 }
             }
@@ -1243,7 +1242,7 @@ private fun ComposeLoaded(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted.readBytes(), via = copy.via)
+                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted, via = copy.via)
                         failAttachment(writeCopy(appContext, saved, accountId), saved.id, true)
                         if (held?.id == copy.id) held = saved
                         notice = error.text
@@ -1274,12 +1273,21 @@ private fun ComposeLoaded(
                     status = notSentNotice
                     return false
                 }
+                val bytes = try {
+                    withContext(Dispatchers.IO) { copy.file.readBytes() }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    notice = error.message ?: fetchFailed
+                    status = notSentNotice
+                    return false
+                }
                 var leftOver: String? = null
                 try {
                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
-                        copy.bytes,
+                        bytes,
                         account.email,
                         copy.recipients,
                         account.username,
@@ -1478,14 +1486,22 @@ private fun ComposeLoaded(
         }
     }
 
-    fun loadStoredCopy(id: String): DeviceCopy? {
+    suspend fun loadStoredCopy(id: String): DeviceCopy? {
         val copy = readCopies(appContext, accountId).firstOrNull { it.id == id }
         if (copy == null) {
             notice = unsentGone
             return null
         }
         if (!(draftLoaded && forwardRows.isNotEmpty())) {
-            applyEditor(loadEditor(copy.bytes))
+            val bytes = try {
+                withContext(Dispatchers.IO) { copy.file.readBytes() }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                notice = error.message ?: unsentGone
+                return null
+            }
+            applyEditor(loadEditor(bytes))
         }
         held = copy
         if (!baselineReady) captureBaseline()
@@ -1696,14 +1712,6 @@ private fun ComposeLoaded(
                         notice = error.text
                         return@launchLocked false
                     }
-                    val messageBytes = try {
-                        withContext(Dispatchers.IO) { messageFile.readBytes() }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Exception) {
-                        notice = error.message ?: fetchFailed
-                        return@launchLocked false
-                    }
                     // F92: JMAP submission uses this account's credentials, so a rule that routes through another
                     // account (via) always takes that account's SMTP path instead.
                     if (account.emailSubmission && via.isEmpty()) {
@@ -1712,7 +1720,7 @@ private fun ComposeLoaded(
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Exception) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageBytes, via = via)
+                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via)
                             failAttachment(writeCopy(appContext, copy, accountId), copy.id, false)
                             held = copy
                             notice = error.message ?: notConnected
@@ -1721,13 +1729,21 @@ private fun ComposeLoaded(
                         }
                         // F50/David's JMAP rule: the device copy exists before the upload/submission starts, marked
                         // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
-                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageBytes, via = via)
+                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageFile, via = via)
+                        val bytes = try {
+                            withContext(Dispatchers.IO) { messageFile.readBytes() }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            notice = error.message ?: fetchFailed
+                            return@launchLocked false
+                        }
                         var leftOver: String? = null
                         try {
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
-                                messageBytes,
+                                bytes,
                                 account.email,
                                 built.recipients,
                                 account.username,
@@ -1770,7 +1786,7 @@ private fun ComposeLoaded(
                     }
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
-                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageBytes, via = via, uncertain = true)
+                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via, uncertain = true)
                     val copySaved = writeCopy(appContext, sending, accountId)
                     if (!copySaved) {
                         failAttachment(false, sending.id, false)
@@ -1800,7 +1816,7 @@ private fun ComposeLoaded(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted.readBytes(), via = via)
+                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
                         failAttachment(writeCopy(appContext, copy, accountId), copy.id, true)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
@@ -2102,7 +2118,10 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                                val sending = DeviceCopy(id, false, savedMailbox, recipients, bounced, uncertain = true)
+                                val file = copyRfc822(id)
+                                file.parentFile?.mkdirs()
+                                withContext(Dispatchers.IO) { file.writeBytes(bounced) }
+                                val sending = DeviceCopy(id, false, savedMailbox, recipients, file, uncertain = true)
                                 if (!writeCopy(appContext, sending, accountId)) {
                                     notice = appContext.getString(R.string.compose_copy_not_saved)
                                     status = notSentNotice
@@ -2133,7 +2152,7 @@ private fun ComposeLoaded(
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted.readBytes())
+                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted)
                                     writeCopy(appContext, copy, accountId)
                                     held = copy
                                     notice = error.text
@@ -2166,7 +2185,18 @@ private fun ComposeLoaded(
                                 )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
-                                val bouncing = DeviceCopy(id, false, savedMailbox, recipients, bounced)
+                                val file = copyRfc822(id)
+                                file.parentFile?.mkdirs()
+                                withContext(Dispatchers.IO) { file.writeBytes(bounced) }
+                                val bouncing = DeviceCopy(id, false, savedMailbox, recipients, file)
+                                val bytes = try {
+                                    withContext(Dispatchers.IO) { file.readBytes() }
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Exception) {
+                                    notice = error.message ?: fetchFailed
+                                    return@launchLocked false
+                                }
                                 try {
                                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
                                     keepCopyUntilSubmitted(
@@ -2175,7 +2205,7 @@ private fun ComposeLoaded(
                                         { deleteCopy(appContext, it, accountId) },
                                     ) { jmapSend(
                                         offer,
-                                        bounced,
+                                        bytes,
                                         account.email,
                                         recipients,
                                         account.username,

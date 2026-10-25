@@ -1,12 +1,13 @@
 package org.dlang.liveimap.ui.compose
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
 import org.junit.Test
 
 class KeepCopyUntilSubmittedTest {
-    private val copy = DeviceCopy("id1", false, "Sent", listOf("a@b"), "m".toByteArray())
+    private val copy = DeviceCopy("id1", false, "Sent", listOf("a@b"), File("id1.rfc822"))
 
     @Test
     fun failedWriteDoesNotSendOrDelete() {

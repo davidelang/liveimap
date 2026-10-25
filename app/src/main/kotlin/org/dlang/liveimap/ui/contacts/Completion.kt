@@ -6,8 +6,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.ContactsContract
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.getCompletionExceptionOrNull
+import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.SelectedAddress
@@ -137,12 +142,15 @@ fun completionSourcesInOrder(
 }
 
 /** F62: one cached book per (account, mailbox); failures and notices are not cached. */
-private val pineEntries = java.util.concurrent.ConcurrentHashMap<String, List<AlpineEntry>>()
-private val pineMutex = Mutex()
+private val pineEntries = java.util.concurrent.ConcurrentHashMap<String, Deferred<List<AlpineEntry>>>()
+private val pineLoadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
 private fun pineKey(accountId: String, mailbox: String) = "$accountId\u0000$mailbox"
 
-fun pineBookIsLoaded(accountId: String, mailbox: String): Boolean = pineEntries.containsKey(pineKey(accountId, mailbox))
+fun pineBookIsLoaded(accountId: String, mailbox: String): Boolean {
+    val deferred = pineEntries[pineKey(accountId, mailbox)] ?: return false
+    return deferred.isCompleted && deferred.getCompletionExceptionOrNull() == null
+}
 
 /** Drop cached completion data (after an address-book write or Take Address, or a settings change). */
 fun forgetCompletionCaches() {
@@ -156,20 +164,35 @@ fun forgetCompletionCaches() {
 suspend fun pineEntriesOnce(session: MailSession, accountId: String, mailbox: String): List<AlpineEntry> {
     if (mailbox.isEmpty()) return emptyList()
     val key = pineKey(accountId, mailbox)
-    pineEntries[key]?.let { return it }
-    return pineMutex.withLock {
-        pineEntries[key]?.let { return@withLock it }
-        val loaded = try {
-            loadAlpineBook(session, mailbox)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: MailFailure) {
-            return@withLock emptyList()
-        }
-        if (loaded.notice != null) return@withLock emptyList()
-        pineEntries[key] = loaded.entries
-        loaded.entries
+    val deferred = pineEntries.computeIfAbsent(key) { startPineLoad(key, session, mailbox) }
+    try {
+        return deferred.await()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        pineEntries.remove(key, deferred)
+        throw error
     }
+}
+
+/** One load. A successful book, including an empty one, stays in the map. A failure is removed. */
+private fun startPineLoad(key: String, session: MailSession, mailbox: String): Deferred<List<AlpineEntry>> {
+    val created = CompletableDeferred<List<AlpineEntry>>()
+    pineLoadScope.launch {
+        try {
+            val loaded = loadAlpineBook(session, mailbox)
+            val notice = loaded.notice
+            if (notice != null) throw MailFailure(notice)
+            created.complete(loaded.entries)
+        } catch (error: CancellationException) {
+            pineEntries.remove(key, created)
+            created.completeExceptionally(error)
+        } catch (error: Exception) {
+            pineEntries.remove(key, created)
+            created.completeExceptionally(error)
+        }
+    }
+    return created
 }
 
 data class AndroidContactSet(

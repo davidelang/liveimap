@@ -57,7 +57,7 @@ fun UnsentScreen(
             .padding(8.dp),
     ) {
         for (copy in copies) {
-            Text(unsentSubject(copy.bytes, stringResource(R.string.unsent_no_subject)))
+            Text(unsentRowLabel(copy, stringResource(R.string.unsent_no_subject)))
             Text(copy.recipients.joinToString(", "))
             Text(
                 if (copy.appendOnly) {
@@ -108,3 +108,15 @@ fun UnsentScreen(
 
 private fun shortDateTime(millis: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(millis))
+
+/** Meta subject when the line is present. Otherwise header lines only, through the blank line. */
+private fun unsentRowLabel(copy: DeviceCopy, missingSubject: String): String {
+    copy.error?.let { return it }
+    copy.subject?.let { return it.ifEmpty { missingSubject } }
+    val headers = try {
+        headerThroughBlankLine(copy.file)
+    } catch (_: Exception) {
+        return missingSubject
+    }
+    return unsentSubject(headers, missingSubject)
+}

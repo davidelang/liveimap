@@ -42,9 +42,9 @@ class UnsentStoreTest {
     fun accountsNeverSeeEachOthersOrLegacyCopies() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {
-            writeCopy(root, DeviceCopy("a", false, "Sent", listOf("a@b"), "A".toByteArray()), "acct-1")
-            writeCopy(root, DeviceCopy("b", false, "Sent", emptyList(), "B".toByteArray()), "acct-2")
-            writeCopy(root, DeviceCopy("z", false, "Sent", emptyList(), "Z".toByteArray()), "")
+            writeCopy(root, DeviceCopy("a", false, "Sent", listOf("a@b"), src(root, "a")), "acct-1")
+            writeCopy(root, DeviceCopy("b", false, "Sent", emptyList(), src(root, "b")), "acct-2")
+            writeCopy(root, DeviceCopy("z", false, "Sent", emptyList(), src(root, "z")), "")
             val legacy = File(root, "unsent")
             File(legacy, "old.rfc822").writeText("O")
             File(legacy, "old.meta").writeText("unsent\nSent\nx@y\n")
@@ -102,7 +102,7 @@ class UnsentStoreTest {
     fun uncertainCopyRoundTripsAtomicallyAndWriteFailureIsReported() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {
-            val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), "U".toByteArray(), uncertain = true)
+            val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), src(root, "u"), uncertain = true)
             assertTrue(writeCopy(root, copy, "acct-1"))
             val read = readCopies(root, "acct-1").single()
             assertTrue(read.uncertain)
@@ -122,7 +122,7 @@ class UnsentStoreTest {
 
     @Test
     fun deviceCopyAfterSmtpFailureKeepsAnUncertainOutcome() {
-        val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), "U".toByteArray())
+        val copy = DeviceCopy("u", false, "Sent", listOf("a@b"), File("u.rfc822"))
         assertTrue(deviceCopyAfterSmtpFailure(copy, "smtp-uncertain: DATA: timeout").uncertain)
         assertFalse(deviceCopyAfterSmtpFailure(copy, "connection refused").uncertain)
     }
@@ -149,7 +149,7 @@ class UnsentStoreTest {
             assertTrue(threw)
             assertTrue(messageDir(root, "acct-1", "draft-1").isDirectory)
             val accountDir = unsentAccountDir(root, "acct-1")
-            assertTrue(writeCopy(root, DeviceCopy("listed", false, "Sent", emptyList(), "L".toByteArray()), "acct-1"))
+            assertTrue(writeCopy(root, DeviceCopy("listed", false, "Sent", emptyList(), src(root, "listed")), "acct-1"))
             val listedDir = messageDir(root, "acct-1", "listed")
             File(listedDir, "contents").mkdirs()
             File(messageDir(root, "acct-1", "orphan"), "contents").mkdirs()
@@ -176,5 +176,39 @@ class UnsentStoreTest {
             closeCompose(openId)
             root.deleteRecursively()
         }
+    }
+
+    @Test
+    fun listDoesNotNeedABodyAndABadMetaIsVisible() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val dir = unsentAccountDir(root, "acct-1")
+            dir.mkdirs()
+            File(dir, "old.meta").writeText("unsent\nSent\nx@y\n", Charsets.UTF_8)
+            File(dir, "sub.meta").writeText("uncertain via=acct-2\nSent\nsubject:Hello\na@b\n", Charsets.UTF_8)
+            File(dir, "bad.meta").writeText("x", Charsets.UTF_8)
+            val rows = readCopies(root, "acct-1").associateBy { it.id }
+            assertEquals(setOf("old", "sub", "bad"), rows.keys)
+            assertFalse(File(dir, "old.rfc822").isFile)
+            assertFalse(File(dir, "sub.rfc822").isFile)
+            val old = rows.getValue("old")
+            assertEquals(null, old.subject)
+            assertEquals(null, old.error)
+            assertEquals("Sent", old.mailbox)
+            assertEquals(listOf("x@y"), old.recipients)
+            val sub = rows.getValue("sub")
+            assertEquals("Hello", sub.subject)
+            assertEquals(listOf("a@b"), sub.recipients)
+            assertTrue(sub.uncertain)
+            assertEquals("acct-2", sub.via)
+            assertEquals("bad meta", rows.getValue("bad").error)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun src(root: File, name: String): File {
+        root.mkdirs()
+        return File(root, "$name.src").also { it.writeBytes(name.toByteArray()) }
     }
 }
