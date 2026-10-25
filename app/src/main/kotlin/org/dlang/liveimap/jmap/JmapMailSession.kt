@@ -1,8 +1,18 @@
 package org.dlang.liveimap.jmap
 
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,7 +74,126 @@ class JmapMailSession(
         certConfirmer = confirm
     }
 
-    private val lock = Mutex()
+    private class SessionCall(
+        val block: suspend () -> Any?,
+        val result: CompletableDeferred<Any?>,
+    )
+
+    private class SessionSlot(
+        val commands: Channel<SessionCall>,
+        val scope: CoroutineScope,
+    ) {
+        val current = AtomicReference<SessionCall?>(null)
+    }
+
+    private class OnSession(val owner: JmapMailSession) : AbstractCoroutineContextElement(OnSession) {
+        companion object Key : CoroutineContext.Key<OnSession>
+    }
+
+    private val commandSlot = AtomicReference<SessionSlot?>(null)
+    @Volatile private var commandsClosed = false
+
+    private fun failClosed(call: SessionCall) {
+        call.result.completeExceptionally(CancellationException("session closed"))
+    }
+
+    private fun drainClosed(slot: SessionSlot) {
+        while (true) {
+            val extra = slot.commands.tryReceive().getOrNull() ?: break
+            failClosed(extra)
+        }
+    }
+
+    private fun retireSlot(slot: SessionSlot) {
+        slot.scope.cancel()
+        slot.commands.close()
+    }
+
+    // The consumer starts only after this slot is still the one compareAndSet installed.
+    private fun ensureSlot(): SessionSlot? {
+        while (true) {
+            if (commandsClosed) return null
+            commandSlot.get()?.let { return it }
+            val slot = SessionSlot(
+                Channel(Channel.UNLIMITED),
+                CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            )
+            if (!commandSlot.compareAndSet(null, slot)) {
+                retireSlot(slot)
+                continue
+            }
+            if (commandSlot.get() !== slot || commandsClosed) {
+                if (commandSlot.get() === slot) commandSlot.compareAndSet(slot, null)
+                retireSlot(slot)
+                if (commandsClosed) return null
+                continue
+            }
+            slot.scope.launch { consumeSlot(slot) }
+            return slot
+        }
+    }
+
+    private suspend fun consumeSlot(slot: SessionSlot) {
+        try {
+            for (call in slot.commands) {
+                if (commandSlot.get() !== slot) {
+                    failClosed(call)
+                    drainClosed(slot)
+                    break
+                }
+                slot.current.set(call)
+                if (commandSlot.get() !== slot) {
+                    if (slot.current.compareAndSet(call, null)) failClosed(call)
+                    drainClosed(slot)
+                    break
+                }
+                try {
+                    val value = withContext(OnSession(this@JmapMailSession)) { call.block() }
+                    call.result.complete(value)
+                } catch (error: Throwable) {
+                    call.result.completeExceptionally(error)
+                    if (commandSlot.get() !== slot) {
+                        drainClosed(slot)
+                        break
+                    }
+                } finally {
+                    slot.current.compareAndSet(call, null)
+                }
+            }
+        } finally {
+            drainClosed(slot)
+        }
+    }
+
+    /** Drops the command slot. Queued and in-flight waiters fail and are not parked. */
+    private fun retireCommands() {
+        commandsClosed = true
+        val slot = commandSlot.getAndSet(null) ?: return
+        slot.current.getAndSet(null)?.let { failClosed(it) }
+        slot.commands.close()
+        drainClosed(slot)
+        slot.scope.cancel()
+    }
+
+    private suspend fun <T> onSession(block: suspend () -> T): T {
+        if (coroutineContext[OnSession]?.owner === this) return block()
+        if (commandsClosed) throw CancellationException("session closed")
+        val result = CompletableDeferred<Any?>()
+        val call = SessionCall({ block() }, result)
+        val slot = ensureSlot()
+        if (slot == null) {
+            failClosed(call)
+        } else {
+            try {
+                slot.commands.send(call)
+            } catch (_: ClosedSendChannelException) {
+                failClosed(call)
+            }
+        }
+        @Suppress("UNCHECKED_CAST")
+        return result.await() as T
+    }
+
     private var account: AccountSettings? = null
     /** Android account id from [org.dlang.liveimap.accounts.AccountTarget] at [open]; blank allows https only. */
     internal var accountKey = ""
@@ -122,9 +251,9 @@ class JmapMailSession(
 
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
 
-    override suspend fun open(account: AccountSettings): OpenResult = lock.withLock {
+    override suspend fun open(account: AccountSettings): OpenResult = onSession {
         val key = account.preservedSecurityKey()
-        if (key != null) return@withLock OpenResult.Failed("account settings need attention: $key")
+        if (key != null) return@onSession OpenResult.Failed("account settings need attention: $key")
         val previousKey = accountKey
         var connected = false
         try {
@@ -149,8 +278,8 @@ class JmapMailSession(
                     throw JmapFailure(again.text)
                 }
             }
-            val mail = offer as? JmapOffer.Mail ?: return@withLock OpenResult.Failed("server offers no JMAP mail")
-            if (mail.session.primaryMailAccountId.isNullOrBlank()) return@withLock OpenResult.Failed("jmap account id is empty")
+            val mail = offer as? JmapOffer.Mail ?: return@onSession OpenResult.Failed("server offers no JMAP mail")
+            if (mail.session.primaryMailAccountId.isNullOrBlank()) return@onSession OpenResult.Failed("jmap account id is empty")
             this.account = trusted
             session = mail.session
             pin = trusted.jmapCertPin
@@ -170,7 +299,7 @@ class JmapMailSession(
     override suspend fun namespaces(): List<Namespace> = listOf(Namespace("", DELIMITER, NamespaceKind.Personal))
 
     override suspend fun listLevel(prefix: String, parentMailbox: String?, unreadCounts: Boolean): List<FolderEntry> =
-        lock.withLock { levelLocked(parentMailbox, unreadCounts) }
+        onSession { levelLocked(parentMailbox, unreadCounts) }
 
     /**
      * A session that never listed (a watched-folder session, a sending rule) learns a path's id by listing the
@@ -213,7 +342,7 @@ class JmapMailSession(
             }
     }
 
-    override suspend fun select(mailbox: String): SelectResult = lock.withLock {
+    override suspend fun select(mailbox: String): SelectResult = onSession {
         ensureListedLocked(mailbox)
         val id = idOfLocked(mailbox)
         val total = call(mailboxGetRequest(accountId(), id)) { root -> mailboxTotal(root, id) }
@@ -224,10 +353,10 @@ class JmapMailSession(
     }
 
     override suspend fun unselect() {
-        lock.withLock { selectedPath = null }
+        onSession { selectedPath = null }
     }
 
-    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = lock.withLock {
+    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = onSession {
         val id = idOfLocked(request.mailbox)
         numberExistingLocked(id)
         val table = uids.getOrPut(id) { Uids() }
@@ -241,7 +370,7 @@ class JmapMailSession(
             }
             IndexMode.ByUid -> {
                 val wanted = request.uids.mapNotNull { table.byUid[it] }
-                if (wanted.isEmpty()) return@withLock emptyList()
+                if (wanted.isEmpty()) return@onSession emptyList()
                 emailGetRequest(accountId(), wanted)
             }
         }
@@ -249,7 +378,7 @@ class JmapMailSession(
     }
 
     override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) {
-        lock.withLock {
+        onSession {
             val (path, table) = selectedTable()
             val patch = keywordPatch(add, remove)
             val emailIds = uids.map { table.byUid[it] ?: throw MailFailure("unknown message in $path") }
@@ -262,7 +391,7 @@ class JmapMailSession(
     }
 
     override suspend fun uidExpunge(uids: List<Long>) {
-        lock.withLock {
+        onSession {
             val (path, table) = selectedTable()
             val emailIds = uids.map { table.byUid[it] ?: throw MailFailure("unknown message in $path") }
             val body = """{"using":$USING,"methodCalls":[["Email/set",{"accountId":${q(accountId())},"destroy":${arr(emailIds)}},"0"]]}"""
@@ -272,7 +401,7 @@ class JmapMailSession(
     }
 
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) {
-        lock.withLock {
+        onSession {
             val (path, table) = selectedTable()
             val from = idOfLocked(path)
             ensureListedLocked(targetMailbox)
@@ -283,7 +412,7 @@ class JmapMailSession(
     }
 
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String) {
-        lock.withLock {
+        onSession {
             val (path, table) = selectedTable()
             ensureListedLocked(targetMailbox)
             val to = idOfLocked(targetMailbox)
@@ -293,7 +422,7 @@ class JmapMailSession(
     }
 
     override suspend fun selectedExists(): Int {
-        val path = lock.withLock { selectedPath } ?: return 0
+        val path = onSession { selectedPath } ?: return 0
         return select(path).exists
     }
 
@@ -314,7 +443,7 @@ class JmapMailSession(
         return searchFilter(filter)
     }
 
-    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = lock.withLock {
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = onSession {
         val (path, table) = selectedTable()
         val property = when (key) {
             SortKey.Arrival -> "receivedAt"
@@ -331,14 +460,14 @@ class JmapMailSession(
     }
 
     /** Threads by JMAP threadId: one node per thread, oldest message as its head, the rest as its replies. */
-    override suspend fun thread(key: SortKey): ThreadNode = lock.withLock {
+    override suspend fun thread(key: SortKey): ThreadNode = onSession {
         val (path, table) = selectedTable()
         val mailboxId = idOfLocked(path)
         val hits = pagedHits(table, mailboxId, """{"inMailbox":${q(mailboxId)}}""", """[{"property":"receivedAt","isAscending":true}]""", threads = true)
         threadNodes(hits)
     }
 
-    override suspend fun fetchStructure(uid: Long): MimePart = lock.withLock {
+    override suspend fun fetchStructure(uid: Long): MimePart = onSession {
         val id = emailIdLocked(uid)
         val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["bodyStructure"],"bodyProperties":["partId","blobId","type","charset","disposition","name","size","subParts"]},"0"]]}"""
         val structure = call(body) { root -> firstEmail(root)["bodyStructure"] as? Json.Obj ?: throw MailFailure("jmap message has no structure") }
@@ -356,24 +485,24 @@ class JmapMailSession(
         tree
     }
 
-    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = lock.withLock {
+    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = onSession {
         if (offset < 0 || length < 0) throw MailFailure("part range is invalid")
         val id = emailIdLocked(uid)
         if (section.equals("HEADER", ignoreCase = true)) {
             val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["headers"]},"0"]]}"""
             val bytes = call(body) { root -> headerBlock(firstEmail(root)) }
-            return@withLock slice(bytes, offset, length)
+            return@onSession slice(bytes, offset, length)
         }
         val part = parts[id]?.get(section) ?: throw MailFailure("part $section is not known; read the structure first")
         // Length 0 is the rest of the section, so a short cache is not enough.
         val needEnd = if (length == 0) Long.MAX_VALUE else offset.toLong() + length.toLong()
         val cached = part.bytes
-        if (cached != null && (part.whole || part.prefixFinal || needEnd <= cached.size)) return@withLock slice(cached, offset, length)
+        if (cached != null && (part.whole || part.prefixFinal || needEnd <= cached.size)) return@onSession slice(cached, offset, length)
         val have = cached?.size ?: 0
         if (part.partId != null && part.type.startsWith("text/", ignoreCase = true)) {
             // The first text fetch asks for JmapMaxBody. isTruncated means this prefix is not the whole part.
             val cap = JmapMaxBody.toLong()
-            if (have.toLong() >= cap) return@withLock slice(cached ?: ByteArray(0), offset, length)
+            if (have.toLong() >= cap) return@onSession slice(cached ?: ByteArray(0), offset, length)
             val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["bodyValues"],"bodyProperties":["partId"],"fetchAllBodyValues":true,"maxBodyValueBytes":$cap},"0"]]}"""
             val (text, truncated) = call(body) { root -> bodyValue(firstEmail(root), part.partId) }
             val fetched = text.toByteArray(Charsets.UTF_8)
@@ -389,7 +518,7 @@ class JmapMailSession(
         slice(part.bytes ?: ByteArray(0), offset, length)
     }
 
-    override suspend fun fetchRfc822(uid: Long): ByteArray = lock.withLock {
+    override suspend fun fetchRfc822(uid: Long): ByteArray = onSession {
         val id = emailIdLocked(uid)
         val body = """{"using":$USING,"methodCalls":[["Email/get",{"accountId":${q(accountId())},"ids":[${q(id)}],"properties":["blobId"]},"0"]]}"""
         val blob = call(body) { root -> (firstEmail(root)["blobId"] as? Json.Str)?.text ?: throw MailFailure("jmap message has no blob") }
@@ -401,7 +530,7 @@ class JmapMailSession(
     }
 
     /** Upload the message as a blob, then Email/import it into [mailbox] with [flags] as keywords. */
-    override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long = lock.withLock {
+    override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long = onSession {
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
         ensureListedLocked(mailbox)
         val mailboxId = idOfLocked(mailbox)
@@ -417,7 +546,7 @@ class JmapMailSession(
     /** "Send over JMAP" (account.emailSubmission): Email/import into Sent, then EmailSubmission/set (jmapSend), as
      *  compose does. Without it a JMAP account sends through its SMTP server, which is not this session. Returns -1:
      *  EmailSubmission reports no DSN choice here. */
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = lock.withLock {
+    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = onSession {
         val a = account ?: throw MailFailure("not connected")
         if (!a.emailSubmission) throw MailFailure("a JMAP account sends through its SMTP server or EmailSubmission")
         if (rfc822.isEmpty()) throw MailFailure("message is empty")
@@ -430,17 +559,6 @@ class JmapMailSession(
     // ---- push (RFC 8620 §7.3 EventSource) ----
 
     private val watchScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
-    @Volatile private var watchJob: kotlinx.coroutines.Job? = null
-    /** F151: the current watch's own stream holder; an orphaned watch only ever touches its own. */
-    @Volatile private var watchRun: WatchRun? = null
-    /** Bumped by [suspendConnections] so a watch still in setup does not start the event source. */
-    @Volatile private var watchEpoch = 0
-    /** Latest [watch] target, published before setup RPCs so a suspend during setup can be restarted. */
-    @Volatile private var armedWatch: ArmedWatch? = null
-    /** Set only by [suspendConnections]. [stopWatch] and [close] clear it so a deliberate stop stays down. */
-    @Volatile private var restartWatchOnResume = false
-    /** Epoch, the armed watch, and the job are published together so a suspend cannot miss a launch. */
-    private val watchGate = Any()
 
     private class ArmedWatch(
         val mailbox: String,
@@ -460,6 +578,21 @@ class JmapMailSession(
         }
     }
 
+    /** Epoch, the armed watch, and the job are one snapshot so a suspend cannot miss a launch. */
+    private data class WatchFields(
+        /** Latest [watch] target, published before setup RPCs so a suspend during setup can be restarted. */
+        val armedWatch: ArmedWatch? = null,
+        /** Bumped by [suspendConnections] so a watch still in setup does not start the event source. */
+        val watchEpoch: Int = 0,
+        /** Set only by [suspendConnections]. [stopWatch] and [close] clear it so a deliberate stop stays down. */
+        val restartWatchOnResume: Boolean = false,
+        val watchJob: kotlinx.coroutines.Job? = null,
+        /** F151: the current watch's own stream holder; an orphaned watch only ever touches its own. */
+        val watchRun: WatchRun? = null,
+    )
+
+    private val watchFields = AtomicReference(WatchFields())
+
     /**
      * Watch [mailbox] through the server's event source: one request at a time with closeafter=state, so each
      * StateChange ends the response. A new Email state is turned into the IMAP-style changes the index expects:
@@ -472,14 +605,18 @@ class JmapMailSession(
 
     private suspend fun startWatch(mailbox: String, onChange: (MailboxChange) -> Unit, fromResume: Boolean) {
         val armed = ArmedWatch(mailbox, onChange)
-        val epoch = synchronized(watchGate) {
+        var epoch = 0
+        while (true) {
+            val cur = watchFields.get()
             // A stop or close that landed after resume sampled the flag must not be re-armed.
-            if (fromResume && !restartWatchOnResume) return
-            armedWatch = armed
-            watchEpoch
+            if (fromResume && !cur.restartWatchOnResume) return
+            if (watchFields.compareAndSet(cur, cur.copy(armedWatch = armed))) {
+                epoch = cur.watchEpoch
+                break
+            }
         }
         haltWatchJob()
-        val (mailboxId, startState, startTotal) = lock.withLock {
+        val (mailboxId, startState, startTotal) = onSession {
             ensureListedLocked(mailbox)
             val id = idOfLocked(mailbox)
             val state = call(emailStateRequest(accountId())) { root -> emailState(root) }
@@ -493,58 +630,67 @@ class JmapMailSession(
         val auth = authorization
         val streamPin = pin
         val accountId = accountId()
-        synchronized(watchGate) {
-            if (epoch != watchEpoch || armedWatch !== armed) return
-            val run = WatchRun()
-            watchRun = run
-            restartWatchOnResume = false
-            watchJob = watchScope.launch {
-                if (epoch != watchEpoch) return@launch
-                var state = startState
-                var total = startTotal
-                try {
-                    while (isActive && !run.stopped) {
-                        val events = readStream(run, url, host, auth, streamPin)
-                        if (!isActive) break
-                        val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
-                        if (next == state) continue
-                        val (flags, newTotal, newState) = lock.withLock { changesSince(state, mailboxId) }
-                        state = newState
-                        for (change in flags) onChange(change)
-                        if (newTotal > total) onChange(MailboxChange.Exists(newTotal))
-                        if (newTotal < total) onChange(MailboxChange.Expunge(newTotal))
-                        total = newTotal
-                    }
-                } catch (e: kotlinx.coroutines.CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    if (isActive) onChange(MailboxChange.WatchLost)
+        val run = WatchRun()
+        // Lazy so the snapshot publishes this job before the body runs. start() is after that publish.
+        val job = watchScope.launch(start = CoroutineStart.LAZY) {
+            if (epoch != watchFields.get().watchEpoch) return@launch
+            var state = startState
+            var total = startTotal
+            try {
+                while (isActive && !run.stopped) {
+                    val events = readStream(run, url, host, auth, streamPin)
+                    if (!isActive) break
+                    val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
+                    if (next == state) continue
+                    val (flags, newTotal, newState) = onSession { changesSince(state, mailboxId) }
+                    state = newState
+                    for (change in flags) onChange(change)
+                    if (newTotal > total) onChange(MailboxChange.Exists(newTotal))
+                    if (newTotal < total) onChange(MailboxChange.Expunge(newTotal))
+                    total = newTotal
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (isActive) onChange(MailboxChange.WatchLost)
             }
         }
+        while (true) {
+            val cur = watchFields.get()
+            if (epoch != cur.watchEpoch || cur.armedWatch !== armed) {
+                job.cancel()
+                return
+            }
+            if (watchFields.compareAndSet(cur, cur.copy(watchRun = run, restartWatchOnResume = false, watchJob = job))) break
+        }
+        job.start()
     }
 
-    /** Cancels the running source and joins it. Does not forget [armedWatch]; [stopWatch] does that. */
+    /** Cancels the running source and joins it. Does not forget [WatchFields.armedWatch]; [stopWatch] does that. */
     private suspend fun haltWatchJob() {
-        val taken = synchronized(watchGate) {
-            val job = watchJob ?: return
-            watchJob = null
-            val run = watchRun
-            watchRun = null
-            job to run
+        val job: kotlinx.coroutines.Job
+        val run: WatchRun?
+        while (true) {
+            val cur = watchFields.get()
+            val held = cur.watchJob ?: return
+            if (watchFields.compareAndSet(cur, cur.copy(watchJob = null, watchRun = null))) {
+                job = held
+                run = cur.watchRun
+                break
+            }
         }
-        taken.first.cancel()
-        taken.second?.stop() // unblocks a read that is waiting on the server
+        job.cancel()
+        run?.stop() // unblocks a read that is waiting on the server
         // A TLS read blocked in another thread (or a server that holds the response headers until the first
         // event, as Stalwart's eventsource did in the lab) is not always freed by close(); the read times out on
         // its own (readTimeout), so do not hold the caller hostage to it.
-        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { taken.first.join() }
+        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
     }
 
     override suspend fun stopWatch() {
-        synchronized(watchGate) {
-            armedWatch = null
-            restartWatchOnResume = false
+        while (true) {
+            val cur = watchFields.get()
+            if (watchFields.compareAndSet(cur, cur.copy(armedWatch = null, restartWatchOnResume = false))) break
         }
         haltWatchJob()
     }
@@ -552,27 +698,37 @@ class JmapMailSession(
     override suspend fun suspendConnections() {
         var job: kotlinx.coroutines.Job? = null
         var run: WatchRun? = null
-        synchronized(watchGate) {
-            watchEpoch++
-            if (armedWatch != null) restartWatchOnResume = true
-            job = watchJob
-            watchJob = null
-            run = watchRun
-            watchRun = null
+        while (true) {
+            val cur = watchFields.get()
+            val restart = if (cur.armedWatch != null) true else cur.restartWatchOnResume
+            val next = cur.copy(
+                watchEpoch = cur.watchEpoch + 1,
+                restartWatchOnResume = restart,
+                watchJob = null,
+                watchRun = null,
+            )
+            if (watchFields.compareAndSet(cur, next)) {
+                job = cur.watchJob
+                run = cur.watchRun
+                break
+            }
         }
         job?.cancel()
         run?.stop()
     }
 
     override suspend fun resume() {
-        val armed = synchronized(watchGate) {
-            if (!restartWatchOnResume) return
-            armedWatch ?: run {
-                restartWatchOnResume = false
-                return
+        while (true) {
+            val cur = watchFields.get()
+            if (!cur.restartWatchOnResume) return
+            val armed = cur.armedWatch
+            if (armed == null) {
+                if (watchFields.compareAndSet(cur, cur.copy(restartWatchOnResume = false))) return
+                continue
             }
+            startWatch(armed.mailbox, armed.onChange, fromResume = true)
+            return
         }
-        startWatch(armed.mailbox, armed.onChange, fromResume = true)
     }
 
     private fun readStream(run: WatchRun, url: String, host: String, auth: String, streamPin: String): List<JmapPushEvent> {
@@ -633,18 +789,20 @@ class JmapMailSession(
         return Triple(flags, total, state)
     }
 
-    override suspend fun knownTrash(): String = lock.withLock { roles.entries.firstOrNull { it.value == "trash" }?.key.orEmpty() }
+    override suspend fun knownTrash(): String = onSession { roles.entries.firstOrNull { it.value == "trash" }?.key.orEmpty() }
 
     override fun close() {
+        retireCommands()
         var job: kotlinx.coroutines.Job? = null
         var run: WatchRun? = null
-        synchronized(watchGate) {
-            armedWatch = null
-            restartWatchOnResume = false
-            job = watchJob
-            watchJob = null
-            run = watchRun
-            watchRun = null
+        while (true) {
+            val cur = watchFields.get()
+            val next = cur.copy(armedWatch = null, restartWatchOnResume = false, watchJob = null, watchRun = null)
+            if (watchFields.compareAndSet(cur, next)) {
+                job = cur.watchJob
+                run = cur.watchRun
+                break
+            }
         }
         job?.cancel()
         run?.stop()
@@ -654,7 +812,7 @@ class JmapMailSession(
         ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
     }
 
-    // ---- internals (call with [lock] held) ----
+    // ---- internals (call on the session command) ----
 
     private fun need(): JmapSession = session ?: throw MailFailure("not connected")
     private fun accountId(): String = need().primaryMailAccountId ?: throw MailFailure("jmap account id is empty")
@@ -684,7 +842,7 @@ class JmapMailSession(
         return path to uids.getOrPut(idOfLocked(path)) { Uids() }
     }
 
-    private suspend fun searchFilter(filter: String): List<Long> = lock.withLock {
+    private suspend fun searchFilter(filter: String): List<Long> = onSession {
         val (path, table) = selectedTable()
         val mailboxId = idOfLocked(path)
         val inMailbox = """{"operator":"AND","conditions":[{"inMailbox":${q(mailboxId)}},$filter]}"""
@@ -696,7 +854,7 @@ class JmapMailSession(
     /**
      * Once per mailbox: [Email/query] by receivedAt ascending, [MAX_WINDOW], calculateTotal, position on later pages,
      * and no [Email/get]. Ids are assigned in the order returned. A missing total stops on a short page. A stored
-     * mailbox total of 0 does not skip the query. Call with [lock] held, before [Uids.next] is reported.
+     * mailbox total of 0 does not skip the query. Call on the session command, before [Uids.next] is reported.
      */
     private suspend fun numberExistingLocked(mailboxId: String) {
         val table = uids.getOrPut(mailboxId) { Uids() }
