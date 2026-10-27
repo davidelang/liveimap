@@ -133,7 +133,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import org.dlang.liveimap.ui.compose.MimeDecodeException
@@ -846,10 +845,15 @@ private fun MessageReaderLoaded(
         bodyComplete = true
     }
 
-    suspend fun readPart(part: MimePart, markSeen: Boolean, cap: Int): Pair<ByteArray, Boolean>? {
+    suspend fun readPart(
+        part: MimePart,
+        markSeen: Boolean,
+        cap: Int,
+        onChunk: (ByteArray) -> Unit,
+    ): Boolean? {
         val token = pageGeneration
         if (token != bodyGeneration) return null
-        val out = ByteArrayOutputStream()
+        var wire = 0
         var offset = 0
         var marked = false
         suspend fun take(length: Int): ByteArray? {
@@ -871,37 +875,41 @@ private fun MessageReaderLoaded(
         }
         if (part.size > 0) {
             val limit = minOf(part.size, cap)
-            while (offset < limit && out.size() < cap) {
+            while (offset < limit && wire < cap) {
                 val length = nextWireCount(offset, limit, 4096, false)
                 if (length <= 0) break
                 val chunk = take(length) ?: return null
                 if (chunk.isEmpty()) break
-                val room = cap - out.size()
+                val room = cap - wire
                 if (chunk.size > room) {
-                    out.write(chunk, 0, room)
+                    onChunk(chunk.copyOf(room))
+                    wire += room
                     break
                 }
-                out.write(chunk)
+                onChunk(chunk)
+                wire += chunk.size
                 offset += chunk.size
             }
-            return out.toByteArray() to (part.size > cap)
+            return part.size > cap
         }
-        while (out.size() < cap) {
-            val length = minOf(4096, cap - out.size())
+        while (wire < cap) {
+            val length = minOf(4096, cap - wire)
             val chunk = take(length) ?: return null
             if (chunk.isEmpty()) break
-            val room = cap - out.size()
+            val room = cap - wire
             if (chunk.size > room) {
-                out.write(chunk, 0, room)
-                return out.toByteArray() to true
+                onChunk(chunk.copyOf(room))
+                wire += room
+                return true
             }
-            out.write(chunk)
+            onChunk(chunk)
+            wire += chunk.size
             offset += chunk.size
-            if (chunk.size < length) return out.toByteArray() to false
+            if (chunk.size < length) return false
         }
-        if (out.size() < cap) return out.toByteArray() to false
+        if (wire < cap) return false
         val more = try {
-            peekRef(part.section, out.size(), 1).isNotEmpty()
+            peekRef(part.section, wire, 1).isNotEmpty()
         } catch (error: CancellationException) {
             throw error
         } catch (error: MailFailure) {
@@ -910,7 +918,7 @@ private fun MessageReaderLoaded(
             true
         }
         if (token != bodyGeneration) return null
-        return out.toByteArray() to more
+        return more
     }
 
     suspend fun readSectionText(section: String): String {
@@ -971,27 +979,49 @@ private fun MessageReaderLoaded(
                     carry.pending = ByteArray(0)
                     carry.closeDecoder()
                     carry.clearText()
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
-                    if (token != bodyGeneration) return
+                    var truncated = html.size > RawViewCapBytes
+                    var wireRead = 0
                     val text: String
                     val note: String?
+                    var open: WireTextDecoder? = null
                     try {
                         if (truncated) {
                             val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            text = decoder.take(bytes)
+                            open = decoder
+                            val built = StringBuilder()
+                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
+                                built.append(decoder.take(chunk))
+                                wireRead += chunk.size
+                            }
+                            if (stopped == null || token != bodyGeneration) return
+                            text = built.toString()
                             note = decoder.note
-                            decoder.close()
                         } else {
-                            val decoded = decodePart(bytes, html.charset, html.encoding, account.unlabeledCharset)
-                            text = decoded.text
-                            note = decoded.note
+                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
+                            open = decoder
+                            val built = StringBuilder()
+                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
+                                built.append(decoder.take(chunk))
+                                wireRead += chunk.size
+                            }
+                            if (stopped == null || token != bodyGeneration) return
+                            if (stopped) {
+                                truncated = true
+                                text = built.toString()
+                                note = decoder.note
+                            } else {
+                                text = built.append(decoder.finish()).toString()
+                                note = decoder.note
+                            }
                         }
                     } catch (error: MimeDecodeException) {
                         if (token != bodyGeneration) return
                         showMissing(error.text)
                         return
+                    } finally {
+                        open?.close()
                     }
-                    bodyOffset = bytes.size
+                    bodyOffset = wireRead
                     charsetNote = note
                     bodyText = text
                     clearBodyLines()
@@ -1018,27 +1048,49 @@ private fun MessageReaderLoaded(
                     carry.pending = ByteArray(0)
                     carry.closeDecoder()
                     carry.clearText()
-                    val (bytes, truncated) = readPart(html, markSeen = !seenStored, RawViewCapBytes) ?: return
-                    if (token != bodyGeneration) return
+                    var truncated = html.size > RawViewCapBytes
+                    var wireRead = 0
                     val text: String
                     val note: String?
+                    var open: WireTextDecoder? = null
                     try {
                         if (truncated) {
                             val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            text = decoder.take(bytes)
+                            open = decoder
+                            val built = StringBuilder()
+                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
+                                built.append(decoder.take(chunk))
+                                wireRead += chunk.size
+                            }
+                            if (stopped == null || token != bodyGeneration) return
+                            text = built.toString()
                             note = decoder.note
-                            decoder.close()
                         } else {
-                            val decoded = decodePart(bytes, html.charset, html.encoding, account.unlabeledCharset)
-                            text = decoded.text
-                            note = decoded.note
+                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
+                            open = decoder
+                            val built = StringBuilder()
+                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
+                                built.append(decoder.take(chunk))
+                                wireRead += chunk.size
+                            }
+                            if (stopped == null || token != bodyGeneration) return
+                            if (stopped) {
+                                truncated = true
+                                text = built.toString()
+                                note = decoder.note
+                            } else {
+                                text = built.append(decoder.finish()).toString()
+                                note = decoder.note
+                            }
                         }
                     } catch (error: MimeDecodeException) {
                         if (token != bodyGeneration) return
                         showMissing(error.text)
                         return
+                    } finally {
+                        open?.close()
                     }
-                    bodyOffset = bytes.size
+                    bodyOffset = wireRead
                     charsetNote = note
                     bodyText = htmlAsText(text)
                     clearBodyLines()

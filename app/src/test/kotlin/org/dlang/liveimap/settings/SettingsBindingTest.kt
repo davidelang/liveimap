@@ -118,8 +118,8 @@ class SettingsBindingTest {
         assertTrue(html.contains("bodyTruncated = truncated"))
         assertTrue(text.contains("bodyTruncated = truncated"))
         val read = reader.substring(reader.indexOf("suspend fun readPart("), reader.indexOf("suspend fun readSectionText("))
-        assertTrue(read.contains("out.size() < cap"))
-        assertTrue(read.contains("cap - out.size()"))
+        assertTrue(read.contains("wire < cap"))
+        assertTrue(read.contains("cap - wire"))
         val rendered = reader.substring(
             reader.indexOf("absent == null && renderedHtml ->"),
             reader.indexOf("absent == null && (selectedView == BodyView.Headers"),
@@ -145,8 +145,6 @@ class SettingsBindingTest {
             assertTrue(truncated.contains(".take("))
             assertFalse(truncated.contains("decodePart("))
             assertFalse(truncated.contains("finish"))
-            val other = section.substring(section.indexOf("} else {", mark), section.indexOf("bodyTruncated = truncated"))
-            assertTrue(other.contains("decodePart("))
         }
         val request = reader.substring(reader.indexOf("fun requestView("), reader.indexOf("fun markAttachment("))
         val launch = request.indexOf("scope.launch")
