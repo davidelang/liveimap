@@ -3840,3 +3840,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - Sieve connect and read waits are settings.
 
 ## 2026-10-25 - Client sort order and the unlabeled charset are settings.
+
+## 2026-10-25 - App translations.

@@ -691,3 +691,42 @@ trivial, complex things are possible, and roles are built on the same rules.
 * Every dependency and native library is listed in
   `app/src/main/assets/licenses/NOTICES.txt`, which is regenerated whenever a
   dependency changes.
+
+## Translations
+
+* The en-US source stays the hand-edited `app/src/main/res/values/strings.xml`.
+  String ids are not generated.
+* Each shipped locale is a committed machine translation,
+  `app/src/main/i18n/<locale>.json`, one object per string: `key`, `source`
+  (the en-US text), and `text`. An optional `<locale>.override.json` replaces
+  `text` for the keys it names. The build never edits an override. The
+  override is what gets generated when its placeholders still match, even if
+  the en-US source has changed; the machine file must still record the new
+  source.
+* `generateAppI18n` checks those files and writes `values-<locale>/strings.xml`
+  under the build directory. That output is not hand-edited. The task does not
+  open a network connection and does not call a translator. `localeFilters` is
+  `en` plus these 87 qualifiers, so no other locale is packaged.
+* The check compares `source` to the en-US text after Android unescaping. It
+  fails when that text changed and a machine `source` was not updated, when a
+  key is missing or extra, when `source` is missing, when a placeholder
+  differs in a machine entry or an override, when a plural quantity required
+  for that locale is missing, or when a locale is missing from `localeFilters`.
+  The failure is the instruction for the next translation pass: it names the
+  key, the old and new en-US text, the locales, and the file.
+* Plural quantities are the keywords ICU `PluralRules` returns for that
+  locale, the same rules Android uses, including `cy`, `ga`, `mt`, `lb`,
+  `tg`, `ha`, `yo`, and `ig`. The check does not keep its own table.
+* The set is left to right only. Right-to-left, vertical, and bottom-to-top
+  locales are not included (`ar`, `fa`, `iw`, `ur`, and `en-rXC` are absent).
+  `mn` is included (Cyrillic, horizontal). CJK is included and is horizontal.
+  `supportsRtl` is left as it is. `pt` is Brazilian Portuguese, `pt-rPT` is
+  European Portuguese, and `in` is Indonesian. `b+sr+Latn` is Serbian in Latin
+  script. `cy`, `ga`, `lb`, `mt`, `tg`, `ha`, `yo`, and `ig` are in this set
+  even though AndroidX `core` 1.13.1 does not ship `values-*` for them.
+* European: `be bg bs ca cs cy da de el en-rAU en-rCA en-rGB en-rIN es es-rUS et eu fi fr fr-rCA ga gl hr hu is it lb lt lv mk mt nb nl pl pt pt-rPT ro ru sk sl sq`.
+  More European, Caucasus, and Central Asia: `b+sr+Latn sr sv uk hy ka az kk ky uz tr mn tg`.
+  Indic and South Asia: `as bn gu hi kn ml mr ne or pa si ta te`.
+  Southeast Asia: `in km lo ms my th tl vi`.
+  CJK: `ja ko zh-rCN zh-rHK zh-rTW`.
+  African: `af am sw ha yo ig zu`.

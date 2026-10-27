@@ -3,6 +3,97 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// en stays res/values/strings.xml. These 87 locales are the committed i18n set.
+val i18nLocales = listOf(
+    "be",
+    "bg",
+    "bs",
+    "ca",
+    "cs",
+    "cy",
+    "da",
+    "de",
+    "el",
+    "en-rAU",
+    "en-rCA",
+    "en-rGB",
+    "en-rIN",
+    "es",
+    "es-rUS",
+    "et",
+    "eu",
+    "fi",
+    "fr",
+    "fr-rCA",
+    "ga",
+    "gl",
+    "hr",
+    "hu",
+    "is",
+    "it",
+    "lb",
+    "lt",
+    "lv",
+    "mk",
+    "mt",
+    "nb",
+    "nl",
+    "pl",
+    "pt",
+    "pt-rPT",
+    "ro",
+    "ru",
+    "sk",
+    "sl",
+    "sq",
+    "b+sr+Latn",
+    "sr",
+    "sv",
+    "uk",
+    "hy",
+    "ka",
+    "az",
+    "kk",
+    "ky",
+    "uz",
+    "tr",
+    "mn",
+    "tg",
+    "as",
+    "bn",
+    "gu",
+    "hi",
+    "kn",
+    "ml",
+    "mr",
+    "ne",
+    "or",
+    "pa",
+    "si",
+    "ta",
+    "te",
+    "in",
+    "km",
+    "lo",
+    "ms",
+    "my",
+    "th",
+    "tl",
+    "vi",
+    "ja",
+    "ko",
+    "zh-rCN",
+    "zh-rHK",
+    "zh-rTW",
+    "af",
+    "am",
+    "sw",
+    "ha",
+    "yo",
+    "ig",
+    "zu"
+)
+
 android {
     namespace = "com.davidlang.liveimap"
     compileSdk = 36
@@ -51,7 +142,7 @@ android {
         }
     }
     androidResources {
-        localeFilters += listOf("en")
+        localeFilters += listOf("en") + i18nLocales
     }
     val androidUserHome = System.getenv("ANDROID_USER_HOME")
         ?: error("ANDROID_USER_HOME unset; run ./build_app (sets worktree .android-shared)")
@@ -520,5 +611,492 @@ androidComponents {
     onVariants { variant ->
         variant.sources.kotlin?.addGeneratedSourceDirectory(generateSettingsTree) { it.ktOut }
         variant.sources.res?.addGeneratedSourceDirectory(generateSettingsTree) { it.resOut }
+    }
+}
+
+// Checks app/src/main/i18n and writes values-<locale>/strings.xml. No network and no translator.
+private val i18nPython: String = """
+
+import json
+import re
+import sys
+import xml.etree.ElementTree as ET
+from collections import OrderedDict
+from pathlib import Path
+
+import icu
+
+TARGET = (
+    "be bg bs ca cs cy da de el en-rAU en-rCA en-rGB en-rIN es es-rUS et eu fi "
+    "fr fr-rCA ga gl hr hu is it lb lt lv mk mt nb nl pl pt pt-rPT ro ru sk sl sq "
+    "b+sr+Latn sr sv uk hy ka az kk ky uz tr mn tg "
+    "as bn gu hi kn ml mr ne or pa si ta te "
+    "in km lo ms my th tl vi "
+    "ja ko zh-rCN zh-rHK zh-rTW "
+    "af am sw ha yo ig zu"
+).split()
+
+Q_ORDER = ("zero", "one", "two", "few", "many", "other")
+PH_RE = re.compile(r"%%|%(?:\d+\$)?[#+ 0,\-]*\d*(?:\.\d+)?[a-zA-Z]|%")
+
+
+def android_unescape(text):
+    if text is None:
+        return ""
+    out = []
+    i = 0
+    simple = {"n": "\n", "t": "\t", "'": "'", '"': '"', "\\": "\\", "r": "\r"}
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt in simple:
+                out.append(simple[nxt])
+                i += 2
+                continue
+            if nxt == "u" and i + 5 < len(text):
+                hexv = text[i + 2 : i + 6]
+                try:
+                    out.append(chr(int(hexv, 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+            out.append(nxt)
+            i += 2
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def android_escape(text):
+    out = []
+    for ch in text:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "'":
+            out.append("\\'")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "&":
+            out.append("&amp;")
+        elif ch == "<":
+            out.append("&lt;")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def placeholders(text):
+    return sorted(PH_RE.findall(text))
+
+
+def language_tag(qual):
+    if qual == "b+sr+Latn":
+        return "sr-Latn"
+    if qual == "in":
+        return "id"
+    if "-r" in qual:
+        lang, region = qual.split("-r", 1)
+        return lang + "-" + region
+    return qual
+
+
+def plural_keywords(qual):
+    loc = icu.Locale.forLanguageTag(language_tag(qual))
+    rules = icu.PluralRules.forLocale(loc)
+    found = [kw for kw in rules.getKeywords() if kw]
+    return [q for q in Q_ORDER if q in found]
+
+
+def show(value):
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        ordered = OrderedDict()
+        for q in Q_ORDER:
+            if q in value:
+                ordered[q] = value[q]
+        for q in sorted(value):
+            if q not in ordered:
+                ordered[q] = value[q]
+        return json.dumps(ordered, ensure_ascii=False)
+    return str(value)
+
+
+def load_source(path):
+    root = ET.parse(path).getroot()
+    items = []
+    by_key = {}
+    for el in root:
+        name = el.attrib.get("name")
+        if el.tag == "string":
+            value = android_unescape(el.text)
+            items.append((name, value))
+            by_key[name] = value
+        elif el.tag == "plurals":
+            quant = OrderedDict()
+            for item in el:
+                quant[item.attrib.get("quantity")] = android_unescape(item.text)
+            items.append((name, quant))
+            by_key[name] = quant
+    return items, by_key
+
+
+def read_json(path, issues, locale):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        issues.append({
+            "key": locale or path.name,
+            "why": "missing",
+            "old": "",
+            "new": "",
+            "locale": locale or path.name,
+            "file": str(path),
+        })
+        issues[-1]["why"] = "unreadable: " + str(exc).splitlines()[0]
+        return None
+    if not isinstance(data, list):
+        issues.append({
+            "key": locale or path.name,
+            "why": "extra",
+            "old": "",
+            "new": "",
+            "locale": locale or path.name,
+            "file": rel_file(path),
+        })
+        return None
+    return data
+
+
+def rel_file(path):
+    path = Path(path)
+    parts = path.parts
+    if "i18n" in parts:
+        i = parts.index("i18n")
+        return "app/src/main/" + "/".join(parts[i:])
+    if path.name == "build.gradle.kts":
+        return "app/build.gradle.kts"
+    return str(path)
+
+
+def add(issues, key, why, old, new, locale, file):
+    issues.append({
+        "key": key,
+        "why": why,
+        "old": show(old) if not isinstance(old, str) else old,
+        "new": show(new) if not isinstance(new, str) else new,
+        "locale": locale,
+        "file": file,
+    })
+
+
+def as_text_map(value, plural):
+    if plural:
+        if isinstance(value, dict):
+            return value
+        return None
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def same_source(stored, current):
+    if isinstance(current, dict):
+        if not isinstance(stored, dict):
+            return False
+        if set(stored) != set(current):
+            return False
+        return all(stored[k] == current[k] for k in current)
+    return isinstance(stored, str) and stored == current
+
+
+def check_texts(issues, key, text, current, locale, file, plural, required, old):
+    if plural:
+        got = text if isinstance(text, dict) else {}
+        for quantity in required:
+            if quantity not in got or not isinstance(got.get(quantity), str):
+                add(issues, key, "missing plural quantity: " + quantity, old, current, locale, file)
+                continue
+            en_text = current[quantity] if quantity in current else current.get("other", "")
+            if placeholders(got[quantity]) != placeholders(en_text):
+                add(issues, key, "placeholder mismatch", old, current, locale, file)
+    else:
+        if not isinstance(text, str):
+            add(issues, key, "placeholder mismatch", old, current, locale, file)
+            return
+        if placeholders(text) != placeholders(current):
+            add(issues, key, "placeholder mismatch", old, current, locale, file)
+
+
+def entries_by_key(data, issues, locale, file):
+    found = {}
+    for entry in data:
+        if not isinstance(entry, dict) or not isinstance(entry.get("key"), str):
+            add(issues, locale, "extra", "", "", locale, file)
+            continue
+        key = entry["key"]
+        if key in found:
+            add(issues, key, "duplicate", "", "", locale, file)
+            continue
+        found[key] = entry
+    return found
+
+
+def check(strings_path, i18n_dir, locale_filters, target):
+    i18n_dir = Path(i18n_dir)
+    issues = []
+    items, by_key = load_source(strings_path)
+    filters = list(locale_filters)
+    target = list(target)
+    expected = ["en"] + [loc for loc in target if loc != "en"]
+    missing_filters = [loc for loc in expected if loc not in filters]
+    extra_filters = [loc for loc in filters if loc not in expected]
+    for loc in missing_filters:
+        add(issues, loc, "locale missing from localeFilters", "", "", loc, "app/build.gradle.kts")
+    for loc in extra_filters:
+        add(issues, loc, "extra", "", "", loc, "app/build.gradle.kts")
+    if len(filters) != len(set(filters)):
+        add(issues, "localeFilters", "duplicate", "", "", "en", "app/build.gradle.kts")
+
+    keywords = {loc: plural_keywords(loc) for loc in target}
+    machines = {}
+    overrides = {}
+    if not i18n_dir.is_dir():
+        add(issues, "i18n", "missing", "", "", "en", "app/src/main/i18n")
+        return issues, {}, 0
+    for path in sorted(i18n_dir.iterdir()):
+        if not path.is_file():
+            add(issues, path.name, "extra", "", "", path.name, rel_file(path))
+            continue
+        name = path.name
+        if name.endswith(".override.json"):
+            loc = name[: -len(".override.json")]
+            if loc not in target:
+                add(issues, loc, "extra", "", "", loc, rel_file(path))
+                continue
+            data = read_json(path, issues, loc)
+            if data is not None:
+                overrides[loc] = (path, data)
+        elif name.endswith(".json"):
+            loc = name[: -len(".json")]
+            if loc not in target:
+                add(issues, loc, "extra", "", "", loc, rel_file(path))
+                continue
+            data = read_json(path, issues, loc)
+            if data is not None:
+                machines[loc] = (path, data)
+        else:
+            add(issues, name, "extra", "", "", name, rel_file(path))
+
+    generated = {}
+    for loc in target:
+        file = "app/src/main/i18n/" + loc + ".json"
+        pair = machines.get(loc)
+        if pair is None:
+            for key, current in items:
+                add(issues, key, "missing", "", current, loc, file)
+            continue
+        path, data = pair
+        found = entries_by_key(data, issues, loc, file)
+        for key in found:
+            if key not in by_key:
+                stored = found[key].get("source", "")
+                add(issues, key, "extra", stored if isinstance(stored, (str, dict)) else "", "", loc, file)
+        override_file = "app/src/main/i18n/" + loc + ".override.json"
+        override_found = {}
+        if loc in overrides:
+            opath, odata = overrides[loc]
+            override_found = entries_by_key(odata, issues, loc, override_file)
+            for key in override_found:
+                if key not in by_key:
+                    add(issues, key, "extra", "", "", loc, override_file)
+        lines = ['<?xml version="1.0" encoding="utf-8"?>', "<resources>"]
+        required = keywords[loc]
+        expect = []
+        for key, current in items:
+            plural = isinstance(current, dict)
+            entry = found.get(key)
+            if entry is None:
+                add(issues, key, "missing", "", current, loc, file)
+                chosen = None
+                old = ""
+            else:
+                if "source" not in entry or entry["source"] is None:
+                    add(issues, key, "no source", "", current, loc, file)
+                    old = ""
+                else:
+                    old = entry["source"]
+                    if not same_source(old, current):
+                        add(issues, key, "changed", old, current, loc, file)
+                text = entry.get("text")
+                check_texts(issues, key, text, current, loc, file, plural, required, old)
+                chosen = text
+                if key in override_found:
+                    otext = override_found[key].get("text")
+                    check_texts(issues, key, otext, current, loc, override_file, plural, required, old)
+                    chosen = otext
+            if plural:
+                got = chosen if isinstance(chosen, dict) else {}
+                emitted = OrderedDict()
+                lines.append('    <plurals name="%s">' % key)
+                for quantity in required:
+                    value = got.get(quantity, "")
+                    if not isinstance(value, str):
+                        value = ""
+                    emitted[quantity] = value
+                    lines.append('        <item quantity="%s">%s</item>' % (quantity, android_escape(value)))
+                lines.append("    </plurals>")
+                expect.append((key, emitted))
+            else:
+                value = chosen if isinstance(chosen, str) else ""
+                lines.append('    <string name="%s">%s</string>' % (key, android_escape(value)))
+                expect.append((key, value))
+        lines.append("</resources>")
+        xml = "\n".join(lines) + "\n"
+        parsed = round_trip(xml)
+        if len(parsed) != len(expect):
+            add(issues, loc, "changed", "", "", loc, file)
+        else:
+            for (name, value), (want_name, want_value) in zip(parsed, expect):
+                if name != want_name or value != want_value:
+                    add(issues, want_name, "changed", show(value), show(want_value), loc, file)
+                    break
+        generated[loc] = xml
+    return issues, generated, len(items)
+
+
+def format_issues(issues):
+    groups = OrderedDict()
+    for item in issues:
+        key = (item["key"], item["why"], item["old"], item["new"])
+        bucket = groups.get(key)
+        if bucket is None:
+            bucket = {"locales": [], "files": []}
+            groups[key] = bucket
+        if item["locale"] not in bucket["locales"]:
+            bucket["locales"].append(item["locale"])
+        if item["file"] not in bucket["files"]:
+            bucket["files"].append(item["file"])
+    lines = ["Regenerate the listed Android string translations.", ""]
+    for (key, why, old, new), bucket in groups.items():
+        lines.append("key: " + key)
+        lines.append("why: " + why)
+        lines.append("old: " + old)
+        lines.append("new: " + new)
+        lines.append("locales: " + ", ".join(bucket["locales"]))
+        lines.append("files: " + ", ".join(bucket["files"]))
+        lines.append("")
+    lines.append("Rules:")
+    lines.append("- keep every placeholder and format argument exactly as in the en-US text")
+    lines.append("- set each source to the new en-US text, exactly")
+    lines.append("- delete extra entries")
+    lines.append("- change no other entry")
+    lines.append("- never edit an .override.json file")
+    return "\n".join(lines) + "\n"
+
+
+def round_trip(xml_text):
+    root = ET.fromstring(xml_text)
+    seen = []
+    for el in root:
+        if el.tag == "string":
+            seen.append((el.attrib["name"], android_unescape(el.text)))
+        else:
+            quant = OrderedDict()
+            for item in el:
+                quant[item.attrib["quantity"]] = android_unescape(item.text)
+            seen.append((el.attrib["name"], quant))
+    return seen
+
+
+def main(argv):
+    if len(argv) != 5:
+        print("usage: i18n_check.py strings.xml i18n_dir out_dir locale,filters", file=sys.stderr)
+        return 2
+    strings_path, i18n_dir, out_dir, filter_arg = argv[1:]
+    filters = [part for part in filter_arg.split(",") if part]
+    issues, generated, string_count = check(strings_path, i18n_dir, filters, TARGET)
+    if len(TARGET) != 87:
+        issues.append({
+            "key": "locales",
+            "why": "missing",
+            "old": "",
+            "new": "",
+            "locale": "en",
+            "file": "app/build.gradle.kts",
+        })
+    if issues:
+        sys.stdout.write(format_issues(issues))
+        return 1
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for loc, xml_text in generated.items():
+        folder = out / ("values-" + loc)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "strings.xml").write_text(xml_text, encoding="utf-8")
+    print("i18n ok: %d locales, %d strings" % (len(generated), string_count))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
+"""
+
+abstract class GenerateI18nTask : DefaultTask() {
+    @get:InputFile
+    abstract val stringsFile: RegularFileProperty
+
+    @get:InputDirectory
+    abstract val i18nDir: DirectoryProperty
+
+    @get:Input
+    abstract val python: Property<String>
+
+    @get:Input
+    abstract val localeFilters: ListProperty<String>
+
+    @get:OutputDirectory
+    abstract val resOut: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val script = temporaryDir.resolve("i18n_check.py")
+        script.writeText(python.get())
+        val proc = ProcessBuilder(
+            "python3",
+            script.absolutePath,
+            stringsFile.get().asFile.absolutePath,
+            i18nDir.get().asFile.absolutePath,
+            resOut.get().asFile.absolutePath,
+            localeFilters.get().joinToString(","),
+        ).redirectErrorStream(true).start()
+        val output = proc.inputStream.bufferedReader().readText()
+        val code = proc.waitFor()
+        if (code != 0) throw GradleException(output.ifBlank { "generateAppI18n failed" })
+        if (output.isNotBlank()) println(output.trim())
+    }
+}
+
+val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
+    stringsFile.set(file("src/main/res/values/strings.xml"))
+    i18nDir.set(file("src/main/i18n"))
+    python.set(i18nPython)
+    localeFilters.set(listOf("en") + i18nLocales)
+    resOut.set(layout.buildDirectory.dir("generated/i18n/res"))
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(generateAppI18n) }
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(generateAppI18n) { it.resOut }
     }
 }
