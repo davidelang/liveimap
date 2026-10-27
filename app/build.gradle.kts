@@ -134,11 +134,15 @@ android {
             dimension = "abi"
             ndk { abiFilters += "x86_64" }
         }
+        create("armv7") {
+            dimension = "abi"
+            ndk { abiFilters += "armeabi-v7a" }
+        }
         // Play bundle only (./build_app --play runs bundlePlayRelease): every shipped ABI in one
         // AAB; Play delivers per-device splits. Its debug variant is disabled below.
         create("play") {
             dimension = "abi"
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64", "armeabi-v7a") }
         }
     }
     androidResources {

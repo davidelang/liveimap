@@ -3846,3 +3846,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-26 - The reader body is decoded per chunk.
 
 ## 2026-10-26 - 32-bit ARM archives for libetpan and its dependencies.
+
+## 2026-10-26 - LiveIMAP ships armeabi-v7a, and unneeded hardware is optional. ABIs before: arm64-v8a and x86_64 (play: arm64-v8a, x86_64); after: arm64-v8a, x86_64, and armeabi-v7a (play: arm64-v8a, x86_64, armeabi-v7a). android.hardware.faketouch required=false.
