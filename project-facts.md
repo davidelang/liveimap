@@ -14,11 +14,14 @@
 ## Build and commit
 - **Standard build:** debug
 - **Test build:** instrumentation:x86_64Debug
-- Build: `./build_app --standard --test` (never `--play`: it needs David at a terminal)
+- Build: `./build_app --standard --test`. Agents never pass `--play`: only David runs the Play build, by hand.
+- Play-only code (`app/src/play`) compiles without signing: `./build_app --standard --test -- compilePlayReleaseKotlin`.
 - Commit: `./build_app --standard --test "<message>"|@<msg_file> <paths...>` (builds, then commits exactly the named paths and tags builds)
 
 ## Review after implement
-- Record HEAD before the executor starts. Each phase: `git diff` that phase's paths against that phase's observable, then commit and build green before the next phase. Before handoff, re-read the plan once.
+- Record HEAD before the executor starts. Phases are internal steps: `git diff` each phase's paths against its observable; no per-phase commit. Before handoff, re-read the plan once.
+- A plan lands as one commit at the end, once `./build_app --standard --test` is green, every test passes and the plan's checks hold. Landing never waits on a lab run, the Play build or a manual check.
+- Lab suites (`tools/test-servers/regress`) run after a plan lands, as the reviewer's regression run, never a coder land gate. A lab failure is fixed in a new plan.
 - A plan line `Review: diff` starts one reviewer. Prompt is the plan path and `<recorded>..HEAD`. Diff that range only. Check the plan's Critical Files and Acceptance lines. Reply in chat. Do not diff `master..<branch>`.
-- A deletion, a doc edit, or a pin bump omits `Review: diff`.
+- A plan that only deletes, edits docs or bumps a pin omits `Review: diff`. Any other plan keeps it, and the reviewer diffs the whole range, deletion phases included.
 - A reviewer `STATUS: FAIL` names a bug: the executor fixes that bug, then the reviewer runs again on the new range.
