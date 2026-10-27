@@ -2,7 +2,7 @@ project.config
 refresh-shell
 *.local
 
-sandbox/
+@@SANDBOX_PATH@@
 
 # --- third_party consumer (managed by apply-third-party-gitignore.sh) ---
 # third_party: ignore checkouts/local state; track tool + pin contract under each lib dir
@@ -18,10 +18,3 @@ third_party/*/src/
 third_party/*/status.local
 third_party/*/*.local
 # --- end third_party consumer ---
-
-# build caches (accidentally committed in b505ac40)
-/.gradle-home/
-/.gradle/
-/.android-shared/
-/app/build/
-/app/.cxx/
