@@ -14,3 +14,5 @@
 
 
 - release shrinking stays on; the keep check is `:app:checkArm64ReleaseKeeps`; measuring startup needs a device and is not a coder step.
+
+- [ ] Server settings autodiscovery (autoconfig, SRV, JMAP well-known) for guided setup; today setup prefills only the host from the email domain (sandbox/research/code-review-20261026-2250.md F483)
