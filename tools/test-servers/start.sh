@@ -48,14 +48,12 @@ fi
 
 python3 "$DIR/lab_ports.py" sync
 port_flags=$(python3 "$DIR/lab_ports.py" flags "$server")
-env_flags=$(python3 "$DIR/lab_ports.py" env "$server")
-seed_hostname=$(docker image inspect -f '{{index .Config.Labels "liveimap.hostname"}}' "$image")
 
 if docker container inspect "$name" >/dev/null 2>&1; then
   docker rm -f "$name" >/dev/null
 fi
 # shellcheck disable=SC2086
-docker create --name "$name" ${seed_hostname:+--hostname "$seed_hostname"} $port_flags $env_flags "$image" >/dev/null
+docker create --name "$name" $port_flags "$image" >/dev/null
 docker start "$name" >/dev/null
 python3 - "$name" "$port_flags" <<'PY'
 import json, subprocess, sys

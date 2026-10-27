@@ -248,7 +248,7 @@ close_build() {
   problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
   if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
   manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
-  docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" --change "LABEL liveimap.cert-sha256=$cert_sha" --change "LABEL liveimap.audit=$audit" "liveimap-build-$server" "liveimap-seed-$server"
+  docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" ${seed_hostname:+--change "ENV HOSTNAME=$seed_hostname"} --change "LABEL liveimap.cert-sha256=$cert_sha" --change "LABEL liveimap.audit=$audit" "liveimap-build-$server" "liveimap-seed-$server"
   if ! python3 "$DIR/seed_audit.py" image "$server"; then
     docker rmi "liveimap-seed-$server"  # a seed image that fails its audit is never left for the lab
     exit 1
@@ -999,6 +999,27 @@ tls.implicit = false
 user = "admin"
 secret = "${token}"
 EOF
+    # Same [http] url the entrypoint writes from STALWART_PUBLIC_URL. Empty LAB_HOST stops this image.
+    python3 - "$DIR" > "$work/stalwart-public-url" <<'PY' || exit 1
+import os, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+try:
+    import lab
+except SystemExit:
+    sys.stderr.write("stalwart-0155: LAB_HOST is empty in host.env\n")
+    sys.exit(1)
+if not lab.LAB_HOST:
+    sys.stderr.write("stalwart-0155: LAB_HOST is empty in host.env\n")
+    sys.exit(1)
+port = subprocess.check_output(
+    [sys.executable, os.path.join(sys.argv[1], "lab_ports.py"), "port", "https"],
+    text=True,
+).strip()
+sys.stdout.write("https://%s:%s" % (lab.LAB_HOST, port))
+PY
+    public_url=$(cat "$work/stalwart-public-url")
+    rm -f "$work/stalwart-public-url"
+    printf '\n[http]\nurl = "%s"\n' "'$public_url'" >> "$work/config.toml"
     umask 022
     chmod 600 "$work/config.toml"
   fi
@@ -2332,7 +2353,7 @@ docker stop "liveimap-build-$server"
 problem=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; sys.stdout.write(lab.publish_problem(sys.argv[2]))' "$DIR" "$server") || exit 1
 if [ -n "$problem" ]; then printf '%s\n' "$problem" >&2; exit 1; fi
 manifest=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import lab; print(lab.required_fixture_version())' "$DIR") || exit 1
-docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" --change "LABEL liveimap.cert-sha256=$cert_sha" --change "LABEL liveimap.audit=$audit" "liveimap-build-$server" "liveimap-seed-$server"
+docker commit --change "LABEL liveimap.seed-manifest=$manifest" --change "LABEL liveimap.hostname=${seed_hostname:-}" ${seed_hostname:+--change "ENV HOSTNAME=$seed_hostname"} --change "LABEL liveimap.cert-sha256=$cert_sha" --change "LABEL liveimap.audit=$audit" "liveimap-build-$server" "liveimap-seed-$server"
 if ! python3 "$DIR/seed_audit.py" image "$server"; then
   docker rmi "liveimap-seed-$server"  # a seed image that fails its audit is never left for the lab
   exit 1

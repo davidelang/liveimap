@@ -200,7 +200,7 @@ assert 'port_flags=$(python3 "$DIR/lab_ports.py" flags "$server")' in latest
 assert "one lab server at a time" in latest
 assert "pick_ports" not in latest and "draw_ports" not in latest and "replace_port_rows" not in latest
 assert "stalwartlabs/stalwart" not in latest
-assert "liveimap.hostname" in latest
+assert "liveimap.hostname" not in latest and "--hostname" not in latest
 
 # Follow-up edges 1-3. Text only; this does not run docker.
 up = open(os.path.join(HERE, "up.tsv"), encoding="utf-8").read()
@@ -1274,7 +1274,7 @@ assert "\tjmap\tsubmit\t" not in _kl and "\tjmap\tdelivered\t" not in _kl  # cyr
 import lab_ports
 assert lab_ports.env_flags("dovecot-245", {}) == []
 _start = open(os.path.join(HERE, "start.sh")).read()
-assert '$port_flags $env_flags "$image"' in _start
+assert 'docker create --name "$name" $port_flags "$image"' in _start
 print("full-regress fixes ok")
 
 
