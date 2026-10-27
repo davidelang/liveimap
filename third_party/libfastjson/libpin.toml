@@ -5,7 +5,7 @@ reproducible = false
 build_time = "minutes"
 requires_writable_src = true
 build = ["./build"]
-consumer_note = "libfastjson v1.2609.0 static archives for arm64-v8a and x86_64"
+consumer_note = "libfastjson v1.2609.0 static archives for arm64-v8a, armeabi-v7a, and x86_64"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libfastjson.a"
@@ -14,3 +14,8 @@ from = "src/android-prefix/arm64-v8a/lib/libfastjson.a"
 [[artifact]]
 path = "artifact/x86_64/libfastjson.a"
 from = "src/android-prefix/x86_64/lib/libfastjson.a"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libfastjson.a"
+from = "src/android-prefix/armeabi-v7a/lib/libfastjson.a"
+sha256 = "4f6d9b8b205b2e07b1b1404f4f2ca2809f9aab0d4cf6e4553bdcdc538d151671"

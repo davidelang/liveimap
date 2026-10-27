@@ -46,3 +46,28 @@ from = "src/out-libs/x86_64/libcrypto.a"
 [[artifact]]
 path = "artifact/x86_64/libsasl2.a"
 from = "src/out-libs/x86_64/libsasl2.a"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libetpan.a"
+from = "src/out-libs/armeabi-v7a/libetpan.a"
+sha256 = "e2c57aa9b17f29877b1487839a910428279fc957fd73fc0c07be61c1926ee24a"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libfastjson.a"
+from = "src/out-libs/armeabi-v7a/libfastjson.a"
+sha256 = "4f6d9b8b205b2e07b1b1404f4f2ca2809f9aab0d4cf6e4553bdcdc538d151671"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libssl.a"
+from = "src/out-libs/armeabi-v7a/libssl.a"
+sha256 = "f29db634538b3b0b5150a85687b8142048a359182c66fee9b16d4f7d44bfb428"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libcrypto.a"
+from = "src/out-libs/armeabi-v7a/libcrypto.a"
+sha256 = "f49f519b2e6165e4e91871326d88edafefc46f101058e9065a9a7af07cd94002"
+
+[[artifact]]
+path = "artifact/armeabi-v7a/libsasl2.a"
+from = "src/out-libs/armeabi-v7a/libsasl2.a"
+sha256 = "4b7324496baf270488a947d4bae73deaf415717cd29327aa5df477c84e0d29a4"

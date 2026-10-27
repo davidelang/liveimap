@@ -14,7 +14,7 @@ if [[ ! -d "$SRC" ]]; then
   echo "no src — run: third_party/fetch-deps --no-bwrap libfastjson" >&2
   exit 1
 fi
-if [[ ! -x "$BIN/aarch64-linux-android23-clang" || ! -x "$BIN/x86_64-linux-android23-clang" ]]; then
+if [[ ! -x "$BIN/aarch64-linux-android23-clang" || ! -x "$BIN/armv7a-linux-androideabi23-clang" || ! -x "$BIN/x86_64-linux-android23-clang" ]]; then
   echo "NDK clang not found under $BIN" >&2
   exit 1
 fi
@@ -81,5 +81,6 @@ build_one() {
 
 export PATH="$BIN:$PATH"
 build_one arm64-v8a aarch64-linux-android "$BIN/aarch64-linux-android23-clang"
+build_one armeabi-v7a arm-linux-androideabi "$BIN/armv7a-linux-androideabi23-clang"
 build_one x86_64 x86_64-linux-android "$BIN/x86_64-linux-android23-clang"
 echo "libfastjson android prefixes ready"

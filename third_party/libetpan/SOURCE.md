@@ -1,7 +1,7 @@
 # libetpan pin
 
 - **Upstream:** fork `davidelang/libetpan` at the `git_sha` in `libpin.toml`. Produces Android static archives
-  (arm64-v8a, x86_64): libetpan, OpenSSL 3, Cyrus SASL 2.1.28, libfastjson (separate pin), iconv.
+  (arm64-v8a, armeabi-v7a, x86_64): libetpan, OpenSSL 3, Cyrus SASL 2.1.28, libfastjson (separate pin), iconv.
 - **Profile:** patch + options. `patches/` holds code diffs only (candidates for upstream PRs); compile flags live
   in `scripts/build-flags.sh`, sourced by `build`.
 
@@ -21,7 +21,7 @@
 ## Build scripts (`scripts/android-build.patch`)
 
 Applied by `build` to the upstream `build-android/` scripts (not library code, so not in `patches/`): ABIs
-arm64-v8a and x86_64, OpenSSL 3.5.9, autogen/configure with libfastjson, `set -eu` instead of `sh -x`. Split
+arm64-v8a, armeabi-v7a, and x86_64, OpenSSL 3.5.9, autogen/configure with libfastjson, `set -eu` instead of `sh -x`. Split
 from the former `android-full-features.patch`; the build output is unchanged (compared object by object).
 
 ## Build flags (`scripts/build-flags.sh`)

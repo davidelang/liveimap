@@ -3844,3 +3844,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-25 - App translations.
 
 ## 2026-10-26 - The reader body is decoded per chunk.
+
+## 2026-10-26 - 32-bit ARM archives for libetpan and its dependencies.

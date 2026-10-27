@@ -13,7 +13,7 @@ if [[ ! -d "$SRC/build-android" ]]; then
   exit 1
 fi
 
-for abi in arm64-v8a x86_64; do
+for abi in arm64-v8a armeabi-v7a x86_64; do
   archive="$FJ_ROOT/$abi/lib/libfastjson.a"
   header="$FJ_ROOT/$abi/include/libfastjson/json.h"
   if [[ ! -f "$archive" ]]; then
@@ -69,7 +69,7 @@ copy_from_zip() {
   rm -rf "$tmp"
 }
 
-for abi in arm64-v8a x86_64; do
+for abi in arm64-v8a armeabi-v7a x86_64; do
   out="$SRC/out-libs/$abi"
   mkdir -p "$out"
   cp -f "$etpan_libs/$abi/libetpan.a" "$out/libetpan.a"

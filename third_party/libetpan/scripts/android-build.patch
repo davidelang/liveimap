@@ -48,7 +48,7 @@ diff --git a/build-android/build.sh b/build-android/build.sh
  # Start building.
  ANDROID_PLATFORM=android-23
 -archs="arm64-v8a"	archs="arm64-v8a armeabi-v7a x86 x86_64"
-+archs="arm64-v8a x86_64"
++archs="arm64-v8a armeabi-v7a x86_64"
 +JSON_C_PATH="${JSON_C_PATH:-}"
  for arch in $archs ; do
    TARGET_ARCH_ABI=$arch
@@ -120,7 +120,7 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
  if test ! -f packages/openssl-$version.tar.gz; then
    mkdir -p packages
    cd packages
-@@ -20,128 +29,81 @@
+@@ -20,128 +29,82 @@
    cd ..
  fi
  
@@ -150,7 +150,7 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
 +# Never link them into the NDK itself.
 +WRAP=$current_dir/src/toolchain-wrap
 +mkdir -p "$WRAP"
-+for triple in aarch64-linux-android x86_64-linux-android ; do
++for triple in aarch64-linux-android arm-linux-androideabi x86_64-linux-android ; do
 +  ln -sfn "$TOOLCHAIN/bin/llvm-ar" "$WRAP/$triple-ar"
 +  ln -sfn "$TOOLCHAIN/bin/llvm-ranlib" "$WRAP/$triple-ranlib"
 +  ln -sfn "$TOOLCHAIN/bin/${triple}${MIN_SDK_VERSION}-clang" "$WRAP/$triple-clang"
@@ -298,8 +298,9 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
 +  make clean
 +}
 +
-+# arm64 and x86_64 only.
++# arm64, armeabi-v7a, and x86_64.
 +build_one aarch64-linux-android arm64-v8a android-arm64
++build_one arm-linux-androideabi armeabi-v7a android-arm
 +build_one x86_64-linux-android x86_64 android-x86_64
  
  cd ".."
@@ -307,7 +308,7 @@ diff --git a/build-android/dependencies/openssl/build.sh b/build-android/depende
  cd ".."
 -cp "./src/$package_name-$build_version.zip" `pwd`
 +cp "./src/$package_name-$build_version.zip" "$current_dir/"
-+for abi in arm64-v8a x86_64 ; do
++for abi in arm64-v8a armeabi-v7a x86_64 ; do
 +  unzip -l "$current_dir/$package_name-$build_version.zip" | grep -q "libs/$abi/libssl.a"
 +  unzip -l "$current_dir/$package_name-$build_version.zip" | grep -q "libs/$abi/libcrypto.a"
 +done
