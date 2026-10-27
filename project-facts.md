@@ -4,7 +4,7 @@
 - Sandbox: `@@SANDBOX_PATH@@/` (absolute: @@ORCH_ROOT@@/@@SANDBOX_PATH@@/)
 - Repository: `@@ORCH_ROOT@@/master`, branch `master`. `@@ORCH_ROOT@@` is not a git checkout.
 - git_home: @@GIT_HOME@@
-- Launch: `./run-grok-*` via `.grok/lib/grok-launch-common.sh` + `agent-landlock`
+- Launch: `./run-grok-*` via `.grok/lib/grok-launch-common.sh` + a Grok sandbox profile (`extends=read-only`, generated `.grok/sandbox.toml`). Cursor launchers still use `agent-landlock`. Planner writes `work-history/` (root `TODO.md` and `ENGINEERING_LOG.md` are symlinks).
 - Groups: source `./env` (refresh-shell setuid)
 - `./build_app` compiles and moves `builds`. `./deploy` installs the per-ABI APK (the APKs the last `./build_app` recorded from Gradle's output-metadata.json; `--test`: the debug x86_64 app plus its androidTest APK) and moves `deployed`. Agents do not deploy.
 - Package `com.davidlang.liveimap`.

@@ -18,3 +18,7 @@ third_party/*/src/
 third_party/*/status.local
 third_party/*/*.local
 # --- end third_party consumer ---
+# Generated at launch by .grok/lib/grok-launch-common.sh (role sandbox profile).
+.grok/sandbox.toml
+.grok/sandbox.toml.lock
+.grok/sandbox.toml.tmp

@@ -1,0 +1,3854 @@
+# ENGINEERING_LOG
+
+
+## 2026-08-21 - clone-orchestration-project execution start
+
+- Approved plan: sandbox/plans/clone-orchestration-project-20260821-1819-plan.md
+- Work: add ./clone-orchestration-project to clone this example into git_home/<name> with orchestration + master worktrees
+- First action per STANDARD BLOCK; host has no ./build_app (phase gate: bash -n + forensic read)
+
+## 2026-08-21 - clone-orchestration-project landed (staged)
+
+- Added ./clone-orchestration-project (discovery, clone --no-hardlinks as primary, orchestration+master worktrees, fix-perms --skip-sudoers)
+- README.md + project-facts.md document the helper
+- Verified: bash -n; --dry-run SomeName from this tree, git_home, and --source (same source/dest)
+- git commit blocked: ai-orchestrator has no user.name/email (changes remain staged)
+
+## 2026-08-21 - clone-seed-worktree-config execution start
+
+- Approved plan: sandbox/plans/clone-seed-worktree-config-20260821-1840-plan.md
+- Work: seed dest+master project.config via ve_seed_worktree_project_config; dest-root DAC 2775; --repair; repair torque-ford-gas-tracking
+- First action per STANDARD BLOCK; host has no ./build_app
+
+## 2026-08-21 - clone-seed-worktree-config script landed; live --repair blocked
+
+- clone-orchestration-project now seeds dest+master project.config via ve_seed_worktree_project_config, dest-root chown 2775, and --repair
+- Live --repair of torque-ford-gas-tracking failed in this session: dest is 770 dlang:dlang and sudo is blocked (Landlock no-new-privileges)
+- Human: run as dlang ./clone-orchestration-project --repair /home/dlang/git/torque-ford-gas-tracking
+
+## 2026-08-21 - clone-landlock-exec-dac execution start
+
+- Approved plan: sandbox/plans/clone-landlock-exec-dac-20260821-1901-plan.md
+- Work: fix-perms lists agent-landlock+env; clone do_fix_perms uses this tree fix-perms with explicit DEST and DEST/master; force landlock 775
+- First action per STANDARD BLOCK; host has no ./build_app
+
+## 2026-08-21 - clone-landlock-exec-dac landed
+
+- fix-perms: agent-landlock and env in executable-scripts list (2775/775 o+x)
+- clone-orchestration-project: this-tree fix-perms --skip-sudoers DEST and DEST/master; force landlock 775
+- Live dest not repaired from this session (sudo/Landlock nnp). Human: --repair torque-ford-gas-tracking as dlang
+
+## 2026-09-30 - app shell and contracts execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/app-shell-and-contracts-20260930-1403-plan.md
+- Work: Android app shell, ./build_app gateway, frozen Kotlin contracts, persisted settings, mail screen stubs
+- First action per STANDARD BLOCK; commits stay on master
+
+## 2026-09-30 - app shell phase 1 blocked before compile
+
+- ./build_app committed phase 1 (4ca23cd) then refused uncommitted tracked dirt before Gradle
+- Dirt left unstaged: AGENT_CONTEXT.md, project-facts.md, sandbox/research/plan-style-guide.md
+- No APK and no builds tag. Phases 2 and 3 not started. Plan status BLOCKED — needs replan
+
+## 2026-09-30 - rewrite-untrack-sandbox blocked before rewrite
+
+- Plan: sandbox/plans/rewrite-untrack-sandbox-20260930-1534-plan.md
+- Status set to BLOCKED — needs replan. No stash, no backup ref, no mirror, no filter-repo, no reset, no push.
+- Phase 2 `git log --all --full-history -- sandbox/` and phase 3 `git rev-list --all --objects` cannot succeed while `origin/master` stays `a15f423077abdf0f9103263e425c0b73db01adaf`. That commit adds `sandbox/research/plan-style-guide.md`, and `--all` walks `refs/remotes/origin/master`.
+
+## 2026-09-30 - finish app shell contracts execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/finish-app-shell-contracts-20260930-1723-plan.md
+- Work: finish settings persistence, the MailSession contract, and stub screens on efa08fc
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-09-30 - settings form password field compile fix
+
+- SettingsScreen passed a local function after a named argument; kotlinc rejected it as Unit
+- Password field now uses a trailing lambda that calls persistPassword
+- Rebuild of the settings phase after 1a8c886
+
+## 2026-09-30 - finish app shell contracts blocked on scaffold opt-in
+
+- compileDebugKotlin fails only at app/src/main/kotlin/org/dlang/liveimap/ui/LiveImapScaffold.kt:25
+- TopAppBar is ExperimentalMaterial3Api and that file has no OptIn
+- The file is already present and is not in this plan's Critical Files, so it was not edited
+- No builds tag. Phase 2 not started. Settings commits 1a8c886 and 3f38f5f are on master
+
+## 2026-09-30 - scaffold topappbar opt-in execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/scaffold-topappbar-optin-20260930-1801-plan.md
+- Work: add ExperimentalMaterial3Api opt-in on LiveImapScaffold so the settings screen compiles
+- Settings files from 1a8c886 and 3f38f5f stay unchanged
+- Kept the existing scaffold block note in ENGINEERING_LOG.md
+
+## 2026-09-30 - mail session contract execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/mail-session-contract-20260930-1801-plan.md
+- Work: add frozen MailSession types and DisconnectedMailSession; no screens, network, or native code
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 050b9be with builds tag
+
+## 2026-09-30 - stub mail screens execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/shell-stub-screens-20260930-1801-plan.md
+- Work: add FlagMarks, five stub screens, and NavHost routes
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 1393021 with builds tag
+
+## 2026-09-30 - Pin LibEtPan and libfastjson start
+
+- Plan: sandbox/plans/pin-libetpan-libfastjson-20260930-1414-plan.md
+- Status set to APPROVED. Phase 1 writes the pins, build scripts, and Android patch, then fetch-deps --no-bwrap so both src trees sit on the pinned shas. No app/ or ./build_app edits. Upstream checkouts are not committed.
+
+## 2026-09-30 - Pin phase 1: pins and Android patch
+
+- Wrote third_party/libfastjson and third_party/libetpan libpin.toml files, both build scripts, and patches/android-full-features.patch.
+- third_party/fetch-deps --no-bwrap libfastjson checked out c2329f89006600703711271c6c39fe5181286264.
+- third_party/fetch-deps --no-bwrap libetpan checked out 8c9d5e06e49feb4d4d834bd01cefe7ed77acd899 and applied the patch. Android.mk lists unselect.c. src trees are not committed.
+
+## 2026-09-30 - Pin phase 2: Android static archives
+
+- third_party/fetch-deps --no-bwrap build libfastjson and libetpan produced arm64-v8a and x86_64 archives.
+- file reports a current ar archive for each .a. nm on both libetpan.a files lists mailimap_unselect, a mailjmap_ symbol, and an fjson_ symbol. None of the archives is LIBETPAN_STUB.
+- Upstream /home/dlang/git/libetpan and /home/dlang/git/libfastjson were not committed. src trees are not in this commit.
+
+## 2026-09-30 - IMAP SMTP engine execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/imap-smtp-engine-20260930-1415-plan.md
+- Work: link LibEtPan into libliveimap.so, then LibetpanMailSession behind mailSession()
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD d3a392c with builds tag. Both ABI archive sets are present. No socket parser and no stand-in library.
+
+## 2026-09-30 - IMAP SMTP engine phase 1
+
+- Added app/src/main/cpp/CMakeLists.txt and liveimap_jni.cpp. CMake links libetpan.a, libsasl2.a, libssl.a, libcrypto.a, libfastjson.a, libiconv.a, then libz and libdl from third_party/libetpan/artifact for the ABI.
+- app/build.gradle.kts gains ndk abiFilters arm64-v8a and x86_64 and externalNativeBuild cmake 3.22.1. Dependencies are unchanged.
+- liveimap_jni.cpp exports Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen and the other JNI entry points. nativeUnselect calls mailimap_unselect. Connect is mailimap_socket_connect.
+- Host preflight linked both ABIs. llvm-nm shows mailimap_unselect and nativeOpen on each shared library.
+
+## 2026-09-30 - IMAP SMTP engine phase 2
+
+- LibetpanMailSession implements MailSession. open reads the keystore password and capabilityGate. A missing required token, including IDLE, returns OpenResult.Rejected and closes without LIST.
+- mailSession() returns LibetpanMailSession. DisconnectedMailSession.kt stays in the tree.
+- CapabilityGateTest uses a fake capability line that omits IDLE.
+- System.loadLibrary("liveimap") runs from the LibetpanMailSession companion init.
+
+## 2026-09-30 - folder list execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-list-20260930-1416-plan.md
+- Work: replace the folder stub with one server level; INBOX.sent-mail stays under INBOX; namespace labels stay the server prefix
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-09-30 - folder list phase 1
+
+- FolderListScreen keeps onOpenMailbox and lists one server level from FolderListModel
+- loadLevel and toggleExpanded call namespaces and listLevel only; expansion is saved on the account
+- INBOX.sent-mail stays a child of INBOX; other and shared labels stay the server prefix
+- FolderTreeTest covers that tree
+
+## 2026-09-30 - message index execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/message-index-20260930-1417-plan.md
+- Work: replace the index stub with the folder window, IndexModel, and IndexWindowTest
+- Arrival does not call sort; thread keeps server order; commands go through MailSession
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b02e466 with builds tag
+
+## 2026-09-30 - message index phase 1
+
+- MessageIndexScreen keeps its signature and now shows the folder window, swipe, and multi-select
+- IndexModel loadWindow and applyView: arrival uses ArrivalNewest or ArrivalOldest and does not call sort; thread keeps server order
+- IndexWindowTest: 18 tests, 0 failures. Compact sets includePreview false. Delete adds \Deleted and does not copy
+- Fake MailSession stays inside IndexWindowTest.kt. NavHost, MailSession, and settings files were not edited
+
+## 2026-09-30 - reader and composer execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-compose-20260930-1418-plan.md
+- Work: replace the reader and composer stubs; add Rfc822 buildPlain and buildBounce; keep both screen signatures
+- Compose sends text/plain; Bcc stays off the header block; bounce prepends Resent-* and keeps the original Message-ID
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6e3a380 with builds tag
+
+## 2026-09-30 - reader and composer phase 1
+
+- MessageReaderScreen keeps its signature, selects the mailbox, and peeks the preferred part in 4096-byte steps
+- HTML is a WebView with JavaScript off and network loads blocked; a missing part shows No text/plain part or No text/html part and does not fetch the raw message
+- The first successful peek stores \Seen when markSeenOnOpen is set; attachment bytes are fetched only after a tap, 65536 wire bytes at a time, on a multiple of 4
+- ComposeScreen keeps its signature, calls AddressBookPicker, and sends text/plain
+- Bcc stays off the header block; bounce prepends Resent-* and keeps the original Message-ID; a failed SMTP send does not append
+- NavHost, MailSession, the index, the folder screen, and settings files were not edited
+
+## 2026-09-30 - address book reader execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/addressbook-reader-20260930-1419-plan.md
+- Work: replace the address book stub; read the Alpine mailbox; do not write it and do not read Android contacts
+- AddressBookPicker keeps its signature; ComposeScreen, NavHost, and MailSession stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 4592947 with builds tag
+
+## 2026-09-30 - address book reader phase 1
+
+- AddressBookPicker keeps its signature, selects the configured mailbox, and does not call append, storeFlags, or smtpSend
+- An empty addressBookMailbox shows Address book mailbox is not set and does not select
+- The first message must contain x-pine-addrbook; the book is the last message body with no MIME decoding
+- parseAlpineBook keeps tab fields, space continuations, empty nicknames, and [plaintext] in the comment
+- AlpineBookTest: 9 tests, 0 failures. A headerless body is rejected and a normal mail folder is not parsed
+- Fake MailSession stays inside AlpineBookTest.kt. ComposeScreen, NavHost, and MailSession were not edited
+
+## 2026-10-01 - add deploy script execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/add-deploy-script-20261001-0631-plan.md
+- Work: add executable ./deploy that installs app-debug.apk and moves the deployed tag on success
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-01 - Cyrus 3 capability degradation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/cyrus3-capability-degradation-20261001-0705-plan.md
+- Work: keep the eight v1 names as a hard refusal; define one behavior for each v2 capability when it is absent
+- A missing v2 capability does not close the connection. Do not call UTF8=ACCEPT. Do not invent mailbox names
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 54e8322 with builds tag
+
+## 2026-10-01 - Cyrus 3 capability degradation phase 1
+
+- capabilityGate still rejects a line missing any of NAMESPACE, UIDPLUS, LITERAL+, CHILDREN, UNSELECT, SORT, THREAD=REFERENCES, IDLE
+- moveKind, listKind, resyncKind, searchKind, sortKind, previewKind, and fetchKind follow the degradation table. A missing v2 name does not reject the line
+- FolderEntry and FolderRow carry specialUse, messages, and unseen, defaulting to null. loadLevel copies those three fields through
+- No JNI in this phase
+
+## 2026-10-01 - Cyrus 3 capability degradation phase 1 blocked
+
+- Phase 1 commit 1e0655c is on master. ./build_app did not move the builds tag
+- CapabilityGateTest passed: missingIdleIsRejected, cyrus22Connects, moonLineConnects
+- testDebugUnitTest failed in DisconnectedSessionTest.openFailedTextIsNotConnected
+- mailSession() constructs LibetpanMailSession, and that class loads libliveimap.so. The host unit test has no liveimap library, so the test throws UnsatisfiedLinkError
+- That test file is not a Critical File. Phase 2 was not started
+
+## 2026-10-01 - JNI watch callback crash fix execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-jni-watch-callback-20261001-0732-plan.md
+- Work: drop internal from onNativeWatch so the JVM name stays onNativeWatch; look up the seven-arg FolderEntry constructor and pass null for specialUse, messages, and unseen
+- ensureJni returns false unless folderInit and onWatch are both non-null. Do not fill those three fields from the server
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 1e0655c with builds tag 54e8322
+
+## 2026-10-01 - JNI watch callback crash fix phase 1
+
+- onNativeWatch is a public instance method. The JVM name is onNativeWatch and the signature stays (IIJ[Ljava/lang/String;)V
+- FolderEntry <init> is (Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+- nativeListLevel passes null for specialUse, messages, and unseen and does not fill them from the server
+- ensureJni returns false unless folderInit and onWatch are both non-null
+
+## 2026-10-01 - Continue Cyrus 3 degradation
+
+- Start. Phase 1 makes openFailedTextIsNotConnected construct DisconnectedMailSession directly so the host JVM does not call mailSession() or load libliveimap.
+
+## 2026-10-01 - Cyrus 3 command degradation
+
+- Phase 2. Open enables QRESYNC or CONDSTORE from resyncKind and sends COMPRESS DEFLATE when that capability is advertised. A NO leaves the feature off. Extended LIST fills special-use, messages, and unseen. Plain LIST leaves those null. MOVE, copy-then-delete plus UID EXPUNGE, ESEARCH, ESORT, DISPLAY, PREVIEW, and BINARY.PEEK follow the same capability functions. The folder row shows specialUse, messages, and unseen only when they are non-null.
+
+## 2026-10-01 - git describe version execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/git-describe-version-20261001-0822-plan.md
+- Work: versionName from the VehicleExpenses git describe command; About shows that version; Support mail is david+liveimap@lang.hm
+- versionCode stays 1. buildConfig is true. Configuration writes no file. AndroidManifest and SettingsScreen stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2d60941
+
+## 2026-10-01 - settings sections and theme execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-sections-and-theme-20261001-1042-plan.md
+- Work: split Settings into Server, Account, and Display; friendly name and theme after bounceFcc; older blobs missing those keys still decode; password stays out of encode and sits under Username; choices are one pulldown; email defaults only when Username loses focus and email is blank; MainActivity applies Dark, Light, or Follow system
+- Sent, postponed, and address book stay text fields. No Choose buttons
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD ff91d07
+
+## 2026-10-01 - settings sections and theme phase 1
+
+- AccountSettings appends friendlyName and theme after bounceFcc. A blob missing either or both decodes; any other missing key still throws. Password stays out of encode
+- looksLikeEmail accepts dlang@lang.hm and rejects dlang and a@b. emailDefaultedFromUsername fills a blank email from an email-shaped username
+- SettingsScreen sections are Server, Account, and Display. Password sits under Username on the keystore path. ChoiceField is one ExposedDropdownMenuBox. Email changes only when Username loses focus and email is blank
+- MainActivity uses darkColorScheme, lightColorScheme, or isSystemInDarkTheme from the stored theme, and FollowSystem until that load returns
+- Sent, postponed, and address book stay text fields. No Choose buttons
+
+## 2026-10-01 - settings folder picker execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-folder-picker-20261001-1043-plan.md
+- Work: Choose beside sent, postponed, address book, and both swipe move-mailbox fields. The dialog opens the stored account, lists FolderListModel rows, writes the tapped row mailbox, and shows failure text with no names
+- Expander only expands. Dismiss leaves the field unchanged. No second folder lister and no invented mailbox names
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD da3ece2
+
+## 2026-10-01 - settings folder picker phase 1
+
+- SettingsScreen puts Choose beside Sent mailbox, Postponed mailbox, Address book mailbox, and both swipe Move mailbox fields. Typed text still saves
+- The dialog calls mailSession().open with the stored account. Connected uses FolderListModel.loadLevel and toggleExpanded. Tapping the row name writes that row's mailbox, saves, and closes. The expander only expands
+- OpenResult.Failed shows text. OpenResult.Rejected shows capabilities. MailFailure shows text. Those cases list no mailboxes. Dismiss leaves the field unchanged
+
+## 2026-10-01 - git describe version navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/git-describe-version-20261001-0822-plan.md
+- Work: drop the title bar; always show Folders, Settings, and About; highlight the current one with secondaryContainer; Index, Reader, and Compose highlight Folders and Folders from those routes opens the folder list
+- versionName, AboutScreen, and the project-facts version bullet already match the plan and stay unchanged
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 31b9194
+
+## 2026-10-01 - show connect target execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/show-connect-target-20261001-1125-plan.md
+- Work: IMAP and SMTP connect errors name the host, port, numeric address, and strerror or timed out; lookup uses gai_strerror; login names the user and the server reply
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 3a5efe7
+
+## 2026-10-01 - folder back search sort execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-back-search-sort-20261001-1208-plan.md
+- Work: back from the message list to Folders and from a message to that mailbox; search icon reveals the field; sort icon plus a short label opens the menu; Expunge stays on the row; each folder level sorts by leaf with INBOX first
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 034f1c7
+
+## 2026-10-01 - folder back search sort phase 1
+
+- MessageIndexScreen back returns to Folders. The mailbox name is beside it. Search is an icon that shows the field; clearing it to empty calls applySearch("") and hides it. Sort is an icon plus Arrival, Date, From, Subject, To, Cc, Size, Thread, or Ordered and opens one menu of menuKeys plus newest/oldest. Choosing one calls applyView and clears the search text. Expunge stays on the row
+- MessageReaderScreen back is the first action and returns to MailRoute.Index for that mailbox. Folders, Settings, and About stay. Compose still uses its done path
+- FolderListModel orders each level by case-insensitive leaf, then mailbox. INBOX stays the first root. Other-namespace roots stay after personal folders, and shared-namespace roots stay after those
+- FolderTreeTest: zeta, alpha, INBOX shows INBOX, alpha, zeta; children b, a show a, b
+- material-icons-core is next to the Material3 dependency
+
+## 2026-10-01 - settings test server execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-test-server-20261001-1218-plan.md
+- Work: Test server after the address book mailbox logs in with the saved account and runs read-only commands for advertised capabilities. Each line is OK, FAIL, or SKIP. A failed command does not stop later checks. The password is not shown. A divider separates that block from Display
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 39b7fcd
+
+## 2026-10-01 - settings test server phase 1
+
+- ServerProbe.probeServer opens the saved account. Failed or Rejected is one FAIL login line and returns. Connected runs the read-only checks. MailFailure is caught per check. The password is not read or printed
+- A LIST failure is also reported for advertised CHILDREN, LIST-EXTENDED, LIST-STATUS, and SPECIAL-USE. SELECT INBOX failure skips the selected checks. sort is one From newest call. searchText("x") reports the UID count. IDLE calls stopWatch in finally. CONDSTORE, QRESYNC, and COMPRESS=DEFLATE skip because open sends them. Other leftover capabilities skip as no read-only command
+- SettingsScreen puts Test server after Address book mailbox. The monospace report is under the button. HorizontalDivider with 8.dp vertical padding sits before Display. The label is Testing… and the button is disabled while the screen scope runs mailSession, probeServer, and close in finally
+- ServerProbeTest uses a fake MailSession and does not call mailSession. A list syntax failure reports FAIL LIST and FAIL LIST-EXTENDED. A failed open is one FAIL login line and does not call listLevel
+
+## 2026-10-01 - Cyrus LIST return spacing execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-cyrus-list-return-spacing-20261001-1217-plan.md
+- Work: tight parentheses on extended LIST, ESEARCH, and ESORT so Cyrus getword does not see an empty word; plain LIST stays mailimap_list
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 17d76e5
+
+## 2026-10-01 - Cyrus LIST return spacing phase 1
+
+- listMailboxes extended sends RETURN (CHILDREN SPECIAL-USE), or RETURN (CHILDREN SPECIAL-USE STATUS (MESSAGES UNSEEN)) when status is on. The first word inside each parenthesis has no lead space. Each closing parenthesis has none. RETURN and STATUS still have a space before the opening parenthesis
+- sendUidEsearch sends RETURN (ALL). sendUidSortChoice sends (KEY) or (REVERSE KEY), and RETURN (ALL) when esort is on
+- Plain listMailboxes still calls mailimap_list. sendWord, mailimap_mailbox_send(""), and mailimap_list_mailbox_send are unchanged
+
+## 2026-10-01 - swipe delete JNI ref execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-swipe-delete-jni-ref-20261001-1226-plan.md
+- Work: end JChars before DeleteLocalRef in the flag and SMTP recipient loops; LIST reference is the mailbox context and the pattern is %; thread, sort, and ENABLE send fixed literals; only the five system flags are stored
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 66aa06a
+
+## 2026-10-01 - swipe delete JNI ref phase 1
+
+- flagListFromArray and nativeSmtp destroy JChars before DeleteLocalRef. flagFromName returns only the five system-flag constructors. Any other name fails in nativeStoreFlags before mailimap_uid_store, and the failure names those five flags. \Deleted still stores
+- LIST reference is the parent plus its delimiter, the parent, or the namespace prefix. The pattern is %. Extended LIST sends the reference with mailimap_mailbox_send and % with mailimap_list_mailbox_send. RETURN, CHILDREN, SPECIAL-USE, and STATUS leadSpace calls are unchanged
+- THREAD sends the literal REFERENCES or ORDEREDSUBJECT and throws before a command otherwise. SORT sends DATE, FROM, SUBJECT, TO, CC, SIZE, or DISPLAY and does not pass keyName to sendWord. ENABLE stores QRESYNC or CONDSTORE and returns without mailimap_enable otherwise
+
+## 2026-10-01 - fix compile so builds can move execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-compile-so-builds-can-move-20261001-1334-plan.md
+- Work: orderedLevel uses compareBy with a case-insensitive leaf comparator then mailbox; the index sort control uses Icons.AutoMirrored.Filled.List
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-01 - index marks and compose close execution start
+
+- Approved plan: sandbox/plans/index-marks-and-compose-close-20261001-1352-plan.md
+- Work: drop the flag-name line; seen and deleted text appearance; left mark circles; to-me and attachment on the index row; Close leaves compose; store the literal $Forwarded after a forward send
+
+## 2026-10-01 - move tabs below status bar execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/move-tabs-below-status-bar-20261001-1327-plan.md
+- Work: contentWindowInsets is statusBars union navigationBars union displayCutout; enableEdgeToEdge stays; no TopAppBar and no second tab-row padding
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 30e3aca
+
+## 2026-10-01 - unread counts and qresync select execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unread-counts-and-qresync-select-20261001-1707-plan.md
+- Work: showUnreadCounts defaults off and gates LIST-STATUS; a repeat QRESYNC select sends the modifier list
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 690b8ef
+
+## 2026-10-01 - folder message count columns execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-message-count-columns-20261001-2054-plan.md
+- Work: LIST-STATUS returns MESSAGES when unread counts are off; folder rows reserve end-aligned count columns and a faint divider
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 94870b1
+
+## 2026-10-01 - index date sequence dots execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-date-sequence-dots-20261001-2054-plan.md
+- Work: date format setting and pure index date formatter; sequence slot and reserved mark gutter; reader shows Message N
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5207104
+
+## 2026-10-01 - reader delete move spam execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-delete-move-spam-20261001-2054-plan.md
+- Work: spam mailbox stays empty until chosen; reader Delete stores \Deleted and stays open; Move and Spam use copyThenDelete, and Spam is hidden until that mailbox is set
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 4c2e510
+
+## 2026-10-01 - Message view pulldown
+
+- Started message-body-view-20261001-2054. BodyView replaces Prefer HTML. The reader pulldown does not save settings. HEADER and raw use BODY.PEEK. htmlAsText quotes HTML only for Plain or HTML and Plain or text.
+
+## 2026-10-01 - thread newest first execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/thread-newest-first-20261001-2054-plan.md
+- Work: pass newestFirst into fetchThread; order thread roots by the largest uid in each thread; nested message order stays as returned
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD d920479
+
+## 2026-10-01 - index filter narrow widen execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-filter-narrow-widen-20261001-2054-plan.md
+- Work: whitelist IMAP searchCriterion, index filter stack (narrow, widen, all), filter control between Search and Sort
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b0ac8a8
+
+## 2026-10-01 - swipe left and right fields execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/swipe-left-right-fields-20261001-2054-plan.md
+- Work: label the trailing and leading editors Swipe left and Swipe right from LocalLayoutDirection; show the move mailbox only for Move and the flag only for SetFlag or ClearFlag
+- Stored keys stay swipeTrailing and swipeLeading. Defaults stay delete on trailing and reply-all on leading. Hiding a line does not clear the stored mailbox or flag
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 09fdbd4
+
+## 2026-10-01 - fix thread order tests execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/fix-thread-order-tests-20261001-2228-plan.md
+- Work: rename the two IndexWindowTest thread tests; oldest first expects 3, 5, 1, 9, 4, 2 and newest first expects 8, 1, 2
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 0b02a95
+
+## 2026-10-02 - shared mail session execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/shared-mail-session-20261002-0032-plan.md
+- Work: one process-wide SerialMailSession on thread liveimap-imap; reuse an open handle when the IMAP identity matches; screens and Test server do not close the session
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6ea6854
+
+## 2026-10-02 - shared mail session overlap thread name
+
+- SerialMailSessionTest saw liveimap-imap @coroutine#N because unit tests enable coroutines debug naming. The factory name is still liveimap-imap. The test compares the name before that suffix.
+
+## 2026-10-02 - APPEND tagged OK execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/append-tagged-ok-20261002-0046-plan.md
+- Work: tagged APPEND OK including APPENDUID is success; send stores Answered or Forwarded after SMTP then appends the sent copy; postpone appends with Draft
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b1f575c
+
+## 2026-10-02 - UNSELECT optional execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unselect-optional-20261002-0114-plan.md
+- Work: drop UNSELECT from required capabilities; send UNSELECT only when advertised, and only before SELECT of a different mailbox; never send CLOSE
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c84225b
+
+## 2026-10-02 - RFC 2047 display execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/rfc2047-display-20261002-0124-plan.md
+- Work: decode RFC 2047 words for index from and subject, and for parsed header text used by reply and forward; leave a failed word unchanged; Headers and Raw stay peeked bytes
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6ae05ec
+
+## 2026-10-02 - app shell navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/app-shell-navigation-20261002-0140-plan.md
+- Work: navigation-compose stack and drawer replace the tab row; theme flow recolors live; system Back closes overlays before pop; search and compose fields are saveable
+- Phase 1 edits the plan critical files, then ./build_app runs testDebugUnitTest and assembleDebug
+
+## 2026-10-02 - index row status thread execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-status-thread-20261002-0207-plan.md
+- Work: three-slot index status, on-screen sequence width, filter chips, root-plus-summary threads, confirm before threading a folder larger than 5000
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-02 - reader-advance execution start
+
+- Approved plan: sandbox/plans/reader-advance-20261002-0235-plan.md
+- Work: icon reply bar, Bounce only in the overflow, advance to the next published index uid after a successful delete, move, or spam
+- Phase 1 of 1
+
+## 2026-10-02 - folder counts and favorites execution start
+
+- Approved plan: sandbox/plans/folder-counts-favorites-20261002-0255-plan.md
+- Work: on-screen message totals from one pipelined STATUS (MESSAGES) burst when LIST-STATUS is absent, and folder favorites in the drawer
+- Phase 1 of 1
+
+## 2026-10-02 - compose chrome execution start
+
+- Approved plan: sandbox/plans/compose-chrome-20261002-0325-plan.md
+- Work: Compose from the index and folder list, discard confirmation, and forward attachment chips
+- Phase 1 of 1
+
+## 2026-10-02 - settings labels and expunge execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-labels-expunge-20261002-0344-plan.md
+- Work: human labels and switch rows in Settings, ask-before-expunge default on, expunge confirms when that setting is on or UIDPLUS is absent
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD f87c2d9
+
+## 2026-10-02 - loading empty error execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/loading-empty-error-20261002-0351-plan.md
+- Work: progress, empty, banner, and snackbar states on the index, folder list, and reader
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 73d2b42
+
+## 2026-10-02 - loading empty error phase 1
+
+- Index, folder list, and reader use a 4 dp progress bar, an errorContainer banner with Retry, and a bottom snackbar for later failures
+- Empty index uses emptyIndexText; empty folder list says No folders; the top notice line is gone
+- Expunge confirm is unchanged
+
+## 2026-10-02 - swipe background execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/swipe-background-20261002-0423-plan.md
+- Work: show swipe color, icon, and label from the first pixel; commit still requires 40 percent
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag e40698c
+
+## 2026-10-02 - swipe background phase 1
+
+- A non-zero offset shows the action container, 24 dp icon, and human label; alpha stays 0.45 until 40 percent
+- Crossing 40 percent uses full color and one long-press haptic, then the existing confirm still runs the swipe
+- Offset 0 stays blank, and releasing early still does nothing
+
+## 2026-10-02 - Selection bar and undo
+
+- Executing sandbox/plans/selection-undo-20261002-0443-plan.md.
+- Selection uses a labeled icon row. Select all uses the filter UID list or one 1:* command. Delete and move snackbars can undo, and Expunge with UIDPLUS expunges only those UIDs.
+
+## 2026-10-02 - thread expand execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/thread-expand-20261002-0513-plan.md
+- Work: a thread summary toggles the hidden messages already fetched for that root; expanding does not send UID THREAD
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 1e88da1
+
+## 2026-10-02 - thread expand phase 1
+
+- A summary row toggles the hidden messages already fetched for that root and does not send UID THREAD
+- Expanded roots stay in a mailbox-keyed saveable uid list, so another mailbox starts collapsed
+- threadMessageOrder inserts a root's hidden uids only while that root is expanded
+
+## 2026-10-02 - resume postponed execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/resume-postponed-20261002-0533-plan.md
+- Work: a set postponed mailbox is a drawer row that opens that mailbox; resuming a message there removes the old copy with UID EXPUNGE only after send or postpone succeeds
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag c6fbae4
+
+## 2026-10-02 - resume postponed phase 1
+
+- The drawer shows the stored postponed mailbox between INBOX and All folders, and hides that row when the setting is empty
+- Opening a message there sets the resume uid; a successful send or postpone deletes and UID EXPUNGEs that uid
+- A failed send or append leaves the old copy, and a removal failure only sets a notice
+
+## 2026-10-02 - unsent list execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-list-20261002-0544-plan.md
+- Work: list failed sends from the folder screen; Open and Retry use the existing send path; Discard deletes only the local copy after a confirm
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 509b1a7
+
+## 2026-10-02 - unsent list phase 1
+
+- The folder list shows Unsent and the count only when a local copy exists, and that row opens the unsent route
+- Each row shows the subject, recipients, Not sent or Sent, copy not saved, and Open, Retry, or confirmed Discard
+- Compose drops the per-copy retry buttons and opens the list from an Unsent button after a failed send
+
+## 2026-10-02 - folder row icons execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-row-icons-20261002-0609-plan.md
+- Work: 48 dp folder open target and expander, function icons from settings or SPECIAL-USE, TalkBack description without raw special-use text
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 7e68661
+
+## 2026-10-02 - folder row icons phase 1
+
+- Each folder row reserves a 48 dp expander and a separate open target at least 48 dp tall, indented 24 dp per depth
+- Function icons come from a settings mailbox, then Sent, Drafts, Trash, or Junk special-use, then literal INBOX; other rows use the folder icon
+- TalkBack on the open target reads the leaf, counts, and collapsed or expanded; the expander reads Expand or Collapse
+
+## 2026-10-02 - two pane mail execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/two-pane-mail-20261002-0628-plan.md
+- Work: at 840 dp and above, keep the message list beside the open message and use a permanent drawer; narrower windows keep a single screen and a modal drawer
+- Phase 1 of 1
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag fa3611e
+
+## 2026-10-02 - two pane mail phase 1
+
+- At 840 dp and above the index keeps the list beside the open message and the drawer stays open without a menu button
+- Narrower windows still push the reader route and keep the modal drawer; IDLE on the index stops while the message pane is open
+- A reader route folds back into the index when the window becomes wide and the mailbox matches
+
+## 2026-10-02 - pinerc import execution start
+
+- Approved plan: sandbox/plans/pinerc-import-20261002-0653-plan.md
+- Work: Settings imports a user-picked .pinerc, previews changes, and Apply writes only existing account fields
+- Status set to APPROVED
+
+## 2026-10-02 - preview fetch pipeline execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/preview-fetch-pipeline-20261002-0723-plan.md
+- Work: send one index window of body previews as a single UID FETCH burst and read every tag before the next IMAP command
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 0c5a29e
+
+## 2026-10-02 - settings pipeline and IMAP log execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-pipeline-and-imap-log-20261002-1231-plan.md
+- Work: Settings can turn IMAP pipelining off and can log IMAP traffic to logcat without the password
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 2f3ef77
+
+## 2026-10-02 - settings pipeline and IMAP log phase 1
+
+- Settings stores pipelineCommands (default on) and logImapTraffic (default off); both switches save immediately
+- Pipeline off reads each STATUS or preview tag before the next send; log on writes IMAP traffic to logcat tag LiveIMAP and skips COMPRESS
+- A LOGIN buffer is logged as C <private>; SMTP is not logged
+
+## 2026-10-02 - Execution start: burst desync and IMAP log
+
+- Plan: /home/dlang/git/liveimap/sandbox/plans/burst-desync-and-imap-log-20261002-1333-plan.md
+- Status set to APPROVED. Phase 1: move STATUS and preview bursts so a failed pipeline restores the high IMAP tag and drops the session, and keep the redacted IMAP transcript in the app cache log.
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not edit libetpan.
+
+## 2026-10-02 - index show fetched rows execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-show-fetched-rows-20261002-1445-plan.md
+- Work: reassemble split IMAP log lines, throw when an index FETCH parses no rows for a non-empty mailbox, and show that notice instead of "No messages"
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 37cd4ec
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not edit libetpan.
+
+## 2026-10-02 - index show fetched rows phase 1
+
+- Split socket reads stay one C or S disk line; a private send still logs only C <private> and is not appended to the tail
+- The tail is flushed when the logger is turned off and when the session is freed; the 4 MiB rotation and INFO/DEBUG logcat lines stay
+- An index FETCH logs parsed <count> from rowsFromList before the deleted-row filter
+- When EXISTS is greater than 0, the requested range is non-empty, and that count is 0, nativeFetchIndex throws fetch returned no rows instead of an empty array
+- pull copies model.notice, and the index shows that text instead of No messages
+- Host /tmp/fetch_row_test exited 0: one item, att_number 16, uid 16
+
+## 2026-10-02 - index pull invokes refresh execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-pull-invokes-refresh-20261002-1510-plan.md
+- Work: change MessageIndexScreen.pull so it calls sync.block instead of returning the function
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 9519fa4
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - index pull invokes refresh phase 1
+
+- MessageIndexScreen.pull now calls sync.block() so the compose list copies model.rows after load, watch, and the other pull sites
+- Fetch, parser, and the empty-state sentence are unchanged
+
+## 2026-10-02 - reader menu and favorite edit execution start
+
+- Approved plan: sandbox/plans/reader-menu-and-favorite-edit-20261002-1527-plan.md
+- Work: message menu closes on the same message; the bar keeps at most four saved actions; long-press edits a drawer favorite
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+
+## 2026-10-02 - reader menu and favorite edit phase 1
+
+- Message bar shows Back and at most four saved actions, then More. Close, Back, and outside tap leave the message open
+- More lists the other actions, body views, folder sort keys, and newest or oldest. Choosing one stays on this message
+- A drawer favorite long-press renames, reorders, or deletes. A blank name falls back to favoriteLabel
+- TODO: more than one account, and keep the account and password in the Android secure store
+
+## 2026-10-02 - libetpan pipeline helpers execution start
+
+- Approved plan: sandbox/plans/libetpan-pipeline-helpers-20261002-1552-plan.md
+- Work: pin libetpan fea126faf0c53cf5b7f56ada04ddd55491f679da and send pipelined STATUS and UID FETCH through mailimap_status_multiple and mailimap_uid_fetch_multiple
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Start builds tag 59bf418
+- Host: /home/dlang/git/liveimap/master. Do not edit /home/dlang/git/libetpan. Do not send, append, or expunge.
+
+## 2026-10-02 - libetpan pipeline helpers phase 1
+
+- Pin is fea126faf0c53cf5b7f56ada04ddd55491f679da. Both Android libetpan.a archives export mailimap_status_multiple and mailimap_uid_fetch_multiple
+- Pipelined STATUS and UID FETCH use those helpers. Stream, fatal, and a desynchronized session return MAILIMAP_ERROR_STREAM. One command at a time is unchanged
+- Host burst tests exit 0 against /home/dlang/git/libetpan/src/.libs/libetpan.so at that sha
+
+## 2026-10-02 - sort display keys and menu execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sort-display-keys-and-menu-20261002-1742-plan.md
+- Work: From and To use DISPLAYFROM and DISPLAYTO when SORT=DISPLAY is advertised; the sort menu checks the current key and disables missing capabilities
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 5caa096
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge. Do not edit libetpan.
+- Icons.Filled.Sort is in material-icons-extended already on the classpath
+
+## 2026-10-02 - sort display keys and menu phase 1
+
+- sortKind returns Esort or UidSort. imapSortKey maps FROM to DISPLAYFROM and TO to DISPLAYTO only when SORT=DISPLAY is advertised
+- sort sends that key. nativeSort and sendUidSortChoice accept those two keys, reject DISPLAY, and hand-send a display-name key even when ESORT is off. Parentheses stay tight
+- The sort menu checks the active key, puts a divider before the thread keys, and disables a missing capability with Not advertised. The button uses Icons.Filled.Sort. Newest first is a checkbox
+- menuKeys keeps every SortKey, including ordered subject when that capability is absent
+- IndexWindowTest.orderedSubjectHiddenUnlessAdvertised still expects ordered subject to be omitted. That file is not a Critical File, so it was not edited
+
+## 2026-10-02 - screen top bars execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/screen-top-bars-20261002-1810-plan.md
+- Work: top bars on the folder list, index, reader, and compose screens. The outer scaffold stops padding content. Index title is the mailbox leaf with the parent under it. Settings, About, Unsent, and the drawer keep their own insets.
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 914f451
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - screen top bars phase 1
+
+- LiveImapScaffold content insets are empty and the padded box is gone, so the status inset is not applied twice
+- Folder list, index, reader, and compose each use a Scaffold top bar. The bar owns the top inset and the page clears the navigation bar and cutout
+- Folder list title is Folders. Menu is shown only for the modal drawer and opens it. The menu button above the NavHost is gone. The permanent drawer passes a null callback
+- Index title is the leaf after the personal namespace delimiter, with the parent on the next line when that parent is not empty. Search, filter, and sort, with their menus, are bar actions. The sort label stays beside the sort icon. Expunge stays under the bar
+- Reader bar holds Back, the same actions, and More. The menus are unchanged. The title uses the same leaf and parent
+- Compose title is Compose. Back closes through the existing dirty check. Send and Postpone, where those buttons already exist, are bar actions
+- The delimiter is the personal namespace whose prefix is a prefix of the mailbox, longest prefix first, otherwise the first personal namespace. A failed namespaces call leaves the mailbox as the title with no parent line
+- Settings, About, and Unsent are not Critical Files. Their status, navigation, and cutout insets are applied at the NavHost call sites. The drawer sheets use the same union
+- The remembered nav graph is unchanged, so an open back stack entry stays open
+- No deploy. No send, append, or expunge
+
+## 2026-10-02 - pull to refresh execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/pull-to-refresh-20261002-1831-plan.md
+- Work: PullToRefreshBox and a Refresh bar button on the folder list, index, and reader. Each increments loadToken. No second load while loading. Compose is unchanged.
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 003dd24
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+- androidx.compose.material3.pulltorefresh.PullToRefreshBox is in material3 1.3.0 already on the classpath
+
+## 2026-10-02 - pull to refresh phase 1
+
+- Folder list, index, and reader wrap their scrolling content in PullToRefreshBox. isRefreshing is that screen's loading flag. onRefresh increments loadToken only when loading is false, so a pull during a load does not start another
+- Each of those three TopAppBars has a Refresh icon button that increments the same loadToken and stays visible. Search, filter, sort, reader actions, and More are unchanged. Compose has no refresh control
+- A failure still uses the existing banner. The pull indicator is the Material3 default, which hides when loading is false and the control is not pulled
+- No deploy. No send, append, or expunge
+
+## 2026-10-02 - index row details execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-details-20261002-1856-plan.md
+- Work: date column width from the widest formatIndexDate on screen, one status description with theme colors, and an active filter row showing N of M
+- Phase 1 of 1. build_app runs testDebugUnitTest and assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 49ecd48
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - index row details phase 1
+
+- The date column uses one measured width, the widest formatIndexDate among the index rows listed, with the same format, pattern, zone, and instant. Tabular figures are fontFeatureSettings tnum because Compose BOM 2024.10.00 has no FontFeature type. Empty dates keep that width. TextAlign.End. Sequence width is unchanged
+- IndexStatusColumn takes indexStatusDescription. An empty string sets no description. Flagged is colorScheme.error and to-me is colorScheme.primary. The three slots and sizes stay. Icons stay unlabeled
+- An active filter row under the bar shows the filter chips and N of M. N is the index message rows listed. M is EXISTS already received by this screen, otherwise N. All messages clears the filters and removes the row. No new count request
+- No deploy. No send, append, or expunge
+
+## 2026-10-02 - selection contextual bar execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/selection-contextual-bar-20261002-2307-plan.md
+- Work: while messages are selected, the index TopAppBar is the selection bar and the extra row is not composed
+- Phase 1 of 1. build_app runs assembleDebug on this tree. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 13cd3f9
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - selection contextual bar phase 1
+
+- While messages are selected, the index TopAppBar title is selectionTitle, navigation is Close and clears the selection, and the actions are mark read or unread, flag or unflag, move, delete, and More. The extra selection row is not composed
+- The flag action says Unflag when every loaded selected row is flagged, otherwise Flag. The read action still says Mark unread or Mark read
+- More still dismisses without changing the selection. Its items are Select all, Mark answered, Mark unanswered, Undelete when a selected row is deleted or the whole folder is selected, Bounce, and Clear selection. The extra Mark unread item is gone. Item text has no raw flag names
+- Select all, undo, and the store and copy calls are unchanged. With nothing selected, the normal top bar returns
+- No deploy. No send, append, or expunge
+
+## 2026-10-02 - folder count columns execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-count-columns-20261002-2312-plan.md
+- Work: folder rows show an aligned total, unread only when nonzero, a favorite star, faint dividers, and a search of names already loaded
+- Phase 1 of 1. This tree's ./build_app runs assembleDebug. No deploy
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 4d4def2
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - folder count columns phase 1
+
+- Each folder row ends with a total and an unread column. Both are right-aligned, tabular (fontFeatureSettings tnum), and one measured width for every row on screen. Unread is blank when the setting is off or the count is zero, not 0. The faint row divider stays
+- A star in front of the counts toggles the same favorite as a long-press: a leaf uses the name record, a collapsed node uses the node record, and an expanded row uses the mailbox record. A filled star is that favorite. The star does not open the folder. Long-press still works
+- The top bar search field filters loaded display names and does not send LIST. Clearing it shows the loaded level again
+- No deploy. No send, append, or expunge
+
+## 2026-10-02 - Reader body chrome execution start
+
+- Plan: sandbox/plans/reader-body-chrome-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: 2040cbc
+- Phase 1: header card, plain-text links and quote color, theme HTML, attachment chips, no-text card in MessageReaderScreen.kt
+
+## 2026-10-02 - compose reply chrome execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-reply-chrome-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: cac0e0b
+- Phase 1 of 1: leave prompt, labeled recipients, reply cursor, reply-above-quote setting, forward header block
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - compose reply chrome phase 1
+
+- A changed body, subject, or recipient asks Discard, Postpone, or Keep editing. Postpone in that dialog stays disabled when no postponed mailbox is set. An unchanged compose leaves without the dialog
+- To, Cc, and Bcc stay separate labeled fields. Empty Cc and Bcc are omitted from the message
+- A reply keeps one attribution line and `> ` quotes. The cursor starts on the line below the quote. AccountSettings.replyAboveQuote defaults to false; a missing key stays false. Settings switch "Reply above the quote" persists immediately and puts the cursor on the line above the quote
+- A forward shows From, Date, and Subject, then the quoted body. Attachments still follow includeForwardAttachments and can be removed before send
+- AccountSettingsTest key list includes replyAboveQuote so the encode round-trip stays true. No deploy. No send, append, or expunge
+
+## 2026-10-02 - settings categories and about execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-categories-and-about-20261002-2312-plan.md
+- Status set to APPROVED
+- builds before edit: 424db1c
+- Phase 1 of 1: five settings groups, dynamicColor default true, theme uses dynamic color only on API 31 when the switch is on, About already shows LiveIMAP and versionName
+- Theme path is MainActivity.kt. About path is app/src/main/kotlin/org/dlang/liveimap/ui/about/AboutScreen.kt
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-02 - settings categories and about phase 1
+
+- Settings controls sit under Account, Mailboxes, Display, Message bar, and Debug. Labels and save calls are unchanged. Reply above the quote stays in Display
+- AccountSettings.dynamicColor defaults to true. A missing key decodes to true. Display shows Dynamic color only on API 31 and above
+- The activity theme uses the system dynamic scheme only when that switch is on and the device is API 31 or newer. Otherwise it keeps the static scheme
+- About already shows LiveIMAP and BuildConfig.VERSION_NAME at ui/about/AboutScreen.kt. No license text added
+- No deploy. No send, append, or expunge
+
+## 2026-10-03 - compose brief gaps execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-brief-gaps-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: b8b44a6
+- Phase 1 of 1: collapse empty Cc and Bcc, forwardAsAttachment default false, one message/rfc822 part, overflow one-shot
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - compose brief gaps phase 1
+
+- Empty Cc and Bcc stay hidden until the To row Cc/Bcc control is on, or that field is non-empty. From stays the read-only text line
+- AccountSettings.forwardAsAttachment defaults to false. A missing key decodes to false. Settings switch "Forward as attachment" persists
+- When that mode is on, forward attaches forwarded.eml as message/rfc822 and does not insert the inline header block. The setting stays the default
+- Reader overflow, and the index overflow when one message is selected, offer the other mode for that open only and do not change the setting
+- No plaintext-only recipient rule exists on a compose address. The AssistChip was not added. Do not invent the rule
+- AccountSettingsTest.defaultsRoundTrip lists encode keys exactly and already omits dynamicColor. forwardAsAttachment would fail that test. The test file was not edited. This tree's ./build_app runs assembleDebug only
+- No deploy. No send, append, or expunge
+
+## 2026-10-03 - folder overflow a11y execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/folder-overflow-a11y-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: 5021493
+- Phase 1 of 1: folder bar More with Collapse all, Unsent when copies exist, empty-prefix announcement
+- Host: /home/dlang/git/liveimap/master. Critical file: FolderListScreen.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - folder overflow a11y phase 1
+
+- Folder top bar More menu has Collapse all. It clears expandedFolders and reloads the top level
+- Unsent is in that menu only when unsentCount is greater than zero, and it opens the existing Unsent screen. The existing list row is unchanged
+- An empty namespace prefix keeps the visible server label. TalkBack on that row is "Namespace, empty prefix". Other namespace rows still use folderRowDescription
+- No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug
+
+## 2026-10-03 - folder overflow a11y collapse does not list
+
+- Collapse all clears expandedFolders and shows the already loaded top-level rows. It does not call loadLevel and does not send LIST
+- No deploy. No send, append, or expunge
+
+## 2026-10-03 - index refresh and thread marks execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-refresh-and-thread-marks-20261003-0018-plan.md
+- Work: pull-to-refresh and the Refresh button update on-screen flags and add a grown tail without reloading the window. A collapsed thread shows its count and unread count. A selected row shows a check.
+- Phase 1 of 1
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md
+- Start builds tag 66d858a
+- Host: /home/dlang/git/liveimap/master. Do not deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - index refresh and thread marks phase 1
+
+- Pull and Refresh call refreshShown. It fetches flags for the on-screen UIDs and copies those flags onto the loaded rows. A larger EXISTS adds the newest tail. An unchanged EXISTS does not replace the rows. Failure uses the existing banner.
+- MailSession has no NOOP, and that file is not a Critical File, so this phase does not send one. The count is selectedExists or the folder EXISTS already on screen. Refresh does not SELECT and does not reload the window.
+- A collapsed thread mark is the message count and the unread count, such as 7 · 2 unread. Expanded replies indent 16 dp per level, capped at 6, and a deeper row shows its depth number.
+- A selected row keeps secondaryContainer and shows check_circle in the status column, tinted primary. The one-shot forward choice is unchanged.
+
+## 2026-10-03 - plaintext recipient chip execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/plaintext-recipient-chip-20261003-0018-gap-plan.md
+- Status set to APPROVED
+- builds before edit: bfff03d
+- Phase 1 of 1: show Plain text only when a To, Cc, or Bcc address matches an Alpine entry marked [plaintext]
+- Host: /home/dlang/git/liveimap/master. Critical files: ComposeScreen.kt and AlpineBook.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - plaintext recipient chip phase 1
+
+- A To, Cc, or Bcc address that matches an Alpine book entry whose address or comments contain [plaintext] shows an AssistChip labeled Plain text only. The chip does not remove the recipient
+- Matching strips [plaintext] from the address and uses that mark only. An entry without the mark does not show the chip
+- An unset address-book mailbox or a failed book load shows no chip and does not fail compose. Bounce is unchanged
+- Empty Cc and Bcc still collapse. Forward as message/rfc822 and the leave prompt are unchanged
+- No deploy. No send, append, or expunge. This tree's ./build_app runs assembleDebug
+
+## 2026-10-03 - settings sub-screens execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-subscreens-and-about-20261003-0018-plan.md
+- Status set to APPROVED
+- builds before edit: d10e68e
+- Phase 1 of 1: five settings groups each with a back stack entry, switch rows stay one ListItem, About plaintext notice and library names
+- Host: /home/dlang/git/liveimap/master. Critical files: SettingsScreen.kt and AboutScreen.kt. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - critical UI fixes execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/critical-ui-fixes-20261003-1505-plan.md
+- Status: APPROVED
+- builds before edit: d10e68e
+- Stash ref: stash@{0} On master: pre-critical-ui-fixes 2026-10-03: settings-subscreens-and-about-20261003-0018 partial work (unused SettingsScreen imports)
+- settings-subscreens-and-about-20261003-0018: stopped at start, SettingsScreen.kt imports stashed, not resumed
+- coder-next.txt was idle (nonce 0), not status run for reader-brief-gaps. This dispatch names the approved plan. No other execute child.
+- Phase 1: newest message at the newest end in every time-ordered view; arrival pages by sequence range; newest-first sort sends REVERSE; new mail tails instead of reloading the window
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - up navigation execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/up-navigation-20261003-1630-plan.md
+- Status: APPROVED
+- builds before edit: 810d9db
+- settings-subscreens-and-about-20261003-0018: stash dropped (10 unused imports), nothing of that plan remains
+- Phase 0 done: stash list empty, no tracked changes, SettingsScreen.kt has no NavHost import
+- Phase 1: Up bar on Settings, About and Unsent; drawer edge swipe only on the folder list; remove Unsent Close
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge.
+
+## 2026-10-03 - up navigation phase 1
+
+- Settings, About and Unsent use UpPage and UpTopAppBar. The Up icon content description is Navigate up. Settings and About call navigateUp. Unsent calls popBackStack and still passes onBack
+- Drawer edge swipe is enabled only when the route is folders
+- Unsent no longer shows a Close button. Open, Retry and Discard stay
+- No new dependency. No deploy. No send, append, or expunge
+
+## 2026-10-03 - connection recovery execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/connection-recovery-20261003-1645-plan.md
+- Status: APPROVED
+- builds before edit: 8921769
+- Phase 0: no tracked changes, stash empty, up-navigation already landed on that builds tag
+- Phase 1: real IMAP error text, keepalive, IDLE renewal and lost-watch notification
+- Host: /home/dlang/git/liveimap/master. No deploy. Do not send, append, or expunge except as the plan's manual checks describe.
+
+## 2026-10-03 - connection recovery phase 3 landed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/connection-recovery-20261003-1645-plan.md
+- Phase 3: ConnectionStatusStrip on the index, folder list, and reader. Index Retry calls resume then refreshIndex, or bumps loadToken when not yet connected. Reconnected refreshes the index. WatchLost resumes after 2 s, then 10 s, then 60 s, and then stops. LifecycleStartEffect resumes and refreshes on every start after the first. MainActivity onStop suspends the session unless a configuration change is in progress.
+- Manual checks on 10.0.0.1 stay with the human. No deploy.
+
+## 2026-10-05 - index start position execution start
+
+- Approved plan: sandbox/plans/index-startup-position-20261003-1625-plan.md
+- Worktree: /home/dlang/git/liveimap/master branch master
+- Phase 0: no tracked modifications. builds tag 13430ae
+- Known failures not fixed here: IndexWindowTest.orderedSubjectHiddenUnlessAdvertised, AccountSettingsTest.defaultsRoundTrip
+- Phase 1: StartRule settings, pinerc mapping, searchStart through native, parseEsearch MIN/MAX
+
+## 2026-10-05 - index start position phase 2
+
+- Phase 2: locateStart, startIndex, and the window anchor around that row
+- scrollToStart after open, sort, direction, filter, and search; Show uses scrollToNewestEnd
+- Keep-top records the visible uid; Arrival locates it with an uncached sequence search
+- New mail shows the snackbar and does not scroll; undo and expunge keep the anchor
+
+## 2026-10-05 - Index new-mail pill execution start
+
+- Approved plan: sandbox/plans/index-new-mail-pill-20261005-2130-plan.md
+- Status: APPROVED
+- Worktree: /home/dlang/git/liveimap/master branch master
+- builds before edit: f45cbba
+- Phase 1: Arrival growth keeps pendingNew; a sort, filter, or search sets newMailUnnumbered and does not fetch
+- Phase 2: replace the new-mail snackbar with the pill; hold the first visible row across a prepend
+- Known failures not fixed here: IndexWindowTest.orderedSubjectHiddenUnlessAdvertised, AccountSettingsTest.defaultsRoundTrip
+- No deploy. Do not install. Do not send, append, expunge, or edit the address book
+
+## 2026-10-05 - Index new-mail pill phase 1
+
+- applyArrivalGrowth keeps pendingNew as the running growth, including when the new tail is inserted
+- Exists during a search, a filter, or a non-Arrival sort sets newMailUnnumbered, leaves pendingNew at 0, and does not fetch
+- Flags and Expunge do not set that flag
+- IndexWindowTest: one known failure, orderedSubjectHiddenUnlessAdvertised. The new-mail tests passed
+
+## 2026-10-05 - Index new-mail pill phase 2
+
+- The new-mail snackbar is gone. New mail does not call loadWindow
+- The pill reads "N new messages" with an arrow, or "New messages" with no number. TalkBack uses one polite live region per change
+- A newest-first prepend keeps the first visible uid and offset. Tap and a scroll onto the newest rows clear the pill
+- IndexWindowTest: 54 completed, 1 known failure (orderedSubjectHiddenUnlessAdvertised). No deploy
+
+## 2026-10-05 - Traffic log execution start
+
+- Execute sandbox/plans/traffic-log-20261005-2145-plan.md on master (Status APPROVED). Phase 1: TrafficLog file format and native chunk handoff. Phase 2: share, debug report review, user-name switch, debug status. No install. Device checks stay with David.
+
+## 2026-10-05 - Traffic log phase 2
+
+- Share the current traffic file through TrafficFileProvider. The debug report can drop a line, then Copy or Share. The user name is <user> unless "Show user name in the debug report" is on.
+- DebugConnectionStatus sits under the reconnect strip on the folder list, the index, and the reader. The strip text is unchanged.
+- TrafficLogTest checks the report. No install. Device checks stay with David.
+
+## 2026-10-05 - Settings screens execution start
+
+- Execute sandbox/plans/settings-screens-20261005-2248-plan.md on master (Status APPROVED). Phase 1: commit text and port on Done, focus loss, or leave. Phase 2: settings groups, sub-screens, licenses. No install. Device and rotation checks stay with David.
+
+## 2026-10-05 - Settings screens phase 1
+
+- commitText and commitPort. Equal text and an invalid or unchanged port return null.
+- A text field keeps its draft and writes on IME Done, focus loss, or leaving. Rotation and a screen that is not ready skip the leave write. Add-row drafts do not insert a row on leave.
+- LineCommitTest covers those rules. No install.
+
+## 2026-10-05 - Settings screens phase 1 compiles
+
+- One settings state, and mailbox lines pass onCommit. The field commit now compiles.
+
+## 2026-10-05 - Settings screens phase 2
+
+- Settings opens a group list, then one screen per group. The first section starts open. Up returns to the list, and the folder lists are their own screens.
+- About shows the plaintext card when an IMAP host is set, and Open-source licenses reads the notices. No new setting and no session restart. No install.
+
+## 2026-10-05 - Help page execution start
+
+- Execute sandbox/plans/help-page-20261005-2251-plan.md on master (Status APPROVED). Phase 1: help assets, Help screen, shared debug-report review, drawer item, route, and folder-list Help button. No install. Device and TalkBack checks stay with David.
+
+## 2026-10-05 - Help page phase 1
+
+- Help route and drawer item sit above About. Up is navigateUp. About is unchanged.
+- The folder list shows Help under the connection strip only while the loaded IMAP host is blank.
+- Help reads the two bundled assets. Report a bug opens the issues URL. Copy debug report uses the shared review. No install.
+
+## 2026-10-05 - Folder list execution start
+
+- Execute sandbox/plans/folder-list-20261005-2319-plan.md on master (Status APPROVED).
+- Phase 1: session expansion, level cache, overflow items, long-press menu, empty-prefix row, and FolderListModelTest.
+- Phase 2: Expanded folders and Folder views use the mailbox picker and a close icon.
+- No install. Device and lab-server checks stay with David.
+
+## 2026-10-05 - Folder list phase 1
+
+- Session expansion is copied once. Expand, collapse, show collapsed, and collapse all do not write settings.
+- Each list level is cached until refreshLevels. Pull to refresh and the toolbar refresh clear that cache before they list.
+- Overflow adds Save as default view and Reset to default view. Long-press keeps favorite and adds Always expand and Don't always expand.
+- The empty-prefix row is italic, uses FolderSpecial, and search always keeps it without matching its label. No install.
+
+## 2026-10-05 - Folder list phase 1 test doubles
+
+- Renamed the FolderListModelTest doubles so they do not clash with FolderTreeTest's private helpers. FolderTreeTest is unchanged.
+
+## 2026-10-05 - Folder list phase 2
+
+- Expanded folders and Folder views add through the mailbox picker. Remove is a close icon. Sort, Newest first, and the stored strings are unchanged. No install.
+
+## 2026-10-06 - Folder list phase 3 execution resume
+
+- Resume revision 2 of sandbox/plans/folder-list-20261005-2319-plan.md on master. Phases 1 and 2 stay DONE.
+- Phase 3 updates FolderTreeTest only: inboxDotPrefixDoesNotPromoteChildren and toggleExpandedLeavesStoredExpandedFolders.
+- No production edits. No install.
+
+## 2026-10-06 - Folder list phase 3
+
+- FolderTreeTest constructs the INBOX prefix case already expanded and expects one ListCall("INBOX.", null). Toggling INBOX and Archive leaves stored expanded folders empty and does not save.
+- No production edits. No install.
+
+## 2026-10-06 - Reader polish execution start
+
+- Execute sandbox/plans/reader-polish-20261005-2318-plan.md on master (Status APPROVED).
+- Phase 1: pinned header, view labels, view switch, link dialog, quote rows, Show HTML, and the monospace switch.
+- Phase 2: attachment chip, Open, Share, Save, attachment provider, cache deletion on leave, and Show images.
+- No install. Device checks stay with David.
+
+## 2026-10-06 - Reader polish phase 1
+
+- The header card stays above the scrolling body. From uses the HEADER From when it contains @, otherwise the index From. The date is the envelope date when it is not blank, otherwise the formatted index date. To and Cc start as one ellipsized line and wrap after a tap. Subject is not ellipsized. Message N is gone.
+- A Deleted chip and Undelete show when \Deleted is set. Undelete removes that flag and does not expunge.
+- Body view labels are Plain text, HTML, HTML as text, Headers, and Raw source. The Close menu item is gone. Choosing a view shows that view even when a plain part exists. The no-text card has Show HTML when an HTML part exists, and that button does not write the setting.
+- A link tap, in plain text or the WebView, shows the full URL. Open uses ACTION_VIEW. Cancel dismisses. If no app can open it, the snack says No app found.
+- A line that starts with > is a row with a 2 dp outlineVariant box and onSurfaceVariant text. Other lines keep the current color.
+- Reading, Opening saves Plain text in monospace immediately. The default is false, a missing key stays false, and the plain body uses monospace only when it is on. No install.
+
+## 2026-10-06 - Reader polish phase 1 test import
+
+- ReaderTextTest imports settings.encode so the monospace round-trip compiles. The phase 1 reader behavior is unchanged. No install.
+
+## 2026-10-06 - Reader polish phase 2
+
+- An attachment chip shows the filename, the BODYSTRUCTURE size, and an image, PDF, or generic icon. Nothing is fetched until the first tap. While the 65536-byte fetch runs, the chip shows the fetched count. When it is done, Open, Share, and Save use the cache file and do not fetch again.
+- AttachmentFileProvider serves only a read-only cache file named liveimap-<uid>-<safe>. It does not serve the traffic log. Leaving the message deletes that UID's cache files and leaves imap-traffic.log.
+- Show images is shown while HTML is on screen. It turns off blockNetworkLoads for this message only. The next message starts blocked. JavaScript stays off. No install.
+
+## 2026-10-06 - compose-polish execution start
+
+- Approved plan: sandbox/plans/compose-polish-20261006-0040-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: 575db68
+- Phases: chips and Send/Postpone chrome; alt-addresses, Reply-To chip, sent name, to-me; background draft hook and APPENDUID
+- Do not install. Device checks stay David's
+
+## 2026-10-06 - compose-polish phase 4 execution resume
+
+- Approved plan: sandbox/plans/compose-polish-20261006-0040-plan.md
+- Resume revision 2 from phase 4. Phases 1–3 stay DONE (b30f3a1, 13a7308, d3d5f35).
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: d3d5f35
+- SerialMailSession.appendReturningUid returns the inner UID on the liveimap-imap lane. Do not install.
+
+## 2026-10-06 - compose-polish phase 4
+
+- SerialMailSession.appendReturningUid calls inner.appendReturningUid on the liveimap-imap lane and returns that long. It does not call append.
+- SerialMailSessionTest.appendReturningUidReturnsInnerUidOnTheLane: inner returns 3955, append is not called, and the recorded thread is liveimap-imap. No install.
+
+## 2026-10-06 - compose-polish phase 4 test double
+
+- AppendUidInner is its own MailSession so the lane test compiles. OverlapInner stays unchanged. The test still expects UID 3955, no append call, and thread liveimap-imap. No install.
+
+## 2026-10-06 - reader body decoding execution start
+
+- Approved plan: sandbox/plans/reader-body-decoding-20261006-0117-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: b7dc9e3
+- Phase 1: MimePart charset and encoding, decodePart, WireTextDecoder, reader body paths, charsetOf, compose quoting
+- Phase 2: jsoup, desugaring, htmlAsText, preview path, NOTICES.txt
+- Do not install. Device checks stay David's
+
+## 2026-10-06 - reader body decoding phase 1
+
+- MimePart carries charset and encoding, both default empty. The JNI constructor passes the BODYSTRUCTURE charset and base64 or quoted-printable, or empty for 7bit, 8bit, binary, and multipart.
+- decodePart undoes that transfer encoding, then java.nio.charset. An empty or unknown charset is ISO-8859-1 with unknownCharset set. WireTextDecoder holds a split base64 quantum, a quoted-printable tail, and an incomplete character until finish.
+- Plain bodies stream through that decoder. HTML and HTML-as-text read the whole part, then decode. The WebView page starts with a UTF-8 meta. The reader shows "Unknown charset; shown as ISO-8859-1." above the body. Compose quoting uses the same decode and sets that sentence when the notice is empty. No install.
+
+## 2026-10-06 - reader body decoding phase 2
+
+- htmlAsText uses jsoup 1.21.2. script and style are omitted. Block tags break the line. Link text stays in the body and each href is listed as [1] after a blank line. A blockquote line starts with "> ". Ordered items are numbered. Table cells in a row are separated by one space. pre keeps its spaces.
+- A client preview takes the first text/plain part, otherwise the first text/html part, and does not follow preferHtml. Peeked bytes go through PartText.previewText. A failed base64 or quoted-printable decode leaves the preview empty. A server-supplied preview is unchanged. The unknown-charset note is not inserted into a preview.
+- minSdk stays 26. Core library desugaring uses desugar_jdk_libs_nio 2.1.5. NOTICES lists jsoup as MIT and the desugar library as GPL-2.0 with the Classpath Exception. No install.
+
+## 2026-10-06 - contacts completion execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-completion-20261006-0150-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: a7dcba9
+- Phase 1: completeAddress and completionSources. Phase 2: settings section, READ_CONTACTS, in-memory load, AddressChips suggestions
+- Do not install. Do not copy contacts or write the pine address book. Device checks stay David's
+
+## 2026-10-06 - contacts completion phase 1
+
+- completeAddress ranks an exact nickname, ignoring case, ahead of a display name or email that contains the typed text. Within one rank the earlier source stays first. A parenthesized distribution list is one suggestion whose members come from pickedAddresses.
+- completionSources is missing as pine and empty as no sources. The default pine-only list is not written. Other lists are percent-encoded and comma-separated. An Android id is android, the encoded account type, and the encoded account name.
+- loadAlpineBook is unchanged. No install.
+
+## 2026-10-06 - contacts completion phase 1 test import
+
+- CompletionTest imports settings.encode so the completionSources round-trip compiles. The phase 1 ranking behavior is unchanged. No install.
+
+## 2026-10-06 - contacts completion phase 2
+
+- Compose, Address completion lists the pine row when the address book mailbox is set, and asks for READ_CONTACTS only from Show Android contact sets. A denial shows Contacts permission was denied. and enables nothing. After a grant, each RawContacts account is an off switch labeled with the owning app or the account name. Move up and Move down reorder the enabled list.
+- AddressChips shows suggestions while the buffer is not empty. A tap commits through appendAddress and clears the buffer. A distribution list commits each pickedAddresses member. The address book button and picker stay.
+- The pine book is loaded with loadAlpineBook at most once per process when pine is enabled. Android contact rows are queried at most once per process when an Android source is enabled. Neither is written to disk. No WRITE_CONTACTS. No install.
+
+## 2026-10-06 - contacts copy execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-20261006-0213-plan.md
+- Worktree: /home/dlang/git/liveimap/master (master). Builds tag at dispatch: 8c0d572
+- Phase 1: CopyMap both ways and preview. Phase 2: formatAlpineBook, revisionsToExpunge, history settings. Phase 3: copy screen, WRITE_CONTACTS, pine append and uidExpunge of those UIDs only
+- Do not install. Do not expunge without UIDPLUS. Device checks stay David's
+
+## 2026-10-06 - contacts copy phase 1
+
+- copyContacts maps nickname, full name, email, distribution lists, fcc, comments, and plaintext both ways. The same call builds the preview lines and the destination entries. The source list is not modified.
+- A matching email with merge off is Skipped, already there. Nested list nicknames expand. No notes drops fcc. Dropped phone, postal, organization, birthday, photo, website, IM, and custom label are named, and can be appended to comments. Starred, ringtone, and linked contacts are not copied.
+- No install.
+
+## 2026-10-06 - contacts copy phase 1 name
+
+- isPineListAddress avoids the private isDistributionAddress already in Completion.kt. The mapping is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 2
+
+- formatAlpineBook writes five tab fields per entry. An empty nickname stays empty. A tab or newline in a field becomes a space. [plaintext] stays in the comment.
+- revisionsToExpunge keeps the header out. History 3 on UIDs 1 through 6 returns 2. Never trim and a missing UIDPLUS return nothing.
+- addressBookHistory defaults to 3 and addressBookNeverTrim to false. Both keys are omitted at those defaults. Pinerc remote-abook-history sets the number only when it is all digits, and does not turn on never-trim.
+- loadAlpineBook is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 2 test import
+
+- AlpineBookWriteTest imports settings.encode so the history round-trip compiles. The history behavior is unchanged. No install.
+
+## 2026-10-06 - contacts copy phase 3
+
+- Compose, Address book has the history number, Never trim, and Copy contacts. Up on the contacts route opens the copy screen. The user selects contacts, taps Copy to…, and confirms once. The copy is not started from a background load.
+- Copying into Android asks for WRITE_CONTACTS at confirm. Denial shows Contacts permission was denied. and writes nothing. Copying into pine does not ask for that permission.
+- A pine write appends one message using the last message header and the new body. The first header message is left as it is. Revisions outside the history window are marked Deleted and removed with uidExpunge of those UIDs only. Never trim and a missing UIDPLUS append and expunge nothing. A changed last UID shows the preview again and does not append on that pass.
+- No install.
+
+## 2026-10-06 - account storage execution start
+
+- Approved plan: sandbox/plans/account-storage-20261006-0246-plan.md.
+- Phase 1: migrateAccount and AccountMigrationTest. Old DataStore and liveimap_secret stay until the readback matches.
+- Phase 2: shared AccountStore, authenticator, manifest, and backup rules. No install.
+
+## 2026-10-06 - account storage phase 2
+
+- Shared AccountStore. The AccountManager password slot is AES-GCM ciphertext, not plaintext.
+- DataStoreSettingsStore load, save, and password delegate to that one store.
+- Authenticator type org.dlang.liveimap. Add account opens settings and does not add a second account.
+- Removing the account deletes its key, DataStore entry, unsent, and imap-traffic.log.
+- Backup stays allowed and excludes liveimap_secret. No install.
+
+## 2026-10-06 - fake IMAP execution start
+
+- Approved plan: sandbox/plans/fake-imap-20261006-0313-plan.md
+- Phase 1: loopback FakeImapServer and a line client. Both profiles greet, CAPABILITY is that string, LOGIN, LIST INBOX, SELECT UIDVALIDITY 17, FETCH \Seen.
+- Phase 2: Close, Silent, Bad, No, Bye, NewUidValidity, and ExpungeDuringFetch.
+- Test sources only. No app/src/main edits. No install.
+
+## 2026-10-06 - fake IMAP phase 1
+
+- FakeImapServer binds 127.0.0.1 only. minimal is IMAP4rev1. cyrus22 is the recorded Cyrus 2.2 token line. Greeting, CAPABILITY, LOGIN, LIST INBOX, SELECT UIDVALIDITY 17, FETCH \Seen, and LOGOUT.
+- FakeImapTest drives both profiles with a CRLF line client, including an empty password NO. No install.
+
+## 2026-10-06 - fake IMAP phase 2
+
+- Script steps Close, Silent, Bad, No, Bye, NewUidValidity, and ExpungeDuringFetch replace the next reply.
+- Close ends the read. Silent stays unanswered. Bad and No are tagged. Bye is untagged and the socket closes. The next SELECT reports UIDVALIDITY 99. EXPUNGE is sent before FETCH.
+- No install.
+
+## 2026-10-06 - About strings execution start
+
+- Approved plan: sandbox/plans/about-strings-20261006-0325-plan.md
+- Phase 1: About words move into strings.xml. Wording stays the same. The about route title uses about_title. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - About strings phase 1
+
+- About title, version, plaintext warning, Support, licenses, license notice, and the no-email toast come from strings.xml. app_name is unchanged and is reused for the name line and the mail subject.
+- The about route Up title is about_title. Other NavHost titles are unchanged. The support address stays david+liveimap@lang.hm. No install.
+
+## 2026-10-06 - Help strings execution start
+
+- Approved plan: sandbox/plans/help-strings-20261006-0330-plan.md
+- Phase 1: Help headings, buttons, and the missing-file line move into strings.xml. Wording stays the same. The Help Up title and the Help drawer label use help_title. Articles and the issues URL stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Help strings phase 1
+
+- Help title, Getting started, Reporting a bug, Report a bug, Copy debug report, and the missing-file line come from strings.xml. Existing string values are unchanged.
+- HelpScreen uses those resources except the title. The Help route Up title and the Help drawer label are help_title. The About drawer label stays About. HELP_ISSUES_URL and the help asset files stay. No install.
+
+## 2026-10-06 - Licenses strings execution start
+
+- Approved plan: sandbox/plans/licenses-strings-20261006-0335-plan.md
+- Phase 1: the licenses missing-file line comes from strings.xml. Wording stays the same. The about/licenses Up title uses about_licenses. NOTICES.txt stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Licenses strings phase 1
+
+- licenses_unreadable is The license text could not be read. Existing string values are unchanged.
+- LicensesScreen uses that resource for the missing-file line. The about/licenses Up title is about_licenses. The About drawer label stays About. NOTICES.txt stays. No install.
+
+## 2026-10-06 - Drawer strings execution start
+
+- Approved plan: sandbox/plans/drawer-strings-20261006-0338-plan.md
+- Phase 1: drawer labels, the postponed description, and the favorite dialog come from strings.xml. Wording stays the same. About uses about_title. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Drawer strings phase 1
+
+- Drawer labels INBOX, All folders, and Settings come from strings.xml. The About drawer item uses about_title. Existing string values are unchanged.
+- The postponed row still shows postponedDrawerMailbox. Its spoken label is drawer_postponed. Favorite names stay the stored label. Favorite, Name, Move up, Move down, Save, Delete, and Cancel come from strings.xml.
+- NavHost.kt has no Text(". No other screen. No install.
+
+## 2026-10-06 - Unsent strings execution start
+
+- Approved plan: sandbox/plans/unsent-strings-20261006-0343-plan.md
+- Phase 1: Unsent buttons, dialog, Up title, and status lines come from strings.xml. Wording stays the same. unsentSubject takes the missing-subject fallback. unsentLabel is removed. No other screen. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Unsent strings phase 1
+
+- Open, Retry, Discard, Cancel, and Discard this unsent message? come from strings.xml. The unsent route Up title is unsent_title. Existing string values are unchanged.
+- unsentSubject takes the missing-subject text and the screen passes unsent_no_subject. unsentLabel is removed. The screen uses unsent_sent_copy or unsent_not_sent. A present Subject header is still shown.
+- ComposeChromeTest.unsentSubjectAndLabel expects Hello and the passed fallback No subject. It does not call unsentLabel. The folder list Unsent item is unchanged. UnsentScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Folder strings execution start
+
+- Approved plan: sandbox/plans/folder-strings-20261006-0350-plan.md
+- Phase 1: folder list titles, menus, empty states, and spoken row text come from strings.xml. Wording stays the same, except one versus many for the spoken counts. Mailbox names stay mailbox names. Help uses help_title. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Folder strings phase 1
+
+- Folder list title, menu, search, empty states, row menu, and icon descriptions come from strings.xml. Existing string values are unchanged. Help uses help_title.
+- Spoken counts use folders_messages and folders_unread. One count uses the one-form. Other counts use the other-form. An empty prefix shows (empty prefix) and is spoken as Namespace, empty prefix.
+- folderDisplayName and folderRowsMatchingName take the empty-prefix label. folderRowDescription joins the leaf and the non-null phrases. FolderListScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Debug report strings execution start
+
+- Approved plan: sandbox/plans/debug-report-strings-20261006-0358-plan.md
+- Phase 1: debug-report review title, buttons, clipboard label, and share title come from strings.xml. Wording stays the same. Report lines stay generated text. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Debug report strings phase 1
+
+- Debug report, Remove line, Copy, Share, and Dismiss come from strings.xml. The clipboard label is LiveIMAP debug report. The share chooser title is Share debug report. Existing string values are unchanged.
+- An empty report line still shows a space. Report lines stay generated text. DebugReportReview.kt has no Text(". No install.
+
+## 2026-10-06 - Index strings execution start
+
+- Approved plan: sandbox/plans/index-strings-20261006-0408-plan.md
+- Phase 1: index bar, menus, dialogs, empty text, and the new-mail pill come from strings.xml. Wording stays the same, except one versus many for the pill and the thread warning. Filter kinds, start-rule labels, and relative dates stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Index strings phase 1
+
+- Index bar, menus, dialogs, empty text, and the new-mail pill come from strings.xml. Wording stays the same except one versus many for the pill and the thread warning.
+- emptyIndexText takes the empty sentence and the query format. A blank query returns the sentence. Any other query uses the format with the query and the mailbox. Filter kinds, start-rule labels, and relative dates stay.
+- MessageIndexScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Index strings phase 1 test gate
+
+- IndexWindowTest at 2026-10-06 04:20:45 MST: 54 tests, 1 failed, 0 errors, 0 skipped. The failure is the known orderedSubjectHiddenUnlessAdvertised at IndexWindowTest.kt:175. emptyIndexTextBlankAndQuery passed. No install.
+- assembleDebug follows so the builds tag can move. The earlier testDebugUnitTest exit left the tag unmoved.
+
+## 2026-10-06 - Known test failures execution start
+
+- Approved plan: sandbox/plans/known-test-failures-20261006-1144-plan.md
+- Phase 1: sortKeyAdvertised becomes internal; rename orderedSubjectStaysListedWhenNotAdvertised; defaultsRoundTrip matches a default encode(); omit comment only. Menu behavior and encoded defaults stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Known test failures phase 1
+
+- sortKeyAdvertised is internal. The menu still lists every SortKey and disables a missing capability. orderedSubjectStaysListedWhenNotAdvertised checks listing and advertisement separately.
+- defaultsRoundTrip lists the keys a default encode writes. completionSources, addressBookHistory, and addressBookNeverTrim stay omitted. The omit comment names those three defaults. Encoded defaults are unchanged. No install.
+
+## 2026-10-06 - Reader strings execution start
+
+- Approved plan: sandbox/plans/reader-strings-20261006-1150-plan.md
+- Phase 1: reader buttons, snacks, dialogs, and header labels come from strings.xml. Wording stays the same. Action, body-view, sort, and opposite-forward labels stay. The charset note stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Reader strings phase 1
+
+- Reader buttons, snacks, dialogs, and header labels come from strings.xml. Wording stays the same.
+- Without UIDPLUS, the expunge dialog is reader_expunge_body, a space, then reader_expunge_others. recipientLine uses reader_to, reader_cc, or reader_to_cc. The share chooser title is reader_share. The five not-connected snacks and banners use reader_not_connected. No app found uses reader_no_app.
+- Action, body-view, sort, and opposite-forward labels stay. Snack modes retry and undo stay. The charset note stays. MessageReaderScreen.kt has no Text(", no No app found, and no not connected literal. No install.
+
+## 2026-10-06 - ESEARCH filter results execution start
+
+- Approved plan: sandbox/plans/esearch-filter-results-20261006-1245-plan.md
+- Phase 1: takeEsearch returns the libetpan ESEARCH ids when the LiveIMAP list is absent. Steal msg_list before the result is freed. MIN and MAX stay one id. An empty match stays empty. sendEsearch and libetpan stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - ESEARCH filter results phase 1
+
+- takeEsearch still returns a detached LIVE_ESEARCH list when that slot is filled.
+- Otherwise, when the extension is mailimap_extension_esearch, it steals msg_list and sets that field to null before freeExtensionList. A null msg_list starts empty. An empty list appends min when has_min and max when has_max.
+- The list uidArray receives is still uint32_t values. sendEsearch is unchanged. libetpan is unchanged. No install.
+
+## 2026-10-06 - Compose strings execution start
+
+- Approved plan: sandbox/plans/compose-strings-20261006-1255-plan.md
+- Phase 1: compose buttons, field labels, titles, and notices come from strings.xml. Wording stays the same. Existing reader and unsent names are reused. oppositeForwardLabel stays. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Compose strings phase 1
+
+- Compose buttons, field labels, titles, and notices come from strings.xml. Wording stays the same.
+- composeTitle takes Reply, Reply all, Forward, and Compose. Bounce, a new message, and a resumed draft use Compose. The send icon is compose_send, or reader_retry when the held copy is append-only.
+- The Unsent button compares the notice and status with compose_accepted and unsent_not_sent. forwardHeaderBody takes the header already formatted with compose_quote_header. The leading newline stays at the call. oppositeForwardLabel is unchanged.
+- ComposeScreen.kt has no Text(", no contentDescription = ", no notice = ", and no status = ". No install.
+
+## 2026-10-06 - Settings strings execution start
+
+- Approved plan: sandbox/plans/settings-strings-20261006-1310-plan.md
+- Phase 1: settings screen titles, fields, buttons, and notices come from strings.xml. Wording stays the same except settings_expanded, settings_omitted, and settings_sources. Shared label functions stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Settings strings phase 1
+
+- Settings screen titles, fields, buttons, and notices come from strings.xml. Wording stays the same except settings_expanded, settings_omitted, and settings_sources.
+- SettingsGroup.title reads that group's resource. Compose uses compose_new. Debug uses settings_debug. Shared label results are still passed into the summaries. One omitted pinerc line uses the singular settings_omitted.
+- SettingsScreen.kt has no Text(" and no contentDescription = ". No install.
+
+## 2026-10-06 - Shared labels execution start
+
+- Approved plan: sandbox/plans/shared-labels-20261006-1323-plan.md
+- Phase 1: the index, the reader, and settings show sort, start-rule, swipe, theme, date, density, body-view, reader-action, and forward-style names from strings.xml. Wording stays the same. Existing compose, delete, and forward-attachment names are reused. Pure label functions stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Shared labels phase 1
+
+- The index, the reader, and settings show sort, start-rule, swipe, theme, date, density, body-view, reader-action, and forward-style names from strings.xml. Wording stays the same.
+- Reused compose_reply, compose_reply_all, compose_forward, compose_bounce, compose_to, compose_cc, compose_subject, drawer_delete, and settings_forward_attachment. label_recent_note keeps the leading backslash. label_alpine_default keeps the apostrophe. label_open_at keeps the ellipsis and replaces the two index sentences that already said that.
+- ChoiceField's name callback is composable. The pure label functions, recentRuleNote, openAtMenuText, and oppositeForwardLabel stay. PinercImport, AccountSettings label bodies, ComposeScreen, and the tests were not edited. The index sort menu still uses the shorter index_sort names. No install.
+
+## 2026-10-06 - Contact copy strings execution start
+
+- Approved plan: sandbox/plans/contact-copy-strings-20261006-1331-plan.md
+- Phase 1: the contact-copy screen’s buttons, notices, and field labels come from strings.xml. Wording stays the same. Existing back, confirm, Pine, contacts-denied, and not-connected names are reused. Query clauses and the photo marker stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Contact copy strings phase 1
+
+- The contact-copy screen buttons, notices, and field labels come from strings.xml. Wording stays the same.
+- Reused reader_back, settings_confirm, settings_pine, settings_contacts_denied, and reader_not_connected. copy_reading and copy_to keep the ellipsis. copy_name_email is one space between the two values.
+- contactLabel and phoneLabel are not composable and read the words with context.getString. connectAccount receives the not-connected words. Query clauses and the photo marker stay. ContactCopyScreen.kt has no Text(". No install.
+
+## 2026-10-06 - Chrome strings execution start
+
+- Approved plan: sandbox/plans/chrome-strings-20261006-1505-plan.md
+- Phase 1: the mailbox chooser, address-book picker, connection status, and up button read their words from strings.xml. Wording stays the same. reader_retry, reader_not_connected, and compose_close are reused. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Chrome strings phase 1
+
+- The mailbox chooser, address-book picker, connection status, and up button read their words from strings.xml. Wording stays the same.
+- Added chooser_title, picker_missing, status_reconnecting, and scaffold_up at the end. status_reconnecting keeps the ellipsis. Reused reader_retry, reader_not_connected, and compose_close.
+- The four Kotlin files have no Text(" and no contentDescription = ". Expander marks and the address label template stay. No install.
+
+## 2026-10-06 - Index date strings execution start
+
+- Approved plan: sandbox/plans/index-date-strings-20261006-1512-plan.md
+- Phase 1: relative index dates and the bad custom pattern come from strings.xml. The sentences stay the same, including min for one minute and for several. The 45-second, 7-day, and hour boundaries stay. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Index date strings phase 1
+
+- Relative index dates and the bad custom pattern come from strings.xml. The sentences stay the same, including min for one minute and for several.
+- formatIndexDate takes the nine words after its current arguments. One minute and several minutes both use index_min. One hour uses index_hour. Several hours use index_hours. Days follow the same split. A past time uses index_ago. A future time uses index_ahead. An empty or illegal custom pattern uses index_bad_pattern.
+- The 45-second, 7-day, and hour boundaries stay. Local and short patterns stay in the formatter. The index and the reader pass the resource values. DateFormatTest passes the same English words. Expected sentences stay. No install.
+
+## 2026-10-06 - Pinerc preview strings execution start
+
+- Approved plan: sandbox/plans/pinerc-strings-20261006-1523-plan.md
+- Phase 1: the pinerc preview labels and skip sentences come from strings.xml. The wording stays the same. Pinerc keys stay. The sort and start-rule functions still supply the values. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Pinerc preview strings phase 1
+
+- The pinerc preview labels and skip sentences come from strings.xml. The wording stays the same.
+- pinercPreview takes the phrases. sortKeyLabel and startRuleLabel still produce the values. The settings screen passes the resource strings. PinercImportTest and AlpineBookWriteTest pass the same English through previewPinerc. Expected sentences stay, including Display name: Old → Ada. Pinerc keys stay.
+- PinercImport.kt has no TLS is not supported literal. No install.
+
+## 2026-10-06 - Rotation state execution start
+
+- Approved plan: sandbox/plans/rotation-state-20261006-1624-plan.md
+- Phase 1: hold the folder list, the index, the reader, and the mailbox chooser in navigation-entry viewModel() instances so rotation reuses them and does not refetch. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Rotation state phase 1
+
+- Folder list, index, reader, and mailbox chooser keep their models in viewModel() instances owned by the navigation entry.
+- The index holds the model, rows, selected UIDs, and the first visible UID with its pixel offset. The folder list and the chooser hold the folder model and rows. The reader holds the fetched body for the open UID and that body's scroll offset.
+- Those load effects skip loadLevel, the index window fetch, and the body fetch when that held state is already loaded. A new process still starts empty. rememberSaveable fields stay. No configChanges, no orientation lock, no install.
+
+## 2026-10-06 - Session select and examine execution start
+
+- Approved plan: sandbox/plans/session-select-examine-20261006-1653-plan.md
+- Phase 1: a read sends EXAMINE. SELECT is only the read-write upgrade or a stale resync of a mailbox that is already read-write. The watch connection examines, then idles. NAMESPACE is once per connection. A password change logs in again. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Session select and examine phase 1
+
+- A read sends EXAMINE. SELECT is the read-write upgrade, or a stale resync of a mailbox that is already read-write. The same mailbox with fresh sequences and a sufficient mode sends neither.
+- The watch connection sends EXAMINE, then IDLE, and not QRESYNC. NAMESPACE stays on the session. login and close clear it. A kept session does not.
+- sameImapIdentity takes both passwords. A different password logs in again. A different display name does not. The password is not stored on AccountSettings and is not written to the traffic log.
+- Leaving a mailbox sends no CLOSE. UNSELECT clears the open mailbox. Without UNSELECT, unselect examines the same mailbox and leaves it read-only. No install.
+
+## 2026-10-06 - Capability flags execution start
+
+- Approved plan: sandbox/plans/capability-flags-20261006-1711-plan.md
+- Phase 1: one Capabilities object from the login line. IMAP4rev1 or IMAP4rev2 connects. A missing extension skips that command. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Capability flags phase 1
+
+- IMAP4rev1 or IMAP4rev2 connects. A line with neither is rejected. Missing IDLE, SORT, NAMESPACE, or UIDPLUS still connects.
+- Capabilities.parse is the capability-line split. The session stores that object. Sort, thread, idle, and unselect read it. Without NAMESPACE, LIST "" "" supplies one personal delimiter and does not list %.
+- An unadvertised saved sort or thread opens at Arrival and does not ask the thread question. The menu still lists the key as not advertised. UIDPLUS, MOVE, and ESEARCH in the index, reader, and address book read featureCaps.
+- requiredCapabilities stays so ServerProbe can compile. The gate does not read it. No install.
+
+## 2026-10-06 - Slower fallbacks execution start
+
+- Approved plan: sandbox/plans/slower-fallbacks-20261006-1732-plan.md. Mailbox SEQ 38 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: settings, the hide set, polling, the STATUS gate, and the help paragraph. Phase 2: client sort, client thread, and the 5000 dialog. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag a8630ff. Commits stay on master.
+
+## 2026-10-06 - Slower fallbacks phase 2
+
+- Client sort sends one UID FETCH of UID plus one field and sorts in Kotlin. Client thread sends one UID FETCH of Message-ID, References, In-Reply-To, and Subject with BODY.PEEK.
+- A folder over 5000 messages asks before that download. Continue runs the client call. Cancel leaves the view at Arrival.
+- SerialMailSession forwards clientOrder and clientThread so the open session reaches LibetpanMailSession. No install.
+
+## 2026-10-06 - Delete and expunge execution start
+
+- Approved plan: sandbox/plans/delete-and-expunge-20261006-1819-plan.md. Mailbox SEQ 39 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: settings, moveCommandKind, CLOSE on leave and background close, trash resolution, and the help paragraph. Phase 2: delete policy on the selection bar, swipe, reader, both menus, Expunge, and Folder info. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag 0436609. Commits stay on master.
+
+## 2026-10-06 - Delete and expunge phase 1
+
+- Settings omit autoExpunge, deletePolicy, moveMethod, and trashMailbox at their defaults. Missing lines decode as off, Mark as deleted, Copy then mark deleted, and empty.
+- moveCommandKind returns Move only when the method is IMAP MOVE and MOVE is advertised. Both copy methods pass that. A null account stays CopyThenDelete.
+- CLOSE is sent only for Auto-expunge on a read-write selected mailbox, on folder change, unselect, and background close. A failed background CLOSE still closes the socket. No plain EXPUNGE.
+- knownTrash uses the saved Trash mailbox, or one LIST of each personal namespace when LIST-EXTENDED is advertised. It caches that result, including empty, until close. It does not guess a name.
+- Confirm before expunge, Auto-expunge, Delete button, Move method, and Trash are in Settings. The help paragraph is last. No install.
+
+## 2026-10-06 - Delete and expunge phase 2
+
+- The selection trash icon, reader Delete, and swipe Delete use effectiveDeletePolicy. The other two policies are on the selection menu and the reader more menu when they are possible. A fallen-back policy is not listed again.
+- Delete permanently asks before STORE when Confirm is on, then STORE \Deleted and UID EXPUNGE. All-mailbox uses uidExpungeDeleted. Without UIDPLUS neither expunge method runs.
+- Expunge… is on the sort menu after the sort items, then Select all, then Folder info. The list-column button is gone. Forward as attachment stays on the selection menu. Index Back calls expungeOnLeave. Reader Back does not. No install.
+
+## 2026-10-06 - Index layout and sort execution start
+
+- Approved plan: sandbox/plans/index-layout-and-sort-20261006-1855-plan.md
+- SEQ 40. Phase 1: fixed status slots, EXISTS sequence width, date-format width. Phase 2: session sort, menu, subtitle, reader items, thread count, null-parent siblings, thread index setting, help paragraph.
+- No install. Builds tip at start is 66cc2b2.
+
+## 2026-10-06 - Index layout and sort phase 1
+
+- Status slots stay 16 dp, 10 dp, and 16 dp. A selected row has no check icon. The row background and selected semantics stay.
+- Sequence width uses existsColumnChars(folderExists). 999 is 3 digits and 1000 is 4. sequenceColumnChars stays. Opening copies selected EXISTS when the ask path did not.
+- Date width uses dateColumnSamples for the format. Loaded row dates are not measured.
+
+## 2026-10-06 - Index layout and sort phase 2
+
+Session sort stays in memory. The index menu is Newest, Oldest, then the criteria, with a quiet sort line under the mailbox title. The reader more menu no longer changes the sort. A thread count sits on the root row. A null-uid parent is siblings at that level. Thread index is Expanded or Collapsed and is omitted from encode when Expanded.
+
+## 2026-10-06 - Simple search bar execution start
+
+- Approved plan: sandbox/plans/search-simple-bar-20261006-1924-plan.md. Mailbox SEQ 41 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: the search bar field name, SimpleSearchField, searchCriterion from the simple search, charset only when a code point is above 127, the Participating string, and the help paragraph. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag dfd461f. Commits stay on master.
+
+## 2026-10-06 - Simple search bar phase 1
+
+- The open bar is the field name and the text field. The names are Subject, From, To, Cc, and Participating. Choosing a name does not search. IME Search passes the held field. There is no Advanced button and no scope control. The filter menu stays.
+- searchField is on IndexScreenHeld. It is not rememberSaveable. bind and dropLoaded leave it. A new process starts at Subject. It is not written to settings.
+- applySearch stores the query and the field. fetchSearch calls searchCriterion with that field name. Filter save and restore keeps the field. jumpToNewest repeats it. The simple search does not call searchText.
+- searchNeedsCharset is false for ASCII and true when a code point is above 127. completeSearch sends CHARSET UTF-8 only when that flag is true. nativeSearchText still builds TEXT and still sends CHARSET UTF-8.
+- The visible word is Participating. The help paragraph is last. No install.
+
+## 2026-10-06 - Advanced search page execution start
+
+- Approved plan: sandbox/plans/search-advanced-page-20261006-1942-plan.md. Mailbox SEQ 42 IMPLEMENT revision 1 is the approval. Status set to APPROVED.
+- Phase 1: the Advanced page for the current folder, one combined search, Body, sort and select-all, the help paragraph, and the tests. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag d6ad37c. Commits stay on master.
+
+## 2026-10-06 - Advanced search page phase 1
+
+- The open bar gains Advanced after the text field. It opens search/{mailbox} for the current folder. The filter menu stays. There is no scope control.
+- The page starts on And, with one Subject row and Not off. Add term adds a Subject row. Body and Full text show the cost sentence and are not the starting field. Search sends one criterion of kind Advanced. A blank valued row is dropped. The form is not saved.
+- A sort keeps that search. A simple search clears it. Select all during a search selects the search uids. Body uses the BODY key. One folded key is sent. No install.
+
+## 2026-10-06 - Search scope and count execution start
+
+- Approved plan: sandbox/plans/search-scope-and-count-20261006-2001-plan.md
+- Phase 1: scope choice, per-folder search, Count without FETCH, folder name on the row, cancel, and the tests. No ESEARCH IN. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-06 - Search scope and count phase 1
+
+- Scope is This folder, This folder and below, Subscribed, or All folders. This folder starts selected and is not saved. Search stores advancedScope with the encoded text.
+- A wider search walks one folder at a time, can cancel, reports Folder N of M, names the folder on the row, and selects the index mailbox again. Current stays one search and does not list children.
+- Count uses searchCount and does not fetch. ESEARCH sends RETURN (COUNT). A failed select is skipped. No ESEARCH IN. No install.
+
+## 2026-10-06 - Search scope and count phase 1 layout
+
+- The scope chips use FlowRow with the same ExperimentalLayoutApi opt-in as the other chip rows. No install.
+
+## 2026-10-06 - ESEARCH IN execution start
+
+- Approved plan: sandbox/plans/search-esearch-in-20261006-2037-plan.md
+- Mailbox SEQ 44 IMPLEMENT revision 1 is the approval. Status set to APPROVED.
+- Phase 1: MULTISEARCH flag, ESEARCH IN for Subtree, Subscribed, and Personal All, correlator parser, count sum, and the tests. The per-folder loop stays when MULTISEARCH is absent and when All includes a namespace that is not Personal. No install.
+- First action per standard-plan-compliance-block.md. Base tip d5891cc. Commits stay on master.
+
+## 2026-10-06 - ESEARCH IN phase 1
+
+- MULTISEARCH is a capability flag. Cyrus is false. Moon is true. The fixture lines are unchanged.
+- A wider search with MULTISEARCH sends one ESEARCH IN. Subtree names the home mailbox. Subscribed uses subscribed. All uses personal only when every namespace is Personal. Any other namespace stays on the folder loop. Current stays one search.
+- Count sends RETURN (COUNT) and sums the per-mailbox counts. The result list sends RETURN (ALL). There is no SELECT before that command. CapabilityGateTest 7 and IndexWindowTest 75 passed. Native assembleDebug compiled. No install.
+
+## 2026-10-06 - index toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-index-bar-20261006-2102-plan.md
+- Status set to APPROVED
+- builds before edit: 40bf7a0
+- Phase 1 of 1: index bar layout for Refresh, Search, and Filter. Sort stays pinned. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - index toolbar customize phase 1
+
+- IndexBarLayout keeps Refresh, Search, and Filter in exactly one section. Sort is not an action and stays pinned on the bar
+- A default encode omits indexBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad indexBar
+- The Sort menu ends with Customize toolbar…. That screen moves the three onto the bar, into the menu, or out of sight, and saves indexBar with the account
+- No install
+
+## 2026-10-06 - selection toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-selection-bar-20261006-2123-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 46 IMPLEMENT revision 1. builds before edit: cf2a6da
+- Phase 1 of 1: selection bar for Mark read, Flag, Move, and Delete. More stays pinned. The index bar stays. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - selection toolbar customize phase 1
+
+- SelectionBarLayout keeps Seen, Flag, Move, and Delete in exactly one section. More is not an action and stays pinned
+- A default encode omits selectionBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad selectionBar
+- The selection More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves selectionBar. toolbar/index still saves indexBar only
+- No install
+
+## 2026-10-06 - folder toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-folder-bar-20261006-2135-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 47 IMPLEMENT revision 1. builds before edit: d899a40
+- Phase 1 of 1: folder bar for Refresh, Collapse all, Save as default view, and Reset to default view. More stays pinned. The index and selection bars stay. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - folder toolbar customize phase 1
+
+- FolderBarLayout keeps Refresh, Collapse all, Save as default view, and Reset to default view in exactly one section. Unsent is not an action. More stays pinned
+- A default encode omits folderBar. defaultsRoundTrip keeps its key list. A repeated, unknown, or missing action throws bad folderBar
+- The folder list More menu ends with Customize toolbar…. That screen moves the four onto the bar, into the menu, or out of sight, and saves folderBar. toolbar/index still saves indexBar only. toolbar/selection still saves selectionBar only
+- No install
+
+## 2026-10-06 - reader toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-reader-bar-20261006-2149-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 48 IMPLEMENT revision 1. builds before edit: bed945c
+- Phase 1 of 1: reader bar for Refresh and the message actions. Until a layout is saved it follows the Message bar list. More stays pinned. readerBar encoding stays. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - reader toolbar customize phase 1
+
+- ReaderToolbarLayout keeps Refresh and the message actions in exactly one section. Until readerToolbar is saved it follows readerBar. Spam is only a display filter. More stays pinned
+- A default encode omits readerToolbar. defaultsRoundTrip keeps its key list. readerBar stays. A repeated, unknown, or missing action throws bad readerToolbar
+- The reader More menu ends with Customize toolbar…. That screen moves Refresh and the message actions onto the bar, into that menu, or out of sight, and saves readerToolbar. The other toolbar routes stay on their own layouts
+- No install
+
+## 2026-10-06 - compose toolbar customize execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-compose-bar-20261006-2202-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 49 IMPLEMENT revision 1. builds before edit: cd5f298
+- Phase 1 of 1: compose bar for Postpone. Send and More stay pinned. Bounce keeps an empty action row. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - compose toolbar customize phase 1
+
+- ComposeBarLayout keeps Postpone in exactly one section. The default leaves the toolbar empty and puts Postpone in the menu. Send and More stay pinned. Bounce keeps an empty action row
+- A default encode omits composeBar. defaultsRoundTrip keeps its key list. A repeated, unknown, missing, or badly shaped value throws bad composeBar
+- The compose More menu ends with Customize toolbar…. That screen moves Postpone onto the bar, into that menu, or out of sight, and saves composeBar. The other toolbar routes stay on their own layouts
+- No install
+
+## 2026-10-06 - toolbar drag execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-drag-20261006-2219-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 50 IMPLEMENT revision 1. builds before edit: e20659b
+- Phase 1 of 1: drag a row in the shared toolbar editor. Move up, Move down, and Move to stay. No wrap and no TalkBack custom actions. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar drag phase 1
+
+- Customize toolbar… can drag a row within and between Toolbar, Overflow, and Hidden. The drag saves the same layout the Move buttons already save. Reset still restores that screen's default
+- Move up, Move down, and Move to stay. Reader drag reads effectiveReaderToolbar and saves readerToolbar. A drag on one screen does not change another screen's layout
+- reorderable 3.1.0 is the only new dependency. NOTICES.txt says 115 artifacts and 113 under Apache-2.0, and lists that artifact once. No install
+
+## 2026-10-06 - toolbar wrap execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-wrap-20261006-2235-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 51 IMPLEMENT revision 1. builds before edit: f8de69f
+- Phase 1 of 1: wrap toolbar icons onto another row. Sort, More, and Send stay on the bar. No TalkBack custom actions. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar wrap phase 1
+
+- A full toolbar wraps onto another row. The last row scrolls when the chosen cap is too small. No action is dropped into the overflow
+- Toolbar rows defaults to 2 and is omitted from a default encode. A value outside 1..4 throws bad toolbarRows. The editor stepper saves toolbarRows only and warns with a 3-slot budget
+- Sort, More, and Send stay on the bar. The disconnected index Refresh stays one icon. Bounce still draws neither Send nor More. No TalkBack custom actions. No install
+
+## 2026-10-06 - toolbar talkback execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-talkback-20261006-2254-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 52 IMPLEMENT revision 1. builds before edit: bb85b3b
+- Phase 1 of 1: TalkBack custom actions on the shared toolbar editor. Move up, Move down, and Move to stay. A move is announced. No Material default change. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar talkback phase 1
+
+- TalkBack moves a Customize toolbar… row with Move up, Move down, and Move to. The drag handle stays out of the focus order. The Move buttons stay, at least 48.dp, and the Toolbar rows steppers do too
+- A move is announced in a polite live region. Move up says Moved Search up. Move to Overflow says Moved Search to Overflow. A drag that lands Filter in Hidden says Moved Filter to Hidden. A header drag does not change the announcement
+- dragLanding of the index default from 2 to 3 is Search in Toolbar, from 3 to 5 is Filter in Hidden, and from 0 to 3 is null. No bar default, toolbarRows, or pinned control changed. No install
+
+## 2026-10-06 - toolbar material defaults execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-material-defaults-20261006-2310-plan.md
+- Status set to APPROVED
+- Mailbox SEQ 53 IMPLEMENT revision 1. builds before edit: d9fb7d6
+- Phase 1 of 1: index default is Search, selection default is Delete, reader default is Reply and Delete. Bounce starts in the reader overflow. Folder and compose defaults stay. No new index action. No install
+- Host: /home/dlang/git/liveimap/master. This tree's ./build_app runs assembleDebug. Do not deploy
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-06 - toolbar material defaults phase 1
+
+- An untouched index bar shows Search, with Refresh and Filter in the overflow. An untouched selection shows Delete, with Seen, Flag, and Move in the overflow. An untouched reader shows Reply and Delete, with Refresh, Reply all, Forward, Move, Spam, and Bounce in the overflow
+- resetReaderToolbar is that reader layout. A null readerToolbar with the default readerBar uses it. Any other null readerBar still follows readerToolbarFrom. A saved readerToolbar still wins. readerBar encoding is unchanged
+- An omitted indexBar or selectionBar decodes to the new default. T:Refresh,Search,Filter|O:|H: and T:Seen,Flag,Move,Delete|O:|H: still decode to those toolbars. defaultsRoundTrip still ends at altAddresses. Folder and compose defaults stay. No install
+
+## 2026-10-06 - Jump to sequence execution start
+
+- Approved plan: sandbox/plans/alpine-jump-20261006-2321-plan.md
+- SEQ 54 REVISION 1. Phase 1: jumpToSequence, Sort menu dialog, strings, help sentence, and tests.
+- No install. Builds tip at start is 0670e5a.
+
+## 2026-10-06 - Next unread execution start
+
+- Approved plan: sandbox/plans/alpine-next-unread-20261006-2333-plan.md
+- SEQ 55 REVISION 1. Phase 1: nextUnread, Sort menu row, strings, help sentence, and tests.
+- No install. Builds tip at start is 4673e1f.
+
+## 2026-10-06 - Next unread phase 1
+
+- nextUnread searches UNDELETED UNSEEN. Arrival chooses the next sequence in the current direction and calls jumpToSequence. Sorted, filtered, search, and thread views walk forward from the first visible row.
+- The connected Sort menu lists Next unread after Jump to number…. No later unread says "No unread messages" and stays in this folder. A search failure keeps the rows and shows that notice.
+- No install.
+
+## 2026-10-06 - Next folder execution start
+
+- Approved plan: sandbox/plans/alpine-next-folder-20261006-2355-plan.md
+- SEQ 56 REVISION 1. Phase 1: nextUnseenFolder, unseenFolderOrder, confirm dialog, navigation callbacks, strings, help sentence, and tests.
+- No install. Builds tip at start is 1db15ad.
+
+## 2026-10-06 - Next folder phase 1
+
+- Next unread with no later message in this folder asks before opening the next folder that has unread mail.
+- Go opens that index. Cancel stays. No unread folder still says "No unread messages".
+- No install.
+
+## 2026-10-07 - Save copy execution start
+
+- Approved plan: sandbox/plans/alpine-save-copy-20261007-0009-plan.md
+- SEQ 57 REVISION 1. Phase 1: Copy kind, copyUids, reader Save row, snack string, help sentence, disconnected test.
+- No install. Builds tip at start is b4e35d9.
+
+## 2026-10-07 - Save copy phase 1
+
+- Kind Copy is UID COPY and does not store Deleted. Move still UID MOVEs. Other kinds still copy and then store Deleted.
+- Reader More Save copies the open message into the chosen folder and stays. Saved is the success text. A copy failure shows that failure text.
+- No install.
+
+## 2026-10-07 - Saved mailbox execution start
+
+- Approved plan: sandbox/plans/alpine-save-folder-20261007-0017-plan.md
+- SEQ 58 REVISION 1. Phase 1: savedMailbox next to trash, settings row after Trash, reader Save confirm, strings, help sentence, round-trip test.
+- No name rule. No install. Builds tip at start is fc81319.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - Saved mailbox phase 1
+
+- savedMailbox sits next to trashMailbox. Empty is omitted from encode. A missing key decodes as "". Saved Mail round-trips as savedMailbox=Saved%20Mail. defaultsRoundTrip still ends at altAddresses.
+- The special-use section shows Saved mailbox after Trash. Clearing the row stores "". mailboxSetCount is unchanged.
+- When a saved mailbox is set, Save asks before copying there. Save uses copyUids and leaves the original. Choose opens the folder list. Cancel, dismiss, and Back do not copy. An empty setting still opens the folder list.
+- No name rule. No install.
+
+## 2026-10-07 - Save name rule execution start
+
+- Approved plan: sandbox/plans/alpine-save-name-20261007-0026-plan.md. Mailbox SEQ 59 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: SaveNameRule, saveFolderName, the settings choice, the reader offer, the last-folder store, the strings, the help sentence, and the tests. No install.
+- First action per standard-plan-compliance-block.md. Base builds tag 4ba5f81. Commits stay on master.
+
+## 2026-10-07 - Save name rule phase 1
+
+- SaveNameRule is Default folder, By From, By Sender, By recipient, or Last folder used. Default folder and an empty last folder are omitted from encode. A missing key decodes as the default.
+- saveFolderName offers the saved mailbox, the last folder, or the local part of From, Sender, or the recipient. Ada <Ada@Example.com> is ada. bob!ann%extra@host is ann.
+- The choice sits after Saved mailbox. Save asks with that name, or opens the folder list when the name is empty. A successful copy stores the destination as the last folder. Cancel does not. No install.
+
+## 2026-10-07 - Take address execution start
+
+- Approved plan: sandbox/plans/alpine-take-address-20261007-0042-plan.md. Mailbox SEQ 60 REVISION 1 IMPLEMENT is the approval. Status set to APPROVED.
+- Phase 1: takeAddresses, bookHasAddress, the reader Take address menu and confirm, the strings, the help sentence, and the tests. No install. Do not mark messages read.
+- First action per standard-plan-compliance-block.md. Base builds tag 4007657. Commits stay on master.
+
+## 2026-10-07 - alpine mark all read execution start
+
+- Approved plan: sandbox/plans/alpine-mark-all-read-20261007-0053-plan.md
+- Work: Mark all read in the connected index Sort menu, after confirm, stores \Seen on the whole folder
+- Phase 1 only. Do not expunge. Do not install. Take address at 7a92dca stays underneath.
+
+## 2026-10-07 - pinerc expunge row execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-expunge-20261007-0101-plan.md
+- Mailbox SEQ 62 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: offerAutoExpunge, pinercApplied, the import checkbox, settings_import_auto_expunge, and PinercImportTest.
+- Do not import folder names. Do not install. Base builds tag ac1c2c7. Mark all read stays underneath.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - pinerc expunge row phase 1
+
+- offerAutoExpunge is true only when the feature list sets askBeforeExpunge false. pinercPreview does not change autoExpunge.
+- pinercApplied turns autoExpunge on only when the row is offered and ticked. An untick leaves it unchanged. A tick when the row is not offered does nothing.
+- The import dialog shows "Also turn on Auto-expunge?" under the change rows. It starts unticked for each new preview. Apply persists pinercApplied and is enabled when that result differs. Cancel discards the tick.
+- The confirm row string stays "Confirm before expunge". No folder import. No install.
+
+## 2026-10-07 - pinerc folder names execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-folders-20261007-0114-plan.md. Mailbox SEQ 63 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: same-server folder-collections prefix, other-host skip, braced slash mailbox, inbox-path without braces, phrases, and tests.
+- Do not LIST. Do not import incoming folders. Do not change smtp-server. Do not install. Base builds tag 37b2bcc. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - pinerc folder LIST execution start
+
+- Approved plan: sandbox/plans/alpine-pinerc-list-20261007-0130-plan.md. Mailbox SEQ 64 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: LIST Sent, Postponed, and address-book names before the import dialog. A missing mailbox is dropped. A failed check drops those changes with one reason.
+- Do not import incoming folders. Do not change smtp-server. Do not install. Base builds tag 6dad25d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - pinerc folder LIST phase 1
+
+- mailboxListed asks LIST for one exact name. An empty OK list is missing. \Noselect is missing. INBOX matches ignoring case. nativeListLevel stays %.
+- A missing Sent, Postponed, or address-book name is put back and reported. A failed check drops those changes once, with no missing-folder line.
+- The import dialog stays closed until that check finishes. A newer read discards the older result. pinercPreview does not open a session.
+- No incoming-folder import. smtp-server is unchanged. No install.
+
+## 2026-10-07 - Import pinerc incoming-folders as favorites
+
+- Execute alpine-pinerc-incoming-20261007-0151-plan.md from step 1 on master at 7d224d1.
+- incoming-folders become extra leaf favorites. LIST each new name. Do not import stay-open-folders. Do not install.
+
+## 2026-10-07 - SMTP EHLO and quoted-printable execution start
+
+- Approved plan: sandbox/plans/smtp-ehlo-20261007-0212-plan.md. Mailbox SEQ 66 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: EHLO, HELO only for the three refusal codes, 8bitmime before MAIL, quoted-printable when 8-bit is off or a line exceeds 998, and one ComposeScreen retry.
+- No STARTTLS. No AUTH. No install. Base builds tag 38fec60. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - SMTP EHLO and quoted-printable phase 1
+
+- nativeSmtp sends EHLO. HELO runs only after NOT_IMPLEMENTED, UNEXPECTED_CODE, or ACTION_NOT_TAKEN. Any other EHLO result fails with the host prefix and does not send HELO.
+- When 8BITMIME is absent, a Content-Transfer-Encoding: 8bit header throws 8bitmime before MAIL. ComposeScreen retries that failure once with withoutEightBit and does not keep a device copy for the first failure.
+- A text part stays 8bit or 7bit only when 8-bit is allowed and no line exceeds 998 octets. Otherwise it is quoted-printable, with lines of at most 76 octets including CRLF. Attachments stay base64. Bcc stays off the message.
+- No STARTTLS. No AUTH. No install.
+
+## 2026-10-07 - SMTP wrap column execution start
+
+- Approved plan: sandbox/plans/smtp-wrap-column-20261007-0236-plan.md. Mailbox SEQ 67 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: composerWrapColumn default 74, Sending wrap-column row, wrapPlain before textPart, assemble passes the setting, tests, and the help sentence.
+- No format=flowed. Do not import composer-wrap-column. No STARTTLS. No AUTH. No install. Base builds tag 55bd748. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - SMTP wrap column phase 1
+
+- composerWrapColumn defaults to 74 and is omitted from encode. A stored value is coerced into 0..998. The constructor rejects anything outside that range.
+- Settings, Sending has a Wrap column row after the SMTP port. Empty text, a non-digit, or a value outside 0..998 restores the stored number and does not persist. The section summary stays the SMTP host and port.
+- wrapPlain breaks plain text on spaces and tabs at the column, repeats a > quote prefix, and leaves a long word whole. Column 0 does not insert breaks. buildPlain wraps before the existing 998 rule. No format=flowed. Bounce is unchanged.
+- No composer-wrap-column import. No STARTTLS. No AUTH. No install.
+
+## 2026-10-07 - ReaderHeld visibility execution start
+
+- Approved plan: sandbox/plans/reader-held-visible-20261007-0256-plan.md. Mailbox SEQ 68 REVISION 1 IMPLEMENT. Status set to APPROVED.
+- Phase 1: change private class ReaderHeld to internal class ReaderHeld. No-arg constructor, properties, dropLoaded, and the viewModel key stay.
+- Do not edit Index, folder, or mailbox-chooser holders. Do not install. Base builds tag 20bce7d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - ReaderHeld visibility phase 1
+
+- ReaderHeld is internal class ReaderHeld : ViewModel(). The no-arg constructor, properties, dropLoaded, and viewModel key reader:$mailbox:$uid are unchanged.
+- IndexScreenHeld, FolderScreenHeld, and MailboxChooserHeld were not edited.
+- No install.
+
+## 2026-10-07 - ReaderHeld helper types visible in the module
+
+- The internal ReaderHeld class cannot expose file-private Utf8Carry or AttachmentRow. Those two types in MessageReaderScreen.kt are internal. ReaderHeld properties, dropLoaded, and the viewModel key are unchanged.
+- First compile of the visibility change failed on those two exposures. No install.
+
+## 2026-10-07 - inbound rules sieve emitter execution start
+
+- Approved plan: sandbox/plans/inbound-rules-emitter-20261007-0305-plan.md
+- Phase 1: emit Sieve script text from inbound rules. No connect, no upload, no install.
+- Host worktree: /home/dlang/git/liveimap/master at c37e941
+
+## 2026-10-07 - inbound rules sieve emitter phase 1
+
+- emitSieve writes script text only: require fileinto and imap4flags when used, allof tests, addflag fileinto redirect discard
+- Empty and actionless rules return an empty script. CR, LF, and NUL are stripped before quoting
+- Tests: filesAndMarksRead, redirectsAndDiscards, quotesAndSkipsEmptyRules. No install
+
+## 2026-10-07 - inbound rules greeting execution start
+
+- Approved plan: sandbox/plans/inbound-rules-greeting-20261007-0313-plan.md. Status set to APPROVED.
+- Phase 1: parse a ManageSieve greeting into capabilities and send LOGOUT on an injected line transport.
+- Do not open a socket. Do not authenticate. Do not install. Base builds tag 4fa5971. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules greeting phase 1
+
+- readGreeting collects IMPLEMENTATION, VERSION, SASL, SIEVE, and STARTTLS. OK returns them. NO and BYE throw SieveFailure with the quoted text, or the raw line.
+- An empty line, an unquoted `{`, a bad line, or a missing close quote fails. logout writes LOGOUT and waits for OK. Capability lines during logout are ignored.
+- No AUTHENTICATE, no PUTSCRIPT, no socket, and no screen. Tests: readsTheGreeting, splitsOneExtensionString, noTextIsTheFailure, logoutWritesLogout. No install.
+
+## 2026-10-07 - inbound rules socket execution start
+
+- Approved plan: sandbox/plans/inbound-rules-socket-20261007-0324-plan.md. Status set to APPROVED.
+- Phase 1: plaintext ManageSieve TCP, read the greeting, send LOGOUT, and close. The only test peer is 127.0.0.1.
+- Do not authenticate. Do not install. Base builds tag abf7ba6. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules socket phase 1
+
+- PlainSieveTransport connects on Dispatchers.IO. Connect timeout is 30 seconds and read timeout is 60 seconds. readLine, writeLine, and close also run on Dispatchers.IO.
+- writeLine sends the line, then CR LF, as UTF-8, and flushes. readLine stops at LF, drops one trailing CR, and rejects a line longer than 8192 characters. A closed peer is SieveFailure("read"). A failed connect is SieveFailure("connect"). close is safe to call more than once.
+- greetPlain reads the greeting, sends LOGOUT, and closes in a finally block. The localhost test peer is 127.0.0.1. No AUTHENTICATE, no PUTSCRIPT, and no install.
+
+## 2026-10-07 - inbound rules commands execution start
+
+- Approved plan: sandbox/plans/inbound-rules-commands-20261007-0339-plan.md. Status set to APPROVED.
+- Phase 1: LISTSCRIPTS, GETSCRIPT, PUTSCRIPT, and CHECKSCRIPT on an injected transport, including script literals.
+- Do not authenticate. Do not SETACTIVE. Do not install. Base builds tag b98cde1. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules commands phase 1
+
+- SieveLineTransport.readBytes and writeBytes default to SieveFailure("literal"). A negative count is "literal". PlainSieveTransport reads an exact count on Dispatchers.IO or throws SieveFailure("read"), and writeBytes writes those bytes and flushes.
+- listScripts sends LISTSCRIPTS. A quoted name is inactive. A quoted name plus ACTIVE, compared without case, is active. OK ends the list and keeps that order. NO or BYE uses the greeting response text.
+- getScript sends GETSCRIPT and the quoted name, reads a whole-line {count} or {count+} literal as UTF-8, and returns that text after OK. putScript and checkScript send {count+} and the script bytes with no extra CR LF. Plain OK returns "". OK (WARNINGS) returns the quoted warning text. NO {count} uses the literal bytes as the failure text.
+- Names are wrapped in double quotes with \ and " escaped. No AUTHENTICATE, SETACTIVE, DELETESCRIPT, HAVESPACE, emitSieve, or greetPlain from these commands. No install.
+
+## 2026-10-07 - Multi-pane resize execution start
+
+- Approved plan: sandbox/plans/multi-pane-resize-20261007-1213-plan.md. Status set to APPROVED.
+- Phase 1: Multi-pane Off or When wide (default Wide, omitted from encode), drag bars in NavHost, and the two pane tests.
+- Do not bump Compose. Do not install. Base builds tag 20f502b. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Multi-pane resize phase 1
+
+- MultiPane is Off or Wide. Wide is the default and encode omits it. Off round-trips as multiPane=Off. An unknown value throws from enumValueOf. defaultsRoundTrip still ends at altAddresses.
+- When wide on an expanded width, the drawer, index, and open message are panes with an 8 dp resize bar. Dragging a pane to the edge closes it. Off keeps today's single-pane drawer and reader route. Widths are rememberSaveable, not account settings.
+- Appearance, Display offers Off and When wide. Did not install. Compose BOM stays 2024.10.00.
+
+## 2026-10-07 - inbound rules editor execution start
+
+- Approved plan: sandbox/plans/inbound-rules-editor-20261007-1255-plan.md. Status set to APPROVED.
+- Phase 1: store inbound rules, seed criteria, and edit them on device. Show emitSieve text. No socket, no upload, no install.
+- Host worktree: /home/dlang/git/liveimap/master at 6a5ff07. Do not commit the unstaged .gitignore edit.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules editor phase 1
+
+- Stored inboundRules on the account, omitted when empty. seedCriteria skips blanks. Filter list and editor show emitSieve and do not connect.
+- Drawer Add filter and Edit filters, and the reader overflow Filter messages like this…, edit rules on device only.
+- Unit tests: 324 run, 0 failed, including defaultsRoundTrip, inboundRulesRoundTrip, seedSkipsBlanks, and orderedSubjectStaysListedWhenNotAdvertised.
+
+## 2026-10-07 - Cold index and drawer insets execution start
+
+- Approved plan: sandbox/plans/cold-index-and-drawer-insets-20261007-1334-plan.md
+- Status set to APPROVED. Phase 1: a mailbox that reports exists at or below 0 selects once, then a still-empty mailbox returns without fetchIndex. Phase 2: the split drawer pads vertical and start, and an open drawer consumes start for the trailing host.
+- First action per standard-plan-compliance-block.md. Base builds tag b8f32da. No install.
+
+## 2026-10-07 - Cold index phase 1
+
+- fetchArrival still returns the filter list unchanged. When selected exists is not positive it selects that mailbox once. A still-empty mailbox clears the window and does not call fetchIndex. A positive exists does not select. MailFailure from select propagates.
+- FakeMailSession.existsBeforeSelect is returned only while the mailbox name is empty, and that check is before exists. New tests cover a cold Inbox of 8 and an empty mailbox. Arrival fixtures that already expected a fetch set exists to 1 so they do not select.
+
+## 2026-10-07 - Cold index phase 2
+
+- The split drawer column and the modal sheet pad mail screen insets on the vertical and start sides only. The index and reader split is unchanged.
+- When the resolved drawer width is above 0, the trailing NavHost consumes the start inset. Width 0 does not. Top, bottom, and end are not consumed. No install.
+
+## 2026-10-07 - Reader pane first layout execution start
+
+- Approved plan: sandbox/plans/reader-pane-first-layout-20261007-1505-plan.md. Status set to APPROVED.
+- Phase 1: the split reader draws the header and body on the first layout. The body keeps half the pane. A wrapped header scrolls in the other half. A positive WebView size posts layout and invalidate without loading.
+- Do not install. Base builds tag 2d1b800. Commits stay on master. Do not commit the unstaged .gitignore edit.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Reader pane first layout phase 1
+
+- Below the status line, one BoxWithConstraints holds the rest of the pane. readerBodyMinPx is 0 when the pane is not positive, otherwise half. readerHeaderMaxPx is 0 in that same case, otherwise the rest.
+- When the header is ready it sits in a vertical scroll capped at that max, and the body slot keeps weight 1 with at least half the pane. Otherwise the body slot fills the pane. Plain text still scrolls inside the body. The HTML WebView stays in the body slot.
+- onSizeChanged posts requestLayout and invalidate only when width and height are both positive and differ from the last size requested for that view. That callback does not load. The view.tag check still decides loadDataWithBaseURL.
+- Test readerPaneGivesBodyHalf. No install.
+
+## 2026-10-07 - Reader header collapse execution start
+
+- Approved plan: sandbox/plans/reader-header-collapse-20261007-1517-plan.md. Status set to APPROVED.
+- Phase 1: full screen setting, round-trip, Display switch, three strings, and hide or show the status and navigation bars. Cutout padding stays.
+- Phase 2: collapse the reader header. Idle and Show images become toolbar icons. Remove the half-pane body cap. Keep the WebView size callback.
+- Do not install. Base builds tag 9e09d6b. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Reader header collapse phase 1
+
+- AccountSettings.fullScreen defaults false, is omitted from the default encode, and is written as fullScreen=true only when true. A missing key decodes false. fullScreenRoundTrip covers that. defaultsRoundTrip keys still end at altAddresses.
+- Display has a Full screen switch after the multi-pane choice. strings.xml appends collapse, expand, and full screen labels.
+- MainActivity keeps fullScreen from the same settings load as theme. Full screen hides the status and navigation bars and shows them on a swipe. Off shows them. Light and dark icons stay. Cutout insets are unchanged.
+- No install.
+
+## 2026-10-07 - Reader header collapse phase 2
+
+- DebugStatusIcon replaces DebugConnectionStatus. Empty text draws nothing. Other text draws a 24 dp info icon. Folder, index, and reader bars show it before the customizable icons. The index shows it on the normal bar and the multi-select bar. ConnectionStatusStrip stays in the column.
+- The reader collapse button is fixed, not a toolbar action. Expanded and ready shows the header at its own height. Collapsed does not compose it. The body slot is weight 1 with no half-pane cap. readerBodyMinPx, readerHeaderMaxPx, and readerPaneGivesBodyHalf are gone.
+- Show images is a fixed image icon when HTML is shown and images are still blocked. The body button is gone. The WebView size callback still posts layout and invalidate and does not load.
+- No install.
+
+## 2026-10-07 - Reader header collapse image toggle
+
+- On an HTML body the picture button stays. It says Show images while images are blocked. While images are allowed it says Hide images and draws a red circle and a red diagonal line over the same picture. The tap toggles allowImages. Plain text has no button. The page and allowImages token still decides the load.
+- reader_hide_images is appended with the other new reader strings. No install.
+
+## 2026-10-07 - inbound rules activate execution start
+
+- Approved plan: sandbox/plans/inbound-rules-activate-20261007-1532-plan.md. Status set to APPROVED.
+- Phase 1: prepare the liveimap include line and SETACTIVE. Both stay behind consent. Upload only the script named liveimap.
+- Do not open a socket. Do not install. Base builds tag c960912. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - inbound rules activate phase 1
+
+- withLiveimapInclude appends include :personal "liveimap"; once. planLiveimapActivation chooses None, Include, or SetActive. Upload checks, then PUTSCRIPT names liveimap only.
+- SETACTIVE and the include rewrite write nothing without consent. An empty SETACTIVE name writes nothing. No socket and no install.
+
+## 2026-10-07 - ManageSieve SASL execution start
+
+- Approved plan: sandbox/plans/sieve-sasl-20261007-1542-plan.md. Status set to APPROVED.
+- Phase 1: choose CRAM-MD5, else PLAIN only when plaintext auth is allowed. AUTHENTICATE both on the injected transport. Fake transport only.
+- No socket. No STARTTLS. No SCRAM. No account setting. No FilterScreen. No install. Base builds tag 368ddbd. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - ManageSieve SASL phase 1
+
+- chooseSieveSasl returns CRAM-MD5 when that whole token is present, ignoring case. Otherwise PLAIN only when plaintext auth is allowed. SCRAM-SHA-256, LOGIN, DIGEST-MD5, and other tokens are not chosen.
+- plainSaslInitial is standard Base64 of NUL, username, NUL, password. cramMd5Response HMACs the challenge bytes with HmacMD5 and returns standard Base64 of username, one space, and the lowercase hex digest.
+- authenticatePlain and authenticateCramMd5 write on the injected transport. Empty username or password writes nothing. NO throws the server text. A CRAM response token writes no second line. Quoted and whole-line literal challenges are Base64.
+- No socket. No STARTTLS. No SCRAM. No account setting. No FilterScreen. No install.
+
+## 2026-10-07 - Sieve account setting execution start
+
+- Approved plan: sandbox/plans/sieve-account-setting-20261007-1553-plan.md. Status set to APPROVED.
+- Phase 1: store ManageSieve host and port on the account. A blank host means the IMAP host. Port defaults to 4190.
+- No socket. No STARTTLS. No openPlainSieve. No ManageSieve.kt or FilterScreen edits. No install. Base builds tag 3e2da6d. Commits stay on master.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Sieve account setting phase 1
+
+- AccountSettings stores sieveHost (default empty) and sievePort (default 4190) after fullScreen. Encode omits an empty host and port 4190. A missing host decodes as empty. A missing port, or a port outside 1..65535, decodes as 4190.
+- sieveEndpoint uses the sieve host when it is not blank, otherwise the IMAP host, with sievePort. Server fields follow the IMAP port. The server summary stays the IMAP host and port.
+- No socket. No STARTTLS. No openPlainSieve. No ManageSieve.kt or FilterScreen edits. No install.
+
+## 2026-10-07 - IMAP TLS connect execution start
+
+- Approved plan: sandbox/plans/imap-tls-connect-20261007-1604-plan.md. Status set to APPROVED.
+- Phase 1: save TlsMode on the account, compare it in the IMAP identity, and check the peer chain with PeerTrust before any password is sent.
+- Phase 2: STARTTLS and implicit TLS in nativeOpen. None stays plaintext. No pin prompt, SCRAM, SMTP TLS, or ManageSieve TLS.
+- Do not open a socket. Do not install. Base builds tag ab6dd98. Leave the unstaged .gitignore edit unstaged.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - IMAP TLS connect phase 1
+
+- TlsMode is None, StartTls, or Implicit. AccountSettings.tlsMode defaults to None after sievePort. Encode omits None. A missing key decodes as None. StartTls and Implicit round-trip.
+- sameImapIdentity is false when the TLS modes differ. The Server TLS choice follows the IMAP port and precedes the Sieve host.
+- PeerTrust.check returns empty only for a non-empty chain the platform trust manager accepts and whose leaf matches the host. An empty chain returns a failure string and does not throw.
+- No socket. No install.
+
+## 2026-10-07 - IMAP TLS connect phase 2
+
+- nativeOpen takes the TLS mode name. None stays on openPlain and does not call PeerTrust.
+- StartTls uses the existing TCP connect, reads capabilities, and fails before login when STARTTLS is absent. It then calls mailimap_socket_starttls_with_server_name_callback with the account host.
+- Implicit calls mailimap_ssl_connect_with_callback. The SSL callback sets TLS 1.2 as the minimum and records the peer chain, leaf first, while letting the handshake finish. No recorded certificate fails with certificate rejected before login.
+- PeerTrust.check runs before mailimap_login. A failure closes the session and returns that text. The password is not sent. No socket from this turn. No install.
+
+## 2026-10-07 - TODO backlog update execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/todo-backlog-update-20261007-1629-plan.md
+- TODO: long-press icon help waits for the expanded manual. OpenSSL 3.x stays before a public release. IMAP TLS may ship on 1.1.1w.
+
+## 2026-10-07 - IDLE watch uses the account TLS mode. None stays plaintext.
+
+## 2026-10-07 - A certificate pin can accept one named, in-date leaf, and the login prompt asks before saving it.
+
+## 2026-10-07 - About shows the plaintext warning only for TLS None.
+
+## 2026-10-07 - The Server hint says IMAP is plaintext only when TLS is None.
+
+## 2026-10-07 - ManageSieve STARTTLS execution start
+
+ManageSieve STARTTLS checks the certificate before login. Nothing connects.
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sieve-starttls-20261007-1718-plan.md
+- Status set to APPROVED.
+- Phase 1: STARTTLS on the injected transport, then wrap the existing socket and check the certificate before login.
+- No screen calls it. No upload. No install.
+- First action per standard-plan-compliance-block.md.
+
+## 2026-10-07 - Check ManageSieve reads the greeting with the account TLS mode and logs out.
+
+## 2026-10-07 - IMAP auth choice prefers SCRAM, then CRAM-MD5, and leaves login on the LOGIN command.
+
+## 2026-10-07 - Login uses mailimap_authenticate when an IMAP SASL mechanism is chosen.
+
+## 2026-10-07 - A plaintext IMAP login asks before sending the password.
+
+## 2026-10-07 - Ignore third_party source checkouts and local pin files.
+
+## 2026-10-07 - SMTP TLS connect execution start
+
+SMTP uses the account TLS mode and checks the certificate before MAIL.
+
+- Approved plan: sandbox/plans/smtp-tls-connect-20261007-1824-plan.md. Status set to APPROVED.
+- Phase 1: None stays the plaintext send. StartTls and Implicit encrypt and check the certificate before MAIL. No AUTH. No install.
+- First action per standard-plan-compliance-block.md. Commits stay on master.
+
+## 2026-10-07 - SMTP signs in with the chosen SASL mechanism before MAIL.
+
+## 2026-10-07 - SMTP can sign in with a different username.
+
+## 2026-10-07 - SMTP username phase 1
+
+- A blank SMTP username still signs in as the IMAP user. A filled one is the SMTP AUTH login and auth name. The password stays the IMAP password.
+- The setting is omitted when empty, round-trips "post master", and does not change IMAP identity. No install. No send.
+
+## 2026-10-07 - SMTP can sign in with a different password.
+
+## 2026-10-07 - Pinerc import applies TLS flags and a distinct SMTP user.
+
+## 2026-10-07 - Plain text sends as format=flowed.
+
+## 2026-10-07 - Deleting an open message skips messages that are already deleted.
+
+## 2026-10-07 - The checked account is the one the app opens.
+
+## 2026-10-07 - The drawer lists an Inbox for each account.
+
+## 2026-10-07 - Each account keeps its own connection.
+
+## 2026-10-07 - The drawer lists each account's folders.
+
+## 2026-10-07 - Settings can remove an account.
+
+## 2026-10-08 - Parse a JMAP session object.
+
+## 2026-10-08 - Discover a JMAP session.
+
+## 2026-10-08 - Fetch JMAP discovery over HTTPS.
+
+## 2026-10-08 - Offer JMAP for an account.
+
+## 2026-10-08 - Request one JMAP mailbox level.
+
+## 2026-10-08 - Call JMAP for one mailbox level.
+
+## 2026-10-08 - Build JMAP folder rows from one mailbox level.
+
+## 2026-10-08 - Show JMAP folder rows and expand one level.
+
+## 2026-10-08 - Open the JMAP folder list when discovery offers mail.
+
+## 2026-10-08 - Read a JMAP message window.
+
+## 2026-10-08 - Open a JMAP folder onto its message window.
+
+## 2026-10-08 - Read a JMAP message.
+
+## 2026-10-08 - Mark a JMAP message seen.
+
+## 2026-10-08 - Delete a JMAP message.
+
+## 2026-10-08 - Search one JMAP folder.
+
+## 2026-10-08 - Search a JMAP folder with an operator.
+
+## 2026-10-08 - Read JMAP email changes.
+
+## 2026-10-08 - Read a JMAP event source.
+
+## 2026-10-08 - Apply a JMAP push state.
+
+## 2026-10-08 - Show JMAP push on the list.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-push-list-20261008-0612-plan.md
+- The open message list reads one event source and shows the changes. The same Email state does not post. A failure leaves the list up.
+- First action per standard-plan-compliance-block.md. No install. No message sent.
+
+## 2026-10-08 - mail charconv execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/mail-charconv-20261008-0641-plan.md
+- Work: mailCharconv converts bytes between two Java charsets with REPLACE; a blank or unknown name returns code 1 and no bytes
+- Phase 1 of 1. libiconv stays linked. No native edits. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 0abeb2d
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Hook libetpan charset conversion
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jni-charconv-20261008-0647-plan.md
+- Work: JNI_OnLoad points extended_charconv at mailCharconv. Code 1 still falls through to libiconv
+- Phase 1 of 1. libiconv stays linked. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag 2131476
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - drop libiconv execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/drop-libiconv-20261008-0703-plan.md
+- Work: rebuild libetpan without HAVE_ICONV and unlink libiconv. Java charset conversion stays the only converter
+- Phase 1 of 1. OpenSSL 3 is not this slice. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start builds tag builds: af613bd
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - disable iconv configure execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/disable-iconv-configure-20261008-0720-plan.md
+- Work: pass --disable-iconv on the Android libetpan configure line and rebuild both libetpan.a archives
+- Phase 1 of 1. OpenSSL 3 is not this slice. No install. No message sent
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 63fd331
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Link OpenSSL 3.5.9
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/openssl-3-5-9-20261008-0728-plan.md
+- Work: OpenSSL build script and patch use version 3.5.9 and no-shared no-engine; rebuild libetpan archives; notice Apache-2.0 (4.1)
+
+## 2026-10-08 - SASL channel binding execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sasl-channel-binding-20261008-0740-plan.md
+- Work: store a SASL channel binding on the IMAP session and pass it with critical 1 before sasl_client_start; expose the OpenSSL SSL pointer for the current stream
+- Phase 1 of 1. chooseImapAuth still skips -PLUS. No install. No message sent. src stays untracked
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e88af67
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Prefer SCRAM-PLUS execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/scram-plus-20261008-0752-plan.md
+- Work: TLS IMAP login prefers SCRAM-SHA-256-PLUS then SCRAM-SHA-1-PLUS when this connection has channel-binding bytes; otherwise -PLUS stays skipped
+- Phase 1 of 1. A failed -PLUS login is not retried. SMTP passes channelBinding false. No install. No message sent. libetpan is not rebuilt
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 84870c6
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - SMTP SCRAM-PLUS execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-scram-plus-20261008-0801-plan.md
+- Work: SMTP AUTH prefers SCRAM-PLUS when this TLS connection has channel-binding bytes. The bytes are stored on the SMTP SASL session before sasl_client_start. A failed -PLUS AUTH is not retried.
+- Phase 1 of 1. TLS 1.3 label length is 24. IMAP uses the same filler. No install. No message sent. src stays untracked.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD cbc7960
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Plan watched folders execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-plan-20261008-0811-plan.md
+- Work: pure function splits extra folder names into IDLE slots and STATUS checks within the connection budget
+- Phase 1 of 1. Blanks and later duplicates drop. No socket. No setting. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 95cd83a
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Apply watch plan execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-watch-apply-20261008-0821-plan.md
+- Work: apply an extra-folder watch plan through a link that opens IDLE names and checks STATUS names
+- Phase 1 of 1. No socket. No setting. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 8a4348a
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Store watched folders execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-folder-store-20261008-0826-plan.md
+- Work: store the extra folder list and the extra IDLE budget on the account, and feed them to the existing splitter
+- Phase 1 of 1. No screen. No socket. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD d2ed9f4
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Edit watched folders execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-folder-screen-20261008-0834-plan.md
+- Work: account settings fields for the extra folder list and the extra IDLE budget
+- Phase 1 of 1. No socket. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2b9f609
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Check watched STATUS folders execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-status-20261008-0841-plan.md
+- Work: STATUS the extra folders past the IDLE budget on the folder screen's current session
+- Phase 1 of 1. No second connection. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5cf07fc
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - extra idle sessions execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-sessions-20261008-0848-plan.md
+- Work: open one session per extra IDLE name in the holder only
+- Phase 1 of 1. No screen call. No socket. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e6d920d
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - extra IDLE lifecycle execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-lifecycle-20261008-0858-plan.md
+- Work: start the selected account's extra IDLE sessions when the app starts, and stop them when it leaves
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5cc9678
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - stop extra IDLE after suspend failure execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-stop-20261008-0906-plan.md
+- Work: stop the extra IDLE sessions even when suspending the account sessions throws
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5456282
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - extra IDLE folder count execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/idle-folder-count-20261008-0910-plan.md
+- Work: an extra IDLE exists or expunge updates that folder's message count on the folder list
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 78ba3e2
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Name the unsent directory by account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-account-dir-20261008-0918-plan.md
+- Work: unsentAccountDir names one directory under unsent for a safe account id. Empty, dot, and slash ids stay on the legacy unsent directory. Copy functions take the account id and default to empty.
+- Phase 1 of 1. No screen change. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 6252920
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Use the account unsent directory
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unsent-account-use-20261008-0931-plan.md
+- Work: Read and write unsent copies for the chosen account. Keep a copy that still sits in the old directory.
+- Phase 1 of 1. This slice does not send a message. No install. No connect.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 666b97b
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Delete one account's unsent copies.
+
+## 2026-10-08 - Store a named simple search
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-store-20261008-1021-plan.md
+- Work: save and recall a named simple-bar search. This slice does not search and does not add a screen.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 3126696
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Remember saved searches on the account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-account-20261008-1030-plan.md
+- Work: store the saved-search list in the account file. This slice does not search and does not add a screen.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD ec2144a
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Save and recall a simple search execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-screen-20261008-1038-plan.md
+- Work: save the current simple search on the account and recall a saved name from the index
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 795a3a2
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Remove a saved search
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-search-remove-20261008-1046-plan.md
+- Work: Remove one saved name from the account list. Recall stays a tap on the name.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 89aa9ef
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Store a named advanced search
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-advanced-store-20261008-1053-plan.md
+- Work: save, recall, and remove a named advanced search on the account. This slice does not search and does not add a screen.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD f8b569c
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Save and recall an advanced search execution start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/saved-advanced-screen-20261008-1104-plan.md
+- Work: save the current advanced search on the account and recall a saved name from the Advanced screen
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 97fa862
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - End the APPEND command after the literal
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/append-literal-crlf-20261008-1207-plan.md
+- Work: after the APPEND literal octets, send the command-ending CRLF
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD f83b048
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Store the JMAP EmailSubmission choice
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-toggle-20261008-1216-plan.md
+- Work: store the JMAP EmailSubmission choice on the account. Sending stays SMTP. This slice does not connect and does not send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 8563545
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Build the EmailSubmission request
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-request-20261008-1225-plan.md
+- Work: Build an EmailSubmission/set request and read the created id. Record when the session advertises urn:ietf:params:jmap:submission. Do not post it and do not change send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD ad362b9
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Post the EmailSubmission request
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-post-20261008-1234-plan.md
+- Work: Post EmailSubmission/set through jmapCall and return the created id. Refuse when the session does not advertise submission. Leave send on SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 59e50cd
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Build the Email import request
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-import-request-20261008-1243-plan.md
+- Work: Build an Email/import request that turns a blob into an email id and read that created id. Do not upload and do not change send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2406bab
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Upload a message blob
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/blob-upload-20261008-1250-plan.md
+- Work: Upload RFC822 bytes to the session upload URL and return the blob id. Sending stays SMTP. This slice does not connect and does not send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c5b1d28
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Deliver through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/email-submission-deliver-20261008-1259-plan.md
+- Work: Upload the message, import it into a mailbox, and submit that email. Leave compose on SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 8c7c66b
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Find the sent mailbox id
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sent-mailbox-id-20261008-1306-plan.md
+- Work: Ask JMAP for the mailbox whose role is sent and return its id. Leave compose on SMTP. This slice does not connect and does not send.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 918d435
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Send through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-email-submission-20261008-1318-plan.md
+- Work: When the account EmailSubmission switch is on and the server advertises submission, Send finds the role-sent mailbox and delivers through JMAP. The switch off stays SMTP, then the IMAP sent-copy append.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e2d72f5
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Retry an unsent message through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/retry-email-submission-20261008-1329-plan.md
+- Work: Retry an unsent message through EmailSubmission when the switch is on. An accepted copy still retries the sent-folder append. The switch off stays SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 55d9ada
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Bounce through EmailSubmission
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/bounce-email-submission-20261008-1338-plan.md
+- Work: The bounce button uses EmailSubmission when the switch is on. The switch off stays SMTP. A missing submission capability fails and does not use SMTP.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD b4c45f5
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Turn multi-pane on only from the setting
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/multi-pane-setting-20261008-1348-plan.md
+- Work: Multi-pane turns on only when the account setting says so. The default is Off. Window width does not turn panes on.
+- Phase 1 of 1. The coder does not connect. No install. No message sent.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5b7b282
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Add the lab corpus generator
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/corpus-generator-20261008-1918-plan.md
+- Work: write the base lab corpus generator, seed tables, and corpus-v1 sums. Scale messages are not written.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 5a26a2f
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Refuse a lab login that is not allowlisted
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/login-guard-20261008-1926-plan.md
+- Work: a lab login proceeds only when the host:port pair is on the allowlist. The guard does not resolve a name or open a socket.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker. caps and seed were not run.
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 41ce425
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Record IMAP capability combinations
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/synthetic-capabilities-20261008-1930-plan.md
+- Work: capabilityChoice reports the existing kind values for a capability line. FakeImapServer can advertise that line. CapabilityChoiceTest lists the synthetic rows and is compiled, not run.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. No Docker. The test class was not executed.
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 2bf6da6
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-08 - Add the instrumented smoke launch
+
+- A smoke launch returns before extra idle and does not open the folder session. SmokeTest compiles and is not executed.
+
+## 2026-10-08 - Add the acceptance filter and report writer
+
+- selectCases, allowHost, allowUser, allowEntry, caseOutcome, and writeReport decide the suite window and the two report files. AcceptanceFilterTest compiles and is not executed.
+
+## 2026-10-08 - Record JMAP capability combinations
+
+- jmapCapabilityChoice reports mail, submission, folders, and send from capability ids. JmapCapabilityChoiceTest lists the rows and is compiled, not run.
+
+## 2026-10-09 - started local GreenMail and Stalwart containers on random high ports.
+
+## 2026-10-09 - Upload sends the liveimap Sieve script after CHECKSCRIPT and does not SETACTIVE.
+
+## 2026-10-09 - Add a Settings Layout section
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/layout-settings-20261009-0134-plan.md
+- Work: Settings gains a Layout group for the pane choices and the five toolbar editors. Folder-list pane and fold posture default Off. This slice stores and shows those choices. It does not change which panes the app draws.
+- Phase 1 of 1. The coder does not connect. No install. No message sent. The tests were not executed.
+- Status set to APPROVED
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 433c463
+- Host: /home/dlang/git/liveimap/master
+
+## 2026-10-09 - Draw the folder pane and the fold hinge
+
+- Folder list pane stays beside an open index or message when that choice is on. Fold posture stacks those panes only for a horizontal hinge. Width does not turn either one on. PaneSplitTest is compiled and not executed.
+
+## 2026-10-09 - Publish the manual and explain the icons
+
+- A long press on a named icon explains that control and opens the online manual. The six pages and four images are in docs/manual. ManualLinkTest is compiled and not executed.
+
+## 2026-10-09 - Start the latest lab servers and create the base accounts.
+
+## 2026-10-09 - Start the dev lab servers and create the base accounts.
+
+## 2026-10-09 - Start the older lab servers and create the base accounts.
+
+## 2026-10-09 - Stop lab containers at the end of a test run.
+
+## 2026-10-09 - Pin libetpan to the BODY literal space fix.
+
+## 2026-10-09 - Send FUZZY from Advanced search.
+
+## 2026-10-09 - Make the ask-before limits settings
+
+- Make the ask-before limits settings.
+
+## 2026-10-09 - Default the ask limits to never.
+
+- Default the ask limits to never.
+
+## 2026-10-09 - Retest the GreenMail lab servers.
+
+## 2026-10-09 - Fetch one GreenMail body literal.
+
+## 2026-10-09 - Record the Zimbra 8.8.3 lab run.
+
+## 2026-10-09 - Export the open account as a .pinerc file.
+
+## 2026-10-09 - Pin the ManageSieve certificate separately from IMAP.
+
+## 2026-10-09 - Show libraries, the privacy policy, and a tip placeholder.
+
+## 2026-10-10 - Record protocol traffic as JSON lines (test-recording plan, Phase A).
+
+## 2026-10-10 - Lab suite on the emulator: build commit, password hook, recorded IMAP steps (Phase B).
+
+## 2026-10-10 - Lab tooling in tools/test-servers: shared recorder, lab runner (Phase B).
+
+## 2026-10-10 - Lab on the LAN address, SASL failure detail, gated lab password hook.
+
+## 2026-10-10 - Register the static SASL client plugins at load (IMAP SASL failed locally on every server).
+
+## 2026-10-10 - Lab finding: the Android libetpan archive is built without USE_SASL; IMAP AUTHENTICATE is a stub.
+
+## 2026-10-10 - Build libetpan with USE_SASL through third_party/libetpan/patches; lab runner strictly one server at a time.
+
+## 2026-10-10 - Lab CA trusted only in the debug lab path; lab-ca.sh; thread steps by algorithm.
+
+## 2026-10-10 - Lab TLS: lab CA certificates installed per family (tls-install.sh, tls-all.py); Zimbra rebound to the LAN address (rebind.py).
+
+## 2026-10-10 - Extended LIST only with LIST-EXTENDED and SPECIAL-USE (lab: Cyrus 2.4, Dovecot 1.2 rejected RETURN (SPECIAL-USE)).
+
+## 2026-10-10 - TLS failures before a certificate report the OpenSSL reason; lab seeds over TLS when plaintext login is refused; old-TLS servers recorded as expected.
+
+## 2026-10-10 - STARTTLS sends no SNI for IP-literal hosts (RFC 6066); the lab Courier (GnuTLS) aborted on it. Lab: courier-606 syslog and a stale-pid-safe start.
+
+## 2026-10-10 - TLS info callback reports only alerts and real failures; lab courier.pem owned by the courier user (couriertls: Permission denied).
+
+## 2026-10-14 - hard-close sockets
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Close and stop shut the IMAP, watch, and SMTP sockets down and return; no DONE, LOGOUT, or IDLE done wait
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - hard-close sockets fixup
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Fixup: an IDLE renew that fails because watchStop is set does not emit WatchLost; JMAP suspend during watch setup does not start the event source
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - hard-close sockets fixup 2
+
+- Approved plan: sandbox/plans/hard-close-sockets-20261014-0506-plan.md
+- Fixup 2: JmapMailSession remembers the watch mailbox and callback before setup. suspendConnections still stops the event source without waiting, and resume starts that watch again. stopWatch and close do not come back. Suspend does not emit WatchLost.
+- First action per standard-plan-compliance-block.md
+
+## 2026-10-14 - Watch setup and resume off the lane
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-off-lane-20261014-0617-plan.md
+- Work: watch setup, IDLE start, and resume reconnect do not hold the lane or the session mutex across network I/O
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD c8b3225ba1c48100e1511c2e926af79f102d5f1a
+
+## 2026-10-14 - Watch IDLE-start wait wakes on stop
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-off-lane-20261014-0617-plan.md
+- Fixup: a stop does not clear a published startState back to 0. The next nativeWatch zeros it under startMu. The IDLE-start wait also returns when the generation changed, the session closed, or the watch was stopped.
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Resume restarts both sides of a routed account.
+
+## 2026-10-14 - Watch generation orders the callback and suspend versus resume
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-20261014-0703-plan.md
+- Work: watch connect copies auth, certificate, and log fields; the published generation owns the callback; a reconnect loser waits; rewatch is off the caller; a lifecycle epoch orders suspend and resume
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Watch logger, epoch publish, no new mutex
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-20261014-0703-plan.md
+- Fixup: the watch open does not pass the live session into the unlocked logger; Connected is not published over a suspend that already closed, and a stale epoch does not start rewatch; the reconnect future and the one live watch callback are atomic references, not new mutexes
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - watch lifecycle epoch close
+
+- A moved watch epoch closes and stops before connect, sleep, reselect, Connected, and rewatch. Reconnect events use one published watch snapshot.
+
+## 2026-10-14 - SMTP leaves the lock, extra IDLE is one connection
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-and-extra-idle-20261014-0827-plan.md
+- Work: SMTP copies what it needs and unlocks before the connect; an extra IDLE folder is one watch login keyed by account and folder; probes close on cancel and an IMAP authentication failure does not reuse that password for SMTP
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Extra IDLE events carry the account that opened them
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-account-id-20261014-0906-plan.md
+- Work: applyExtraIdle takes the account id and a blank id opens nothing; onStart starts extra IDLE for every saved account; a folder row changes only when the event account id is the account on screen
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Extra IDLE opens under its account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-account-id-20261014-0906-plan.md
+- Work: applyExtraIdle calls applyStoredIdle inside AccountTarget so a non-selected account uses its own password and pins; a blank id still returns before the lock
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A newer resume does not close a watch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-lifecycle-followup-20261014-0842-plan.md
+- Work: close only when a suspend is the latest move; a newer resume waits and reconnects if that owner stopped for a suspend; publish the watch callback only after IDLE starts and clear that generation when nativeWatch returns 0
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - SMTP socket lifetime, watch capability, typed auth failure
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Work: publish and clear the SMTP fd under the session mutex; watch-only login uses the capability gate; a server authentication rejection is typed; the SMTP probe does not open IMAP; probe close runs on Dispatchers.IO
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD follows exec-preflight
+
+## 2026-10-14 - SMTP fd is owned, and no IDLE does not STATUS that watch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Fixup: copy the SMTP response before free; smtpFd is a dup cleared before the library closes its own number; a folder without IDLE is STATUS on a connection that stays open
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - No IDLE stays off the watch session
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Fixup 2: a folder without IDLE is not STATUS'd on a watch-only extra session; it is recorded by host, user, and port so extraWatchPlan lists it under status while it is still watched, and the next extra folder still opens
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - JMAP extra watch is not an IMAP no-IDLE folder
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/smtp-followup-20261014-0936-plan.md
+- Work: when jmapFolders is on, a watchOnly that returns stays open and is not recorded as a STATUS name; IMAP without IDLE still records the name and opens later folders
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - First watch event waits for the publish
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-publish-gap-20261014-1002-plan.md
+- Work: queue watch events until the generation is published or cleared; a dead IDLE returns 0; a superseded owner does not fail the newer resume
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Superseded owner result is not success or ConnectionLost
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-publish-gap-20261014-1002-plan.md
+- Fixup: before the owner result is stored, a suspend after that owner is LifecycleStop or SupersededOwner, not success or ConnectionLost; the waiting resume reconnects
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - IDLE usability and auth rejection stay with the account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/probe-state-scope-20261014-1142-plan.md
+- Work: the next apply decides each extra folder from capability and hidden IDLE; a server authentication rejection is OpenResult.AuthRejected, not a process-wide flag; a local SCRAM-PLUS fallback does not erase that rejection
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A failed extra IDLE apply keeps the no-IDLE mark
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/probe-state-scope-20261014-1142-plan.md
+- Fixup: drop a no-IDLE name only after watchOnly returns with usable IDLE, or a JMAP watchOnly returns; a throw leaves the previous mark so extraWatchPlan still lists that folder as STATUS
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A deliver wake is consumed, and an early watch loss schedules rewatch
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-wake-20261014-1236-plan.md
+- Work: the IDLE thread reads watchWakeFd when poll reports it, so a publish wake does not spin; an early WatchLost or ended thread is joined and freed and returns 0 without throwFailure; watch and rewatch call markWatchLost on that 0 and do not note Idling
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A 0 from rewatch keeps the watch lost so resume starts it again
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/watch-wake-20261014-1236-plan.md
+- Fixup: the last watch target survives a cleared publish; rewatch calls nativeWatch when that offer is null; a 0 throws ConnectionLost so resume and scheduleRewatch leave watchLost set
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - Extra IDLE stops when the app stops or the account is removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-lifetime-20261014-0936-plan.md
+- Work: stopExtraIdle bumps a generation that a waiting apply checks under extraIdleLock before it opens; onStop cancels the onStart job before stopExtraIdle; dropMailSession closes that account's extra IDLE; hidden IDLE opens nothing and a server without IDLE is probed once per apply
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - message identity: act on the listed account, folder, and epoch
+
+- Approved plan: sandbox/plans/message-identity-20261014-1359-plan.md
+- Compose from the folder pane uses the seed account and epoch; epoch 0 does not write UIDs
+- One wire mailbox spelling; reconnect re-checks UIDVALIDITY before STORE, EXPUNGE, or COPY
+- Long search, paging, flags, undo, and trash delete follow the folder and epoch the row was listed in
+
+## 2026-10-14 - A reconnect names the folder, and a removed hit leaves its search mailbox
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/message-identity-20261014-1359-plan.md
+- Fixup: SELECT returns the new UIDVALIDITY; a mismatch throws EpochChanged for that folder before STORE, EXPUNGE, or COPY. A removed hit drops the same row from order and orderMailboxes
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A stop finishes before the next extra-IDLE start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-order-20261014-1401-plan.md
+- Work: onStop bumps the extra-IDLE generation before the stop job; onStart joins that job before it walks accounts; a dropped account id recorded under extraIdleLock is not opened by an apply that already read the old stamp
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A late extra-IDLE stop does not close the next start
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-order-20261014-1401-plan.md
+- Fixup: the stop job closes only while the generation it recorded is still current and does not bump again; a dropped account stays in the set until closeAccount and accountSessions.drop have returned, so an apply that read the new stamp opens nothing
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-14 - A removed search hit leaves only that folder's row
+
+- Approved plan: sandbox/plans/search-order-folder-20261014-1518-plan.md. dropOrderedHits drops the acted folder, or this index mailbox when none is set; the same UID in another folder stays. No new mutex. No install
+
+## 2026-10-14 - The unused extra-IDLE stop is gone
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-idle-stop-dead-20261014-1613-plan.md
+- Work: deleted stopExtraIdle; launchExtraIdleStop is the only stop path. No new mutex. No install
+
+## 2026-10-14 - New mail pill and IDLE-first poll fallback share one EXISTS rule across watch, poll, and refresh.
+
+## 2026-10-14 - Later folder count wins, and a long search stays on its mailbox
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/new-mail-20261014-1623-plan.md
+- Fixup: a count learned later replaces the first LIST-STATUS value, including a smaller one. A long search shows hits in place only when the mailbox and the UID order are still the ones it started from
+- No new mutex. No install
+
+## 2026-10-14 - A failed arrival fetch keeps the previous count
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/new-mail-20261014-1623-plan.md
+- Fixup: a failed tail fetch leaves knownExists at the previous count. A long search re-checks the mailbox and UID order inside the lock before applying hits. An expunge scrolls to the anchor's new index in the lazy list. The folder tree walk stays on the caller
+- No new mutex. No install
+
+## 2026-10-14 - Native IMAP parser, connect, and TLS (phase 4)
+
+- Refuse bad UID sets, keywords, and nested search groups; implicit TLS uses tcpConnect + SNI; PKCS#12 password masked; silent STORE; PeerTrust uses UNKNOWN.
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: a connect past 30s closes the in-flight sockets; UID 0, a negative UID, or a UID above 0xFFFFFFFF fails the call; a nested group and an unresolvable star are refused; an empty preview slot is not present; the count is this command's count; tlsAuthType does not invent a cipher name
+- NEEDS-INPUT: the unused pipelining loop is in imap_bursts.cpp, outside the Critical Files
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: prefer-HTML keeps walking past an earlier plain part to a later text/html part, and does not enter message/rfc822 once a text part is found. FetchStructure refuses a UID outside 1..0xFFFFFFFF. ensureJni does not take another global ref before ready, and a missing optional class does not keep ready false
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md. A NIL or empty server PREVIEW does not mark that index row's preview present
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: PeekPart and FetchRfc822 throw when a FETCH names the message but has no body, or the body section is NIL. A zero-length array is only a real empty body. utf8FromJava wipes the GetStringChars buffer in place before release
+- No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: PeekPart and FetchRfc822 return an empty array for a NIL body and for a real empty body. A FETCH that names the message and carries no body still throws. findPreferred considers the message's own parts before it enters a message/rfc822 attachment, and a text part there stops that walk.
+- No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: serial status and preview bursts call mailimap_status and mailimap_uid_fetch. findPreferred keeps preferred HTML in a later message/rfc822 when the top level has no text part
+- No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup: an ESEARCH set containing '*' is consumed and refused, not expanded, so the tagged completion is read and the session stays in step. A user set such as 5:* is still sent when the mailbox has a message
+- No new mutex. No install
+
+## 2026-10-14 - The parser refuses a set it cannot represent
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-20261014-1738-plan.md
+- Fixup 2: a scope response whose set contains an unresolvable '*' is refused even when another mailbox hit is present, so the call does not return an empty success. The tagged completion stays consumed. A user set such as 5:* is still sent when the mailbox has a message
+- No new mutex. No install
+
+## 2026-10-14 - Lower EXISTS baseline and ShownFlags refresh
+
+- Plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md — lower EXISTS resets baseline; failed tail fetch rolls back; folder re-list drops learned counts; chooser list weighted; watch EXAMINE CONDSTORE without ENABLE; UID-less flag FETCH emits ShownFlags once per IDLE wake.
+
+## 2026-10-14 - Lower EXISTS baseline and ShownFlags refresh
+
+- Approved plan: sandbox/plans/new-mail-followup-20261014-1746-plan.md
+- Fixup: FLAGS () still emits one ShownFlags note per IDLE wake. Exists 0 sets the baseline, so the next arrival fetches the tail and raises the pill
+- No new mutex. No install
+
+## 2026-10-14 - Reconnect uses session login password
+
+- Keeper reconnect passes sessionPassword (lab hook, loggedInPassword, then store) into login; watch stop path unchanged (main IMAP stays up).
+
+## 2026-10-14 - arrival tail fetch failure notice
+
+- Failed addNewTail sets notice; refreshShown clears notice before applyExistsCount so a tail failure stays visible.
+
+## 2026-10-14 - arrival tail fetch failure notice
+
+- Fixup: the refresh test throws only on the ArrivalNewest tail fetch, so the shown-row fetch succeeds. A later refresh whose fetches succeed leaves notice null.
+- No new mutex. No install
+
+## 2026-10-14 - Native IMAP follow-up
+
+- utf8FromJava copies with GetStringRegion into a wiped buffer; asciiSafe decodes server UTF-8 for ThrowNew; one top-level filter-chain Group; COMPRESS NO keeps the session up.
+
+## 2026-10-14 - Search refuses a group inside the one allowed group
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
+- Fixup: a Group criterion parses its body at depth 1, so a Group step inside it is refused and the search does not run. One Or group still sorts, windows, and threads.
+
+## 2026-10-14 - Search refuses a second top-level group
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-followup-20261014-2202-plan.md
+- Fixup: a second top-level Group on search is bad search and is not sent. GetStringRegion failure wipes the owned copy and does not come back as an empty string.
+
+## 2026-10-15 - Pin the agent channel at the host master tip
+
+- agent-coordination-tickets pin e9e8d6cac3f1d75d4df626464ce3e150c1daeff3 (host master).
+
+## 2026-10-15 - Sibling groups sort, SMTP breaks stay spaced, and a bad COMPRESS drops.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/native-imap-edges-20261015-0202-plan.md. CR, LF, and tab in server text become one space each. Two sibling groups parse; a group inside a group is refused. COMPRESS stays up only on success or a tagged refusal that left the stream in step.
+
+## 2026-10-15 - Search windows keep real UIDs, and a flag change drops the remembered result.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/search-ui-20261015-0327-plan.md
+- Flag and shown-flag changes drop that mailbox's remembered search, sort, and thread. A window shrinks by loaded UIDs only. Select-all of a window uses known UIDs. Windowed sort and search honour the start rule. The body-count prompt uses the scope. The advanced-search draft is saveable. The index screen mutex is gone.
+- No new mutex. No install
+
+## 2026-10-15 - A sorted window opens on the newest UID, and index changes run one at a time.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/search-ui-followup-20261015-0404-plan.md. UID and date windows open at an end; other windowed sorts use the highest loaded UID. The acted folder is a call argument. Index changes run on one queue.
+
+## 2026-10-15 - The cross-folder delete test acts in each hit folder
+
+- multiSelectAcrossFoldersActsInEachFolderAndUndoesByRefs passes the hit folder into deleteMessages.
+
+## 2026-10-15 - A long search leaves the list queue free until its hits are applied.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/long-search-queue-20261015-0431-plan.md. The long search runs on the screen scope. Only applying its hits uses the list queue.
+- No new mutex. No install
+
+## 2026-10-15 - JMAP accounts use the same folder list as IMAP
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-drop-old-screen-tests-20261015-0550-plan.md. A jmapFolders account opens FolderListLoaded. The old folder screen, model, route, and old push helpers are gone. Protocol tests stay.
+
+## 2026-10-15 - The SMTP guard allows accept-invalid except when the certificate changed.
+
+## 2026-10-15 - JMAP discovery can offer a pin
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-discovery-pin-20261015-0521-plan.md. Discovery passes the account pin and can offer a pin when system CAs reject the certificate. A matching pin wins over name and expiry. No install.
+
+## 2026-10-15 - Live JMAP discovery uses the account pin.
+
+## 2026-10-15 - The old JMAP message helpers are gone.
+
+## 2026-10-15 - A stored pin wins, and accept-invalid does not clear a certificate change.
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-discovery-cert-changed-20261015-0645-plan.md. A non-empty pin decides before the name, the dates, the lab hook, and the CA check. accept-invalid no longer clears certificate changed.
+
+## 2026-10-15 - JMAP accept-invalid is the account policy on every call.
+
+## 2026-10-15 - JMAP sent-copy lookup uses the account TLS policy.
+
+## 2026-10-15 - A JMAP http origin is allowed for the account that configured it.
+
+## 2026-10-15 - Saving a JMAP account does not probe the JMAP host over IMAP.
+
+## 2026-10-15 - JMAP UIDs follow arrival, and a short page is not the whole folder.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. A message keeps the UID from its receivedAt; sort, search, and thread page with position; peekPart reuses cached part bytes.
+
+## 2026-10-15 - A text peek past the cache keeps the part bytes at that offset.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart asks for a prefix through the bytes it lacks and appends only that tail.
+
+## 2026-10-15 - A truncated short text prefix is not the whole part.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-order-20261015-0521-plan.md. peekPart leaves the part incomplete while the body value is truncated, so a later range past that cache fetches.
+
+## 2026-10-15 - A failed device copy stops the send, and an SMTP bounce keeps an uncertain outcome.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-delivery-20261015-0522-plan.md. A failed device-copy write does not send. An SMTP bounce writes first and keeps an uncertain outcome when the error is smtp-uncertain.
+
+## 2026-10-15 - JMAP pages stay small, and a late UID stays at or above UIDNEXT.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-followup-20261015-1252-plan.md. Email/query pages are 120 with calculateTotal. A new UID is at least uidNext. A text part is fetched once up to JmapMaxBody. Part bytes stay only for the last structure.
+
+## 2026-10-15 - A successful bounce drops its device copy, and a second tap skips what already went.
+
+## 2026-10-15 - A short truncated text prefix is not fetched again.
+
+## 2026-10-15 - Existing JMAP mail is numbered by received time before uidNext is reported.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-uid-existing-20261015-1326-plan.md. The first use of a mailbox numbers existing mail oldest-first before uidNext. A later id stays at or above that next.
+
+## 2026-10-15 - A bounce whose Sent copy fails is still remembered as sent.
+
+## 2026-10-15 - Compose keeps whitespace, attachment names, and the server's encoding.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-mime-20261015-0522-plan.md. Flowed text keeps spaces. Resume reads filename* and a nested multipart. A nested 8-bit part is rewritten. Reply and inline forward peek HEADER. A forwarded part keeps its transfer encoding. The forward mode is on the seed. Back asks when extra edits changed. BODY=8BITMIME is declared for an 8-bit body. The SMTP probe returns 2 only after AUTH succeeds.
+
+## 2026-10-15 - The compose route keeps the forward mode.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/compose-forward-nav-20261015-1504-plan.md. openCompose stores forwardAsAttachment; the compose route puts it back on the seed; an unsent retry clears it. No install.
+
+## 2026-10-15 - The lab safety test compiles with the delete-policy argument
+
+- LabSafetyTest.delete passes trashNamedByUser from usableTrashName(account.trashMailbox). The other four effectiveDeletePolicy arguments stay. No install.
+
+## 2026-10-15 - Settings stay on the account that was open
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-binding-20261015-0522-plan.md
+- Work: deleting options read an existing session and do not open one; a Sieve pin is written through the store captured before the check; sending and inbound rules patch by id; passwords are not saved instance state; pinerc export writes the keys import reads; preference writes finish inside the account gate; removal drops that session; filter screens keep the account id from when they opened
+- No new mutex. No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Inbound rule id test sees encode
+
+- Fixup: the sieve test imports AccountSettings.encode, which lives in the settings package
+- No new mutex. No install, and no message sent
+
+## 2026-10-15 - Sieve pin stays on the open editor
+
+- Fixup: persistSievePin records the pin on the open editor for that account and bumps SettingsRevision, under the settings lock, so a later save does not write the old pin back. The fingerprint callback still does not call editor.persist or read editor.settings. No new mutex. No install, and no message sent.
+
+## 2026-10-15 - Unsent mail stays out of backup, and traffic logs are per connection
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-traffic-20261015-0522-plan.md
+- Work: backup rules exclude files/; a repeated traffic line keeps one file copy and counts in memory; SMTP 334 arms the recorder through saslChallenge; install starts recording off and finishTraffic does not clear it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The toolbar editor writes one bar on the account that opened it.
+
+- The opener's account id is stored and each save writes one bar on that account. No new mutex. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-10-15 - Older Android excludes unsent mail, and logging turns off when no account wants it.
+
+## 2026-10-15 - One bad settings entry does not wipe the field
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-decode-20261015-1751-plan.md
+- Work: a bad inbound rule, favorite, folder view, folder start, or expanded folder is skipped; a value that cannot be read stays in unknownSettings and the next save does not write the default over it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Dialogs and menus that change settings drop obscured touches
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/guarded-popups-20261015-1812-plan.md
+- Work: the pinerc import dialog, the mailbox chooser, the debug report dialog, and the dropdown menus call ObscuredTouchFilter; AlertDialog already does
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A later edit replaces a preserved settings value
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-decode-edit-20261015-1817-plan.md
+- Work: encode writes a non-default value for a preserved key and drops that raw line; a value still at the failed-decode default stays omitted and the raw line stays
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The pane splitter can be used without touch
+
+- InsetPage and drawerInboxes are removed, the Boox comment sits on drawerHiddenFor, the five route titles use string resources, and each pane handle offers wider/narrower or taller/shorter. No install, and no message sent. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-10-15 - An unreadable security setting refuses to connect
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-20261015-1850-plan.md
+- Work: preservedSecurityKey is tlsMode, deletePolicy, or moveMethod when that raw line is kept; IMAP open, SMTP send, and JMAP open stop with "account settings need attention" before a password or SMTP
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Choosing a security setting clears the block, and Test account stops first
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Work: withoutPreserved drops the tlsMode, deletePolicy, or moveMethod line when that choice is saved, including the default; Test account, smtpLoginCheck, and the JMAP probe stop with account settings need attention before a probe or SMTP
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Picking TLS drops the preserved line on the saved settings
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Fixup: picking TLS, including the default, drops the preserved tlsMode line on the settings Save and Test account use. Delete and move are unchanged.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Choosing TLS keeps the cleared line when the server draft matches
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/settings-fail-closed-edit-20261015-1906-plan.md
+- Fixup: a TLS choice, including TlsMode.None, drops the preserved tlsMode line on the settings Save and Test account use when the server draft is later dropped because the other fields match. Delete and move still clear their lines. Encode still omits a default.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - One toolbar implementation, and the old reader bar is migrated once
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/toolbar-one-model-20261015-1954-plan.md
+- Work: five bar moves share one body; a stored readerBar with no readerToolbar becomes readerToolbar at decode, then readerBar and ReaderAction are gone
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A default stored reader bar stays the default toolbar
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-bar-default-20261015-2025-plan.md
+- Work: a stored readerBar of Reply;ReplyAll;Forward;Delete;Move with no readerToolbar decodes to readerToolbar null; any other readerBar still migrates once
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The lab runners live next to the other test-server tools
+
+- Approved plan: sandbox/plans/lab-harness-scripts-20261015-2025-plan.md
+- Work: lab runners under tools/test-servers find smtp, sieve, jmap, and recordings from that directory; the androidTest task and APK are the x86_64 debug ones; commit is an argument, not a built-in sha
+- No androidTest APK is built; no install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Lab logs stay put, and a missing corpus or mail domain stops the run
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-harness-edit-20261015-2049-plan.md
+- Work: log and recording paths are absolute before the runners change directory; a missing corpus manifest is generated and a failed seed stops the run; LAB_* from the environment; a missing LAB_MAIL_DOMAIN or LAB_ZIMBRA_USER stops the runner
+- No corpus mail is committed; no androidTest APK is built; no install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Sieve reads the rest of a literal, and its TLS mode is its own
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/sieve-literal-tls-20261015-2019-plan.md
+- Work: consume the CRLF after a ManageSieve literal; seed From and To as addr-specs and List-Id as a bare id tested with header :contains; an empty active script is Include; sieveTlsMode defaults to STARTTLS and Check and Upload use it
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - HTML-as-text numbers its links, and ASCII IDNs are marked
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-text-20261015-2130-plan.md
+- Work: an http, https, or mailto anchor is marked [n] when it is left, and a repeated href keeps the same number; javascript and data add no mark; Highlight-all and Escape mark an ASCII punycode domain; invisible also treats U+061C, U+115F, U+1160, U+3164, U+FFA0, U+2028, and U+2029 as hidden
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - The reader caps HTML and does not load images from a header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-20261015-2130-plan.md
+- Work: the reader screen gate goes; HTML and HTML-as-text stop at RawViewCapBytes and say so when cut; opening a message does not turn images on from a saved trust entry
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A newer reader view wins, and a cut base64 part still decodes
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Work: a body load keeps a generation and writes the screen only while that generation is newest; scroll continues the generation from when the page started; a truncated HTML part is decoded with WireTextDecoder.take and no finish
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A stale body load does not write after mark-seen (fixup 2)
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Fixup 2: after noteSeen returns, pullBody and pullUnbounded compare the load token with bodyGeneration again before writing body text, offset, or carry
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A view chosen while the reader connects is the body that loads
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/reader-load-edit-20261015-2216-plan.md
+- Work: a view tap while the first open is still connecting waits until the session is connected and loads with that tap's generation; a stale open does not write the body or charset note after bodyGeneration has moved on
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - lab test apk build
+
+- Approved plan: sandbox/plans/lab-test-apk-20261015-2312-plan.md
+- Work: assemble x86_64 debug app and androidTest APKs from the current commit; no source edits and no commit
+- First action per standard-plan-compliance-block.md; no commit
+- Start HEAD 8ba4c7fbb6a3701656d9476a20adaaf9cd3aeffc
+
+## 2026-10-15 - lab test apk commit
+
+- This commit records the build. The APKs are built from it.
+
+## 2026-10-15 - Index row text uses resources, and the date column fits the pattern
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-20261015-2315-plan.md
+- Work: TalkBack status words come from string resources; a custom date pattern builds its formatter once; a valid pattern does not widen the date column to the error text
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - A custom date column samples months, weekdays, and AM/PM
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-row-edit-20261015-2340-plan.md
+- Work: a custom date pattern is measured at day 28 of each month, a week of evenings, and morning and evening on Dec 30, all in 2024 UTC; the error text is the sample only when nothing formats
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-15 - Index snacks, thread, counts, and Back
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-actions-20261015-2315-plan.md
+- Work: A notice snack does not offer Retry. Show thread uses the visible row. A quick filter does not snack twice. The filter count is the match count. Expunge copy is in string resources. Deleting or saving a search edits the current settings. Back leaves even when expunge fails.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Expunge-on-leave stays visible, and a wide search count is the match count
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-actions-edit-20261016-0018-plan.md
+- Work: an expunge failure on Back is reported on the scaffold snackbar that stays composed, then the index pops; a Subtree, Subscribed, or All search shows the match count alone; the five not-connected fallbacks use reader_not_connected
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The expunge-on-leave snackbar sits above the navigation bar
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/index-leave-snack-inset-20261016-0033-plan.md
+- Work: pad only the scaffold snackbar that shows an expunge-on-leave failure so it clears the system navigation bar; content insets stay zero
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Contact copy merges a list and leaves the provider off the main thread
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-20261016-0043-plan.md
+- Work: a second list or group merges or is skipped; provider reads and writes run on Dispatchers.IO; the Data query is limited to this account's raw contacts; mappedRowOps only inserts
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - An Alpine book revision requires the addrbook header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-book-20261016-0046-plan.md
+- Work: a book revision is only a message with X-Pine-Addrbook; classification peeks HEADER; the parsed revision is one fetchRfc822; a CR in a cleaned field becomes a space
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A Pine list that shares a person's nickname is copied as a new list
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/contacts-copy-list-20261016-0108-plan.md
+- Work: copyIntoPine matches a destination nickname only when that entry is a list; a person with the same nickname stays, and the list is added as team2
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A JMAP header peek of length 0 returns the header
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/jmap-header-peek-20261016-0120-plan.md
+- Work: peekPart length 0 is the rest of the section from the offset; a short cache is not the whole part; the header test peeks length 0 and the cache test reads the whole part
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - phase 11 lab apk commit
+
+- This commit records the phase 11 lab APK build. The APKs are built from it.
+
+## 2026-10-16 - Remove the unused JMAP https checks
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/dead-https-helpers-20261016-0150-plan.md
+- Work: delete unused uploadHttps, eventSourceIsHttps, httpsApi, and httpsUrl; JmapCallTest reads the four files and checks the host helpers stay
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the capability-choice wrappers only tests call
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/dead-capability-choice-20261016-0207-plan.md
+- Work: delete CapabilityChoice and JmapCapabilityChoice and their tests; PersonalityCapabilityTest reads Capabilities.parse
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD e4917d356
+
+## 2026-10-16 - discoverAt is removed and chooseImapAuth stays
+
+## 2026-10-16 - Client ordered-subject threads use the RFC 5256 base subject and date
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/ordered-subject-20261016-0224-plan.md
+- Work: orderedSubjectThreads groups by baseSubject(decodeHeaderWords(subject)) and orders by dateHeaderEpoch then uid; ThreadHeader.dateHeader is the last field; the JNI fetch asks for Date; normalizedSubject is removed; referenceThreads is unchanged
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The server check uses the same SASL order as login
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/server-check-auth-20261016-0238-plan.md
+- Work: the server check uses imapAuthOrder for couldUse and withoutPlaintext; supportedSasl and challengeSasl are deleted
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - mailbox parent ids are read from the parsed list
+
+## 2026-10-16 - Removing an account deletes that account's cert and image-trust files
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/remove-account-files-20261016-0300-plan.md
+- Work: removing an account deletes that account's cert and image-trust files
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+- Start HEAD 483c826a5
+
+## 2026-10-16 - The extra-watch applier only tests called is removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/extra-watch-apply-20261016-0346-plan.md
+- Work: the extra-watch applier only tests called is removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the signature and Fcc presets the settings chips do not call
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/rule-presets-unused-20261016-0359-plan.md
+- Work: the signature and Fcc presets the chips do not call are removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A forced slower fallback uses the account poll interval
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/slower-poll-20261016-0411-plan.md
+- Work: a forced slower fallback uses the account poll interval
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The label helpers the screens do not call are removed
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-labels-20261016-0421-plan.md
+- Work: the label helpers the screens do not call are removed
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Remove the sequence-width helper and the unused reader view save
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-index-reader-20261016-0440-plan.md
+- The sequence-width helper and the unused reader view save are removed.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The unused FolderView import is dropped from the reader
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/unused-folder-view-import-20261016-0448-plan.md
+- The unused FolderView import is dropped from the reader.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The default build assembles the x86_64 androidTest APK and stamps the commit on both packages
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/androidtest-commit-apk-20261016-1512-plan.md
+- The default build assembles the x86_64 androidTest APK and stamps the commit on both packages.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - One lab command runs the suites, IDLE events, and per-mechanism login
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-regress-20261016-1512-plan.md
+- One lab command runs the suites, IDLE events, and per-mechanism login.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Append uid, a 5 KB append, IDLE events, and a refused TLS open are checked against the server
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/f40-suite-steps-20261016-1512-plan.md
+- Append uid, a 5 KB append, IDLE events, and a refused TLS open are checked against the server.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A preserved security line fails SMTP send without storing the account
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/preserved-smtp-20261016-2020-plan.md
+- A preserved security line fails SMTP send without storing the account.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - The installed package is com.davidlang.liveimap
+
+- The installed package is com.davidlang.liveimap.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - Lab class filters use the Kotlin package, and deploy and ProGuard use the new id.
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/lab-class-filter-20261016-2056-plan.md
+- Lab class filters use the Kotlin package, and deploy and ProGuard use the new id.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - regress bringup
+
+- regress starts each lab server for probe and seed, and the RESULTS body is sendable.
+
+## 2026-10-16 - deploy reads the app id from the APKs again
+
+- Approved plan: /home/dlang/git/liveimap/sandbox/plans/deploy-apk-id-20261016-2221-plan.md
+- deploy reads the app id from the APKs again.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - regress waits for the IMAP greeting before it probes
+
+- regress waits for the IMAP greeting before it probes.
+- Approved plan: sandbox/plans/regress-greeting-20261016-2248-plan.md
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - lab TLS checks read client commands, and a preserved key stops JMAP, SMTP login, and test-account probes.
+
+## 2026-10-16 - Select-all names each folder, and a cross-folder move undoes by folder.
+
+- select-all names each folder and a cross-folder move undoes by folder.
+- Approved plan: sandbox/plans/f40-index-actions-20261016-1512-plan.md
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-16 - A preserved-key probe fails when the recording shows an IMAP or SMTP dial.
+
+## 2026-10-19 - Each lab start script can recreate one server and leaves it stopped.
+
+## 2026-10-19 - A recreate exits 0 only when the container is stopped.
+
+## 2026-10-20 - regress stops when a lab container is bound outside this repo.
+
+## 2026-10-20 - Each lab server reseeds from one snapshot.
+
+## 2026-10-20 - LIST verify keeps the mailbox name.
+
+## 2026-10-20 - A reseed tar keeps ancestor directories and a dead container is reported at once.
+
+## 2026-10-20 - The snapshot generator does not wipe accounts.
+
+## 2026-10-20 - A lab reseed restores one tar of the server's data.
+
+## 2026-10-20 - The lab no longer targets GreenMail.
+
+## 2026-10-20 - A lab reset creates a container from the published seed image.
+
+## 2026-10-20 - The seed image no longer starts through the reseed hook, and the Dovecot relay port comes from the saved sink row.
+
+## 2026-10-20 - A missing sink port is drawn once, and a publish checks the reseed file without hiding other errors.
+
+## 2026-10-20 - The full start records the sink port before it draws the other host ports.
+
+## 2026-10-20 - Container listen ports come from servers.tsv.
+
+## 2026-10-20 - A port mismatch records a blocked verdict, and a missing servers.tsv row stops the start script.
+
+## 2026-10-20 - A lab mount blocks, and lab-ready stops at the first problem.
+
+## 2026-10-20 - The non-volume lab images are built from scratch.
+
+## 2026-10-20 - Dovecot 2.4.5, Stalwart, and Zimbra images have no volume.
+
+## 2026-10-20 - A test run no longer seeds mail, and Stalwart 0.15.5 starts its own binary.
+
+## 2026-10-20 - acclab chooses StartTls from the server, without seeding.
+
+## 2026-10-20 - The auto probe logs in as the server user.
+
+## 2026-10-20 - Zimbra accepts the shared lab user, and the per-server user is gone.
+
+## 2026-10-20 - Every server records whether a domain login is accepted.
+
+## 2026-10-20 - The image build creates accounts, domains, and mail.
+
+## 2026-10-20 - The image build creates the LiveIMAP-Test fixture.
+
+## 2026-10-20 - A seed image records its fixture version, and an older image names build-seed-image.
+
+## 2026-10-20 - The seed build uses its own buildx and can build every server.
+
+## 2026-10-20 - One start script recreates every lab server.
+
+## 2026-10-21 - Dovecot 2.4.5 stays up and a dead build container prints its log.
+
+## 2026-10-21 - Seed builds report the live step and fix the census failures.
+
+## 2026-10-21 - Stalwart 0.16 starts from config.json and leaves recovery mode before login.
+
+## 2026-10-21 - The app has its first launcher icon.
+
+## 2026-10-21 - The plan style guide lists shared values, callers, and an append-only log.
+
+## 2026-10-21 - Release shrinking keeps the JNI classes and BuildConfig.
+
+## 2026-10-21 - A kept class may list only its empty clinit.
+
+## 2026-10-21 - A new message can carry many attachments.
+
+## 2026-10-21 - A stored copy does not restore the same picked file.
+
+## 2026-10-21 - A failed send reloads the copy that owns the picked file.
+
+## 2026-10-21 - Menu actions explain themselves in the same strings as the rest of the UI.
+
+## 2026-10-21 - A menu row keeps its press ripple and a long-press action.
+
+## 2026-10-21 - The compose copy and its picked file follow one lifecycle.
+
+## 2026-10-21 - The screen has one Compose button.
+
+## 2026-10-21 - The seed build fixes the nineteen image failures from the 06:13 run.
+
+## 2026-10-21 - Close TODO items whose work is already in the app.
+
+## 2026-10-21 - The Compose button sits under the account drawer.
+
+## 2026-10-21 - Compose can send HTML with a plain alternative.
+
+## 2026-10-21 - The remaining seed images open IMAP.
+
+## 2026-10-21 - Screenshot personality for the compact tablet.
+
+## 2026-10-21 - Settings is one tree, and Change layout applies the panes.
+
+## 2026-10-21 - Each pane scrolls once, and an account change applies that layout.
+
+## 2026-10-21 - Settings nodes use folder arrows, and a disabled row still opens.
+
+## 2026-10-23 - Threaded index unread, delete, and refresh.
+
+## 2026-10-23 - A threaded refresh keeps exists growth after Exists.
+
+## 2026-10-23 - Reader header, display menu, quotes, and message swipes.
+
+## 2026-10-23 - Index sort, filter line, and collapsed-thread swipe.
+
+## 2026-10-21 - A settings save does not reload itself, and a toolbar drag scrolls the pane.
+
+## 2026-10-24 - Toolbar drag offset is a graphics layer.
+
+- Pane edge-scroll adds the consumed scroll to a graphicsLayer translation. The reorderable reflection is gone.
+
+## 2026-10-24 - Custom layout follows the pane gate.
+
+- PaneLayoutEditor remembers saved and persist, so opening the gate drops an unsaved preview and shows the stored layout.
+
+## 2026-10-24 - Toolbar drag offset is kept through R8.
+
+- Edge-scroll adds the consumed pane delta to the reorderable drag offset. Keep rules hold the release member names.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - JNI results and session owner thread.
+
+- Approved plan: sandbox/plans/jni-session-20261024-0528-plan.md
+- Class and member ids are resolved in JNI_OnLoad. A missing class or member fails System.loadLibrary with that name.
+- Open, TLS, auth rejection, certificate offer, and copy UIDs come back on the call that caused them. An empty error stays empty. handle 0 throws MailFailure. No second JNI call for a copy result.
+- UID lists are long arrays. Index fetch releases each row's native strings before the next row. Dead QRESYNC select is gone. CONDSTORE keeps the selected mailbox modseq from the select result.
+- One owner thread is the only libetpan caller for a session. Publish and unlink use a CAS intrusive list. freeSession waits until the atomic use count is zero. IDLE DONE is a command on that owner. No native mutex or condition variable.
+
+## 2026-10-24 - Native client order.
+
+- Approved plan: sandbox/plans/client-order-20261024-0529-plan.md
+- Client sort and thread run over one captured UID set. The order type is arrays. A server-sorted folder keeps the server reply. The Alpine address book asks for UIDs only.
+
+## 2026-10-24 - The owner thread detaches and closes its fd.
+
+- Approved plan: sandbox/plans/jni-owner-cleanup-20261024-0834-plan.md
+- The owner attaches once and detaches on every exit, including a failed attach. A failed attach closes the job queue and fails queued and later commands with the attach error instead of an empty result. The job eventfd is exchanged to -1 and closed after the queue closes, and again after the owner has finished.
+- Host: /home/dlang/git/liveimap/master. Do not deploy.
+
+## 2026-10-24 - A failed owner attach drops its session ref on an attached thread.
+
+- The attach-failure path no longer detaches the std::thread. joinOwner joins, then the attached caller drops selfHold, so ~LiveSession runs where GetEnv can delete the KeyChain global ref. The loop parameter is not that last ref.
+
+## 2026-10-24 - Client order uses one key path and one merge.
+
+- 3b04792c4 is the fuzz output-directory change.
+
+## 2026-10-24 - Client order guards match the deleted stub.
+
+- Approved plan: sandbox/plans/client-order-test-guards-20261024-1121-plan.md
+- NativeGuardsPass4Test no longer names nativeFetchSortFieldsRange. It reads client_order.cpp and requires std::unordered_map in co_thread_subject and co_thread_references, and no co_decode_words.
+- Pass5GuardTest no longer asserts the deleted stub call. The sequencesStale early return stays.
+- The host fuzz binary is not built.
+
+## 2026-10-24 - Unit tests no longer call the deleted client thread.
+
+## 2026-10-24 - Client thread strings use standard UTF-8, and the new JNI classes are kept.
+
+- Approved plan: sandbox/plans/suite-utf8-keeps-20261024-1142-plan.md
+- takeStrings copies subject, Message-ID, References, and In-Reply-To with utf8FromJava. A null array element stays empty. nullopt pops the local frame and the JNI export returns null. GetStringUTFChars is gone from app/src/main/cpp.
+- ProGuard keeps SessionOpen, CopyMoveResult, NativeBoxes, ClientFetch, ClientHeaders, and ThreadFlat. The reorderable keeps are unchanged.
+- pass4NativeGuards asserts freeSession contains while (session->users.load() != 0). DeepNestingTest.depthOf is gone. The MIME tests stay.
+
+## 2026-10-24 - The job eventfd closes with the session.
+
+## 2026-10-24 - Native incoming MIME.
+- Approved plan: sandbox/plans/incoming-mime-20261024-0530-plan.md
+- Work: one native decoder for transfer encoding, charset, headers, and subjects; previews stay in native; bodies stream; attachments are files; a failed decode is an error or a note
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Index rows keep the native decoded subject.
+
+- Approved plan: sandbox/plans/index-subject-once-20261024-1307-plan.md
+- Work: fetchIndex returns the native index rows. It does not run decodeHeaderWords on from, subject, or recipients. sortPiece and threadOrder still decode raw header text.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - A failed MIME decode stays an error.
+
+- Approved plan: sandbox/plans/mime-decode-contract-20261024-1322-plan.md
+- A failed phrase, header, body, or preview stays an error or a note. No span is dropped and no error sentence is used as body text.
+
+## 2026-10-24 - Unit tests no longer call the deleted MIME helpers.
+
+- Approved plan: sandbox/plans/mime-test-callers-20261024-1420-plan.md
+- PartTextTest drops htmlQuotedPrintablePreview and previewOmitsCharsetNote. The decodePart and WireTextDecoder tests stay. AttachmentStreamTest.kt is deleted. previewText and streamAttachment stay deleted.
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - The Latin-1 JNI string goes through newString, and MimeDecodeException is kept.
+
+## 2026-10-24 - Header rows keep the wire text, and compose shows a decode error.
+
+- Approved plan: sandbox/plans/mime-header-reader-20261024-1425-plan.md
+- A stored copy whose header does not parse sets notice and leaves the copy unopened. loadEditor on that header throws MailFailure and does not return an editor.
+- Header rows are slices of the one mailimf parse. Date, Keywords, and the header name stay the wire text.
+- The reader remember keys the line version and the style keys. displayLines runs on newly appended lines. A style change resets both lists.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Flowed reader text does not depend on chunk boundaries.
+
+## 2026-10-24 - Unfinished charsets decode, and a fetched message is copied once.
+
+- Approved plan: sandbox/plans/mime-remainder-20261024-1520-plan.md
+- A name the hand tables finish stays on those tables. Any other name, including GB18030, EUC-JP, and ISO-2022-JP-2, uses Charset.forName and Charset.decode. forName throwing keeps the unknown-charset note.
+- nativeFetchRfc822 copies the libetpan bytes into one jbyteArray with SetByteArrayRegion and frees the fetch list. It does not spill through tmpfile.
+- No install, and no message sent
+
+## 2026-10-24 - A draft's attachments live in its contents directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- A picked attachment is a file under that draft's contents directory. The compose hold keeps the path, not the bytes. A resolver failure is shown. An orphan message directory is removed only when that draft is neither saved nor open.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Send and discard delete the draft directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- Send and discard delete the draft message directory. A kept unsent copy is left in place. Assemble reads a picked file on Dispatchers.IO.
+- No install, and no message sent
+
+## 2026-10-24 - Bounce send closes its draft directory.
+
+- Approved plan: sandbox/plans/outgoing-message-dir-20261024-1600-plan.md
+- A finished bounce applies the send life. That removes the draft id from the open set and deletes the message directory. A bounce that stops early leaves the id open.
+- No install, and no message sent
+
+## 2026-10-24 - Append and SMTP read the message file.
+
+- Approved plan: sandbox/plans/outgoing-send-file-20261024-1600-plan.md
+- IMAP append and SMTP send read the message from the file writeCopy wrote. The success path does not pass that message as a Java byte array.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Libetpan writes the outgoing message.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- Libetpan writes the outgoing message into the draft .rfc822 file. Compose passes the headers, the body text, flowed, the 8BITMIME choice, and one path per part. A forwarded part that does not decode sets the notice and does not send.
+- The choice passed in is eight-bit-allowed. Send no longer rewrites that file to quoted-printable. A server that does not offer 8BITMIME fails the send.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-24 - Multipart boundary and a part that does not decode.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A multipart content type carries the boundary the body delimiters use. A base64 or quoted-printable part that does not decode is damaged and is not sent.
+- No install, and no message sent
+
+## 2026-10-24 - An extended filename is not quoted.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A non-ASCII attachment name is written as filename*=UTF-8''…, an extended parameter. It is not a quoted charset blob. ASCII filename="…" is unchanged.
+- No install, and no message sent
+
+## 2026-10-24 - A long filename and a 998-octet line stay intact.
+
+- Approved plan: sandbox/plans/outgoing-native-writer-20261024-1600-plan.md
+- A filename* that would be cut after 998 octets is written as folded RFC 2231 sections. A shorter filename* stays one unquoted parameter. A 7bit, 8bit, binary, or auto part with a run the writer would cut is base64. Compose text of 998 octets is quoted-printable.
+- No install, and no message sent
+
+## 2026-10-24 - One index snapshot and one reader model per pane.
+
+- Approved plan: sandbox/plans/index-reader-held-20261024-1813-plan.md
+- OpenMessageOrder publishes one snapshot, and an unknown uid throws. Thread members are the held page plus expanded threads. Each reader pane keeps one model and destroys its WebView after detach.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - An ordered uid keeps a sequence.
+
+- Approved plan: sandbox/plans/index-reader-held-20261024-1813-plan.md
+- The open order is the whole mailbox, and the held page was the only source of sequences. A neighbor in that order threw, and the reader called sequence outside delete, move, and spam, so the swipe crashed and the action was skipped. Every uid in the order now has a sequence. A row's sequence wins; otherwise the 1-based place. An unknown uid still throws, and the reader catches that on swipe and before those actions.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - The unsent list reads metadata.
+
+- Approved plan: sandbox/plans/unsent-meta-20261024-1813-plan.md
+- The unsent list reads each copy's meta and keeps the message path. The subject comes from the meta, or from header lines when an old meta has none. A meta that throws stays one row. Compose reads one draft file when it loads or sends. A failed address book is shown and is not cached; an empty book is.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Constant regular expressions are built once.
+
+- Approved plan: sandbox/plans/hoist-regex-20261024-1813-plan.md
+- A pattern that does not depend on input is a top-level value in the file that uses it. The glob built from a sending rule stays on that match.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - A bad settings row aborts the save.
+
+- Approved plan: sandbox/plans/account-save-removal-20261025-0121-plan.md
+- Work: a stored settings row that does not decode aborts the save and writes nothing. Removing an account drops its session and its address-book cache only after the account is gone. A certificate that cannot be deleted leaves the account listed. After Android has already removed the account, a certificate failure is reported with the alias and the rest of the cleanup still runs.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Account writes run on one actor.
+
+## 2026-10-25 - Session snapshots and one prompt queue.
+
+## 2026-10-25 - Extra IDLE, the JMAP session, and the folder list.
+
+## 2026-10-25 - JMAP session, Sieve lines, and traffic log.
+
+- Approved plan: sandbox/plans/jmap-sieve-traffic-20261024-0534-plan.md
+- JMAP send uses the session discovered at open and does not discover again. Discovery keeps one TLS socket factory per host, port, pin, and policy, and a connection that can be reused is not disconnected.
+- Select keeps the epoch and each mailbox's email-id UIDs. Part bytes of a message that is not the open reader are dropped; that reader's mappings stay.
+- Sieve buffers only the TLS stream after STARTTLS. The traffic log has one writer, opens the file once, and writes a gap line when the queue drops lines.
+- jmapSubmit lives in the test source. tlsAuthType is gone.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Traffic log gap keeps the next line.
+
+- Approved plan: sandbox/plans/jmap-sieve-traffic-20261024-0534-plan.md
+- Fixup: a gap line is the last disk line, so the next accepted record or note is written after it. A write error does not end the traffic-log thread.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Settings registry.
+
+- Settings live in app/src/main/assets/settings-tree.json. The build checks that tree against SettingsRegistry and generates group ids and en-US titles. A missing tlsMode loads as None and is not rewritten to Implicit. A new account uses the tree default, Implicit TLS. Ask thresholds default to -1.
+
+## 2026-10-25 - Settings screen walks the tree.
+
+- Fixup: SettingsScreen renders nested groups and leaves from settings-tree.json. The hand-written group composables are gone, so nonAsciiDisplay is the Reading leaf.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Toolbar row count is written on the store.
+
+- Approved plan: sandbox/plans/settings-registry-20261024-0535-plan.md
+- Fixup: the toolbarRows leaf writes the count with update, like the toolbar editor. saveKeepingToolbars still copies the stored count, so persist was dropping the new value.
+- No install, and no message sent
+- First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-25 - Settings registry.
+
+- Unknown enum text throws into unknownSettings, the same path as tlsMode=NotAMode, so the next save does not rewrite it to the old omitted default. A missing key still uses the tree default.
+- newAccountSettings() and constructor defaults stay: call sites outside this plan's Critical Files still need them.
+
+## 2026-10-25 - Settings registry.
+
+- Fixup: unknown enum text for paneArrangement, previewSize, folderPosition, readerTextLayout, compression, dsnMode, and nonAsciiDisplay throws out of decodeAccountSettings. stageSave writes nothing. A missing key still uses the tree default.
+
+## 2026-10-25 - SMTP mode, SMTP authentication, and the poll limit.
+
+## 2026-10-25 - Account timeouts replace the fixed waits.
+
+## 2026-10-25 - The timeout leaves are editable, and the JMAP body cap is a setting.
+
+## 2026-10-25 - The result UID cap is a setting.
+
+## 2026-10-25 - The raw view and image trust caps are settings.
+
+## 2026-10-25 - Page size, swipe, reconnect, and the two chunks are settings.
+
+## 2026-10-25 - Sieve connect and read waits are settings.
+
+## 2026-10-25 - Client sort order and the unlabeled charset are settings.
+
+## 2026-10-25 - App translations.
+
+## 2026-10-26 - The reader body is decoded per chunk.
+
+## 2026-10-26 - 32-bit ARM archives for libetpan and its dependencies.
+
+## 2026-10-26 - LiveIMAP ships armeabi-v7a, and unneeded hardware is optional. ABIs before: arm64-v8a and x86_64 (play: arm64-v8a, x86_64); after: arm64-v8a, x86_64, and armeabi-v7a (play: arm64-v8a, x86_64, armeabi-v7a). android.hardware.faketouch required=false.
+
+## 2026-10-26 - Lab containers are created with published ports only.
+
+## 2026-10-26 - Settings passwords can be shown.
