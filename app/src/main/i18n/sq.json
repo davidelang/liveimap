@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Kufizon listën në këtë kriter."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Shënon përzgjedhjen e parë ose të paparë."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Shënon ose anulon përzgjedhjen."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Lëviz përzgjedhjen."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Lëviz përzgjedhjen."},
+{"key": "settings_password_show", "source": "Show password", "text": "Shfaq fjalëkalimin"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Fshih fjalëkalimin"}
 ]

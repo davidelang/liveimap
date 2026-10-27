@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Na-amachi ndepụta ahụ na ọkwa a."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Na-egosi nhọrọ a hụrụ ma ọ bụ ahụghị ya."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Ọkọlọtọ ma ọ bụ wepụ ọkọlọtọ nhọrọ."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Na-ebuli nhọrọ."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Na-ebuli nhọrọ."},
+{"key": "settings_password_show", "source": "Show password", "text": "Gosi okwuntughe"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Zoo okwuntughe"}
 ]

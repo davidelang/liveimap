@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "စာရင်းကို ဤစံနှုန်းတွင် ကန့်သတ်ထားသည်။"},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "မြင်သည် သို့မဟုတ် မမြင်ရသော ရွေးချယ်မှုကို အမှတ်အသားပြုပါ။"},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "ရွေးချယ်မှုကို အလံ သို့မဟုတ် အလံဖြုတ်ပါ။"},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "ရွေးချယ်မှုကို ရွှေ့ပါ။"}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "ရွေးချယ်မှုကို ရွှေ့ပါ။"},
+{"key": "settings_password_show", "source": "Show password", "text": "စကားဝှက်ပြပါ"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "စကားဝှက်ဖျောက်ပါ"}
 ]

@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "सूची को इस मानदंड तक सीमित करता है."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "देखे गए या न देखे गए चयन को चिह्नित करता है."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "चयन को फ़्लैग या अनफ़्लैग करें."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "चयन को आगे बढ़ाता है."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "चयन को आगे बढ़ाता है."},
+{"key": "settings_password_show", "source": "Show password", "text": "पासवर्ड दिखाएँ"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "पासवर्ड छुपाएँ"}
 ]

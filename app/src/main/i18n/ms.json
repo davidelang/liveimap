@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Hadkan senarai kepada kriteria ini."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Menandakan pilihan dilihat atau tidak dilihat."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Benderakan atau nyahbenderakan pilihan."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Menggerakkan pilihan."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Menggerakkan pilihan."},
+{"key": "settings_password_show", "source": "Show password", "text": "Tunjukkan kata laluan"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Sembunyikan kata laluan"}
 ]

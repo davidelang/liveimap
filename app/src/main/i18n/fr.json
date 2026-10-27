@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Limite la liste à ce critère."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Marque la sélection visible ou invisible."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Marque ou annule la sélection."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Déplace la sélection."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Déplace la sélection."},
+{"key": "settings_password_show", "source": "Show password", "text": "Afficher le mot de passe"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Masquer le mot de passe"}
 ]

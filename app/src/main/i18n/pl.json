@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Ogranicza listę do tego kryterium."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Oznacza zaznaczenie jako widoczne lub niewidoczne."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Flaguje lub usuwa flagę zaznaczenia."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Przesuwa zaznaczenie."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Przesuwa zaznaczenie."},
+{"key": "settings_password_show", "source": "Show password", "text": "Pokaż hasło"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Ukryj hasło"}
 ]

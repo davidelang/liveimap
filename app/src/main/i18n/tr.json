@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Listeyi bu kriterle sınırlandırır."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Görülen veya görülmeyen seçimi işaretler."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Seçimi işaretler veya işaretini kaldırır."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Seçimi taşır."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Seçimi taşır."},
+{"key": "settings_password_show", "source": "Show password", "text": "Şifreyi göster"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Şifreyi gizle"}
 ]

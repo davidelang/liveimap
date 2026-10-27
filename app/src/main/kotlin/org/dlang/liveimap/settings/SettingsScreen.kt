@@ -43,6 +43,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.ObscuredTouchFilter
 import androidx.compose.material3.Checkbox
@@ -1105,6 +1107,7 @@ private fun PasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
         drafts.passwordDraft ?: editor.password,
         KeyboardType.Password,
         password = true,
+        revealKey = editor.editingId,
         ready = editor.ready,
         onDraft = { typed -> drafts.passwordDraft = typed.takeIf { it != editor.password } },
     ) { drafts.passwordDraft = it.takeIf { typed -> typed != editor.password } }
@@ -1118,6 +1121,7 @@ private fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts,
         drafts.smtpPasswordDraft ?: editor.smtpPassword,
         KeyboardType.Password,
         password = true,
+        revealKey = editor.editingId,
         ready = ready,
         enabled = enabled,
         onDraft = { typed -> drafts.smtpPasswordDraft = typed.takeIf { it != editor.smtpPassword } },
@@ -3106,6 +3110,18 @@ private class LineCommitter {
     }
 }
 
+@Composable
+private fun PasswordVisibilityIcon(revealed: Boolean, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        Icon(
+            imageVector = if (revealed) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+            contentDescription = stringResource(
+                if (revealed) R.string.settings_password_hide else R.string.settings_password_show,
+            ),
+        )
+    }
+}
+
 /** Advanced: import a PKCS#12 client certificate (.p12 + password) for IMAP and SMTP, or remove it. */
 @Composable
 private fun ClientCertField(editor: SettingsEditor) {
@@ -3168,12 +3184,16 @@ private fun ClientCertField(editor: SettingsEditor) {
     }) { Text(stringResource(R.string.settings_client_cert_keychain)) }
     val uri = pending
     if (uri != null) {
+        var revealed by remember(uri) { mutableStateOf(false) }
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
             label = { Text(stringResource(R.string.settings_client_cert_password)) },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                PasswordVisibilityIcon(revealed = revealed, onToggle = { revealed = !revealed })
+            },
         )
         TextButton(onClick = {
             val typed = password
@@ -3208,6 +3228,7 @@ private fun LineField(
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     password: Boolean = false,
+    revealKey: Any? = null,
     singleLine: Boolean = true,
     ready: Boolean = true,
     enabled: Boolean = true,
@@ -3248,49 +3269,66 @@ private fun LineField(
     }
     var hadFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    OutlinedTextField(
-        value = draftState.value,
-        onValueChange = { next ->
-            if (!accept(next)) return@OutlinedTextField
-            draftState.value = next
-            onDraft?.invoke(next)
-        },
-        enabled = enabled,
-        label = { Text(label) },
-        singleLine = singleLine,
-        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(
-            keyboardType = keyboardType,
-            imeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
-        ),
-        keyboardActions = KeyboardActions(onDone = {
-            committer.commit()
-            focusManager.clearFocus()
-        }),
-        modifier = Modifier
-            .fillMaxWidth()
-            // Hardware Enter: commit on key-down, give up focus only on key-up. Clearing focus on key-down sent
-            // the key-up to the next focused element, which activated it (Navigate up left the screen).
-            .onPreviewKeyEvent { event ->
-                val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
-                when (lineFieldKey(enter, event.type == KeyEventType.KeyDown, singleLine)) {
-                    LineKey.Pass -> false
-                    LineKey.Commit -> {
-                        committer.commit()
-                        true
-                    }
-                    LineKey.Swallow -> {
-                        focusManager.clearFocus()
-                        true
+    @Composable
+    fun Editor() {
+        val transformation: VisualTransformation
+        val trailing: (@Composable () -> Unit)?
+        if (password) {
+            var revealed by remember(revealKey) { mutableStateOf(false) }
+            transformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation()
+            trailing = {
+                PasswordVisibilityIcon(revealed = revealed, onToggle = { revealed = !revealed })
+            }
+        } else {
+            transformation = VisualTransformation.None
+            trailing = null
+        }
+        OutlinedTextField(
+            value = draftState.value,
+            onValueChange = { next ->
+                if (!accept(next)) return@OutlinedTextField
+                draftState.value = next
+                onDraft?.invoke(next)
+            },
+            enabled = enabled,
+            label = { Text(label) },
+            singleLine = singleLine,
+            visualTransformation = transformation,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = keyboardType,
+                imeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
+            ),
+            keyboardActions = KeyboardActions(onDone = {
+                committer.commit()
+                focusManager.clearFocus()
+            }),
+            trailingIcon = trailing,
+            modifier = Modifier
+                .fillMaxWidth()
+                // Hardware Enter: commit on key-down, give up focus only on key-up. Clearing focus on key-down sent
+                // the key-up to the next focused element, which activated it (Navigate up left the screen).
+                .onPreviewKeyEvent { event ->
+                    val enter = event.key == Key.Enter || event.key == Key.NumPadEnter
+                    when (lineFieldKey(enter, event.type == KeyEventType.KeyDown, singleLine)) {
+                        LineKey.Pass -> false
+                        LineKey.Commit -> {
+                            committer.commit()
+                            true
+                        }
+                        LineKey.Swallow -> {
+                            focusManager.clearFocus()
+                            true
+                        }
                     }
                 }
-            }
-            .onFocusChanged { state ->
-                if (hadFocus && !state.isFocused && !committer.skipLeave()) committer.commit()
-                if (hadFocus != state.isFocused) onFocus?.invoke(state.isFocused)
-                hadFocus = state.isFocused
-            },
-    )
+                .onFocusChanged { state ->
+                    if (hadFocus && !state.isFocused && !committer.skipLeave()) committer.commit()
+                    if (hadFocus != state.isFocused) onFocus?.invoke(state.isFocused)
+                    hadFocus = state.isFocused
+                },
+        )
+    }
+    Editor()
 }
 
 @Composable

@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Fi opin si atokọ si ami-ẹri yii."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Ṣe samisi yiyan ti a rii tabi ti a ko rii."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Awọn asia tabi unflags yiyan."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Gbigbe aṣayan."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Gbigbe aṣayan."},
+{"key": "settings_password_show", "source": "Show password", "text": "Ṣe afihan ọrọigbaniwọle"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Fi ọrọigbaniwọle pamọ́"}
 ]

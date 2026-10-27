@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "මෙම නිර්ණායකයට ලැයිස්තුව සීමා කරයි."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "දුටු හෝ නොදුටු තේරීම සලකුණු කරයි."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "තේරීම සලකුණු කිරීම හෝ ඉවත් කිරීම."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "තේරීම චලනය කරයි."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "තේරීම චලනය කරයි."},
+{"key": "settings_password_show", "source": "Show password", "text": "මුරපදය පෙන්වන්න"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "මුරපදය සඟවන්න"}
 ]

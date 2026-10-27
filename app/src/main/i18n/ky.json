@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Тизмени ушул критерий менен чектейт."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Көрүлгөн же көрүнбөгөн тандоону белгилейт."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Тандоону белгилейт же белгилейт."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Тандоону жылдырат."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Тандоону жылдырат."},
+{"key": "settings_password_show", "source": "Show password", "text": "Купуя сөздү көрсөтүү"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Купуя сөздү жашыруу"}
 ]

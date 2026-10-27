@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Illimita l-lista għal dan il-kriterju."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Jimmarka l-għażla li tidher jew li ma tidhirx."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Bnadar jew unflags l-għażla."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Iċċaqlaq l-għażla."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Iċċaqlaq l-għażla."},
+{"key": "settings_password_show", "source": "Show password", "text": "Uri l-password"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Aħbi l-password"}
 ]

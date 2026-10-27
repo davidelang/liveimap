@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Тізімді осы критериймен шектейді."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Көрінген немесе көрінбеген таңдауды белгілейді."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Таңдауды белгілейді немесе алып тастайды."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Таңдауды жылжытады."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Таңдауды жылжытады."},
+{"key": "settings_password_show", "source": "Show password", "text": "Құпия сөзді көрсету"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Құпия сөзді жасыру"}
 ]

@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Apriboja sąrašą iki šio kriterijaus."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Pažymi pasirinkimą matytą arba nematytą."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Pažymi arba panaikina pasirinkimą."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Perkelia pasirinkimą."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Perkelia pasirinkimą."},
+{"key": "settings_password_show", "source": "Show password", "text": "Rodyti slaptažodį"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Slėpti slaptažodį"}
 ]

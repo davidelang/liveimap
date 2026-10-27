@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "பட்டியலை இந்த அளவுகோலுக்கு வரம்பிடுகிறது."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "பார்த்த அல்லது பார்க்காத தேர்வைக் குறிக்கும்."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "தேர்வைக் கொடியிடுகிறது அல்லது நீக்குகிறது."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "தேர்வை நகர்த்துகிறது."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "தேர்வை நகர்த்துகிறது."},
+{"key": "settings_password_show", "source": "Show password", "text": "கடவுச்சொல்லைக் காட்டு"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "கடவுச்சொல்லை மறை"}
 ]

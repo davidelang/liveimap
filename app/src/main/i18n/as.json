@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "তালিকাখন এই মাপকাঠীতে সীমাবদ্ধ কৰি ৰাখে।"},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "দেখা বা দেখা নোপোৱা নিৰ্বাচনক চিহ্নিত কৰে।"},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "নিৰ্বাচনক ফ্লেগ কৰে বা আনফ্লেগ কৰে।"},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "নিৰ্বাচনটো স্থানান্তৰ কৰে।"}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "নিৰ্বাচনটো স্থানান্তৰ কৰে।"},
+{"key": "settings_password_show", "source": "Show password", "text": "পাছৱৰ্ড দেখুৱাওক"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "পাছৱৰ্ড লুকুৱাওক"}
 ]

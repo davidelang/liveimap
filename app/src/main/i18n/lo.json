@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "ຈໍາ​ກັດ​ບັນ​ຊີ​ລາຍ​ການ​ກັບ​ມາດ​ຕະ​ຖານ​ນີ້​."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "ໝາຍການເລືອກທີ່ເຫັນ ຫຼືບໍ່ເຫັນ."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "ທຸງ ຫຼື unflags ການເລືອກ."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "ຍ້າຍການເລືອກ."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "ຍ້າຍການເລືອກ."},
+{"key": "settings_password_show", "source": "Show password", "text": "ສະແດງລະຫັດຜ່ານ"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "ເຊື່ອງລະຫັດຜ່ານ"}
 ]

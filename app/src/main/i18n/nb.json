@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Begrenser listen til dette kriteriet."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Markerer utvalget sett eller usett."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Flagger eller fjerner flagg for utvalget."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Flytter utvalget."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Flytter utvalget."},
+{"key": "settings_password_show", "source": "Show password", "text": "Vis passord"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Skjul passord"}
 ]

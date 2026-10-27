@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Ограничава листу на овај критеријум."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Означава избор виђеним или невиђеним."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Означава или поништава избор."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Помера избор."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Помера избор."},
+{"key": "settings_password_show", "source": "Show password", "text": "Прикажи лозинку"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Сакриј лозинку"}
 ]

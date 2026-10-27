@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "ఈ ప్రమాణానికి జాబితాను పరిమితం చేస్తుంది."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "చూసిన లేదా చూడని ఎంపికను గుర్తు చేస్తుంది."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "ఎంపికను ఫ్లాగ్ చేస్తుంది లేదా అన్‌ఫ్లాగ్ చేస్తుంది."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "ఎంపికను తరలిస్తుంది."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "ఎంపికను తరలిస్తుంది."},
+{"key": "settings_password_show", "source": "Show password", "text": "పాస్వర్డ్ చూపించు"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "పాస్వర్డ్ దాచు"}
 ]

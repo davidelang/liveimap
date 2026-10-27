@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Περιορίζει τη λίστα σε αυτό το κριτήριο."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Επισημαίνει την επιλογή ως εμφανής ή μη."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Επισημαίνει ή καταργεί την επισήμανση της επιλογής."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Μετακινεί την επιλογή."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Μετακινεί την επιλογή."},
+{"key": "settings_password_show", "source": "Show password", "text": "Εμφάνιση συνθήματος"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Απόκρυψη συνθήματος"}
 ]

@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "リストをこの基準に制限します。"},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "選択範囲を表示または非表示にマークします。"},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "選択にフラグを付けるか、フラグを外します。"},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "選択範囲を移動します。"}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "選択範囲を移動します。"},
+{"key": "settings_password_show", "source": "Show password", "text": "パスワードを表示する"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "パスワードを非表示にする"}
 ]

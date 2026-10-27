@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "ഈ മാനദണ്ഡത്തിലേക്ക് പട്ടിക പരിമിതപ്പെടുത്തുന്നു."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "കണ്ടതോ കാണാത്തതോ ആയ തിരഞ്ഞെടുപ്പിനെ അടയാളപ്പെടുത്തുന്നു."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "തിരഞ്ഞെടുക്കൽ ഫ്ലാഗ് ചെയ്യുകയോ അൺഫ്ലാഗ് ചെയ്യുകയോ ചെയ്യുന്നു."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "തിരഞ്ഞെടുക്കൽ നീക്കുന്നു."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "തിരഞ്ഞെടുക്കൽ നീക്കുന്നു."},
+{"key": "settings_password_show", "source": "Show password", "text": "രഹസ്യവാക്ക് കാണിക്കുക"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "രഹസ്യവാക്ക് മറയ്ക്കുക"}
 ]

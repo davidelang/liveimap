@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "ಈ ಮಾನದಂಡಕ್ಕೆ ಪಟ್ಟಿಯನ್ನು ಮಿತಿಗೊಳಿಸುತ್ತದೆ."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "ನೋಡಿದ ಅಥವಾ ನೋಡದ ಆಯ್ಕೆಯನ್ನು ಗುರುತಿಸುತ್ತದೆ."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "ಆಯ್ಕೆಯನ್ನು ಫ್ಲ್ಯಾಗ್ ಮಾಡುತ್ತದೆ ಅಥವಾ ಅನ್‌ಫ್ಲಾಗ್ ಮಾಡುತ್ತದೆ."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "ಆಯ್ಕೆಯನ್ನು ಚಲಿಸುತ್ತದೆ."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "ಆಯ್ಕೆಯನ್ನು ಚಲಿಸುತ್ತದೆ."},
+{"key": "settings_password_show", "source": "Show password", "text": "ಪಾಸ್ವರ್ಡ್ ತೋರಿಸಿ"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "ಪಾಸ್ವರ್ಡ್ ಮರೆಮಾಡಿ"}
 ]

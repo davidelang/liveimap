@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Cuireann an liosta teorainn leis an gcritéar seo."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Marcáil an roghnúchán feicthe nó neamhfheicthe."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Bratacha nó unflags an roghnú."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Bogann an rogha."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Bogann an rogha."},
+{"key": "settings_password_show", "source": "Show password", "text": "Taispeáin pasfhocal"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Folaigh pasfhocal"}
 ]

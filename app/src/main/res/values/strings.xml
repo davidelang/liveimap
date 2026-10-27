@@ -424,6 +424,8 @@
     <string name="settings_friendly_name">Friendly name</string>
     <string name="settings_username">Username</string>
     <string name="settings_password">Password</string>
+    <string name="settings_password_show">Show password</string>
+    <string name="settings_password_hide">Hide password</string>
     <string name="settings_email">Email</string>
     <string name="settings_display_name">Display name</string>
     <string name="settings_sending">Sending</string>

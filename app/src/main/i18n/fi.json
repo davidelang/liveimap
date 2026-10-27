@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "Rajoittaa luettelon tähän kriteeriin."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "Merkitsee valinnan näkyväksi tai näkymättömäksi."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "Merkitsee valinnan tai poistaa sen lipun."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "Siirtää valintaa."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "Siirtää valintaa."},
+{"key": "settings_password_show", "source": "Show password", "text": "Näytä salasana"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "Piilota salasana"}
 ]

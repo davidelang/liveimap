@@ -1017,5 +1017,7 @@
 {"key": "help_menu_filter", "source": "Limits the list to this criterion.", "text": "목록을 이 기준으로 제한합니다."},
 {"key": "help_menu_seen", "source": "Marks the selection seen or unseen.", "text": "선택 항목이 보이거나 보이지 않음을 표시합니다."},
 {"key": "help_menu_flag", "source": "Flags or unflags the selection.", "text": "선택 항목에 플래그를 지정하거나 플래그를 해제합니다."},
-{"key": "help_menu_move", "source": "Moves the selection.", "text": "선택 항목을 이동합니다."}
+{"key": "help_menu_move", "source": "Moves the selection.", "text": "선택 항목을 이동합니다."},
+{"key": "settings_password_show", "source": "Show password", "text": "비밀번호 표시"},
+{"key": "settings_password_hide", "source": "Hide password", "text": "비밀번호 숨기기"}
 ]
