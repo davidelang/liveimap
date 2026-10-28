@@ -32,7 +32,6 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.alpineBooks
-import org.dlang.liveimap.settings.openBound
 import org.dlang.liveimap.ui.LocalScreenAccounts
 
 /** The entry being edited: null original = a new entry. */
@@ -73,7 +72,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
         try {
             val loaded = store.load()
             store.password()
-            when (val opened = session.openBound(store, loaded)) {
+            when (val opened = session.open(loaded)) {
                 is OpenResult.Rejected -> notice = opened.capabilities
                 is OpenResult.Failed -> notice = opened.text
                 OpenResult.Connected -> settings = loaded

@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "ተልኮ ሊሆን ይችላል፡ መልእክቱ ከተላለፈ በኋላ ግንኙነቱ ጠፍቷል። እንደገና ከመሞከርዎ በፊት የተላከውን ያረጋግጡ።"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "በዚህ መሣሪያ ላይ ያለው ቅጂ ሊቀመጥ አልቻለም; ይህንን ማያ ገጽ ክፍት ያድርጉት።"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "ተልኮ ሊሆን ይችላል (እንደገና ከመሞከርዎ በፊት የተላከውን ያረጋግጡ)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "ማስጠንቀቂያ፡ ይህ በመመዝገብ ላይ በነበረበት ወቅት የተነበበው ወይም የተላከውን መልእክት ሁሉ አካላትን እና አባሪዎችን ጨምሮ ሙሉውን ጽሑፍ ይዟል። የይለፍ ቃሎች ተወግደዋል። ያንን ደብዳቤ ለማየት ለሚያምኑት ሰው ብቻ ያጋሩት።"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "ማስጠንቀቂያ፦ መዝገብ በርቶ ሳለ የተነበበ ወይም የተላከ እያንዳንዱ መልዕክት ሙሉ ጽሑፍ፣ አካል እና አባሪዎችን ጨምሮ፣ እዚህ አለ። የመግቢያ ውሂብ በርዝመቱ ይተካል፣ ነገር ግን በሌላ መስክ የተየፈ የይለፍ ቃል ይካተታል። ያንን ደብዳቤ እንዲያይ ለምታምነው ሰው ብቻ አጋራ።"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "ለማንኛውም አጋራ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "አሰናብት"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP ማረም ሪፖርት"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "መግባት"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "የቧንቧ መስመር IMAP ትዕዛዞች"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "የ IMAP ትራፊክን ይመዝግቡ"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ትዕዛዞች እና የአገልጋይ ምላሾች በ LiveIMAP ስር ወደ logcat ይሄዳሉ። የይለፍ ቃሉ ተትቷል."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ትዕዛዞች እና የአገልጋይ ምላሾች በዚህ መለያ የትራፊክ መዝገብ ይጻፋሉ። የመግቢያ ውሂብ በርዝመቱ ይተካል፤ ሌላ ምንም አይደበቅም።"},
 {"key": "settings_share_log", "source": "Share log", "text": "የምዝግብ ማስታወሻ አጋራ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ማረም ሪፖርት"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "በስህተት ሪፖርቱ ውስጥ የተጠቃሚ ስም አሳይ"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "መጭመቅ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "በርቷል"},
 {"key": "settings_compression_off", "source": "Off", "text": "ጠፍቷል"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ራስ-ሰር (በተንቀሳቃሽ ስልክ ውሂብ ላይ)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "አገልጋዩ COMPRESS=DEFLATE አያቀርብም።"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "መላውን አቃፊ አንቀሳቅስ የተሰረዙ መልዕክቶችን ያካትታል"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ጠፍቷል፡ ቀድሞ ምልክት የተደረገባቸው መልዕክቶች የተሰረዙ ከኋላ ይቆዩ (UID ፍለጋ አልተሰረዘም)።"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d መለያ", "other": "%1$d መለያዎች"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d መለያ", "other": "%1$d መለያዎች"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ያለ ቻናል ማሰሪያ ገብቷል (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "የግንኙነት ጊዜ ገደብ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "የንባብ ጊዜ ገደብ"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "የትራፊክ መዝገብ መጠንን ገድብ"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "የትራፊክ መዝገብ መጠን"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP ክፍል መሸጎጫ"}
 ]

@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Wataƙila an aika: haɗin ya ɓace bayan an mika saƙon. Bincika An aika kafin ka sake gwadawa."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Ba za a iya ajiye kwafin kan wannan na'urar ba; kiyaye wannan allo a bude."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Wataƙila an aika (duba An aika kafin a sake gwadawa)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Gargadi: wannan ya ƙunshi cikakken rubutun kowane saƙon da aka karanta ko aka aiko yayin da ake shiga ciki, gami da gawawwaki da haɗe-haɗe. Ana cire kalmomin shiga. Raba shi kawai tare da wanda kuka amince da shi don ganin wannan saƙon."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Gargaɗi: wannan ya ƙunshi cikakken rubutu na kowane saƙo da aka karanta ko aika yayin da rijistar ke kunne, har da jikin saƙo da abubuwan da aka makala. Bayanan shiga an maye gurbinsu da tsawonsu, amma kalmar sirri da aka rubuta a wani fili tana ciki. Raba shi kawai da wanda ka amince ya ga wannan wasiku."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Raba ko ta yaya"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Korar"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Rahoton gyara kuskuren LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Shiga"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Umarnin Pipeline IMAP"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Shiga IMAP zirga-zirga"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Umarni da martanin uwar garken je zuwa logcat karkashin LiveIMAP. An cire kalmar sirri."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Umarni da amsoshin uwar garke ana rubuta su a rajistar zirga-zirgar wannan asusu. Bayanan shiga an maye gurbinsu da tsawonsu; babu wani abu da ake ɓoye."},
 {"key": "settings_share_log", "source": "Share log", "text": "Raba log"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Rahoton gyara kuskure"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Nuna sunan mai amfani a cikin rahoton gyara kuskure"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Matsi (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Kunna"},
 {"key": "settings_compression_off", "source": "Off", "text": "Kashe"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Auto (a kan bayanan wayar hannu)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Sabar ba ta bayar da COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Matsar da babban fayil ɗin ya ƙunshi saƙonnin da aka goge"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "A kashe: saƙonnin da aka riga aka yiwa alama an share su zauna a baya (Ba a goge UID SEARCH)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d asusu", "other": "%1$d asusuna"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d asusu", "other": "%1$d asusuna"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "An shiga ba tare da ɗaure tashar ba (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Ƙarshen lokacin haɗi"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Ƙarshen lokacin karatu"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Iyakance girman rajistar zirga-zirga"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Girman rajistar zirga-zirga"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Ajiyar sassan JMAP"}
 ]

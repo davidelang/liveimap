@@ -136,7 +136,7 @@
     <string name="compose_send_uncertain">May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.</string>
     <string name="compose_copy_not_saved">The copy on this device could not be saved; keep this screen open.</string>
     <string name="unsent_uncertain">May have been sent (check Sent before retrying)</string>
-    <string name="traffic_share_warning">Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.</string>
+    <string name="traffic_share_warning">Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.</string>
     <string name="traffic_share_anyway">Share anyway</string>
     <string name="debug_dismiss">Dismiss</string>
     <string name="debug_clipboard">LiveIMAP debug report</string>
@@ -588,7 +588,7 @@ Your version: %2$s</string>
     <string name="settings_logging">Logging</string>
     <string name="settings_pipeline">Pipeline IMAP commands</string>
     <string name="settings_log_traffic">Log IMAP traffic</string>
-    <string name="settings_log_note">Commands and server replies go to logcat under LiveIMAP. The password is omitted.</string>
+    <string name="settings_log_note">Commands and server replies are written to this account\'s traffic log. Login data is replaced by its length; nothing else is hidden.</string>
     <string name="settings_share_log">Share log</string>
     <string name="settings_debug_report">Debug report</string>
     <string name="settings_show_user">Show user name in the debug report</string>
@@ -925,7 +925,6 @@ Your version: %2$s</string>
     <string name="settings_compression">Compression (COMPRESS)</string>
     <string name="settings_compression_on">On</string>
     <string name="settings_compression_off">Off</string>
-    <string name="settings_compression_auto">Auto (on over mobile data)</string>
     <string name="settings_reason_compress">The server does not offer COMPRESS=DEFLATE.</string>
     <string name="settings_move_all_deleted">Move entire folder includes deleted messages</string>
     <string name="settings_move_all_deleted_note">Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).</string>
@@ -1117,6 +1116,7 @@ Your version: %2$s</string>
     <string name="setting_clientCertAlias_title">Client certificate alias</string>
     <string name="setting_clientCert_title">Client certificate</string>
     <string name="setting_clientSortChunk_title">Client sort chunk</string>
+    <string name="setting_connectTimeoutSec_title">Connect timeout</string>
     <string name="setting_clientSortCollation_locale">Locale</string>
     <string name="setting_clientSortCollation_title">Client sort collation</string>
     <string name="setting_completionSources_title">Completion sources</string>
@@ -1127,6 +1127,7 @@ Your version: %2$s</string>
     <string name="setting_inboundRules_title">Inbound rules</string>
     <string name="setting_indexPageSize_title">Index page size</string>
     <string name="setting_jmapCertPin_title">JMAP certificate pin</string>
+    <string name="setting_jmapPartCacheMessages_title">JMAP part cache</string>
     <string name="setting_keepAliveMinutes_title">Keep-alive</string>
     <string name="setting_lastSaveMailbox_title">Last save mailbox</string>
     <string name="setting_longSearchProgressSec_title">Long search progress</string>
@@ -1138,6 +1139,7 @@ Your version: %2$s</string>
     <string name="setting_moveChunk_title">Move chunk</string>
     <string name="setting_pollSeconds_title">Poll interval</string>
     <string name="setting_preferHtml_title">Prefer HTML</string>
+    <string name="setting_readTimeoutSec_title">Read timeout</string>
     <string name="setting_reconnectDelaysSec_title">Reconnect delays</string>
     <string name="setting_savedAdvanced_title">Saved advanced searches</string>
     <string name="setting_savedSearches_title">Saved searches</string>
@@ -1146,6 +1148,7 @@ Your version: %2$s</string>
     <string name="setting_settingsOpensOn_title">Settings opens on</string>
     <string name="setting_settingsOpensOn_drawer">The account open in the drawer</string>
     <string name="setting_settingsOpensOn_lastEdited">The account edited last</string>
+    <string name="session_no_channel_binding">Logged in without channel binding (%1$s)</string>
     <string name="setting_sieveCertPin_title">Sieve certificate pin</string>
     <string name="setting_sieveConnectSeconds_title">Sieve connect timeout</string>
     <string name="setting_sieveReadSeconds_title">Sieve read timeout</string>
@@ -1155,6 +1158,8 @@ Your version: %2$s</string>
     <string name="setting_sortAskSkip_title">Do not ask again for this sort</string>
     <string name="setting_swipeThresholdPercent_title">Swipe threshold</string>
     <string name="setting_threadAskSkip_title">Do not ask again for this thread</string>
+    <string name="setting_trafficLogMaxMb_title">Traffic log size</string>
+    <string name="setting_trafficLogSizeLimit_title">Limit traffic log size</string>
     <string name="setting_unlabeledCharset_title">Charset of unlabeled text</string>
     <string name="settings_all_accounts">All accounts</string>
     <string name="settings_all_accounts_summary">Settings shared by every account</string>

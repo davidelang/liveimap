@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Pode ter sido enviada: a ligação foi perdida após a entrega da mensagem. Marque Enviado antes de tentar novamente."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Não foi possível guardar a cópia neste dispositivo; mantenha esta tela aberta."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Pode ter sido enviado (assinalar Enviado antes de tentar novamente)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Aviso: contém o texto completo de cada mensagem que foi lida ou enviada durante o login, incluindo corpos e anexos. As palavras-passe são removidas. Partilhe-o apenas com alguém em quem confia para ver esse e-mail."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Aviso: isto contém o texto completo de cada mensagem lida ou enviada enquanto o registo estava ligado, incluindo corpos e anexos. Os dados de início de sessão são substituídos pelo seu tamanho, mas uma palavra-passe escrita noutro campo é incluída. Partilhe apenas com alguém em quem confie para ver esse correio."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Partilhe mesmo assim"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Dispensar"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Relatório de depuração do LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Registo"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Comandos IMAP de pipeline"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Registar tráfego IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Os comandos e respostas do servidor vão para o logcat em LiveIMAP. A palavra-passe é omitida."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Os comandos e as respostas do servidor são escritos no registo de tráfego desta conta. Os dados de início de sessão são substituídos pelo seu tamanho; mais nada é ocultado."},
 {"key": "settings_share_log", "source": "Share log", "text": "Partilhar registo"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Relatório de depuração"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Mostrar nome de utilizador no relatório de depuração"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Compressão (COMPRESSA)"},
 {"key": "settings_compression_on", "source": "On", "text": "Em"},
 {"key": "settings_compression_off", "source": "Off", "text": "Desligado"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Automático (ativado por dados móveis)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "O servidor não oferece COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Mover a pasta inteira inclui mensagens eliminadas"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Desativado: as mensagens já marcadas como eliminadas ficam para trás (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d conta", "many": "%1$d contas", "other": "%1$d contas"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d conta", "many": "%1$d contas", "other": "%1$d contas"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Sessão iniciada sem vinculação de canal (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Tempo limite de ligação"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Tempo limite de leitura"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Limitar o tamanho do registo de tráfego"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Tamanho do registo de tráfego"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Cache de partes JMAP"}
 ]

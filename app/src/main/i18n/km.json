@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "អាចត្រូវបានផ្ញើ៖ ការតភ្ជាប់ត្រូវបានបាត់បង់បន្ទាប់ពីសារត្រូវបានប្រគល់។ ពិនិត្យបានផ្ញើ មុនពេលអ្នកព្យាយាមម្តងទៀត។"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ច្បាប់ចម្លងនៅលើឧបករណ៍នេះមិនអាចរក្សាទុកបានទេ។ រក្សាអេក្រង់នេះបើក។"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "អាច​ត្រូវ​បាន​ផ្ញើ (ពិនិត្យ​មើល​បាន​ផ្ញើ​មុន​នឹង​ព្យាយាម​ម្ដង​ទៀត)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "ការព្រមាន៖ វាមានអត្ថបទពេញលេញនៃរាល់សារដែលត្រូវបានអាន ឬផ្ញើ ខណៈពេលដែលការចូលដំណើរការ រួមទាំងខ្លឹមសារ និងឯកសារភ្ជាប់។ ពាក្យសម្ងាត់ត្រូវបានដកចេញ។ ចែក​រំលែក​វា​តែ​ជាមួយ​នរណា​ម្នាក់​ដែល​អ្នក​ទុក​ចិត្ត​ដើម្បី​មើល​ឃើញ​សំបុត្រ​នោះ។"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "ការព្រមាន៖ ឯកសារនេះមានអត្ថបទពេញនៃសារនីមួយៗដែលបានអាន ឬផ្ញើ ពេលកំណត់ហេតុបើក រួមទាំងតួ និងឯកសារភ្ជាប់។ ទិន្នន័យចូលត្រូវបានជំនួសដោយប្រវែងរបស់វា ប៉ុន្តែពាក្យសម្ងាត់ដែលវាយក្នុងវាលផ្សេងត្រូវបានរក្សាទុក។ ចែករំលែកតែជាមួយអ្នកដែលអ្នកទុកចិត្តឱ្យឃើញសំបុត្រនោះ។"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "ចែករំលែកយ៉ាងណាក៏ដោយ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "ច្រានចោល"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "របាយការណ៍បំបាត់កំហុស LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ការកាប់ឈើ"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "ពាក្យបញ្ជា IMAP បំពង់"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "កត់ត្រាចរាចរណ៍ IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ពាក្យបញ្ជា និងការឆ្លើយតបរបស់ម៉ាស៊ីនមេទៅកាន់ logcat នៅក្រោម LiveIMAP ។ ពាក្យសម្ងាត់ត្រូវបានលុបចោល។"},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ពាក្យបញ្ជា និងចម្លើយម៉ាស៊ីនមេត្រូវបានសរសេរទៅកំណត់ហេតុចរាចរនៃគណនីនេះ។ ទិន្នន័យចូលត្រូវបានជំនួសដោយប្រវែងរបស់វា។ គ្មានអ្វីផ្សេងត្រូវបានលាក់ទេ។"},
 {"key": "settings_share_log", "source": "Share log", "text": "ចែករំលែកកំណត់ហេតុ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "របាយការណ៍បំបាត់កំហុស"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "បង្ហាញឈ្មោះអ្នកប្រើប្រាស់នៅក្នុងរបាយការណ៍បំបាត់កំហុស"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "ការបង្ហាប់ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "បើក"},
 {"key": "settings_compression_off", "source": "Off", "text": "បិទ"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ស្វ័យប្រវត្តិ (នៅលើទិន្នន័យចល័ត)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "ម៉ាស៊ីនមេមិនផ្តល់ COMPRESS=DEFLATE ទេ។"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "ផ្លាស់ទីថតទាំងមូលរួមបញ្ចូលសារដែលបានលុប"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "បិទ៖ សារ​ដែល​បាន​សម្គាល់​ថា​បាន​លុប​រួច​ហើយ​នៅ​ខាង​ក្រោយ (ការ​ស្វែងរក UID មិន​បាន​លុប)។"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d គណនី"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d គណនី"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ចូលដោយគ្មានការចងឆានែល (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "ពេលវេលារង់ចាំការតភ្ជាប់"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "ពេលវេលារង់ចាំការអាន"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "កំណត់ទំហំកំណត់ហេតុចរាចរ"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ទំហំកំណត់ហេតុចរាចរ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "ឃ្លាំងផ្នែក JMAP"}
 ]

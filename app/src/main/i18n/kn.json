@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "ಕಳುಹಿಸಿರಬಹುದು: ಸಂದೇಶ ನೀಡಿದ ನಂತರ ಸಂಪರ್ಕ ಕಡಿತಗೊಂಡಿದೆ. ನೀವು ಮರುಪ್ರಯತ್ನಿಸುವ ಮೊದಲು ಕಳುಹಿಸಲಾಗಿದೆ ಎಂಬುದನ್ನು ಪರಿಶೀಲಿಸಿ."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ಈ ಸಾಧನದಲ್ಲಿನ ನಕಲನ್ನು ಉಳಿಸಲಾಗಲಿಲ್ಲ; ಈ ಪರದೆಯನ್ನು ತೆರೆದಿಡಿ."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "ಕಳುಹಿಸಿರಬಹುದು (ಮರುಪ್ರಯತ್ನಿಸುವ ಮೊದಲು ಕಳುಹಿಸಲಾಗಿದೆ ಎಂಬುದನ್ನು ಪರಿಶೀಲಿಸಿ)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "ಎಚ್ಚರಿಕೆ: ದೇಹಗಳು ಮತ್ತು ಲಗತ್ತುಗಳನ್ನು ಒಳಗೊಂಡಂತೆ ಲಾಗಿಂಗ್ ಆನ್ ಆಗಿರುವಾಗ ಓದಲಾದ ಅಥವಾ ಕಳುಹಿಸಲಾದ ಪ್ರತಿಯೊಂದು ಸಂದೇಶದ ಪೂರ್ಣ ಪಠ್ಯವನ್ನು ಇದು ಒಳಗೊಂಡಿದೆ. ಪಾಸ್ವರ್ಡ್ಗಳನ್ನು ತೆಗೆದುಹಾಕಲಾಗಿದೆ. ಆ ಮೇಲ್ ಅನ್ನು ನೋಡಲು ನೀವು ನಂಬುವ ಯಾರೊಂದಿಗಾದರೂ ಮಾತ್ರ ಅದನ್ನು ಹಂಚಿಕೊಳ್ಳಿ."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "ಎಚ್ಚರಿಕೆ: ದಾಖಲೆ ಆನ್ ಇದ್ದಾಗ ಓದಿದ ಅಥವಾ ಕಳುಹಿಸಿದ ಪ್ರತಿ ಸಂದೇಶದ ಪೂರ್ಣ ಪಠ್ಯ, ಮುಖ್ಯ ಭಾಗ ಮತ್ತು ಲಗತ್ತುಗಳೊಂದಿಗೆ, ಇಲ್ಲಿದೆ. ಪ್ರವೇಶದ ಮಾಹಿತಿಯನ್ನು ಅದರ ಉದ್ದದಿಂದ ಬದಲಾಯಿಸಲಾಗುತ್ತದೆ, ಆದರೆ ಬೇರೆ ಕ್ಷೇತ್ರದಲ್ಲಿ ಟೈಪ್ ಮಾಡಿದ ಪಾಸ್‌ವರ್ಡ್ ಸೇರಿದೆ. ಈ ಅಂಚೆಯನ್ನು ನೋಡಲು ನಂಬಿರುವವರೊಂದಿಗೆ ಮಾತ್ರ ಹಂಚಿಕೊಳ್ಳಿ."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "ಹೇಗಾದರೂ ಹಂಚಿಕೊಳ್ಳಿ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "ವಜಾಗೊಳಿಸಿ"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP ಡೀಬಗ್ ವರದಿ"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ಲಾಗಿಂಗ್"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "ಪೈಪ್ಲೈನ್ ​​IMAP ಆಜ್ಞೆಗಳು"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ಸಂಚಾರವನ್ನು ಲಾಗ್ ಮಾಡಿ"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ಲೈವ್‌ಐಎಂಎಪಿ ಅಡಿಯಲ್ಲಿ ಕಮಾಂಡ್‌ಗಳು ಮತ್ತು ಸರ್ವರ್ ಪ್ರತ್ಯುತ್ತರಗಳು ಲಾಗ್‌ಕ್ಯಾಟ್‌ಗೆ ಹೋಗುತ್ತವೆ. ಗುಪ್ತಪದವನ್ನು ಬಿಟ್ಟುಬಿಡಲಾಗಿದೆ."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ಆದೇಶಗಳು ಮತ್ತು ಸರ್ವರ್ ಉತ್ತರಗಳನ್ನು ಈ ಖಾತೆಯ ಟ್ರಾಫಿಕ್ ದಾಖಲೆಗೆ ಬರೆಯಲಾಗುತ್ತದೆ. ಪ್ರವೇಶದ ಮಾಹಿತಿಯನ್ನು ಅದರ ಉದ್ದದಿಂದ ಬದಲಾಯಿಸಲಾಗುತ್ತದೆ; ಬೇರೆ ಏನೂ ಮರೆಮಾಡುವುದಿಲ್ಲ."},
 {"key": "settings_share_log", "source": "Share log", "text": "ಹಂಚಿಕೆ ಲಾಗ್"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ಡೀಬಗ್ ವರದಿ"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "ಡೀಬಗ್ ವರದಿಯಲ್ಲಿ ಬಳಕೆದಾರರ ಹೆಸರನ್ನು ತೋರಿಸಿ"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "ಸಂಕುಚನ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "ಆನ್"},
 {"key": "settings_compression_off", "source": "Off", "text": "ಆಫ್"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ಸ್ವಯಂ (ಮೊಬೈಲ್ ಡೇಟಾದ ಮೇಲೆ)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "ಸರ್ವರ್ COMPRESS=DEFLATE ಅನ್ನು ನೀಡುವುದಿಲ್ಲ."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "ಅಳಿಸಿದ ಸಂದೇಶಗಳನ್ನು ಒಳಗೊಂಡಿರುವ ಸಂಪೂರ್ಣ ಫೋಲ್ಡರ್ ಅನ್ನು ಸರಿಸಿ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ಆಫ್: ಈಗಾಗಲೇ ಅಳಿಸಲಾಗಿದೆ ಎಂದು ಗುರುತಿಸಲಾದ ಸಂದೇಶಗಳು ಹಿಂದೆ ಉಳಿಯುತ್ತವೆ (UID ಹುಡುಕಾಟ ಅಳಿಸಲಾಗಿದೆ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ಖಾತೆ", "other": "%1$d ಖಾತೆಗಳು"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ಖಾತೆ", "other": "%1$d ಖಾತೆಗಳು"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ಚಾನೆಲ್ ಬೈಂಡಿಂಗ್ ಇಲ್ಲದೆ ಪ್ರವೇಶ (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "ಸಂಪರ್ಕದ ಕಾಲಮಿತಿ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "ಓದುವ ಕಾಲಮಿತಿ"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ಟ್ರಾಫಿಕ್ ದಾಖಲೆಯ ಗಾತ್ರವನ್ನು ಮಿತಿಗೊಳಿಸಿ"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ಟ್ರಾಫಿಕ್ ದಾಖಲೆಯ ಗಾತ್ರ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP ಭಾಗ ಸಂಗ್ರಹ"}
 ]

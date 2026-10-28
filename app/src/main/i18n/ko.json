@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "전송되었을 수 있음: 메시지가 전달된 후 연결이 끊어졌습니다. 다시 시도하기 전에 전송됨을 확인하세요."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "이 장치의 복사본을 저장할 수 없습니다. 이 화면을 열어두세요."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "전송되었을 수 있습니다(다시 시도하기 전에 전송됨을 확인하세요)."},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "경고: 여기에는 본문과 첨부 파일을 포함하여 로깅이 켜져 있는 동안 읽거나 보낸 모든 메시지의 전체 텍스트가 포함됩니다. 비밀번호가 제거됩니다. 해당 메일을 볼 수 있도록 신뢰하는 사람에게만 공유하세요."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "경고: 기록을 켠 동안 읽거나 보낸 모든 메시지의 전체 텍스트가 들어 있습니다. 본문과 첨부 파일도 포함됩니다. 로그인 데이터는 길이로 바뀌지만, 다른 칸에 입력한 비밀번호는 포함됩니다. 그 메일을 봐도 되는 사람에게만 공유하세요."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "무시하고 공유하세요"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "해고하다"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP 디버그 보고서"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "벌채 반출"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "파이프라인 IMAP 명령"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP 트래픽 기록"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "명령과 서버 응답은 LiveIMAP 아래의 logcat으로 이동합니다. 비밀번호는 생략합니다."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "명령과 서버 응답은 이 계정의 트래픽 로그에 기록됩니다. 로그인 데이터는 길이로 바뀝니다. 그 밖에는 숨기지 않습니다."},
 {"key": "settings_share_log", "source": "Share log", "text": "로그 공유"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "디버그 보고서"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "디버그 보고서에 사용자 이름 표시"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "압축(COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "~에"},
 {"key": "settings_compression_off", "source": "Off", "text": "끄다"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "자동(모바일 데이터 사용 시 켜짐)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "서버는 COMPRESS=DEFLATE를 제공하지 않습니다."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "삭제된 메시지를 포함하여 전체 폴더 이동"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "꺼짐: 이미 삭제된 것으로 표시된 메시지는 그대로 유지됩니다(UID 검색 삭제되지 않음)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d개 계정"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d개 계정"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "채널 바인딩 없이 로그인함 (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "연결 제한 시간"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "읽기 제한 시간"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "트래픽 로그 크기 제한"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "트래픽 로그 크기"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP 부분 캐시"}
 ]

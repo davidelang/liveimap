@@ -56,7 +56,7 @@ class PlainSieveTransportTest {
         thread.isDaemon = true
         thread.start()
         try {
-            val caps = greetPlain("127.0.0.1", port)
+            val caps = greetPlain("127.0.0.1", port, null)
             thread.join(10_000)
             assertFalse(thread.isAlive)
             val error = failure.get()
@@ -94,7 +94,7 @@ class PlainSieveTransportTest {
         thread.isDaemon = true
         thread.start()
         try {
-            val transport = openPlainSieve("127.0.0.1", port)
+            val transport = openPlainSieve("127.0.0.1", port, null)
             transport.close()
             transport.close()
             thread.join(5_000)
@@ -133,7 +133,7 @@ class PlainSieveTransportTest {
         val error = AtomicReference<Throwable>()
         var reader: Thread? = null
         try {
-            val transport = openPlainSieve("127.0.0.1", port)
+            val transport = openPlainSieve("127.0.0.1", port, null)
             assertTrue(accepted.await(5, TimeUnit.SECONDS))
             reader = Thread {
                 try {
@@ -161,6 +161,67 @@ class PlainSieveTransportTest {
             server.join(2_000)
             reader?.join(2_000)
         }
+    }
+
+    @Test(timeout = 20_000)
+    fun authenticateLineAndContinuationArePrivate() = runBlocking {
+        val root = java.nio.file.Files.createTempDirectory("sieve-log").toFile()
+        val writer = org.dlang.liveimap.engine.TrafficLog.writer(root, "acct-1", 0) ?: error("writer")
+        val listen = ServerSocket()
+        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
+        val server = Thread {
+            val client = listen.accept()
+            client.soTimeout = 10_000
+            val input = client.getInputStream()
+            val output = client.getOutputStream()
+            fun line() {
+                while (true) {
+                    val c = input.read()
+                    if (c < 0 || c == '\n'.code) break
+                }
+            }
+            output.write("OK \"ready\"\r\n".toByteArray())
+            output.flush()
+            line()
+            output.write("\"challenge\"\r\n".toByteArray())
+            output.flush()
+            line()
+            output.write("OK \"logged in\"\r\n".toByteArray())
+            output.flush()
+            line()
+            client.close()
+        }
+        server.isDaemon = true
+        server.start()
+        val transport = openPlainSieve("127.0.0.1", listen.localPort, writer)
+        try {
+            assertTrue(transport.readLine().startsWith("OK"))
+            transport.writeLine("AUTHENTICATE \"PLAIN\" \"initial\"")
+            val challenge = transport.readLine()
+            assertEquals("\"challenge\"", challenge)
+            transport.writeLine("continuation-bytes")
+            assertTrue(transport.readLine().startsWith("OK"))
+            transport.writeLine("NOOP")
+            writer.sync()
+        } finally {
+            transport.close()
+            listen.close()
+            server.join(5_000)
+        }
+        val records = org.dlang.liveimap.engine.TrafficLog.recordsIn(java.io.File(java.io.File(root, "traffic"), "acct-1"))
+        val auth = "AUTHENTICATE \"PLAIN\" \"initial\"\r\n".toByteArray(StandardCharsets.UTF_8)
+        val cont = "continuation-bytes\r\n".toByteArray(StandardCharsets.UTF_8)
+        val markerAuth = org.dlang.liveimap.engine.TrafficLog.privateMarker(auth.size)
+        val markerCont = org.dlang.liveimap.engine.TrafficLog.privateMarker(cont.size)
+        assertTrue(records.any { it.dir == '>' && it.bytes.contentEquals(markerAuth) })
+        assertTrue(records.any { it.dir == '>' && it.bytes.contentEquals(markerCont) })
+        val visible = records.filter { it.dir == '<' }.joinToString("\n") { String(it.bytes, StandardCharsets.UTF_8) }
+        assertTrue(visible.contains("challenge"))
+        assertTrue(visible.contains("OK"))
+        val sent = records.filter { it.dir == '>' }.joinToString("\n") { String(it.bytes, StandardCharsets.UTF_8) }
+        assertTrue(sent.contains("NOOP"))
+        assertFalse(sent.contains("initial"))
+        assertFalse(sent.contains("continuation-bytes"))
     }
 
     @Test(timeout = 20_000)
@@ -253,7 +314,7 @@ private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport
     var transport: PlainSieveTransport? = null
     var thrown: Throwable? = null
     try {
-        transport = openPlainSieve("127.0.0.1", listen.localPort)
+        transport = openPlainSieve("127.0.0.1", listen.localPort, null)
         block(transport)
     } catch (error: Throwable) {
         thrown = error

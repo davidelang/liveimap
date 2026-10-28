@@ -385,8 +385,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
 
 namespace {
 
-const int kClientSortChunk = 5000;
-
 void freeCStringList(clist * hdrs) {
     if (hdrs == nullptr) return;
     for (clistiter * cur = clist_begin(hdrs); cur != nullptr; cur = clist_next(cur)) free(clist_content(cur));
@@ -540,8 +538,6 @@ struct mailimap_set * setFromUids(const uint32_t * uids, size_t n) {
 }
 
 }  // namespace
-
-int co_client_sort_chunk() { return kClientSortChunk; }
 
 std::vector<uint32_t> co_search_all(mailimap * imap, int * err) {
     std::vector<uint32_t> uids;

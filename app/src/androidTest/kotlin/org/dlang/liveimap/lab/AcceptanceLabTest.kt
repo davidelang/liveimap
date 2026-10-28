@@ -42,21 +42,27 @@ class AcceptanceLabTest {
     fun acceptanceMatrix(): Unit = runBlocking {
         val host = arg("labHost")
         assumeTrue("no labHost argument", host.isNotEmpty())
-        LabTestHooks.set(host, arg("labPass"))
+        LabTestHooks.setLabHost(host)
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
+        val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
         val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
             tlsMode = TlsMode.valueOf(arg("labTls", "None")),
+            logImapTraffic = true,
             // lab.smtp_args (smtp.tsv): the lab server's own SMTP port and a local lab recipient, as LabSuiteTest.
             email = arg("labRcpt"),
             smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25)
+        val labId = createLabAccount(ctx, account, arg("labPass"), arg("labPass"))
         val wanted = arg("accVariants").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         val variants = if (wanted.isEmpty()) acceptanceVariants else acceptanceVariants.filter { it.name in wanted }
         var current: MailSession? = null
+        try {
         val server = MatrixServer(arg("accServer", host), open = { v ->
             current?.close()
-            val raw = LibetpanMailSession()
+            val raw = LibetpanMailSession(ctx, labId)
             raw.setCertConfirmer { false } // only the lab CA is trusted
             raw.setPlaintextConfirmer { true } // lab plain ports, as LabSuiteTest
             current = raw
@@ -68,11 +74,15 @@ class AcceptanceLabTest {
             }
         }, close = { current?.close() })
         val rows = runMatrix(listOf(server), variants, acceptanceTests, writeHosts = parseWriteHosts(arg("labWriteHosts")))
-        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
         val header = listOf("server" to server.label, "imap" to "$host:${arg("labPort")} ${arg("labTls", "None")}", "summary" to summaryLine(rows))
         writeReport(dir, AcceptanceReport(AcceptanceSuite.Full, rows, header), arg("labRun", "acc"))
         android.util.Log.i("AcceptanceLab", summaryLine(rows))
+        } finally {
+            current?.close()
+            deleteLabAccount(ctx, labId)
+            if (recorded != null) store.selectAccount(recorded)
+        }
     }
 
     /** One check outside the matrix: the lab's fake SMTP sink (-e labSmtpPort) accepts a message. No delivery check. */
@@ -80,13 +90,18 @@ class AcceptanceLabTest {
     fun smtpAccepts(): Unit = runBlocking {
         val host = arg("labHost")
         assumeTrue("no labHost/labSmtpPort argument", host.isNotEmpty() && arg("labSmtpPort").isNotEmpty())
-        LabTestHooks.set(host, arg("labPass"))
+        LabTestHooks.setLabHost(host)
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
+        val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
         val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
             tlsMode = TlsMode.valueOf(arg("labTls", "None")), email = arg("labRcpt"),
+            logImapTraffic = true,
             smtpHost = host, smtpPort = arg("labSmtpPort").toInt())
-        val raw = LibetpanMailSession()
+        val labId = createLabAccount(ctx, account, arg("labPass"), arg("labPass"))
+        val raw = LibetpanMailSession(ctx, labId)
         raw.setCertConfirmer { false }
         raw.setPlaintextConfirmer { true }
         try {
@@ -96,6 +111,8 @@ class AcceptanceLabTest {
             check(row.result == "pass") { "smtp accepts message: ${row.result} ${row.reason}" }
         } finally {
             raw.close()
+            deleteLabAccount(ctx, labId)
+            if (recorded != null) store.selectAccount(recorded)
         }
     }
 }

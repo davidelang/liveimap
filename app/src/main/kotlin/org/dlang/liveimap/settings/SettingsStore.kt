@@ -138,11 +138,3 @@ internal suspend fun <T> SettingsStore.accountCommand(publish: (T) -> Unit, bloc
     return data.onAccount(publish, block)
 }
 
-/** F75: open [session] as the account [store] is bound to, so the session fixes that account as its owner. */
-suspend fun org.dlang.liveimap.session.MailSession.openBound(
-    store: SettingsStore,
-    account: AccountSettings,
-): org.dlang.liveimap.session.OpenResult {
-    val id = (store as? DataStoreSettingsStore)?.boundAccountId ?: return open(account)
-    return kotlinx.coroutines.withContext(org.dlang.liveimap.accounts.AccountTarget(id)) { open(account) }
-}

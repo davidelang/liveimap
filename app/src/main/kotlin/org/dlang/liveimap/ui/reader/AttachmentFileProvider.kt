@@ -70,7 +70,7 @@ class AttachmentFileProvider : ContentProvider() {
 /** The cache file a provider URI's last segment names, or null unless it is one of ours directly in [dir]. */
 internal fun attachmentCacheFile(dir: File, name: String?): File? {
     if (name == null) return null
-    if (name == "imap-traffic.log" || !AttachmentFileProvider.ATTACHMENT_NAME.matches(name)) return null
+    if (!AttachmentFileProvider.ATTACHMENT_NAME.matches(name)) return null
     val file = File(dir, name)
     val parent = file.canonicalFile.parentFile ?: return null
     if (parent != dir.canonicalFile) return null

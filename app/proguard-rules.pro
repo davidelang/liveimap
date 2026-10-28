@@ -13,7 +13,6 @@
 -keep class org.dlang.liveimap.engine.MailCharconv** { *; }
 -keep class org.dlang.liveimap.engine.MailCharsetsKt { *; }
 -keep class org.dlang.liveimap.engine.PeerTrust** { *; }
--keep class org.dlang.liveimap.engine.TrafficLog** { *; }
 -keep class org.dlang.liveimap.session.ConnectionLost { *; }
 -keep class org.dlang.liveimap.session.FolderEntry { *; }
 -keep class org.dlang.liveimap.session.ImapAuthKt { *; }

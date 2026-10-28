@@ -6,11 +6,8 @@ import java.io.File
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CompletableDeferred
-import org.dlang.liveimap.accounts.AccountTarget
 import org.dlang.liveimap.engine.LabTestHooks
-import org.dlang.liveimap.jmap.JmapMailSession
-import org.dlang.liveimap.jmap.offerForAccount
-import org.dlang.liveimap.jmap.platformJmapExchange
+import org.dlang.liveimap.jmap.platformJmapMailSession
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
@@ -30,23 +27,26 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class JmapLabSuiteTest {
-    private val labAccountKey = "lab"
     private val args = InstrumentationRegistry.getArguments()
     private fun arg(k: String, d: String = "") = args.getString(k) ?: d
 
     @Test
-    fun jmapSuite() = runBlocking(AccountTarget(labAccountKey)) {
+    fun jmapSuite() = runBlocking {
         val field = arg("jmapServer")
         assumeTrue("no jmapServer argument", field.isNotEmpty())
         val host = arg("labHost")
         val pass = arg("labPass")
-        LabTestHooks.set(host, pass)
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
+        val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
+        LabTestHooks.setLabHost(host)
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
-        val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true)
-        fun session() = JmapMailSession(discover = { a, auth -> offerForAccount(a, platformJmapExchange(a.jmapCertPin, a.tlsPolicy()), authorization = auth, accountKey = labAccountKey) }, passwordOf = { pass })
-            .also { it.setCertConfirmer { false } } // only the lab CA is trusted
+        val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true, logImapTraffic = true)
+        val labId = createLabAccount(ctx, account, pass)
+        fun session() = platformJmapMailSession(ctx, labId).also { it.setCertConfirmer { false } }
         val s = session()
+        try {
         val steps = StringBuilder("step\tresult\tdetail\n")
         var failed = 0
         suspend fun step(name: String, body: suspend () -> String) {
@@ -175,10 +175,13 @@ class JmapLabSuiteTest {
             } catch (e: IllegalStateException) { throw e } catch (e: Exception) { throw IllegalStateException("$stage: ${e.message}") }
         }
         s.close()
-        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
         File(dir, arg("labRun", "jmap") + ".steps.tsv").writeText(steps.toString())
         android.util.Log.i("JmapLab", steps.toString())
         assertEquals("failed steps:\n$steps", 0, failed)
+        } finally {
+            deleteLabAccount(ctx, labId)
+            if (recorded != null) store.selectAccount(recorded)
+        }
     }
 }

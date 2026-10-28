@@ -109,8 +109,9 @@ internal fun testAccountProbes(
     smtpPassword: String,
     session: MailSession? = null,
 ): AccountProbes {
-    val credentials = AccountCredentials(accountId, candidate, password, smtpPassword)
-    val live = session ?: SerialMailSession(LibetpanMailSession()).apply {
+    val credentials = AccountCredentials(candidate, password, smtpPassword)
+    val app = org.dlang.liveimap.LiveImapApplication.context
+    val live = session ?: SerialMailSession(LibetpanMailSession(app ?: error("no application"), accountId)).apply {
         setCertConfirmer { confirmMailCertificate(it) }
         setPlaintextConfirmer { confirmMailPlaintext() }
     }
@@ -168,13 +169,15 @@ internal fun testAccountProbes(
                 val probeKey = java.util.UUID.randomUUID().toString()
                 try {
                     val policy = candidate.tlsPolicy()
-                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy), authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password), accountKey = probeKey)
+                    val context = app ?: error("no application")
+                    val traffic = org.dlang.liveimap.engine.TrafficLog.writer(context.cacheDir, accountId)
+                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy, probeKey, traffic), accountKey = probeKey, traffic = traffic, authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
                     if (offer !is JmapOffer.Mail) {
                         throw IllegalStateException(
                             if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
                         )
                     }
-                    jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, policy), policy = policy, accountKey = probeKey)
+                    jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, probeKey, traffic, policy), policy = policy, accountKey = probeKey)
                 } finally {
                     JmapPlainHttp.drop(probeKey)
                 }

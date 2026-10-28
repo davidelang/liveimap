@@ -22,14 +22,10 @@ internal object LabTestHooks {
     private var host: String? = null
 
     @Volatile
-    private var password: String? = null
-
-    @Volatile
     private var labCa: X509Certificate? = null
 
-    fun set(labHost: String, labPassword: String) {
+    fun setLabHost(labHost: String) {
         host = labHost
-        password = labPassword
     }
 
     /** The lab CA (DER). Trusted only under the same gate as the password: debug build and the lab host. */
@@ -49,7 +45,6 @@ internal object LabTestHooks {
     fun clear() {
         if (BuildConfig.DEBUG) runCatching { nativeSetMaxTls12(false) }
         host = null
-        password = null
         labCa = null
     }
 
@@ -68,12 +63,4 @@ internal object LabTestHooks {
         }
     }
 
-    fun passwordFor(imapHost: String): String? =
-        passwordFor(imapHost, BuildConfig.DEBUG)
-
-    internal fun passwordFor(imapHost: String, debug: Boolean): String? {
-        val lab = host ?: return null
-        if (!debug || lab.isEmpty() || imapHost != lab) return null
-        return password
-    }
 }

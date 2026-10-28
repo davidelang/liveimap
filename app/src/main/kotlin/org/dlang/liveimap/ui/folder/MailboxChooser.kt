@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.folder
 
-import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -202,7 +201,7 @@ private fun MailboxChooserLoaded(
                 return@turn
             }
             val opened = try {
-                session.openBound(store, account)
+                session.open(account)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {

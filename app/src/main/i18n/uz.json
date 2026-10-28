@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Yuborilgan bo'lishi mumkin: xabar topshirilgandan keyin aloqa uzildi. Qayta urinishdan oldin \"Yuborilgan\" belgisini belgilang."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Ushbu qurilmadagi nusxani saqlab bo'lmadi; bu ekranni ochiq tuting."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Yuborilgan bo'lishi mumkin (qayta urinishdan oldin Yuborilgan belgisini belgilang)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Ogohlantirish: bu tizimga kirish paytida o'qilgan yoki yuborilgan har bir xabarning to'liq matnini, jumladan jismlar va qo'shimchalarni o'z ichiga oladi. Parollar olib tashlanadi. Uni faqat oʻsha xatni koʻrishiga ishongan kishi bilan baham koʻring."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Ogohlantirish: jurnal yoqilganda o‘qilgan yoki yuborilgan har bir xatning to‘liq matni, jumladan matn va ilovalar, shu yerda. Kirish ma’lumoti uzunligi bilan almashtiriladi, lekin boshqa maydonga yozilgan parol kiradi. Buni faqat o‘sha pochtani ko‘rishiga ishongan odam bilan ulashing."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Baribir ulashing"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Rad etish"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP disk raskadrovka hisoboti"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Jurnalga yozish"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Quvur liniyasi IMAP buyruqlari"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP trafigini qayd qilish"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Buyruqlar va server javoblari LiveIMAP ostida logcat-ga o'tadi. Parol o'tkazib yuborilgan."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Buyruqlar va server javoblari bu hisobning trafik jurnaliga yoziladi. Kirish ma’lumoti uzunligi bilan almashtiriladi; boshqa hech narsa yashirilmaydi."},
 {"key": "settings_share_log", "source": "Share log", "text": "Jurnalni almashish"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Nosozliklarni tuzatish hisoboti"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Nosozliklarni tuzatish hisobotida foydalanuvchi nomini ko'rsatish"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Siqish (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Yoniq"},
 {"key": "settings_compression_off", "source": "Off", "text": "Oʻchirilgan"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Avtomatik (mobil internet orqali)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Server COMPRESS=DEFLATE ni taklif qilmaydi."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Butun jildni ko'chirish o'chirilgan xabarlarni o'z ichiga oladi"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Oʻchirilgan: oʻchirilgan deb belgilangan xabarlar ortda qoladi (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hisob", "other": "%1$d hisob"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hisob", "other": "%1$d hisob"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Kanal bog‘lamasiz kirish (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Ulanish vaqti"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "O‘qish vaqti"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Trafik jurnalining hajmini cheklash"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Trafik jurnalining hajmi"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP qism kesh"}
 ]

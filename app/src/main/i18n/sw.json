@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Huenda zimetumwa: muunganisho ulipotea baada ya ujumbe kukabidhiwa. Angalia Imetumwa kabla ya kujaribu tena."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Nakala kwenye kifaa hiki haikuweza kuhifadhiwa; weka skrini hii wazi."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Huenda zimetumwa (angalia Imetumwa kabla ya kujaribu tena)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Onyo: hii ina maandishi kamili ya kila ujumbe uliosomwa au kutumwa wakati uwekaji kumbukumbu umewashwa, ikijumuisha miili na viambatisho. Nywila huondolewa. Ishiriki tu na mtu unayemwamini ili kuona barua hiyo."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Onyo: hii ina maandishi kamili ya kila ujumbe uliosomwa au kutumwa wakati kumbukumbu ilikuwa imewashwa, pamoja na miili na viambatisho. Data ya kuingia inabadilishwa na urefu wake, lakini nenosiri lililoandikwa katika sehemu nyingine linajumuishwa. Shiriki tu na mtu unayemwamini kuona barua hiyo."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Shiriki hata hivyo"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Ondoa"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Ripoti ya utatuzi ya LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Kuweka magogo"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Amri za IMAP za bomba"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Ingia trafiki ya IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Amri na majibu ya seva huenda kwa logcat chini ya LiveIMAP. Nenosiri limeachwa."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Amri na majibu ya seva huandikwa kwenye kumbukumbu ya trafiki ya akaunti hii. Data ya kuingia inabadilishwa na urefu wake; hakuna kingine kinachofichwa."},
 {"key": "settings_share_log", "source": "Share log", "text": "Shiriki kumbukumbu"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Ripoti ya utatuzi"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Onyesha jina la mtumiaji katika ripoti ya utatuzi"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Mfinyazo (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Washa"},
 {"key": "settings_compression_off", "source": "Off", "text": "Imezimwa"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Otomatiki (kwenye data ya mtandao wa simu)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Seva haitoi COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Hamisha folda nzima inajumuisha ujumbe uliofutwa"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Imezimwa: barua pepe ambazo tayari zimewekwa alama kuwa zimefutwa baki nyuma (UTAFUTAJI WA UID UMEFUTWA)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d akaunti", "other": "%1$d akaunti"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d akaunti", "other": "%1$d akaunti"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Umeingia bila kufunga kituo (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Muda wa kuunganisha"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Muda wa kusoma"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Punguza ukubwa wa kumbukumbu ya trafiki"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Ukubwa wa kumbukumbu ya trafiki"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Akiba ya sehemu za JMAP"}
 ]

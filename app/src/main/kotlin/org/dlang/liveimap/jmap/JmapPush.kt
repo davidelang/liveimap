@@ -108,37 +108,26 @@ fun jmapPushEmailState(data: String, accountId: String): String? {
     return email.text
 }
 
-fun platformJmapEventSource(url: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapHttpExchange {
+fun platformJmapEventSource(
+    url: String,
+    authorization: String,
+    pin: String,
+    accountKey: String,
+    traffic: org.dlang.liveimap.engine.TrafficWriter?,
+    policy: TlsPolicy = TlsPolicy(),
+): JmapHttpExchange {
+    val headers = listOf(
+        "Accept" to "text/event-stream",
+        "Authorization" to authorization,
+    )
+    logJmapRequest(traffic, "GET", url, headers, authorization, ByteArray(0))
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, accountKey, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 150_000 // F82: above the ping=120 the request asks for
         requestMethod = "GET"
-        setRequestProperty("Accept", "text/event-stream")
-        setRequestProperty("Authorization", authorization)
+        for ((name, value) in headers) setRequestProperty(name, value)
     }
-    return object : JmapHttpExchange {
-        override val status: Int
-            get() = connection.responseCode
-
-        override fun peerDer(): List<ByteArray> =
-            connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
-
-        override fun header(name: String): String? = connection.getHeaderField(name)
-
-        override fun body(): String {
-            val stream = if (connection.responseCode < 400) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-            if (stream == null) return ""
-            return stream.use { readJmapBody(it) }
-        }
-
-        override fun close() {
-            connection.disconnect()
-        }
-    }
+    return jmapLoggedExchange(connection, traffic)
 }

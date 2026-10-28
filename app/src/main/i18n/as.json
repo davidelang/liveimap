@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "হয়তো পঠোৱা হৈছে: বাৰ্তাটো গতাই দিয়াৰ পিছত সংযোগটো হেৰাই গৈছিল। আপুনি পুনৰ চেষ্টা কৰাৰ আগতে পঠোৱা পৰীক্ষা কৰক।"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "এই ডিভাইচত কপি সংৰক্ষণ কৰিব পৰা নগ'ল; এই পৰ্দা খোলা ৰাখক।"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "পঠোৱা হ'ব পাৰে (পুনৰ চেষ্টা কৰাৰ আগতে প্ৰেৰণ কৰা হৈছে নিৰীক্ষণ কৰক)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "সতৰ্কবাণী: ইয়াত লগিং অন কৰাৰ সময়ত পঢ়া বা পঠোৱা প্ৰতিটো বাৰ্তাৰ সম্পূৰ্ণ লিখনী থাকে, শৰীৰ আৰু সংলগ্নসমূহ অন্তৰ্ভুক্ত কৰি। পাছৱৰ্ড আঁতৰোৱা হয়। সেই মেইলটো চাবলৈ আপুনি বিশ্বাস কৰা কোনোবা এজনৰ লগতহে শ্বেয়াৰ কৰক।"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "সতৰ্কবাণী: লগিং চালু থকা সময়ত পঢ়া বা পঠোৱা প্ৰতিখন বাৰ্তাৰ সম্পূৰ্ণ পাঠ, মূল আৰু সংলগ্নকসহ, ইয়াত আছে। প্ৰৱেশৰ তথ্য দৈৰ্ঘ্যেৰে সলনি হয়, কিন্তু আন ক্ষেত্ৰত টাইপ কৰা পাছৱৰ্ড থাকে। এই মেইল দেখাবলৈ বিশ্বাস কৰা মানুহৰ সৈতেহে ভাগ কৰক।"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "যিয়েই নহওক শ্বেয়াৰ কৰক"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "বৰ্খাস্ত"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP ডিবাগ প্ৰতিবেদন"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "লগিং"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "পাইপলাইন IMAP আদেশসমূহ"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ট্ৰেফিক লগ কৰক"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "আদেশ আৰু চাৰ্ভাৰৰ উত্তৰসমূহ LiveIMAP ৰ অন্তৰ্গত logcat লৈ যায়। পাছৱৰ্ড বাদ দিয়া হৈছে।"},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "আদেশ আৰু চাৰ্ভাৰৰ উত্তৰ এই একাউণ্টৰ ট্ৰেফিক লগত লিখা হয়। প্ৰৱেশৰ তথ্য দৈৰ্ঘ্যেৰে সলনি হয়; আন একো লুকুওৱা নহয়।"},
 {"key": "settings_share_log", "source": "Share log", "text": "শ্বেয়াৰ লগ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ডিবাগ প্ৰতিবেদন"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "ডিবাগ প্ৰতিবেদনত ব্যৱহাৰকাৰীৰ নাম দেখুৱাওক"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "সংকোচন (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "ওপৰত"},
 {"key": "settings_compression_off", "source": "Off", "text": "বন্ধ কৰা"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "অটো (মোবাইল ডাটাৰ ওপৰত অন)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "চাৰ্ভাৰে COMPRESS=DEFLATE প্ৰদান নকৰে।"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "সম্পূৰ্ণ ফোল্ডাৰ স্থানান্তৰ কৰক মচি পেলোৱা বাৰ্তাসমূহ অন্তৰ্ভুক্ত কৰে"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "অফ: ইতিমধ্যে মচি পেলোৱা বুলি চিহ্নিত কৰা বাৰ্তাসমূহ পিছ পৰি থাকে (UID SEARCH UNDELETED)।"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটা একাউণ্ট", "other": "%1$dটা একাউণ্ট"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটা একাউণ্ট", "other": "%1$dটা একাউণ্ট"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "চেনেল বাইণ্ডিং নোহোৱাকৈ প্ৰৱেশ (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "সংযোগৰ সময়সীমা"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "পঢ়াৰ সময়সীমা"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ট্ৰেফিক লগৰ আকাৰ সীমিত কৰক"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ট্ৰেফিক লগৰ আকাৰ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP অংশৰ কেশ্ব"}
 ]

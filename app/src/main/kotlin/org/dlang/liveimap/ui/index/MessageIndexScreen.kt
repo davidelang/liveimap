@@ -2,7 +2,6 @@ package org.dlang.liveimap.ui.index
 
 import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.FolderAt
-import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -668,12 +667,12 @@ internal class IndexScreenHeld : ViewModel() {
     var headingParent: String = ""
     val expandedThreadsState = mutableStateOf<Set<Long>>(emptySet())
 
-    fun bind(session: MailSession, store: SettingsStore, mailbox: String): IndexModel {
+    fun bind(session: MailSession, store: SettingsStore, mailbox: String, accountId: String): IndexModel {
         val current = model
         if (current != null && boundMailbox == mailbox && boundSession === session) return current
         val created = IndexModel(session, store, mailbox)
         created.longSearchLinks = { account, box ->
-            org.dlang.liveimap.engine.LibetpanLongSearchLink(account, FolderAt(box, created.listedEpoch(box)))
+            org.dlang.liveimap.engine.LibetpanLongSearchLink(account, accountId, FolderAt(box, created.listedEpoch(box)))
         }
         model = created
         boundSession = session
@@ -810,7 +809,7 @@ private fun MessageIndexLoaded(
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<IndexScreenHeld>()
-    val model = held.bind(session, store, mailbox)
+    val model = held.bind(session, store, mailbox, accountId)
     val reuseWindow = held.windowReady && held.boundMailbox == mailbox
     val host = LocalContext.current.hostActivity()
     DisposableEffect(held) {
@@ -856,6 +855,7 @@ private fun MessageIndexLoaded(
     val cancelSearch = remember { mutableStateOf(false) }
     var searchProgress by remember { mutableStateOf<String?>(null) }
     val watchRecovery = remember { WatchBackoff() }
+    val indexWatch = remember { arrayOfNulls<Job>(1) }
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
     var rows by held.rowsState
@@ -1700,7 +1700,7 @@ private fun MessageIndexLoaded(
                 return@run false
             }
             val opened = try {
-                session.openBound(store, settings)
+                session.open(settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -2074,12 +2074,11 @@ private fun MessageIndexLoaded(
                 }
             }
         }
-        var watchJob: Job? = null
         try {
             snapshotFlow { watchMailboxNow.value }.collect { watching ->
-                watchJob?.cancel()
-                watchJob?.join()
-                watchJob = null
+                indexWatch[0]?.cancel()
+                indexWatch[0]?.join()
+                indexWatch[0] = null
                 if (!watching) {
                     withContext(NonCancellable) {
                         try {
@@ -2091,7 +2090,7 @@ private fun MessageIndexLoaded(
                     }
                     return@collect
                 }
-                watchJob = launch {
+                indexWatch[0] = launch {
                     try {
                         val loaded = try {
                             store.load()
@@ -2274,7 +2273,10 @@ private fun MessageIndexLoaded(
                 refreshIndex()
             }
         }
-        onStopOrDispose { }
+        onStopOrDispose {
+            indexWatch[0]?.cancel()
+            watchRecovery.cancel()
+        }
     }
     LaunchedEffect(listState, connected) {
         if (!connected) return@LaunchedEffect

@@ -80,7 +80,7 @@ class JmapCredentialsAfterTrustTest {
 
     private fun post(port: Int, pin: String, policy: TlsPolicy = TlsPolicy()): Result<Int> = runCatching {
         val c = URL("https://localhost:$port/jmap").openConnection() as HttpsURLConnection
-        pinJmapTls(c, pin, policy)
+        pinJmapTls(c, pin, "acct", policy)
         c.connectTimeout = 5000
         c.readTimeout = 5000
         c.requestMethod = "POST"

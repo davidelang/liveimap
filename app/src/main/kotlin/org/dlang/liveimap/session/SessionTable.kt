@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
 class SessionTable(
-    private val factory: () -> MailSession,
+    private val factory: (String) -> MailSession,
 ) {
     private val sessions = ConcurrentHashMap<String, MailSession>()
     private val confirmers = AtomicReference(ConfirmerPair(null, null))
@@ -34,7 +34,7 @@ class SessionTable(
                 var created: MailSession? = null
                 val stored = sessions.compute(accountId) { _, present ->
                     if (present != null) return@compute present
-                    val made = factory()
+                    val made = factory(accountId)
                     val pair = confirmers.get()
                     made.setCertConfirmer(pair.cert)
                     made.setPlaintextConfirmer(pair.plain)

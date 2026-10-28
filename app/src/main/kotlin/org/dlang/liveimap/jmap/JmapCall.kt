@@ -2,6 +2,8 @@ package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.engine.TrafficWriter
 import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 import java.util.Base64
@@ -99,38 +101,64 @@ fun jmapMailboxChildren(
     throw JmapFailure("jmap mailbox response lacks get")
 }
 
-fun platformJmapPost(url: String, body: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapHttpExchange {
-    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
-        instanceFollowRedirects = false
-        connectTimeout = 15_000
-        readTimeout = 15_000
-        requestMethod = "POST"
-        doOutput = true
-        setRequestProperty("Accept", "application/json")
-        setRequestProperty("Content-Type", "application/json")
-        setRequestProperty("Authorization", authorization)
+internal fun logJmapRequest(
+    traffic: TrafficWriter?,
+    method: String,
+    url: String,
+    headers: List<Pair<String, String>>,
+    authorization: String,
+    body: ByteArray,
+) {
+    val writer = traffic ?: return
+    writer.record("jmap", '>', "$method $url HTTP/1.1".toByteArray(Charsets.US_ASCII))
+    for ((name, value) in headers) {
+        if (name.equals("Authorization", ignoreCase = true)) {
+            writer.record("jmap", '>', "Authorization: ".toByteArray(Charsets.US_ASCII))
+            writer.record("jmap", '>', TrafficLog.privateMarker(authorization.toByteArray(Charsets.UTF_8).size))
+        } else {
+            writer.record("jmap", '>', "$name: $value".toByteArray(Charsets.UTF_8))
+        }
     }
-    connection.outputStream.use { stream ->
-        stream.write(body.toByteArray(Charsets.UTF_8))
+    writer.record("jmap", '>', body)
+}
+
+internal fun logJmapResponse(traffic: TrafficWriter?, connection: java.net.HttpURLConnection, body: ByteArray) {
+    val writer = traffic ?: return
+    writer.record("jmap", '<', "HTTP/1.1 ${connection.responseCode}".toByteArray(Charsets.US_ASCII))
+    for ((name, values) in connection.headerFields) {
+        if (name == null) continue
+        for (value in values) writer.record("jmap", '<', "$name: $value".toByteArray(Charsets.UTF_8))
     }
+    writer.record("jmap", '<', body)
+}
+
+internal fun jmapLoggedExchange(connection: java.net.HttpURLConnection, traffic: TrafficWriter?): JmapHttpExchange {
     return object : JmapHttpExchange {
+        private var logged = false
+
         override val status: Int
             get() = connection.responseCode
 
         override fun peerDer(): List<ByteArray> =
-            connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
+            connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() }
 
         override fun header(name: String): String? = connection.getHeaderField(name)
 
         override fun body(): String {
-            val stream = if (connection.responseCode < 400) {
-                connection.inputStream
-            } else {
-                connection.errorStream
+            val stream = if (connection.responseCode < 400) connection.inputStream else connection.errorStream
+            if (stream == null) {
+                if (!logged) {
+                    logged = true
+                    logJmapResponse(traffic, connection, ByteArray(0))
+                }
+                return ""
             }
-            if (stream == null) return ""
-            return stream.use { readJmapBody(it) }
+            val text = stream.use { readJmapBody(it) }
+            if (!logged) {
+                logged = true
+                logJmapResponse(traffic, connection, text.toByteArray(Charsets.UTF_8))
+            }
+            return text
         }
 
         override fun close() {
@@ -139,51 +167,62 @@ fun platformJmapPost(url: String, body: String, authorization: String, pin: Stri
     }
 }
 
+fun platformJmapPost(
+    url: String,
+    body: String,
+    authorization: String,
+    pin: String,
+    accountKey: String,
+    traffic: TrafficWriter?,
+    policy: TlsPolicy = TlsPolicy(),
+): JmapHttpExchange {
+    val headers = listOf(
+        "Accept" to "application/json",
+        "Content-Type" to "application/json",
+        "Authorization" to authorization,
+    )
+    val payload = body.toByteArray(Charsets.UTF_8)
+    logJmapRequest(traffic, "POST", url, headers, authorization, payload)
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, accountKey, policy)
+        instanceFollowRedirects = false
+        connectTimeout = 15_000
+        readTimeout = 15_000
+        requestMethod = "POST"
+        doOutput = true
+        for ((name, value) in headers) setRequestProperty(name, value)
+    }
+    connection.outputStream.use { stream -> stream.write(payload) }
+    return jmapLoggedExchange(connection, traffic)
+}
+
 fun platformJmapUpload(
     url: String,
     bytes: ByteArray,
     contentType: String,
     authorization: String,
     pin: String,
+    accountKey: String,
+    traffic: TrafficWriter?,
     policy: TlsPolicy = TlsPolicy(),
 ): JmapHttpExchange {
+    val headers = listOf(
+        "Accept" to "application/json",
+        "Content-Type" to contentType,
+        "Authorization" to authorization,
+    )
+    logJmapRequest(traffic, "POST", url, headers, authorization, bytes)
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, accountKey, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 15_000
         requestMethod = "POST"
         doOutput = true
-        setRequestProperty("Accept", "application/json")
-        setRequestProperty("Content-Type", contentType)
-        setRequestProperty("Authorization", authorization)
+        for ((name, value) in headers) setRequestProperty(name, value)
     }
-    connection.outputStream.use { stream ->
-        stream.write(bytes)
-    }
-    return object : JmapHttpExchange {
-        override val status: Int
-            get() = connection.responseCode
-
-        override fun peerDer(): List<ByteArray> =
-            connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
-
-        override fun header(name: String): String? = connection.getHeaderField(name)
-
-        override fun body(): String {
-            val stream = if (connection.responseCode < 400) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-            if (stream == null) return ""
-            return stream.use { readJmapBody(it) }
-        }
-
-        override fun close() {
-            connection.disconnect()
-        }
-    }
+    connection.outputStream.use { stream -> stream.write(bytes) }
+    return jmapLoggedExchange(connection, traffic)
 }
 
 private val apiRedirectStatuses = setOf(301, 302, 303, 307, 308)

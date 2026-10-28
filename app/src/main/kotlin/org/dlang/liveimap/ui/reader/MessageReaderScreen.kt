@@ -3,7 +3,6 @@ package org.dlang.liveimap.ui.reader
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.usableTrashName
 import androidx.compose.foundation.horizontalScroll
-import org.dlang.liveimap.settings.openBound
 import androidx.compose.foundation.layout.heightIn
 import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
@@ -1358,7 +1357,7 @@ private fun MessageReaderLoaded(
                 return@coroutineScope
             }
             val opened = try {
-                session.openBound(store, settings)
+                session.open(settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {

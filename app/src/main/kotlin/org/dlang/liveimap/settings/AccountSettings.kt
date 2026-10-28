@@ -246,18 +246,10 @@ enum class DeletePolicy {
     DeletePermanently,
 }
 
-/** COMPRESS=DEFLATE use: On (default), Off, or Auto = on over mobile data, off on Wi-Fi/Ethernet. */
+/** COMPRESS=DEFLATE use: On (default) or Off. */
 enum class Compression {
     On,
     Off,
-    Auto,
-}
-
-/** Whether to send COMPRESS DEFLATE for [mode] when the active network is cellular ([cellular]). */
-fun compressionWanted(mode: Compression, cellular: Boolean): Boolean = when (mode) {
-    Compression.On -> true
-    Compression.Off -> false
-    Compression.Auto -> cellular
 }
 
 enum class MoveMethod {
@@ -283,7 +275,6 @@ enum class TlsMode {
 }
 
 enum class SmtpNoAuth {
-    Auto,
     On,
     Off,
 }

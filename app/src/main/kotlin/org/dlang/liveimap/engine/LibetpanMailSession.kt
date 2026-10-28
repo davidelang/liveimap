@@ -49,7 +49,7 @@ import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
 import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.compressionWanted
+import org.dlang.liveimap.settings.Compression
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.MoveMethod
@@ -156,7 +156,10 @@ internal fun runRewatch(
     return true
 }
 
-class LibetpanMailSession : MailSession {
+class LibetpanMailSession(
+    private val context: Context,
+    private val accountId: String,
+) : MailSession {
     private var handle: Long = 0
     private var copiedUidStore = LongArray(0)
     private var copiedEpochStore = 0L
@@ -235,11 +238,10 @@ class LibetpanMailSession : MailSession {
     private val cache = java.util.concurrent.ConcurrentHashMap<String, MessageOrder>()
     private val threadHeaders = java.util.concurrent.ConcurrentHashMap<String, ClientHeaders>()
     private val link = SessionLink()
-    private val keeper = ConnectionKeeper(
-        link,
-        clock = { System.nanoTime() / 1_000_000L },
-        sleep = { Thread.sleep(it) },
-    )
+    private val keeper = ConnectionKeeper(link)
+    private var trafficWriter: TrafficWriter? = null
+    private var trafficWriterRoll = Long.MIN_VALUE
+    private var trafficRefusedLogged = false
 
     override val capabilities: Set<String>
         get() = parsedCaps.names
@@ -260,7 +262,7 @@ class LibetpanMailSession : MailSession {
         if (call == null) keeper.suspendConnections() else keeper.suspendConnections(call.clock, call.epoch)
     }
 
-    /** Set by openWith: this session belongs to a non-selected account, so its own secrets are used. */
+    /** Set by openWith: the password typed for this probe, not the stored secret. */
     @Volatile
     private var credentials: org.dlang.liveimap.accounts.AccountCredentials? = null
 
@@ -269,21 +271,64 @@ class LibetpanMailSession : MailSession {
         return open(credentials.settings)
     }
 
-    /**
-     * F75: the account this session belongs to, fixed when it opens (openWith's id, else the caller's
-     * AccountTarget, else the account active at that moment). Every later password read, reconnect, SMTP login
-     * and pin save uses this id, never "whatever the drawer shows now".
-     */
-    @Volatile
-    private var ownerId: String? = null
-
     /** Next [loginOnce] stores credentials and does not open a command connection. */
     @Volatile
     private var stageCommand = false
 
-    private fun ownStore(context: android.content.Context): DataStoreSettingsStore {
-        val id = ownerId ?: throw MailFailure("session has no account")
-        return DataStoreSettingsStore(context, id)
+    private fun ownStore(): DataStoreSettingsStore = DataStoreSettingsStore(context, accountId)
+
+    private fun trafficDirectory(account: AccountSettings): String {
+        if (!account.logImapTraffic) return ""
+        val dir = TrafficLog.trafficLogDir(context.cacheDir, accountId)
+        if (dir == null) {
+            if (!trafficRefusedLogged) {
+                trafficRefusedLogged = true
+                android.util.Log.w("LiveIMAP", "traffic directory refused for $accountId")
+            }
+            return ""
+        }
+        return dir.absolutePath
+    }
+
+    private fun accountWriter(acct: AccountSettings?): TrafficWriter? {
+        if (acct == null || !acct.logImapTraffic) return null
+        val roll = if (acct.trafficLogSizeLimit) acct.trafficLogMaxMb.toLong() * 1024L * 1024L / 4L else 0L
+        val held = trafficWriter
+        if (held != null && trafficWriterRoll == roll) return held
+        if (TrafficLog.trafficLogDir(context.cacheDir, accountId) == null) {
+            if (!trafficRefusedLogged) {
+                trafficRefusedLogged = true
+                android.util.Log.w("LiveIMAP", "traffic directory refused for $accountId")
+            }
+            return null
+        }
+        val writer = TrafficLog.writer(context.cacheDir, accountId, roll) ?: return null
+        trafficWriter = writer
+        trafficWriterRoll = roll
+        return writer
+    }
+
+    private fun statusNote(acct: AccountSettings, text: String) {
+        val writer = accountWriter(acct)
+        if (writer != null) writer.note("imap", text) else TrafficLog.status(text)
+    }
+
+    private fun applyLimits(handle: Long, account: AccountSettings) {
+        val roll = if (account.logImapTraffic && account.trafficLogSizeLimit) {
+            account.trafficLogMaxMb.toLong() * 1024L * 1024L / 4L
+        } else {
+            0L
+        }
+        nativeSetSessionLimits(
+            handle,
+            account.connectTimeoutSec,
+            account.readTimeoutSec,
+            account.idleRenewMinutes * 60,
+            account.idleWakeSeconds * 1000,
+            account.maxResultUids,
+            trafficDirectory(account),
+            roll,
+        )
     }
 
     override suspend fun open(account: AccountSettings): OpenResult {
@@ -293,17 +338,14 @@ class LibetpanMailSession : MailSession {
             return OpenResult.Failed("account settings need attention: $key")
         }
         refusedSecurityKey = null
-        val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
-        val owner = credentials?.accountId
-            ?: kotlin.coroutines.coroutineContext[org.dlang.liveimap.accounts.AccountTarget]?.accountId
-            ?: try { DataStoreSettingsStore(context).chosenAccountId() } catch (error: Exception) { null }
-            ?: return OpenResult.Failed("no account")
-        if (ownerId != null && ownerId != owner && handle != 0L) close()
-        ownerId = owner
-        val password = LabTestHooks.passwordFor(account.imapHost) ?: credentials?.password ?: try {
-            ownStore(context).password()
-        } catch (error: Exception) {
-            return OpenResult.Failed(error.message ?: "keystore unavailable")
+        val password = if (credentials != null) {
+            credentials!!.password
+        } else {
+            try {
+                runBlocking { ownStore().password() }
+            } catch (error: Exception) {
+                return OpenResult.Failed(error.message ?: "keystore unavailable")
+            }
         }
         val held = this.account
         val knownPassword = loggedInPassword
@@ -317,16 +359,9 @@ class LibetpanMailSession : MailSession {
                 if (logTurnedOn && compressed) {
                     close()
                 } else {
-                    nativeSetSessionFlags(
-                        handle,
-                        account.pipelineCommands,
-                        account.logImapTraffic,
-                        prepareTraffic(account),
-                    )
-                    finishTraffic(account)
+                    nativeSetSessionFlags(handle, account.pipelineCommands)
+                    applyLimits(handle, account)
                     this.account = account
-                    nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
-                    nativeSetMaxResultUids(handle, account.maxResultUids)
                     return OpenResult.Connected
                 }
             }
@@ -335,7 +370,6 @@ class LibetpanMailSession : MailSession {
             close()
         }
         var opened = login(account, password)
-        // F64: the account as trusted so far in this open (a pin confirmed below carries into later retries).
         var trustedAccount = account
         if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && promptableCert(opened.text)) {
             val parts = pendingCertOffer
@@ -356,8 +390,7 @@ class LibetpanMailSession : MailSession {
                     trustedAccount = pinned
                     val text = opened.text
                     try {
-                        // F75: field-level update of this session's own account, not a snapshot save.
-                        ownStore(context).update { it.copy(certPin = prompt.fingerprint) }
+                        ownStore().update { it.copy(certPin = prompt.fingerprint) }
                         opened = login(pinned, password)
                     } catch (error: kotlinx.coroutines.CancellationException) {
                         throw error
@@ -376,7 +409,7 @@ class LibetpanMailSession : MailSession {
             } else {
                 val allowed = trustedAccount.copy(allowPlaintextAuth = true)
                 try {
-                    ownStore(context).update { it.copy(allowPlaintextAuth = true) }
+                    ownStore().update { it.copy(allowPlaintextAuth = true) }
                     opened = login(allowed, password)
                 } catch (error: kotlinx.coroutines.CancellationException) {
                     throw error
@@ -394,8 +427,6 @@ class LibetpanMailSession : MailSession {
             sequencesStale = false
             keeper.forgetFolder()
             keeper.markUsed()
-            nativeSetIdleRenewSeconds(account.idleRenewMinutes * 60)
-            nativeSetMaxResultUids(handle, account.maxResultUids)
         }
         return opened
     }
@@ -418,56 +449,43 @@ class LibetpanMailSession : MailSession {
         if (first !is OpenResult.Failed) return first
         val retry = plusFallback(account, first.text) ?: return first
         TrafficRecorder.event("main", "fallback", retry.authMechanism)
-        // F64: not silent. The downgrade is noted for the status line and kept for the Test account report.
-        android.util.Log.w("LiveImap", "SCRAM -PLUS failed; logged in with ${retry.authMechanism} (no channel binding)")
+        android.util.Log.w("LiveIMAP", "SCRAM -PLUS failed; logged in with ${retry.authMechanism} (no channel binding)")
         val opened = loginOnce(retry, knownPassword)
         if (opened !is OpenResult.Failed) {
             channelBindingDropped = true
-            noteTraffic("Logged in without channel binding (${retry.authMechanism})")
+            statusNote(retry, context.getString(R.string.session_no_channel_binding, retry.authMechanism))
         }
         return openResultAfterPlusFallback(first, opened)
     }
 
-    /**
-     * Password for this session: lab hook when set, else what logged in here, else this account's stored secret.
-     * [Link.connect] reads this before a reconnect close; a full [close] may clear [loggedInPassword] afterward.
-     */
-    private fun sessionPassword(account: AccountSettings): String {
-        LabTestHooks.passwordFor(account.imapHost)?.let { return it }
-        loggedInPassword?.let { return it }
-        val context = currentApplication() ?: throw MailFailure("keystore unavailable")
-        return credentials?.password ?: runBlocking {
-            ownStore(context).password()
-        }
+    private fun sessionPassword(): String {
+        credentials?.let { return it.password }
+        return runBlocking { ownStore().password() }
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
         namespaceList = null
         val password = if (knownPassword != null) {
             knownPassword
+        } else if (credentials != null) {
+            credentials!!.password
         } else {
-            val context = currentApplication() ?: return OpenResult.Failed("keystore unavailable")
             try {
-                // Link.connect is not a coroutine. password() hops to Dispatchers.IO.
-                credentials?.password ?: runBlocking {
-                    ownStore(context).password()
-                }
+                runBlocking { ownStore().password() }
             } catch (error: Exception) {
                 return OpenResult.Failed(error.message ?: "keystore unavailable")
             }
         }
         val from = if (account.email.isNotEmpty()) account.email else account.username
-        val trafficPath = prepareTraffic(account)
         if (account.logImapTraffic) {
-            TrafficLog.noteStatus("Connecting")
-            TrafficLog.noteStatus("Authenticating")
+            statusNote(account, "Connecting")
+            statusNote(account, "Authenticating")
         }
         TrafficRecorder.event("main", "connect", "${account.imapHost}:${account.imapPort} ${account.tlsMode.name}")
         val clientCert = ClientCertStore.load(account.clientCert)
         if (account.clientCert.isNotBlank() && clientCert == null) {
             throw MailFailure("client certificate missing; import it again in account settings")
         }
-        // The other per-account choice: an Android KeyChain certificate, signed through the keystore.
         val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
         val opened = if (stageCommand) {
             nativeStage(
@@ -479,8 +497,6 @@ class LibetpanMailSession : MailSession {
                 account.smtpPort,
                 from,
                 account.pipelineCommands,
-                account.logImapTraffic,
-                trafficPath,
                 account.tlsMode.name,
                 account.smtpTlsMode.name,
                 account.certPin,
@@ -503,8 +519,6 @@ class LibetpanMailSession : MailSession {
                 account.smtpPort,
                 from,
                 account.pipelineCommands,
-                account.logImapTraffic,
-                trafficPath,
                 account.tlsMode.name,
                 account.smtpTlsMode.name,
                 account.certPin,
@@ -529,16 +543,13 @@ class LibetpanMailSession : MailSession {
         } else {
             null
         }
-        opened.tls.takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
         if (opened.handle == 0L) {
             val text = opened.error
-            val serverRejected = !stageCommand && opened.authRejected
-            if (account.logImapTraffic) TrafficLog.noteStatus("Error $text")
+            if (account.logImapTraffic) statusNote(account, "Error $text")
             TrafficRecorder.event("main", "error", text)
-            finishTraffic(account)
-            if (serverRejected) return OpenResult.AuthRejected(text)
             return OpenResult.Failed(text)
         }
+        applyLimits(opened.handle, account)
         if (stageCommand) {
             handle = opened.handle
             this.account = account
@@ -546,41 +557,51 @@ class LibetpanMailSession : MailSession {
             capabilityLine = ""
             clearOrderCache()
             compressed = false
-            finishTraffic(account)
             return OpenResult.Connected
         }
-        val line = nativeCapabilityLine(opened.handle)
+        val connected = nativeConnect(opened.handle)
+        connected.tls.takeIf { it.isNotEmpty() }?.let { TrafficRecorder.event("main", "tls", it) }
+        if (connected.certFingerprint.isNotEmpty()) {
+            pendingCertOffer = arrayOf(
+                connected.certSubject,
+                connected.certIssuer,
+                connected.certNotBefore,
+                connected.certNotAfter,
+                connected.certFingerprint,
+            )
+        }
+        if (connected.handle == 0L) {
+            nativeClose(opened.handle)
+            val text = connected.error
+            if (account.logImapTraffic) statusNote(account, "Error $text")
+            TrafficRecorder.event("main", "error", text)
+            if (connected.authRejected) return OpenResult.AuthRejected(text)
+            return OpenResult.Failed(text)
+        }
+        val line = nativeCapabilityLine(connected.handle)
         val gate = capabilityGate(line)
         if (gate is OpenResult.Rejected) {
-            nativeClose(opened.handle)
-            finishTraffic(account)
+            nativeClose(connected.handle)
             return gate
         }
-        if (account.logImapTraffic) TrafficLog.noteCapability(line)
-        handle = opened.handle
+        handle = connected.handle
         this.account = account
         loggedInPassword = password
         capabilityLine = line
         clearOrderCache()
         compressed = false
-        // F30: QRESYNC is not enabled. Its VANISHED/changed-FETCH answers were never processed, and once enabled the
-        // server sends VANISHED instead of EXPUNGE on this connection. CONDSTORE keeps HIGHESTMODSEQ and EXPUNGE.
         when (featureCaps.resyncKind()) {
-            "Qresync", "Condstore" -> nativeEnable(opened.handle, enableForResync(featureCaps.resyncKind()))
+            "Qresync", "Condstore" -> nativeEnable(connected.handle, enableForResync(featureCaps.resyncKind()))
         }
-        // RFC 6855: UTF-8 mailbox names (and quoted strings) instead of modified UTF-7.
         utf8Names = false
         if (featureCaps.utf8Accept) {
-            nativeEnable(opened.handle, "UTF8=ACCEPT")
+            nativeEnable(connected.handle, "UTF8=ACCEPT")
             utf8Names = true
         }
-        if (featureCaps.compressDeflate && !account.logImapTraffic &&
-            compressionWanted(account.compression, onCellular())
-        ) {
-            nativeCompress(opened.handle)
+        if (featureCaps.compressDeflate && !account.logImapTraffic && account.compression == Compression.On) {
+            nativeCompress(connected.handle)
             compressed = true
         }
-        finishTraffic(account)
         return OpenResult.Connected
     }
 
@@ -1450,7 +1471,7 @@ class LibetpanMailSession : MailSession {
             uids,
             ShortArray(0),
             selectedMailbox ?: "",
-            ownerId.orEmpty(),
+            accountId,
             selected.uidValidity,
             dateEpoch,
             sizes,
@@ -1801,7 +1822,6 @@ class LibetpanMailSession : MailSession {
                         close()
                         return
                     }
-                    nativeSetWatchWakeMillis((account.idleWakeSeconds) * 1000)
                     nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
                     noteTraffic("Idling")
                 } catch (failure: Throwable) {
@@ -1815,11 +1835,11 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
+        if (account == null) throw MailFailure("no account")
         if (!featureCaps.idle) return
         // F136: not through the keeper. The watch is its own connection and runs beside the main one (off the
         // session lane); a reconnect of the main connection from here would race the lane's commands.
         // The callback is stored only for the generation nativeWatch publishes, not before it returns.
-        nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
         val offer = WatchOffer(mailbox, onChange)
         requestedWatch = WatchTarget(mailbox, onChange)
         val started = nativeWatch(requireHandle(), wire(mailbox), offer)
@@ -1930,7 +1950,7 @@ class LibetpanMailSession : MailSession {
     override suspend fun selectedInfo(): SelectResult = selected
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) {
-        val spilled = spilledMessage(rfc822)
+        val spilled = spilledMessage(context, rfc822)
         try {
             keeper.write("append") {
                 forgetSelected()
@@ -1943,7 +1963,7 @@ class LibetpanMailSession : MailSession {
     }
 
     override suspend fun appendReturningUid(mailbox: String, rfc822: ByteArray, flags: Set<String>): Long {
-        val spilled = spilledMessage(rfc822)
+        val spilled = spilledMessage(context, rfc822)
         try {
             return keeper.write("append") {
                 forgetSelected()
@@ -1978,7 +1998,7 @@ class LibetpanMailSession : MailSession {
         smtpSendFrom(rfc822, recipients, dsnNotify, "")
 
     override suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
-        val spilled = spilledMessage(rfc822)
+        val spilled = spilledMessage(context, rfc822)
         try {
             return sendMessageFile(spilled, recipients, dsnNotify, envelopeFrom)
         } finally {
@@ -1995,19 +2015,16 @@ class LibetpanMailSession : MailSession {
     private suspend fun sendMessageFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int {
         val key = refusedSecurityKey ?: account?.preservedSecurityKey()
         if (key != null) throw MailFailure("account settings need attention: $key")
-        val context = currentApplication()
-        val ownSmtpPassword = credentials?.smtpPassword
-            ?: if (context != null && ownerId != null) ownStore(context).smtpPassword() else ""
-        // Same-as-IMAP uses the IMAP password. Auto sends that, or no AUTH when it is empty.
-        // On sends no password. Off sends the resolved password. A missing IMAP password is needs-password.
-        val acct = account
+        val acct = account ?: throw MailFailure("no account")
+        val ownSmtpPassword = credentials?.smtpPassword ?: runBlocking { ownStore().smtpPassword() }
+        // Same-as-IMAP uses the IMAP password. On sends no password. Off sends the resolved password.
         val imapPassword = loggedInPassword.orEmpty()
-        val same = acct?.smtpSameAsImap == true
-        val mode = acct?.smtpNoAuth ?: SmtpNoAuth.Auto
+        val same = acct.smtpSameAsImap
+        val mode = acct.smtpNoAuth
         if (same && imapPassword.isEmpty() && mode != SmtpNoAuth.On) throw MailFailure("needs-password")
         val smtpPassword = smtpPasswordFor(same, ownSmtpPassword, imapPassword, mode)
         if (mode == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
-        val smtpUser = (account?.smtpUsername ?: "").ifEmpty { acct?.username.orEmpty() }
+        val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         return keeper.write("send") {
             forgetSelected()
             nativeSmtp(
@@ -2059,10 +2076,9 @@ class LibetpanMailSession : MailSession {
 
     private fun stageSmtp(account: AccountSettings, password: String): SessionOpen {
         val from = if (account.email.isNotEmpty()) account.email else account.username
-        val trafficPath = prepareTraffic(account)
         val clientCert = ClientCertStore.load(account.clientCert)
         val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
-        return nativeStage(
+        val opened = nativeStage(
             account.imapHost,
             account.imapPort,
             account.username,
@@ -2071,8 +2087,6 @@ class LibetpanMailSession : MailSession {
             account.smtpPort,
             from,
             account.pipelineCommands,
-            account.logImapTraffic,
-            trafficPath,
             account.tlsMode.name,
             account.smtpTlsMode.name,
             account.certPin,
@@ -2085,6 +2099,8 @@ class LibetpanMailSession : MailSession {
             keyChain?.chain,
             keyChain?.key,
         )
+        if (opened.handle != 0L) applyLimits(opened.handle, account)
+        return opened
     }
 
     override fun close() {
@@ -2136,7 +2152,7 @@ class LibetpanMailSession : MailSession {
 
         override fun connect() {
             val saved = account ?: throw MailFailure("not connected")
-            val opened = login(saved, sessionPassword(saved))
+            val opened = login(saved, sessionPassword())
             if (opened !is OpenResult.Connected) {
                 val text = when (opened) {
                     is OpenResult.Failed -> opened.text
@@ -2169,6 +2185,7 @@ class LibetpanMailSession : MailSession {
         }
 
         override fun rewatch() {
+            if (account == null) throw MailFailure("no account")
             val publishedOffer = publishedWatch.get()?.offer
             val published = publishedOffer?.let { WatchTarget(it.mailbox, it.onChange) }
             var offer: WatchOffer? = null
@@ -2179,7 +2196,6 @@ class LibetpanMailSession : MailSession {
                     requestedWatch = WatchTarget(target.mailbox, target.onChange)
                     val next = WatchOffer(target.mailbox, target.onChange)
                     offer = next
-                    nativeSetWatchWakeMillis((account?.idleWakeSeconds ?: 5) * 1000)
                     nativeWatch(requireHandle(), wire(next.mailbox), next)
                 },
                 markLost = { keeper.markWatchLost() },
@@ -2210,10 +2226,15 @@ class LibetpanMailSession : MailSession {
                 pending.onChange.invoke(change)
             }
         }
+
+        override fun note(text: String) {
+            val writer = accountWriter(account)
+            if (writer != null) writer.note("imap", text) else TrafficLog.status(text)
+        }
     }
 
     private fun noteTraffic(text: String) {
-        if (account?.logImapTraffic == true) TrafficLog.noteStatus(text)
+        accountWriter(account)?.note("imap", text)
     }
 
     private fun requireHandle(): Long {
@@ -2260,7 +2281,7 @@ class LibetpanMailSession : MailSession {
     }
 
     private fun toastRebuilt(mailbox: String) {
-        val app = currentApplication() ?: return
+        val app = context
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             android.widget.Toast.makeText(app, "$mailbox order was rebuilt", android.widget.Toast.LENGTH_LONG).show()
         }
@@ -2274,7 +2295,7 @@ class LibetpanMailSession : MailSession {
         uids,
         depths,
         selectedMailbox ?: "",
-        ownerId.orEmpty(),
+        accountId,
         selected.uidValidity,
         LongArray(0),
         LongArray(0),
@@ -2312,8 +2333,6 @@ class LibetpanMailSession : MailSession {
         smtpPort: Int,
         from: String,
         pipeline: Boolean,
-        log: Boolean,
-        logPath: String,
         tlsMode: String,
         smtpTlsMode: String,
         certPin: String,
@@ -2336,8 +2355,6 @@ class LibetpanMailSession : MailSession {
         smtpPort: Int,
         from: String,
         pipeline: Boolean,
-        log: Boolean,
-        logPath: String,
         tlsMode: String,
         smtpTlsMode: String,
         certPin: String,
@@ -2351,9 +2368,20 @@ class LibetpanMailSession : MailSession {
         keyChainKey: Any?,
     ): SessionOpen
 
-    private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean, log: Boolean, logPath: String)
+    private external fun nativeSetSessionFlags(handle: Long, pipeline: Boolean)
 
-    private external fun nativeSetMaxResultUids(handle: Long, cap: Int)
+    private external fun nativeConnect(handle: Long): SessionOpen
+
+    private external fun nativeSetSessionLimits(
+        handle: Long,
+        connectSec: Int,
+        readSec: Int,
+        idleRenewSec: Int,
+        watchWakeMs: Int,
+        maxResultUids: Int,
+        trafficDir: String,
+        trafficRollBytes: Long,
+    )
 
     private external fun nativeSessionDead(handle: Long): Boolean
 
@@ -2565,14 +2593,6 @@ class LibetpanMailSession : MailSession {
             System.loadLibrary("liveimap")
         }
 
-        /** IDLE poll backstop in ms (F38; account setting idleWakeSeconds). */
-        @JvmStatic
-        external fun nativeSetWatchWakeMillis(millis: Int)
-
-        /** IDLE is renewed (DONE + IDLE) after this many seconds; 0 restores the default (9 min). Lab hook. */
-        @JvmStatic
-        external fun nativeSetIdleRenewSeconds(seconds: Int)
-
         /** IDLE renewals since process start (lab check). */
         @JvmStatic
         external fun nativeIdleRenews(): Int
@@ -2616,31 +2636,8 @@ class LibetpanMailSession : MailSession {
 private fun promptableCert(text: String): Boolean =
     text == "certificate untrusted" || text == "certificate changed"
 
-private fun imapTrafficLogPath(context: Context?): String {
-    if (context == null) return ""
-    return File(context.cacheDir, "imap-traffic.log").absolutePath
-}
-
-private fun prepareTraffic(account: AccountSettings): String {
-    val context = currentApplication()
-    val path = imapTrafficLogPath(context)
-    if (context != null) {
-        TrafficLog.install(File(context.cacheDir, "imap-traffic.log"))
-        if (account.logImapTraffic) {
-            TrafficLog.setRecording(true)
-        }
-    }
-    return path
-}
-
-private fun finishTraffic(account: AccountSettings) {
-    // One account finishing must not turn another account's log off.
-}
-
-private fun spilledMessage(bytes: ByteArray): File {
-    val dir = currentApplication()?.cacheDir
-    val file = if (dir != null) File.createTempFile("liveimap-", ".rfc822", dir)
-        else File.createTempFile("liveimap-", ".rfc822")
+private fun spilledMessage(context: Context, bytes: ByteArray): File {
+    val file = File.createTempFile("liveimap-", ".rfc822", context.cacheDir)
     try {
         file.writeBytes(bytes)
     } catch (error: Exception) {
@@ -2648,16 +2645,6 @@ private fun spilledMessage(bytes: ByteArray): File {
         throw error
     }
     return file
-}
-
-internal fun currentApplication(): Context? {
-    return try {
-        val thread = Class.forName("android.app.ActivityThread")
-        val method = thread.getMethod("currentApplication")
-        method.invoke(null) as? Context
-    } catch (_: Exception) {
-        null
-    }
 }
 
 /** Native window results are [count, uid...]; a server that sent no COUNT gives -1 (total unknown: window size). */
@@ -2685,20 +2672,7 @@ internal fun uidWindowOf(raw: LongArray): UidWindow {
     return UidWindow(total, uids)
 }
 
-internal const val ClientSortChunk = 5000
-
-internal fun clientSortChunk(): Int {
-    val stored = InstalledGlobals.clientSortChunk.get()
-    return if (stored >= 1) stored else ClientSortChunk
-}
-
-/** True when the active network is cellular (Auto compression); false if unknown. */
-internal fun onCellular(): Boolean {
-    val context = currentApplication() ?: return false
-    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
-    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-    return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
-}
+internal fun clientSortChunk(): Int = InstalledGlobals.clientSortChunk.get()
 
 /** F141: a failed sort chunk is drift (restart the walk) when the folder shrank or sequence numbers went stale. */
 internal fun sortChunkDrift(existsAtStart: Int, existsNow: Int, stale: Boolean): Boolean = stale || existsNow < existsAtStart
@@ -2709,17 +2683,15 @@ internal fun enableForResync(kind: String): String = when (kind) {
     else -> ""
 }
 
-/** Resolved SMTP password. On is always "". Auto is "" when the resolved password is empty. */
+/** Resolved SMTP password. On is always "". Off returns the IMAP or SMTP secret. */
 internal fun smtpPasswordFor(
     sameAsImap: Boolean,
     smtpPassword: String,
     imapPassword: String,
-    smtpNoAuth: SmtpNoAuth = SmtpNoAuth.Auto,
+    smtpNoAuth: SmtpNoAuth,
 ): String {
     if (smtpNoAuth == SmtpNoAuth.On) return ""
-    val resolved = if (sameAsImap) imapPassword else smtpPassword
-    if (smtpNoAuth == SmtpNoAuth.Auto && resolved.isEmpty()) return ""
-    return resolved
+    return if (sameAsImap) imapPassword else smtpPassword
 }
 
 /** F144: a reconnect's re-SELECT changes go to the watcher only for the very folder it watches. */

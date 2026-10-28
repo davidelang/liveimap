@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "അയച്ചിരിക്കാം: സന്ദേശം കൈമാറിയതിന് ശേഷം കണക്ഷൻ നഷ്ടപ്പെട്ടു. നിങ്ങൾ വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് അയച്ചത് പരിശോധിക്കുക."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ഈ ഉപകരണത്തിലെ പകർപ്പ് സംരക്ഷിക്കാൻ കഴിഞ്ഞില്ല; ഈ സ്ക്രീൻ തുറന്നിടുക."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "അയച്ചിരിക്കാം (വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് അയച്ചത് പരിശോധിക്കുക)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "മുന്നറിയിപ്പ്: ബോഡികളും അറ്റാച്ച്‌മെൻ്റുകളും ഉൾപ്പെടെ ലോഗിംഗ് ഓണായിരിക്കുമ്പോൾ വായിച്ചതോ അയച്ചതോ ആയ എല്ലാ സന്ദേശങ്ങളുടെയും മുഴുവൻ വാചകവും ഇതിൽ അടങ്ങിയിരിക്കുന്നു. പാസ്‌വേഡുകൾ നീക്കം ചെയ്തു. ആ മെയിൽ കാണാൻ നിങ്ങൾ വിശ്വസിക്കുന്ന ഒരാളുമായി മാത്രം ഇത് പങ്കിടുക."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "മുന്നറിയിപ്പ്: ലോഗിംഗ് ഓണായിരിക്കുമ്പോൾ വായിച്ചതോ അയച്ചതോ ആയ ഓരോ സന്ദേശത്തിന്റെയും പൂർണ്ണ വാചകം, ഉള്ളടക്കവും അറ്റാച്ചുമെന്റുകളും ഉൾപ്പെടെ, ഇവിടെയുണ്ട്. പ്രവേശന വിവരം അതിന്റെ നീളം കൊണ്ട് മാറ്റുന്നു, പക്ഷേ മറ്റൊരു ഫീൽഡിൽ ടൈപ്പ് ചെയ്ത പാസ്‌വേഡ് ഉൾപ്പെടും. ഈ കത്ത് കാണാൻ വിശ്വസിക്കുന്നയാൾക്ക് മാത്രം പങ്കിടുക."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "എന്തായാലും ഷെയർ ചെയ്യൂ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "പിരിച്ചുവിടുക"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP ഡീബഗ് റിപ്പോർട്ട്"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ലോഗിംഗ്"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "പൈപ്പ്ലൈൻ IMAP കമാൻഡുകൾ"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ട്രാഫിക് ലോഗ് ചെയ്യുക"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "കമാൻഡുകളും സെർവർ മറുപടികളും LiveIMAP-ന് കീഴിൽ ലോഗ്‌കാറ്റിലേക്ക് പോകുന്നു. പാസ്‌വേഡ് ഒഴിവാക്കിയിരിക്കുന്നു."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "കമാൻഡുകളും സെർവർ മറുപടികളും ഈ അക്കൗണ്ടിന്റെ ട്രാഫിക് ലോഗിൽ എഴുതുന്നു. പ്രവേശന വിവരം അതിന്റെ നീളം കൊണ്ട് മാറ്റുന്നു; മറ്റൊന്നും മറയ്ക്കുന്നില്ല."},
 {"key": "settings_share_log", "source": "Share log", "text": "പങ്കിടൽ ലോഗ്"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ഡീബഗ് റിപ്പോർട്ട്"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "ഡീബഗ് റിപ്പോർട്ടിൽ ഉപയോക്തൃനാമം കാണിക്കുക"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "കംപ്രഷൻ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "ഓൺ"},
 {"key": "settings_compression_off", "source": "Off", "text": "ഓഫ്"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "സ്വയമേവ (മൊബൈൽ ഡാറ്റയിൽ)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "സെർവർ COMPRESS=DEFLATE വാഗ്ദാനം ചെയ്യുന്നില്ല."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "മുഴുവൻ ഫോൾഡറും നീക്കുക ഇല്ലാതാക്കിയ സന്ദേശങ്ങൾ ഉൾപ്പെടുന്നു"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ഓഫ്: ഇതിനകം ഇല്ലാതാക്കിയതായി അടയാളപ്പെടുത്തിയ സന്ദേശങ്ങൾ പിന്നിലായി തുടരുക (UID തിരയൽ ഇല്ലാതാക്കി)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d അക്കൗണ്ട്", "other": "%1$d അക്കൗണ്ടുകൾ"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d അക്കൗണ്ട്", "other": "%1$d അക്കൗണ്ടുകൾ"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ചാനൽ ബൈൻഡിംഗ് ഇല്ലാതെ പ്രവേശനം (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "കണക്ഷൻ സമയപരിധി"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "വായന സമയപരിധി"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ട്രാഫിക് ലോഗിന്റെ വലുപ്പം പരിമിതപ്പെടുത്തുക"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ട്രാഫിക് ലോഗിന്റെ വലുപ്പം"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP ഭാഗ കാഷ്"}
 ]

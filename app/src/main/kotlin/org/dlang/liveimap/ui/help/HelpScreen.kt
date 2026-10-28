@@ -110,16 +110,17 @@ fun HelpScreen() {
             TextButton(onClick = {
                 scope.launch {
                     val settings = store.load()
-                    val log = TrafficLog.install(File(appContext.cacheDir, "imap-traffic.log"))
+                    val id = store.chosenAccountId().orEmpty()
                     val device = listOf(Build.MANUFACTURER, Build.MODEL)
                         .filter { it.isNotBlank() }
                         .joinToString(" ")
-                    reportLines = log.debugReport(
+                    reportLines = TrafficLog.debugReport(
                         versionName = BuildConfig.VERSION_NAME,
                         versionCode = BuildConfig.VERSION_CODE,
                         androidVersion = Build.VERSION.RELEASE,
                         device = device,
                         settings = settings,
+                        traffic = trafficText(appContext.cacheDir, id),
                     ).lines()
                 }
             }) { Text(copyReport) }

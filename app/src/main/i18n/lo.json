@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "ອາດຈະຖືກສົ່ງໄປແລ້ວ: ການເຊື່ອມຕໍ່ໄດ້ສູນເສຍຫຼັງຈາກຂໍ້ຄວາມຖືກສົ່ງ. ກວດເບິ່ງທີ່ສົ່ງກ່ອນທີ່ທ່ານຈະລອງໃຫມ່."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ສຳເນົາໃນອຸປະກອນນີ້ບໍ່ສາມາດບັນທຶກໄດ້; ເປີດໜ້າຈໍນີ້ໄວ້."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "ອາດ​ຈະ​ໄດ້​ຮັບ​ການ​ສົ່ງ (ກວດ​ສອບ​ການ​ສົ່ງ​ກ່ອນ​ທີ່​ຈະ​ລອງ​ໃຫມ່​)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "ຄໍາເຕືອນ: ນີ້ປະກອບດ້ວຍຂໍ້ຄວາມເຕັມຂອງທຸກຂໍ້ຄວາມທີ່ຖືກອ່ານຫຼືສົ່ງໃນຂະນະທີ່ເຂົ້າສູ່ລະບົບ, ລວມທັງເນື້ອໃນແລະໄຟລ໌ແນບ. ລະຫັດຜ່ານຖືກເອົາອອກ. ແບ່ງປັນກັບຄົນທີ່ທ່ານໄວ້ໃຈເພື່ອເຂົ້າໄປເບິ່ງຈົດໝາຍນັ້ນເທົ່ານັ້ນ."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "ຄຳເຕືອນ: ນີ້ມີຂໍ້ຄວາມເຕັມຂອງທຸກຂໍ້ຄວາມທີ່ອ່ານ ຫຼື ສົ່ງ ໃນຂະນະທີ່ການບັນທຶກເປີດ ລວມທັງເນື້ອໃນ ແລະ ໄຟລ໌ແນບ. ຂໍ້ມູນເຂົ້າສູ່ລະບົບຖືກປ່ຽນເປັນຄວາມຍາວຂອງມັນ ແຕ່ລະຫັດທີ່ພິມໃນຊ່ອງອື່ນຖືກລວມ. ແບ່ງປັນສະເພາະກັບຄົນທີ່ທ່ານໄວ້ວາງໃຈໃຫ້ເຫັນຈົດໝາຍນັ້ນ."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "ແບ່ງປັນແນວໃດ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "ປິດ"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "ລາຍງານການແກ້ໄຂບັນຫາ LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ການຕັດໄມ້"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "ຄໍາສັ່ງ IMAP ທໍ່"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "ບັນທຶກການຈະລາຈອນ IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ຄຳສັ່ງ ແລະເຊີບເວີຕອບກັບໄປຫາ logcat ພາຍໃຕ້ LiveIMAP. ລະຫັດຜ່ານຖືກລະເວັ້ນ."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ຄຳສັ່ງ ແລະ ຄຳຕອບຂອງເຊີບເວີຖືກຂຽນໃສ່ບັນທຶກການຈາລະຈອນຂອງບັນຊີນີ້. ຂໍ້ມູນເຂົ້າສູ່ລະບົບຖືກປ່ຽນເປັນຄວາມຍາວຂອງມັນ. ບໍ່ມີຫຍັງອື່ນຖືກເຊື່ອງ."},
 {"key": "settings_share_log", "source": "Share log", "text": "ບັນທຶກການແບ່ງປັນ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ລາຍງານບັນຫາ"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "ສະແດງຊື່ຜູ້ໃຊ້ໃນລາຍງານການດີບັກ"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "ການບີບອັດ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "ສຸດ"},
 {"key": "settings_compression_off", "source": "Off", "text": "ປິດ"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ອັດຕະໂນມັດ (ຜ່ານອິນເຕີເນັດມືຖື)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "ເຊີບເວີບໍ່ໃຫ້ COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "ຍ້າຍໂຟນເດີທັງໝົດລວມມີຂໍ້ຄວາມທີ່ຖືກລຶບ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ປິດ: ຂໍ້ຄວາມທີ່ຖືກໝາຍຖືກລຶບແລ້ວຈະຢູ່ທາງຫຼັງ (UID SEARCH Undeleted)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ບັນຊີ"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ບັນຊີ"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ເຂົ້າສູ່ລະບົບໂດຍບໍ່ຜູກຊ່ອງ (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "ເວລາລໍຖ້າການເຊື່ອມ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "ເວລາລໍຖ້າການອ່ານ"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ຈຳກັດຂະໜາດບັນທຶກການຈາລະຈອນ"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ຂະໜາດບັນທຶກການຈາລະຈອນ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "ແຄຊສ່ວນ JMAP"}
 ]

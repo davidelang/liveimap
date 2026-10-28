@@ -24,23 +24,12 @@ class LabTestHooksTest {
 
     @Test
     fun unsetGivesNothing() {
-        assertNull(LabTestHooks.passwordFor("10.0.0.10", true))
         assertFalse(LabTestHooks.trustsLabLeaf("10.0.0.10", leaf, true))
     }
 
     @Test
-    fun onlyDebugAndOnlyTheLabHost() {
-        LabTestHooks.set("10.0.0.10", "pw")
-        assertEquals("pw", LabTestHooks.passwordFor("10.0.0.10", true))
-        assertNull(LabTestHooks.passwordFor("10.0.0.10", false))
-        assertNull(LabTestHooks.passwordFor("imap.example.com", true))
-        LabTestHooks.clear()
-        assertNull(LabTestHooks.passwordFor("10.0.0.10", true))
-    }
-
-    @Test
     fun labCaTrustsOnlyItsLeavesUnderTheGate() {
-        LabTestHooks.set("10.0.0.10", "pw")
+        LabTestHooks.setLabHost("10.0.0.10")
         LabTestHooks.setLabCa(caDer)
         assertTrue(LabTestHooks.trustsLabLeaf("10.0.0.10", leaf, true))
         assertFalse(LabTestHooks.trustsLabLeaf("10.0.0.10", other, true))

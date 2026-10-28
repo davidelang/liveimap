@@ -12,7 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.accounts.AccountTarget
+import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.settings.AccountSettings
 
@@ -55,14 +55,20 @@ private class IdleActor : IdleTurn {
 }
 
 // JMAP accounts (jmapFolders on) get a JmapMailSession at open; everything else, and all sending, stays libetpan.
-private val accountSessions = SessionTable {
-    SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
+private fun sessionFor(accountId: String): MailSession {
+    val context = LiveImapApplication.context ?: error("no application")
+    return SerialMailSession(
+        RoutedMailSession(
+            { LibetpanMailSession(context, accountId) },
+            { org.dlang.liveimap.jmap.platformJmapMailSession(context, accountId) },
+        ),
+    )
 }
 
+private val accountSessions = SessionTable { id -> sessionFor(id) }
+
 // Watched folders follow the account's kind too: a JMAP account watches them over its event source.
-private val extraIdleSessions = ExtraIdleSessions {
-    SerialMailSession(RoutedMailSession({ LibetpanMailSession() }, { org.dlang.liveimap.jmap.platformJmapMailSession() }))
-}
+private val extraIdleSessions = ExtraIdleSessions { id -> sessionFor(id) }
 
 private val extraIdleTurn: IdleTurn = IdleActor()
 
@@ -115,9 +121,7 @@ internal suspend fun applyExtraIdleTo(
         if (!sessions.generationStill(seen)) return@turn
         val now = drops.mark(accountId)
         if (now.held || now.stamp != seenDrop.stamp) return@turn
-        withContext(AccountTarget(accountId)) {
-            applyStoredIdle(sessions, account, accountId, seen)
-        }
+        applyStoredIdle(sessions, account, accountId, seen)
     }
 }
 

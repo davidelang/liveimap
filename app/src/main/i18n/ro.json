@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Poate fi trimis: conexiunea s-a pierdut după ce mesajul a fost predat. Bifați Trimis înainte de a reîncerca."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Copia de pe acest dispozitiv nu a putut fi salvată; păstrați acest ecran deschis."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Este posibil să fi fost trimis (bifați Trimis înainte de a reîncerca)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Avertisment: acesta conține textul integral al fiecărui mesaj care a fost citit sau trimis în timp ce conectarea a fost activată, inclusiv corpuri și atașamente. Parolele sunt eliminate. Distribuiți-l numai cu cineva în care aveți încredere pentru a vedea acel e-mail."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Avertisment: conține textul integral al fiecărui mesaj citit sau trimis cât timp jurnalizarea era pornită, inclusiv corpuri și atașamente. Datele de autentificare sunt înlocuite cu lungimea lor, dar o parolă tastată în alt câmp este inclusă. Partajați-l doar cu cineva căruia îi încredințați acel corespondență."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Distribuie oricum"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Respingeți"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Raport de depanare LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Înregistrare"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Comenzi IMAP pentru conducte"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Înregistrați traficul IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Comenzile și răspunsurile serverului merg la logcat sub LiveIMAP. Parola este omisă."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Comenzile și răspunsurile serverului sunt scrise în jurnalul de trafic al acestui cont. Datele de autentificare sunt înlocuite cu lungimea lor; nimic altceva nu este ascuns."},
 {"key": "settings_share_log", "source": "Share log", "text": "Partajați jurnalul"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Raport de depanare"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Afișați numele de utilizator în raportul de depanare"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Compresie (COMPRESARE)"},
 {"key": "settings_compression_on", "source": "On", "text": "Pe"},
 {"key": "settings_compression_off", "source": "Off", "text": "Oprit"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Auto (activat prin date mobile)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Serverul nu oferă COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Mutați întregul folder include mesajele șterse"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Dezactivat: mesajele deja marcate ca șterse rămân în urmă (CĂUTARE UID NEȘTERSĂ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d cont", "few": "%1$d conturi", "other": "%1$d de conturi"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d cont", "few": "%1$d conturi", "other": "%1$d de conturi"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Autentificare fără legare de canal (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Expirare la conectare"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Expirare la citire"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Limitează dimensiunea jurnalului de trafic"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Dimensiunea jurnalului de trafic"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Cache pentru părți JMAP"}
 ]

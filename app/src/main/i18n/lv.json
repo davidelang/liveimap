@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Iespējams, ir nosūtīts: savienojums tika pazaudēts pēc ziņojuma nodošanas. Pirms atkārtotas mēģinājuma pārbaudiet Nosūtīts."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Kopiju šajā ierīcē nevarēja saglabāt; turiet šo ekrānu atvērtu."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Iespējams, ir nosūtīts (pirms atkārtotas mēģinājuma pārbaudiet Nosūtīts)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Brīdinājums: tajā ir ietverts katra ziņojuma pilns teksts, kas tika lasīts vai nosūtīts reģistrēšanas laikā, tostarp pamatteksti un pielikumi. Paroles tiek noņemtas. Kopīgojiet to tikai ar kādu, kuram uzticaties, lai redzētu šo e-pastu."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Brīdinājums: šeit ir pilns katras vēstules teksts, kas lasīta vai sūtīta, kamēr reģistrēšana bija ieslēgta, ieskaitot pamattekstu un pielikumus. Pieteikšanās dati ir aizstāti ar to garumu, bet parole, ievadīta citā laukā, ir iekļauta. Dalieties tikai ar kādu, kam uzticat šo pastu."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Tik un tā kopīgojiet"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Atlaist"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP atkļūdošanas pārskats"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Mežizstrāde"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Cauruļvada IMAP komandas"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Reģistrējieties IMAP trafiku"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Komandas un servera atbildes tiek novirzītas uz logcat zem LiveIMAP. Parole ir izlaista."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Komandas un servera atbildes tiek rakstītas šī konta trafika žurnālā. Pieteikšanās dati ir aizstāti ar to garumu; nekas cits netiek slēpts."},
 {"key": "settings_share_log", "source": "Share log", "text": "Kopīgot žurnālu"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Atkļūdošanas pārskats"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Rādīt lietotājvārdu atkļūdošanas pārskatā"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Saspiešana (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Ieslēgts"},
 {"key": "settings_compression_off", "source": "Off", "text": "Izslēgts"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Automātiski (ieslēgts, izmantojot mobilos datus)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Serveris nepiedāvā COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Pārvietot visu mapi ietver izdzēstās ziņas"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Izslēgts: ziņojumi, kas jau ir atzīmēti kā dzēsti, paliek aiz muguras (UID MEKLĒŠANA ATCELTA)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d kontu", "one": "%1$d konts", "other": "%1$d konti"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d kontu", "one": "%1$d konts", "other": "%1$d konti"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Pieteicies bez kanāla saistīšanas (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Savienojuma noildze"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Lasīšanas noildze"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Ierobežot trafika žurnāla izmēru"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Trafika žurnāla izmērs"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP daļu kešatmiņa"}
 ]

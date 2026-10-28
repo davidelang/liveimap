@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "அனுப்பியிருக்கலாம்: செய்தியை ஒப்படைத்த பிறகு இணைப்பு துண்டிக்கப்பட்டது. நீங்கள் மீண்டும் முயற்சிக்கும் முன் அனுப்பப்பட்டதைச் சரிபார்க்கவும்."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "இந்தச் சாதனத்தில் உள்ள நகலைச் சேமிக்க முடியவில்லை; இந்த திரையை திறந்து வைக்கவும்."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "அனுப்பப்பட்டிருக்கலாம் (மீண்டும் முயற்சிக்கும் முன் அனுப்பப்பட்டதைச் சரிபார்க்கவும்)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "எச்சரிக்கை: உடல்கள் மற்றும் இணைப்புகள் உட்பட, உள்நுழையும்போது படிக்கப்பட்ட அல்லது அனுப்பப்பட்ட ஒவ்வொரு செய்தியின் முழு உரையும் இதில் உள்ளது. கடவுச்சொற்கள் அகற்றப்பட்டன. அந்த அஞ்சலைப் பார்க்க நீங்கள் நம்பும் ஒருவருடன் மட்டும் அதைப் பகிரவும்."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "எச்சரிக்கை: பதிவு இயக்கத்தில் இருந்தபோது படித்த அல்லது அனுப்பிய ஒவ்வொரு செய்தியின் முழு உரையும், உடல் மற்றும் இணைப்புகளுடன், இங்கே உள்ளது. உள்நுழைவு தரவு அதன் நீளத்தால் மாற்றப்படும், ஆனால் வேறு புலத்தில் தட்டச்சு செய்த கடவுச்சொல் சேர்க்கப்படும். அந்த அஞ்சலைக் காட்ட நம்புபவருடன் மட்டும் பகிரவும்."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "எப்படியும் பகிருங்கள்"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "நிராகரி"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP பிழைத்திருத்த அறிக்கை"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "பதிவு செய்தல்"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "பைப்லைன் IMAP கட்டளைகள்"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ட்ராஃபிக்கை பதிவு செய்யவும்"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "கட்டளைகள் மற்றும் சேவையக பதில்கள் LiveIMAP இன் கீழ் logcat க்கு செல்லும். கடவுச்சொல் தவிர்க்கப்பட்டது."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "கட்டளைகளும் சேவையக பதில்களும் இந்தக் கணக்கின் போக்குவரத்து பதிவில் எழுதப்படும். உள்நுழைவு தரவு அதன் நீளத்தால் மாற்றப்படும்; வேறு எதுவும் மறைக்கப்படாது."},
 {"key": "settings_share_log", "source": "Share log", "text": "பகிர்வு பதிவு"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "பிழைத்திருத்த அறிக்கை"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "பிழைத்திருத்த அறிக்கையில் பயனர் பெயரைக் காட்டு"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "சுருக்கம் (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "அன்று"},
 {"key": "settings_compression_off", "source": "Off", "text": "ஆஃப்"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "தானியங்கு (மொபைல் டேட்டாவில்)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "சேவையகம் COMPRESS=DEFLATE ஐ வழங்கவில்லை."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "முழு கோப்புறையிலும் நீக்கப்பட்ட செய்திகள் அடங்கும்"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "முடக்கப்பட்டுள்ளது: ஏற்கனவே நீக்கப்பட்டதாகக் குறிக்கப்பட்ட செய்திகள் பின்னால் இருக்கும் (UID தேடல் நீக்கப்பட்டது)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d கணக்கு", "other": "%1$d கணக்குகள்"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d கணக்கு", "other": "%1$d கணக்குகள்"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "சேனல் பிணைப்பு இல்லாமல் நுழைவு (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "இணைப்பு நேர வரம்பு"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "படிக்கும் நேர வரம்பு"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "போக்குவரத்து பதிவின் அளவைக் கட்டுப்படுத்து"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "போக்குவரத்து பதிவின் அளவு"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP பகுதி தேக்கம்"}
 ]

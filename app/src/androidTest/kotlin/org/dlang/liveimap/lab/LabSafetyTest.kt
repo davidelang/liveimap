@@ -45,15 +45,12 @@ class LabSafetyTest {
         val scenario = arg("labScenario")
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
-        TrafficRecorder.start(
-            File(dir, "$run.jsonl"),
-            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, appCommit(), "app", arg("labServer"), host, port, "None", "imap", "safety-$scenario"),
-        )
+        val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
+        val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
+        var labId = ""
         val steps = StringBuilder("step\tresult\tdetail\n")
-        LabTestHooks.set(host, arg("labPass"))
-        val session = LibetpanMailSession()
-        session.setCertConfirmer { false }
-        session.setPlaintextConfirmer { true }
+        LabTestHooks.setLabHost(host)
+        lateinit var session: LibetpanMailSession
         var failed = 0
         suspend fun step(name: String, body: suspend () -> String) {
             TrafficRecorder.event("main", "step", name)
@@ -68,6 +65,16 @@ class LabSafetyTest {
             moveMethod = MoveMethod.valueOf(arg("labMoveMethod", "CopyThenMarkDeleted")),
             deletePolicy = DeletePolicy.valueOf(arg("labDeletePolicy", "MarkDeleted")),
         )
+        labId = createLabAccount(ctx, account, arg("labPass"))
+        TrafficRecorder.start(
+            File(dir, "$run.jsonl"),
+            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, appCommit(), "app", arg("labServer"), host, port, "None", "imap", "safety-$scenario"),
+            ctx.cacheDir,
+            labId,
+        )
+        session = LibetpanMailSession(ctx, labId)
+        session.setCertConfirmer { false }
+        session.setPlaintextConfirmer { true }
         try {
             step("open") {
                 val r = session.open(account)
@@ -121,9 +128,11 @@ class LabSafetyTest {
             step("unselect") { session.unselect(); "" }
             step("leaveFolder") { session.expungeOnLeave(box); "" }
         } finally {
-            session.close()
+            if (::session.isInitialized) session.close()
             TrafficRecorder.stop()
             LabTestHooks.clear()
+            if (labId.isNotEmpty()) deleteLabAccount(ctx, labId)
+            if (recorded != null) store.selectAccount(recorded)
             File(dir, "$run.steps.tsv").writeText(steps.toString())
         }
         assertEquals("failed steps:\n$steps", 0, failed)

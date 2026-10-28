@@ -833,14 +833,14 @@ internal fun LoggingExtras(editor: SettingsEditor) {
     Text(stringResource(R.string.settings_log_note))
     TextButton(onClick = { confirmShareLog = true }) { Text(stringResource(R.string.settings_share_log)) }
     TextButton(onClick = {
-        val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
         val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
-        reportLines = log.debugReport(
+        reportLines = TrafficLog.debugReport(
             versionName = BuildConfig.VERSION_NAME,
             versionCode = BuildConfig.VERSION_CODE,
             androidVersion = Build.VERSION.RELEASE,
             device = device,
             settings = editor.settings,
+            traffic = trafficText(editor.appContext.cacheDir, editor.editingId),
         ).lines()
     }) { Text(stringResource(R.string.settings_debug_report)) }
     if (confirmShareLog) {
@@ -851,8 +851,12 @@ internal fun LoggingExtras(editor: SettingsEditor) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmShareLog = false
-                    val log = TrafficLog.install(File(editor.appContext.cacheDir, "imap-traffic.log"))
-                    log.shareFile(contextState.value)
+                    val id = editor.editingId
+                    if (TrafficLog.trafficLogFile(editor.appContext.cacheDir, id) == null) {
+                        android.util.Log.w("LiveIMAP", "traffic directory refused for $id")
+                    } else {
+                        TrafficLog.share(contextState.value, id)
+                    }
                 }) { Text(stringResource(R.string.traffic_share_anyway)) }
             },
             dismissButton = {
@@ -2321,7 +2325,6 @@ internal fun row_compression(walk: SettingsWalk) {
         stringResource(R.string.settings_compression),
         listOf(
             ReasonOption(Compression.On, gate.compress, if (gate.compress) null else stringResource(R.string.settings_reason_compress)),
-            ReasonOption(Compression.Auto, gate.compress, if (gate.compress) null else stringResource(R.string.settings_reason_compress)),
             ReasonOption(Compression.Off, true, null),
         ),
         settings.compression,
@@ -3699,7 +3702,6 @@ internal fun compressionName(mode: Compression): String = stringResource(
     when (mode) {
         Compression.On -> R.string.settings_compression_on
         Compression.Off -> R.string.settings_compression_off
-        Compression.Auto -> R.string.settings_compression_auto
     },
 )
 

@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "పంపబడి ఉండవచ్చు: సందేశం అందజేసిన తర్వాత కనెక్షన్ పోయింది. మీరు మళ్లీ ప్రయత్నించే ముందు పంపినట్లు తనిఖీ చేయండి."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ఈ పరికరంలోని కాపీని సేవ్ చేయడం సాధ్యపడలేదు; ఈ స్క్రీన్‌ని తెరిచి ఉంచండి."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "పంపబడి ఉండవచ్చు (మళ్లీ ప్రయత్నించే ముందు పంపినట్లు తనిఖీ చేయండి)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "హెచ్చరిక: ఇది శరీరాలు మరియు జోడింపులతో సహా లాగింగ్ ఆన్‌లో ఉన్నప్పుడు చదివిన లేదా పంపబడిన ప్రతి సందేశం యొక్క పూర్తి వచనాన్ని కలిగి ఉంటుంది. పాస్‌వర్డ్‌లు తీసివేయబడతాయి. ఆ మెయిల్‌ని చూడటానికి మీరు విశ్వసించే వారితో మాత్రమే దీన్ని భాగస్వామ్యం చేయండి."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "హెచ్చరిక: లాగింగ్ ఆన్‌లో ఉన్నప్పుడు చదివిన లేదా పంపిన ప్రతి సందేశపు పూర్తి పాఠం, ముఖ్య భాగం మరియు జోడింపులతో సహా, ఇక్కడ ఉంది. ప్రవేశ డేటా దాని పొడవుతో మార్చబడుతుంది, కానీ మరో ఫీల్డ్‌లో టైప్ చేసిన పాస్‌వర్డ్ ఉంటుంది. ఆ మెయిల్ చూపించడానికి నమ్మకమైన వ్యక్తితో మాత్రమే పంచుకోండి."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "ఏమైనా షేర్ చేయండి"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "తొలగించు"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP డీబగ్ నివేదిక"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "లాగింగ్"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "పైప్‌లైన్ IMAP ఆదేశాలు"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ట్రాఫిక్‌ని లాగ్ చేయండి"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ఆదేశాలు మరియు సర్వర్ ప్రత్యుత్తరాలు LiveIMAP క్రింద లాగ్‌క్యాట్‌కి వెళ్తాయి. పాస్వర్డ్ విస్మరించబడింది."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ఆదేశాలు మరియు సర్వర్ సమాధానాలు ఈ ఖాతా ట్రాఫిక్ లాగ్‌లో రాయబడతాయి. ప్రవేశ డేటా దాని పొడవుతో మార్చబడుతుంది; మరేమీ దాచబడదు."},
 {"key": "settings_share_log", "source": "Share log", "text": "భాగస్వామ్యం లాగ్"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "డీబగ్ నివేదిక"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "డీబగ్ నివేదికలో వినియోగదారు పేరును చూపండి"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "కుదింపు (కంప్రెస్)"},
 {"key": "settings_compression_on", "source": "On", "text": "ఆన్"},
 {"key": "settings_compression_off", "source": "Off", "text": "ఆఫ్"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ఆటో (మొబైల్ డేటాపై)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "సర్వర్ COMPRESS=DEFLATEని అందించదు."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "మొత్తం ఫోల్డర్‌లో తొలగించబడిన సందేశాలు ఉంటాయి"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ఆఫ్: ఇప్పటికే తొలగించబడినట్లు గుర్తు పెట్టబడిన సందేశాలు వెనుకబడి ఉన్నాయి (UID శోధన అన్‌డిలీట్ చేయబడింది)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ఖాతా", "other": "%1$d ఖాతాలు"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ఖాతా", "other": "%1$d ఖాతాలు"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ఛానెల్ బైండింగ్ లేకుండా ప్రవేశం (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "కనెక్షన్ గడువు"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "చదివే గడువు"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ట్రాఫిక్ లాగ్ పరిమాణాన్ని పరిమితం చేయండి"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ట్రాఫిక్ లాగ్ పరిమాణం"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP భాగ క్యాష్"}
 ]

@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.contacts
 
-import org.dlang.liveimap.settings.openBound
 import androidx.compose.ui.res.pluralStringResource
 import org.dlang.liveimap.ui.AlertDialog
 import android.Manifest
@@ -535,7 +534,7 @@ private suspend fun connectAccount(store: DataStoreSettingsStore, session: MailS
         return ConnectedAccount.Failed(error.message ?: notConnected)
     }
     val opened = try {
-        session.openBound(store, settings)
+        session.open(settings)
     } catch (error: CancellationException) {
         throw error
     } catch (error: MailFailure) {

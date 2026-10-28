@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "મોકલવામાં આવ્યો હોઈ શકે: સંદેશો સોંપવામાં આવ્યા પછી કનેક્શન તૂટી ગયું હતું. તમે ફરીથી પ્રયાસ કરો તે પહેલાં મોકલેલ તપાસો."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "આ ઉપકરણ પરની નકલ સાચવી શકાઈ નથી; આ સ્ક્રીન ખુલ્લી રાખો."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "કદાચ મોકલવામાં આવ્યો હોય (ફરી પ્રયાસ કરતા પહેલા મોકલેલ ચેક કરો)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "ચેતવણી: આમાં દરેક સંદેશનો સંપૂર્ણ ટેક્સ્ટ છે જે લોગિંગ ચાલુ હોય ત્યારે વાંચવામાં આવ્યો હતો અથવા મોકલવામાં આવ્યો હતો, જેમાં બોડી અને જોડાણો શામેલ છે. પાસવર્ડ દૂર કરવામાં આવે છે. તે મેઇલ જોવા માટે તમે જેના પર વિશ્વાસ કરો છો તેની સાથે જ તેને શેર કરો."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "ચેતવણી: લોગિંગ ચાલુ હોય ત્યારે વાંચેલા અથવા મોકલેલા દરેક સંદેશનો પૂરો લખાણ, મુખ્ય ભાગ અને જોડાણો સહિત, અહીં છે. પ્રવેશની માહિતી તેની લંબાઈથી બદલાય છે, પણ બીજા ખાનામાં લખેલો પાસવર્ડ સામેલ છે. આ મેલ જોવા વિશ્વાસ હોય તેને જ આપો."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "કોઈપણ રીતે શેર કરો"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "કાઢી નાખો"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP ડીબગ રિપોર્ટ"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "લોગીંગ"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "પાઇપલાઇન IMAP આદેશો"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP ટ્રાફિક લોગ કરો"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "આદેશો અને સર્વર જવાબો LiveIMAP હેઠળ logcat પર જાય છે. પાસવર્ડ અવગણવામાં આવ્યો છે."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "આદેશો અને સર્વરના જવાબો આ ખાતાના ટ્રાફિક લોગમાં લખાય છે. પ્રવેશની માહિતી તેની લંબાઈથી બદલાય છે; બીજું કંઈ છુપાય નથી."},
 {"key": "settings_share_log", "source": "Share log", "text": "શેર લોગ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "ડીબગ રિપોર્ટ"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "ડીબગ રિપોર્ટમાં વપરાશકર્તા નામ બતાવો"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "કમ્પ્રેશન (કોમ્પ્રેસ)"},
 {"key": "settings_compression_on", "source": "On", "text": "ચાલુ"},
 {"key": "settings_compression_off", "source": "Off", "text": "બંધ"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ઑટો (મોબાઇલ ડેટા પર)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "સર્વર COMPRESS=DEFLATE ઓફર કરતું નથી."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "આખા ફોલ્ડરને ખસેડો તેમાં કાઢી નાખેલા સંદેશાઓનો સમાવેશ થાય છે"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "બંધ: પહેલાથી જ કાઢી નાખવામાં ચિહ્નિત કરાયેલા સંદેશાઓ પાછળ રહે છે (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ખાતું", "other": "%1$d ખાતાં"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ખાતું", "other": "%1$d ખાતાં"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "ચેનલ બાઇન્ડિંગ વગર પ્રવેશ (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "જોડાણની સમયમર્યાદા"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "વાંચનની સમયમર્યાદા"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ટ્રાફિક લોગનું કદ મર્યાદિત કરો"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ટ્રાફિક લોગનું કદ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP ભાગ કૅશ"}
 ]

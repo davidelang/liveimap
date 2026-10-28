@@ -31,14 +31,19 @@ class LabLongSearchTest {
         val original = accounts.firstOrNull { it.drawer }?.id
         try {
             var account: org.dlang.liveimap.settings.AccountSettings? = null
+            var matchedId = ""
             for (a in accounts) {
                 store.selectAccount(a.id)
                 val s = store.load()
-                if (s.imapHost.contains(match, ignoreCase = true)) { account = s; break }
+                if (s.imapHost.contains(match, ignoreCase = true)) {
+                    account = s
+                    matchedId = a.id
+                    break
+                }
             }
             val chosen = account ?: error("no account for $match")
             val mailbox = arg("labLongMailbox").ifEmpty { "INBOX" }
-            val search = LongSearch(LibetpanLongSearchLink(chosen, mailbox), 250)
+            val search = LongSearch(LibetpanLongSearchLink(chosen, matchedId, mailbox), 250)
             val t0 = System.currentTimeMillis()
             val job = async {
                 search.run("Body", arg("labLongText").ifEmpty { "invoice" }) { p ->

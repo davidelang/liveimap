@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Enwere ike izipu ya: njikọ ahụ furu efu mgbe ebufechara ozi ahụ. Lelee ezitere tupu ị nwaa ọzọ."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Enweghị ike ịchekwa otu n'ime ngwaọrụ a; debe ihuenyo a oghe."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Enwere ike izipu ya (lelee ezitere tupu ị nwaa ọzọ)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Ịdọ aka ná ntị: nke a nwere ederede zuru ezu nke ozi ọ bụla a na-agụ ma ọ bụ zitere mgbe ị na-akụ osisi, gụnyere ahụ na mgbakwunye. Ewepula okwuntughe. Kekọrịta ya naanị na onye ị tụkwasịrị obi ka ọ hụ ozi ahụ."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Ịdọ aka ná ntị: nke a nwere ederede zuru oke nke ozi ọ bụla a gụrụ ma ọ bụ zigara mgbe ndekọ na-arụ ọrụ, gụnyere ahụ na mgbakwunye. Data nbanye ka a na-eji ogologo ya dochie, mana okwuntughe e dere n’ọhịa ọzọ dị n’ime. Kekọrịta ya naanị onye ị tụkwasịrị obi ịhụ ozi ahụ."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Kekọrịta agbanyeghị"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Wepụ"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Akuko nbupu LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Ịbanye"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP nyere iwu"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Banye okporo ụzọ IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Iwu na nzaghachi sava na-aga na logcat n'okpuru LiveIMAP. Ewepula paswọọdụ."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Iwu na nzaghachi sava ka e dere n’ime ndekọ okporo ụzọ nke akaụntụ a. Data nbanye ka a na-eji ogologo ya dochie; ọ nweghị ihe ọzọ zoro ezo."},
 {"key": "settings_share_log", "source": "Share log", "text": "Kekọrịta ndekọ"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Akuko nbipu"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Gosi aha njirimara na mkpesa nbupu"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Mkpakọ (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Gbanye"},
 {"key": "settings_compression_off", "source": "Off", "text": "Gbanyụọ"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Nchekwa onwe (na data mkpanaka)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Ihe nkesa anaghị enye COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Bugharịa folda niile gụnyere ozi ehichapụrụ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Gbanyụọ: ozi ehichapụla ehichapụla nọrọ n'azụ (UID SEARCH EDEBEGHỊ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d akaụntụ"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d akaụntụ"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Banyere na-enweghị ijikọ ọwa (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Oge njikọ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Oge ọgụgụ"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Belata nha ndekọ okporo ụzọ"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Nha ndekọ okporo ụzọ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Cache akụkụ JMAP"}
 ]

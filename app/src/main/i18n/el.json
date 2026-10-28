@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Μπορεί να έχει σταλεί: η σύνδεση χάθηκε μετά την παράδοση του μηνύματος. Επιλέξτε Απεσταλμένα πριν προσπαθήσετε ξανά."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Δεν ήταν δυνατή η αποθήκευση του αντιγράφου σε αυτήν τη συσκευή. κρατήστε αυτή την οθόνη ανοιχτή."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Ενδέχεται να έχει σταλεί (ελέγξτε το Sent πριν δοκιμάσετε ξανά)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Προειδοποίηση: περιέχει το πλήρες κείμενο κάθε μηνύματος που διαβάστηκε ή στάλθηκε ενώ ήταν ενεργοποιημένη η σύνδεση, συμπεριλαμβανομένων των σωμάτων και των συνημμένων. Οι κωδικοί πρόσβασης αφαιρούνται. Μοιραστείτε το μόνο με κάποιον που εμπιστεύεστε να δει αυτό το μήνυμα."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Προειδοποίηση: περιέχει το πλήρες κείμενο κάθε μηνύματος που διαβάστηκε ή στάλθηκε όσο η καταγραφή ήταν ανοιχτή, μαζί με σώματα και συνημμένα. Τα στοιχεία σύνδεσης αντικαθίστανται από το μήκος τους, αλλά ένας κωδικός που πληκτρολογήθηκε σε άλλο πεδίο περιλαμβάνεται. Μοιραστείτε το μόνο με κάποιον που εμπιστεύεστε για αυτή την αλληλογραφία."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Κοινοποιήστε πάντως"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Απολύω"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Αναφορά εντοπισμού σφαλμάτων LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Ξύλευση"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Εντολές IMAP Pipeline"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Καταγραφή της κυκλοφορίας IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Οι εντολές και οι απαντήσεις του διακομιστή πηγαίνουν στο logcat στο LiveIMAP. Ο κωδικός πρόσβασης παραλείπεται."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Οι εντολές και οι απαντήσεις του διακομιστή γράφονται στο αρχείο κίνησης αυτού του λογαριασμού. Τα στοιχεία σύνδεσης αντικαθίστανται από το μήκος τους· τίποτε άλλο δεν κρύβεται."},
 {"key": "settings_share_log", "source": "Share log", "text": "Κοινή χρήση αρχείου καταγραφής"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Αναφορά εντοπισμού σφαλμάτων"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Εμφάνιση ονόματος χρήστη στην αναφορά εντοπισμού σφαλμάτων"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Συμπίεση (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Επί"},
 {"key": "settings_compression_off", "source": "Off", "text": "Μακριά από"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Αυτόματο (ενεργό μέσω δεδομένων κινητής τηλεφωνίας)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Ο διακομιστής δεν προσφέρει COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Η μετακίνηση ολόκληρου του φακέλου περιλαμβάνει διαγραμμένα μηνύματα"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Απενεργοποίηση: τα μηνύματα που έχουν ήδη επισημανθεί ως διαγραμμένα παραμένουν πίσω (ΑΝΑΖΗΤΗΣΗ UID ΜΗ ΔΙΑΓΡΑΦΗ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d λογαριασμός", "other": "%1$d λογαριασμοί"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d λογαριασμός", "other": "%1$d λογαριασμοί"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Σύνδεση χωρίς δέσμευση καναλιού (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Λήξη χρόνου σύνδεσης"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Λήξη χρόνου ανάγνωσης"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Όριο μεγέθους αρχείου κίνησης"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Μέγεθος αρχείου κίνησης"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Κρυφή μνήμη τμημάτων JMAP"}
 ]

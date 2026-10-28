@@ -210,7 +210,7 @@ class IdleChangeCoalescer {
     }
 }
 
-class ExtraIdleSessions(private val factory: () -> MailSession) {
+class ExtraIdleSessions(private val factory: (String) -> MailSession) {
     private val open = ArrayList<Held>()
     private val coalescer = IdleChangeCoalescer()
     private val generation = AtomicInteger(0)
@@ -261,7 +261,7 @@ class ExtraIdleSessions(private val factory: () -> MailSession) {
                 continue
             }
             val live = AtomicBoolean(true)
-            val session = factory()
+            val session = factory(accountId)
             try {
                 session.watchOnly(account, name) { change ->
                     if (!live.get()) return@watchOnly

@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Магчыма, было адпраўлена: сувязь была страчана пасля перадачы паведамлення. Праверце \"Адпраўлена\", перш чым паўтарыць спробу."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Не ўдалося захаваць копію на гэтай прыладзе; трымаць гэты экран адкрытым."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Магчыма, быў адпраўлены (праверце \"Адпраўлена\" перад паўторнай спробай)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Папярэджанне: гэта змяшчае поўны тэкст кожнага паведамлення, якое было прачытана або адпраўлена падчас ўваходу ў сістэму, уключаючы тэксты і ўкладанні. Паролі выдаляюцца. Абагульвайце яго толькі з тымі, каму давяраеце прагляд гэтага ліста."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Папярэджанне: тут поўны тэкст кожнага ліста, прачытанага або адпраўленага, пакуль запіс быў уключаны, разам з тэкстам і ўкладаннямі. Даныя ўваходу заменены іх даўжынёй, але пароль, уведзены ў іншае поле, ёсць. Дзяліцеся толькі з тым, каму давяраеце гэту пошту."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Усё роўна падзяліцеся"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Звольніць"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Справаздача аб адладцы LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Нарыхтоўка лесу"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Канвеерныя каманды IMAP"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Запіс трафіку IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Каманды і адказы сервера ідуць у logcat пад LiveIMAP. Пароль прапушчаны."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Каманды і адказы сервера запісваюцца ў журнал трафіку гэтага ўліковага запісу. Даныя ўваходу заменены іх даўжынёй; больш нічога не хаваецца."},
 {"key": "settings_share_log", "source": "Share log", "text": "Журнал абмену"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Справаздача аб адладцы"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Паказаць імя карыстальніка ў справаздачы аб адладцы"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Сцісканне (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Укл"},
 {"key": "settings_compression_off", "source": "Off", "text": "Выкл"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Аўта (па мабільнай перадачы даных)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Сервер не прапануе COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Перамясціць усю папку з выдаленымі паведамленнямі"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Выключана: паведамленні, ужо пазначаныя як выдаленыя, застаюцца (ПОШУК UID НЕВЫДАЛЕНЫ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d уліковы запіс", "few": "%1$d уліковыя запісы", "many": "%1$d уліковых запісаў", "other": "%1$d уліковага запісу"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d уліковы запіс", "few": "%1$d уліковыя запісы", "many": "%1$d уліковых запісаў", "other": "%1$d уліковага запісу"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Уваход без прывязкі канала (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Час чакання злучэння"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Час чакання чытання"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Абмежаваць памер журнала трафіку"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Памер журнала трафіку"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Кэш частак JMAP"}
 ]

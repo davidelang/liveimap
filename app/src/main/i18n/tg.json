@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Мумкин аст фиристода шуда бошад: пас аз супурдани паём пайвастшавӣ қатъ шуд. Пеш аз кӯшиши дубора санҷед."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Нусхаи ин дастгоҳро захира кардан ғайриимкон аст; ин экранро кушода нигоҳ доред."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Мумкин аст фиристода шуда бошад (Пеш аз кӯшиши дубора фиристоданро санҷед)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Огоҳӣ: дар он матни пурраи ҳар паёме, ки ҳангоми сабти ном хонда ё фиристода шудааст, аз ҷумла бадан ва замимаҳо. Паролҳо хориҷ карда мешаванд. Онро танҳо бо шахсе мубодила кунед, ки шумо ин паёмро бубинед."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Огоҳӣ: ин матни пурраи ҳар паёмеро дар бар мегирад, ки ҳангоми фаъол будани сабт хонда ё фиристода шудааст, аз ҷумла матн ва замимаҳо. Маълумоти вуруд бо дарозиаш иваз мешавад, аммо пароли дар майдони дигар навишташуда дохил аст. Танҳо бо касе мубодила кунед, ки ба ин почта бовар доред."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Ба ҳар ҳол мубодила кунед"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Рад кардан"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Гузориши ислоҳи LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Бақайдгирӣ"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Фармонҳои қубури IMAP"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Трафики IMAP-ро сабт кунед"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Фармонҳо ва ҷавобҳои сервер ба logcat зери LiveIMAP мераванд. Рамз партофта шудааст."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Фармонҳо ва ҷавобҳои сервер ба сабти трафики ин ҳисоб навишта мешаванд. Маълумоти вуруд бо дарозиаш иваз мешавад; чизи дигар пинҳон нест."},
 {"key": "settings_share_log", "source": "Share log", "text": "Сабти мубодила"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Ҳисоботи ислоҳи хатогиҳо"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Номи корбарро дар гузориши ислоҳот нишон диҳед"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Компрессия (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Дар"},
 {"key": "settings_compression_off", "source": "Off", "text": "Хомӯш"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Авто (фаъол аз болои маълумоти мобилӣ)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Сервер COMPRESS=DEFLATE-ро пешниҳод намекунад."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Интиқоли тамоми ҷузвдон паёмҳои ҳазфшударо дар бар мегирад"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Хомӯш: паёмҳое, ки аллакай ҳазф карда шудаанд, дар паси худ мемонанд (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ҳисоб"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ҳисоб"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Вуруд бе бастани канал (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Мӯҳлати пайваст"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Мӯҳлати хондан"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Маҳдуд кардани андозаи сабти трафик"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Андозаи сабти трафик"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Кэши қисмҳои JMAP"}
 ]

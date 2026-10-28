@@ -2,6 +2,7 @@ package org.dlang.liveimap.jmap
 
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.engine.TrafficWriter
 import org.dlang.liveimap.engine.applyTlsPolicy
 import java.net.URI
 import java.net.URLEncoder
@@ -80,9 +81,18 @@ fun readJmapBytes(stream: java.io.InputStream, limit: Int = JmapResponseCap.limi
     return out.toByteArray()
 }
 
-fun platformJmapGet(url: String, authorization: String, pin: String, policy: TlsPolicy = TlsPolicy()): JmapBlobExchange {
+fun platformJmapGet(
+    url: String,
+    authorization: String,
+    pin: String,
+    accountKey: String,
+    traffic: TrafficWriter?,
+    policy: TlsPolicy = TlsPolicy(),
+): JmapBlobExchange {
+    val headers = listOf("Authorization" to authorization)
+    logJmapRequest(traffic, "GET", url, headers, authorization, ByteArray(0))
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
-        if (this is HttpsURLConnection) pinJmapTls(this, pin, policy)
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, accountKey, policy)
         instanceFollowRedirects = false
         connectTimeout = 15_000
         readTimeout = 30_000
@@ -90,12 +100,20 @@ fun platformJmapGet(url: String, authorization: String, pin: String, policy: Tls
         setRequestProperty("Authorization", authorization)
     }
     return object : JmapBlobExchange {
+        private var logged = false
         override val status: Int get() = connection.responseCode
-        override fun peerDer(): List<ByteArray> = connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() } // certificates exist only once connected (no-op if already)
-        override fun bytes(): ByteArray = connection.inputStream.use { readJmapBytes(it) }
+        override fun peerDer(): List<ByteArray> = connection.connect().let { (connection as? HttpsURLConnection)?.serverCertificates?.map { it.encoded } ?: emptyList() }
+        override fun bytes(): ByteArray {
+            val raw = connection.inputStream.use { readJmapBytes(it) }
+            if (!logged) {
+                logged = true
+                logJmapResponse(traffic, connection, raw)
+            }
+            return raw
+        }
         override fun close() = connection.disconnect()
     }
 }
 
-fun pinnedJmapGet(pin: String, policy: TlsPolicy = TlsPolicy()): (String, String) -> JmapBlobExchange =
-    { url, auth -> platformJmapGet(url, auth, pin, policy) }
+fun pinnedJmapGet(pin: String, accountKey: String, traffic: TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, String) -> JmapBlobExchange =
+    { url, auth -> platformJmapGet(url, auth, pin, accountKey, traffic, policy) }

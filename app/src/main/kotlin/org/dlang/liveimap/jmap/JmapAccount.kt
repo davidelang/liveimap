@@ -9,10 +9,11 @@ import org.dlang.liveimap.settings.tlsPolicy
 fun offerForAccount(
     account: AccountSettings,
     open: (String) -> JmapHttpExchange,
+    accountKey: String,
+    traffic: org.dlang.liveimap.engine.TrafficWriter?,
     /** Basic authorization; sent only when the unauthenticated session request answers 401 (RFC 8620 needs auth). */
     authorization: String = "",
-    get: (String, String) -> JmapBlobExchange = pinnedJmapGet(account.jmapCertPin, account.tlsPolicy()),
-    accountKey: String = "",
+    get: (String, String) -> JmapBlobExchange = pinnedJmapGet(account.jmapCertPin, accountKey, traffic, account.tlsPolicy()),
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check, // tests pass it as a trailing lambda
 ): JmapOffer {
     if (account.imapHost.isBlank()) return JmapOffer.None

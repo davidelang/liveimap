@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Možda je poslana: veza je prekinuta nakon što je poruka predana. Provjerite Poslano prije ponovnog pokušaja."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Kopija na ovom uređaju nije mogla biti spremljena; ostavite ovaj ekran otvorenim."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Možda je poslano (provjerite Poslano prije ponovnog pokušaja)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Upozorenje: ovo sadrži cijeli tekst svake poruke koja je pročitana ili poslana dok je prijava bila uključena, uključujući tijela i privitke. Lozinke se uklanjaju. Podijelite ga samo s nekim kome vjerujete da će vidjeti tu poštu."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Upozorenje: sadrži puni tekst svake poruke pročitane ili poslane dok je zapisivanje bilo uključeno, uključujući tijela i privitke. Podaci za prijavu zamijenjeni su duljinom, ali lozinka upisana u drugo polje jest uključena. Dijelite samo s nekim kome vjerujete tu poštu."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Svejedno podijeli"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Odbaciti"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP izvješće o otklanjanju pogrešaka"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Sječa drva"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Cjevovod IMAP naredbi"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Bilježite IMAP promet"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Naredbe i odgovori poslužitelja idu u logcat pod LiveIMAP. Lozinka je izostavljena."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Naredbe i odgovori poslužitelja zapisuju se u dnevnik prometa ovog računa. Podaci za prijavu zamijenjeni su duljinom; ništa drugo nije skriveno."},
 {"key": "settings_share_log", "source": "Share log", "text": "Podijeli dnevnik"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Izvješće o otklanjanju pogrešaka"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Prikaži korisničko ime u izvješću o otklanjanju pogrešaka"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Kompresija (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Na"},
 {"key": "settings_compression_off", "source": "Off", "text": "Isključeno"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Automatski (preko mobilnih podataka)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Poslužitelj ne nudi COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Premjesti cijelu mapu uključuje izbrisane poruke"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Isključeno: poruke koje su već označene kao izbrisane ostaju (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d račun", "few": "%1$d računa", "other": "%1$d računa"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d račun", "few": "%1$d računa", "other": "%1$d računa"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Prijava bez vezanja kanala (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Istek veze"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Istek čitanja"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Ograniči veličinu dnevnika prometa"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Veličina dnevnika prometa"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Predmemorija dijelova JMAP"}
 ]

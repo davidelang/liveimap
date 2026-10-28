@@ -117,18 +117,6 @@ class JmapDiscoveryTest {
         assertEquals(JmapOffer.None, discoverJmap(201, mailBody, "https://example.com/session"))
     }
 
-    @Test
-    fun discoverAtIsGone() {
-        val text = listOf(
-            "src/main/kotlin/org/dlang/liveimap/jmap/JmapDiscovery.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/jmap/JmapDiscovery.kt",
-        ).map(::File).first { it.exists() }.readText()
-        assertFalse(text.contains("fun discoverAt"))
-        assertTrue(text.contains("fun jmapDiscoveryUrl"))
-        assertTrue(text.contains("fun discoverJmap"))
-        assertTrue(text.contains("fun interface JmapFetch"))
-    }
-
     private fun assertMail(offer: JmapOffer) {
         when (offer) {
             is JmapOffer.Mail -> assertEquals("A1", offer.session.primaryMailAccountId)

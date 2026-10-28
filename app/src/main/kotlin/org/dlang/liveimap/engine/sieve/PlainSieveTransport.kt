@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
 import org.dlang.liveimap.engine.TrafficLog
-import org.dlang.liveimap.engine.TrafficRecorder
+import org.dlang.liveimap.engine.TrafficWriter
 import org.dlang.liveimap.engine.applyTlsPolicy
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.settings.TlsMode
@@ -45,27 +45,30 @@ private val CR_LF = byteArrayOf(CR.toByte(), LF.toByte())
 
 class PlainSieveTransport internal constructor(
     private val socket: Socket,
+    private val traffic: TrafficWriter?,
 ) : SieveLineTransport, Closeable {
     private var input: InputStream = socket.getInputStream()
     private var output: OutputStream = socket.getOutputStream()
     private var layered: SSLSocket? = null
     private val closed = AtomicBoolean(false)
 
-    // Recording (TrafficRecorder, connection "sieve"): from AUTHENTICATE until the server's OK/NO/BYE, client
-    // data is private (redacted, mechanism kept).
+    // From AUTHENTICATE until the server's OK, NO, or BYE, client bytes are a private length.
     private var authPending = false
 
-    private fun record(type: Int, bytes: ByteArray) {
-        TrafficRecorder.active?.let {
-            it.accept("sieve", type, bytes)
-            it.flush()
-        }
+    private fun sent(bytes: ByteArray, privateBytes: Boolean) {
+        val writer = traffic ?: return
+        if (privateBytes) writer.record("sieve", '>', TrafficLog.privateMarker(bytes.size))
+        else writer.record("sieve", '>', bytes)
+    }
+
+    private fun received(bytes: ByteArray) {
+        traffic?.record("sieve", '<', bytes)
     }
 
     override suspend fun readLine(): String {
         return withContext(Dispatchers.IO) {
             val bytes = readRawLine()
-            record(TrafficLog.LOG_RECEIVED, bytes + CR_LF)
+            received(bytes + CR_LF)
             if (authPending && bytes.size >= 2) {
                 val head = String(bytes, 0, minOf(bytes.size, 3), StandardCharsets.US_ASCII).uppercase()
                 if (head.startsWith("OK") || head.startsWith("NO") || head.startsWith("BYE")) authPending = false
@@ -77,13 +80,12 @@ class PlainSieveTransport internal constructor(
     }
 
     override suspend fun writeLine(line: String) {
+        val wire = (line + "\r\n").toByteArray(StandardCharsets.UTF_8)
         if (line.startsWith("AUTHENTICATE ", ignoreCase = true)) {
             authPending = true
-            // Same shape as libetpan's "tag AUTHENTICATE MECH" so the recorder keeps the mechanism.
-            record(TrafficLog.LOG_PRIVATE, ("S " + line.replace("\"", "")).toByteArray(StandardCharsets.UTF_8))
+            sent(wire, true)
         } else {
-            record(if (authPending) TrafficLog.LOG_PRIVATE else TrafficLog.LOG_SENT,
-                (line + "\r\n").toByteArray(StandardCharsets.UTF_8))
+            sent(wire, authPending)
         }
         withContext(Dispatchers.IO) {
             output.write(line.toByteArray(StandardCharsets.UTF_8))
@@ -106,7 +108,7 @@ class PlainSieveTransport internal constructor(
                 if (n <= 0) throw SieveFailure("read")
                 offset += n
             }
-            record(TrafficLog.LOG_RECEIVED, bytes)
+            received(bytes)
             bytes
         }
     }
@@ -118,7 +120,7 @@ class PlainSieveTransport internal constructor(
     }
 
     override suspend fun writeBytes(bytes: ByteArray) {
-        record(if (authPending) TrafficLog.LOG_PRIVATE else TrafficLog.LOG_SENT, bytes)
+        sent(bytes, authPending)
         withContext(Dispatchers.IO) {
             output.write(bytes)
             output.flush()
@@ -214,6 +216,7 @@ class PlainSieveTransport internal constructor(
 suspend fun openPlainSieve(
     host: String,
     port: Int,
+    traffic: TrafficWriter?,
     connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     readTimeoutMs: Int = READ_TIMEOUT_MS,
 ): PlainSieveTransport {
@@ -224,7 +227,7 @@ suspend fun openPlainSieve(
             socket.tcpNoDelay = true
             socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
             socket.soTimeout = readTimeoutMs
-            val transport = PlainSieveTransport(socket)
+            val transport = PlainSieveTransport(socket, traffic)
             handedOff = true
             transport
         } catch (e: IOException) {
@@ -315,10 +318,11 @@ private suspend fun closeWhenCancelled(transport: PlainSieveTransport): Job? {
 suspend fun greetPlain(
     host: String,
     port: Int,
+    traffic: TrafficWriter?,
     connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     readTimeoutMs: Int = READ_TIMEOUT_MS,
 ): SieveCapabilities {
-    val transport = openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
+    val transport = openPlainSieve(host, port, traffic, connectTimeoutMs, readTimeoutMs)
     val closer = closeWhenCancelled(transport)
     try {
         val caps = readGreeting(transport)
@@ -345,6 +349,7 @@ suspend fun openImplicitSieve(
     host: String,
     port: Int,
     pin: String,
+    traffic: TrafficWriter?,
     connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
     readTimeoutMs: Int = READ_TIMEOUT_MS,
 ): PlainSieveTransport {
@@ -367,7 +372,7 @@ suspend fun openImplicitSieve(
                 closeQuiet(tls)
                 throw sieveHandshakeFailure(trust, host, port)
             }
-            val transport = PlainSieveTransport(tls)
+            val transport = PlainSieveTransport(tls, traffic)
             handedOff = true
             transport
         } catch (e: SieveFailure) {
@@ -394,6 +399,7 @@ suspend fun openAndDeliverLiveimap(
     password: String,
     script: String,
     allowPlaintextAuth: Boolean,
+    traffic: TrafficWriter?,
     connectSeconds: Int = 30,
     readSeconds: Int = 60,
     consent: (suspend (LiveimapActivatePlan) -> Boolean)? = null,
@@ -404,8 +410,8 @@ suspend fun openAndDeliverLiveimap(
     val readTimeoutMs = readSeconds * 1000
     suspend fun deliver(activePin: String): String {
         val transport = when (mode) {
-            TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
-            TlsMode.Implicit -> openImplicitSieve(host, port, activePin, connectTimeoutMs, readTimeoutMs)
+            TlsMode.None, TlsMode.StartTls -> openPlainSieve(host, port, traffic, connectTimeoutMs, readTimeoutMs)
+            TlsMode.Implicit -> openImplicitSieve(host, port, activePin, traffic, connectTimeoutMs, readTimeoutMs)
         }
         val closer = closeWhenCancelled(transport)
         try {
@@ -442,18 +448,19 @@ suspend fun greetSieve(
     mode: TlsMode,
     pin: String,
     confirm: suspend (CertPrompt) -> Boolean,
+    traffic: TrafficWriter?,
     connectSeconds: Int = 30,
     readSeconds: Int = 60,
     save: suspend (String) -> Unit,
 ): SieveCapabilities {
     val connectTimeoutMs = connectSeconds * 1000
     val readTimeoutMs = readSeconds * 1000
-    if (mode == TlsMode.None) return greetPlain(host, port, connectTimeoutMs, readTimeoutMs)
+    if (mode == TlsMode.None) return greetPlain(host, port, traffic, connectTimeoutMs, readTimeoutMs)
     return withSieveCertificate(pin, confirm, save) { activePin ->
         when (mode) {
-            TlsMode.None -> greetPlain(host, port, connectTimeoutMs, readTimeoutMs)
+            TlsMode.None -> greetPlain(host, port, traffic, connectTimeoutMs, readTimeoutMs)
             TlsMode.StartTls -> {
-                val transport = openPlainSieve(host, port, connectTimeoutMs, readTimeoutMs)
+                val transport = openPlainSieve(host, port, traffic, connectTimeoutMs, readTimeoutMs)
                 val closer = closeWhenCancelled(transport)
                 try {
                     requireAdvertisedStartTls(readGreeting(transport))
@@ -466,7 +473,7 @@ suspend fun greetSieve(
                 }
             }
             TlsMode.Implicit -> {
-                val transport = openImplicitSieve(host, port, activePin, connectTimeoutMs, readTimeoutMs)
+                val transport = openImplicitSieve(host, port, activePin, traffic, connectTimeoutMs, readTimeoutMs)
                 val closer = closeWhenCancelled(transport)
                 try {
                     val caps = readGreeting(transport)

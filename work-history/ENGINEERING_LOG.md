@@ -3866,3 +3866,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/pinerc-tree-20261028-0418-plan.md
 - Work: walk the tree's pinerc leaves for plain keys in preview and encodePinerc; composite server, folder, role, and feature values stay named functions
+
+## 2026-10-28 - Session limits and per-account traffic
+
+- Each session takes its account id and sets connect, read, idle, wake, result-uid, and traffic limits on the owner thread before the first command.
+- IMAP and SMTP traffic is written in C at the libetpan logger hooks; JMAP and Sieve traffic is written in Kotlin. Only the three private kinds become `<private N bytes>`.
+- Plan: sandbox/plans/session-traffic-20261028-0709-plan.md

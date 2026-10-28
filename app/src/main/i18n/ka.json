@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "შეიძლება გაიგზავნა: კავშირი დაიკარგა შეტყობინების გადაცემის შემდეგ. ხელახლა ცდამდე შეამოწმეთ გაგზავნილი."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ამ მოწყობილობაზე ასლის შენახვა ვერ მოხერხდა; შეინახეთ ეს ეკრანი ღია."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "შესაძლოა გაიგზავნა (გადაგზავნა შეამოწმეთ ხელახლა ცდამდე)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "გაფრთხილება: ის შეიცავს ყველა წერილის სრულ ტექსტს, რომელიც წაიკითხა ან გაიგზავნა, როდესაც შესვლა იყო ჩართული, მათ შორის, ტექსტები და დანართები. პაროლები ამოღებულია. გაუზიარეთ ის მხოლოდ იმას, ვისაც ენდობით ამ წერილის სანახავად."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "გაფრთხილება: აქ არის ყველა წერილის სრული ტექსტი, რომელიც წაიკითხეს ან გაიგზავნა ჩაწერის ჩართულობისას, სხეულებითა და დანართებით. შესვლის მონაცემები იცვლება მათი სიგრძით, მაგრამ სხვა ველში აკრეფილი პაროლი შედის. გაუზიარეთ მხოლოდ მას, ვისაც ამ ფოსტას ანდობთ."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "გააზიარეთ მაინც"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "გაუქმება"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP გამართვის ანგარიში"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ხე-ტყე"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP ბრძანებები"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "დაარეგისტრირეთ IMAP ტრაფიკი"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "ბრძანებები და სერვერის პასუხები გადადის logcat-ზე LiveIMAP-ში. პაროლი გამოტოვებულია."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "ბრძანებები და სერვერის პასუხები იწერება ამ ანგარიშის ტრაფიკის ჟურნალში. შესვლის მონაცემები იცვლება მათი სიგრძით; სხვა არაფერი იმალება."},
 {"key": "settings_share_log", "source": "Share log", "text": "გაზიარების ჟურნალი"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "გამართვის ანგარიში"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "მომხმარებლის სახელის ჩვენება გამართვის ანგარიშში"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "შეკუმშვა (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "ჩართულია"},
 {"key": "settings_compression_off", "source": "Off", "text": "გამორთულია"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "ავტომატური (ჩართულია მობილური ინტერნეტით)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "სერვერი არ გთავაზობთ COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "მთელი საქაღალდის გადატანა შეიცავს წაშლილ შეტყობინებებს"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "გამორთულია: შეტყობინებები უკვე მონიშნული წაშლილად რჩება უკან (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ანგარიში", "other": "%1$d ანგარიში"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ანგარიში", "other": "%1$d ანგარიში"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "შესვლა არხის მიბმის გარეშე (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "კავშირის ვადა"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "წაკითხვის ვადა"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "ტრაფიკის ჟურნალის ზომის შეზღუდვა"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ტრაფიკის ჟურნალის ზომა"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP ნაწილების ქეში"}
 ]

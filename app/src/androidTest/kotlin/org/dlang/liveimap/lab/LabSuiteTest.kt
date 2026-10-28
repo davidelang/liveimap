@@ -63,25 +63,17 @@ class LabSuiteTest {
         val box = arg("labFolder", "LiveIMAP-Test")
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val dir = File(ctx.cacheDir, "recordings").apply { mkdirs() }
-        TrafficRecorder.start(
-            File(dir, "$run.jsonl"),
-            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, appCommit(), "app", server, host, port, tls.name, "imap", "imapSuite"),
-        )
+        val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
+        val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
+        var labId = ""
+        var decoyId = ""
         val steps = StringBuilder("step\tresult\tdetail\n")
-        LabTestHooks.set(host, arg("labPass"))
+        LabTestHooks.setLabHost(host)
         LabTestHooks.setMaxTls12(arg("labMaxTls12") == "true")
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
-        val session = LibetpanMailSession()
-        // Only the lab CA is trusted; an untrusted or changed certificate fails the run.
-        session.setCertConfirmer { false }
-        // Clear-text login goes through the real confirmation path: the account starts without
-        // allowPlaintextAuth and the suite accepts the prompt, counting how often it was asked.
+        lateinit var session: LibetpanMailSession
         var plaintextConfirms = 0
-        session.setPlaintextConfirmer {
-            plaintextConfirms++
-            true
-        }
         var failed = 0
         // labSteps (lab.py --steps): run only these, plus open/select which the others need.
         val onlySteps = arg("labSteps").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
@@ -121,7 +113,23 @@ class LabSuiteTest {
             email = arg("labRcpt"),
             smtpHost = if (arg("labSmtpPort").isNotEmpty()) host else "",
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25,
+            idleRenewMinutes = 1,
         )
+        decoyId = createLabAccount(ctx, AccountSettings(imapHost = "decoy.invalid", username = "decoy"), "decoy-secret")
+        labId = createLabAccount(ctx, account, arg("labPass"), arg("labPass"))
+        store.selectAccount(decoyId)
+        TrafficRecorder.start(
+            File(dir, "$run.jsonl"),
+            TrafficRecorder.RunHeader(BuildConfig.VERSION_NAME, appCommit(), "app", server, host, port, tls.name, "imap", "imapSuite"),
+            ctx.cacheDir,
+            labId,
+        )
+        session = LibetpanMailSession(ctx, labId)
+        session.setCertConfirmer { false }
+        session.setPlaintextConfirmer {
+            plaintextConfirms++
+            true
+        }
         var opened = false
         try {
             step("open") {
@@ -139,6 +147,16 @@ class LabSuiteTest {
                 "plaintextConfirms=$plaintextConfirms " + session.capabilities.sorted().joinToString(" ")
             }
             if (opened) {
+                step("watchOnly") {
+                    val watcher = LibetpanMailSession(ctx, labId)
+                    val job = async(kotlinx.coroutines.Dispatchers.IO) {
+                        watcher.watchOnly(account, "INBOX") { }
+                    }
+                    kotlinx.coroutines.delay(1500)
+                    job.cancel()
+                    watcher.close()
+                    "started"
+                }
                 step("namespaces") { session.namespaces().size.toString() }
                 step("listRoot") { session.listLevel("", null, true).size.toString() }
                 step("utf8Folder") {
@@ -206,7 +224,7 @@ class LabSuiteTest {
                 step("longSearch") {
                     // Body search on a side connection: same hits as the main session, which stays usable.
                     val main = session.searchCriterion("Body", "message").sorted()
-                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box, { false }, { true })
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, labId, box, { false }, { true })
                     val r = org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "message") {}
                     check(r == org.dlang.liveimap.session.LongSearchResult.Hits(main) ||
                         (r is org.dlang.liveimap.session.LongSearchResult.Hits && r.uids.sorted() == main)) { "side $r != main $main" }
@@ -214,7 +232,7 @@ class LabSuiteTest {
                 }
                 step("longSearchParallel") {
                     // Side search and main-session work at the same time: neither waits for the other.
-                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box, { false }, { true })
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, labId, box, { false }, { true })
                     val side = async(kotlinx.coroutines.Dispatchers.IO) {
                         org.dlang.liveimap.session.LongSearch(link, 50).run("Body", "message") {}
                     }
@@ -227,7 +245,7 @@ class LabSuiteTest {
                     "side ${r.uids.size} hits; main ops meanwhile $mainOps"
                 }
                 step("longSearchCancel") {
-                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, box, { false }, { true })
+                    val link = org.dlang.liveimap.engine.LibetpanLongSearchLink(account, labId, box, { false }, { true })
                     val search = org.dlang.liveimap.session.LongSearch(link, 50)
                     val r = kotlinx.coroutines.coroutineScope {
                         val job = async { search.run("Text", "LiveIMAP") {} }
@@ -328,6 +346,7 @@ class LabSuiteTest {
                             arg("labUser"), arg("labPass"), "# LiveIMAP lab test\r\nkeep;\r\n",
                             // Only the plaintext strict fake (fake_run.py, labSievePlain) may see plaintext auth.
                             allowPlaintextAuth = arg("labSievePlain") == "true",
+                            traffic = org.dlang.liveimap.engine.TrafficLog.writer(ctx.cacheDir, labId),
                         )
                     }
                 }
@@ -422,7 +441,6 @@ class LabSuiteTest {
                     fun requireAppendUid(uid: Long) {
                         if (session.featureCaps.uidPlus && uid <= 0L) throw IllegalStateException("UIDPLUS append uid $uid")
                     }
-                    LibetpanMailSession.nativeSetIdleRenewSeconds(3)
                     var uid = 0L
                     var got: String? = null
                     var renews = 0
@@ -448,7 +466,6 @@ class LabSuiteTest {
                             }
                             session.select(box)
                         } finally {
-                            LibetpanMailSession.nativeSetIdleRenewSeconds(0)
                         }
                     }
                     check(renews >= 2) { "only $renews renewals in 10 s" }
@@ -460,9 +477,9 @@ class LabSuiteTest {
                     val pass = arg("labPass")
                     val max12 = arg("labMaxTls12") == "true"
                     LabTestHooks.clear()
-                    LabTestHooks.set(host, pass)
+                    LabTestHooks.setLabHost(host)
                     LabTestHooks.setMaxTls12(max12)
-                    val probe = LibetpanMailSession()
+                    val probe = LibetpanMailSession(ctx, labId)
                     try {
                         val confirms = java.util.concurrent.atomic.AtomicInteger()
                         probe.setCertConfirmer { confirms.incrementAndGet(); false }
@@ -480,7 +497,7 @@ class LabSuiteTest {
                         "certificate untrusted confirms=1"
                     } finally {
                         probe.close()
-                        LabTestHooks.set(host, pass)
+                        LabTestHooks.setLabHost(host)
                         LabTestHooks.setMaxTls12(max12)
                         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
                     }
@@ -489,7 +506,7 @@ class LabSuiteTest {
                     val alt = arg("labAltHost")
                     if (alt.isEmpty()) return@step "LAB_ALT_HOST unset"
                     if (tls == TlsMode.None) return@step "cleartext"
-                    val probe = LibetpanMailSession()
+                    val probe = LibetpanMailSession(ctx, labId)
                     try {
                         val file = File(dir, "$run.jsonl")
                         val mark = file.length()
@@ -508,7 +525,7 @@ class LabSuiteTest {
                 }
                 step("preservedSecurityLine") {
                     val broken = account.copy(unknownSettings = listOf("tlsMode=NotAMode"))
-                    val probe = LibetpanMailSession()
+                    val probe = LibetpanMailSession(ctx, labId)
                     val file = File(dir, "$run.jsonl")
                     val mark = file.length()
                     try {
@@ -701,9 +718,12 @@ class LabSuiteTest {
                 assertTrue("exists $exists", exists >= 0)
             }
         } finally {
-            session.close()
+            if (::session.isInitialized) session.close()
             TrafficRecorder.stop()
             LabTestHooks.clear()
+            if (recorded != null) store.selectAccount(recorded)
+            if (labId.isNotEmpty()) deleteLabAccount(ctx, labId)
+            if (decoyId.isNotEmpty()) deleteLabAccount(ctx, decoyId)
             File(dir, "$run.steps.tsv").writeText(steps.toString())
         }
         assertEquals("failed steps:\n$steps", 0, failed)

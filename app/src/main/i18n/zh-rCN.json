@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "可能已发送：消息移交后连接丢失。在重试之前检查已发送。"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "无法保存此设备上的副本；保持此屏幕打开。"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "可能已发送（重试前检查已发送）"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "警告：这包含日志记录打开时阅读或发送的每条消息的全文，包括正文和附件。密码被删除。仅与您信任的可以查看该邮件的人共享。"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "警告：其中包含开启记录时阅读或发送的每封邮件的全文，包括正文和附件。登录数据会换成其长度，但在其他栏里输入的密码会保留。只分享给可以看这些邮件的人。"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "无论如何分享"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "解雇"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP 调试报告"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "记录"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "管道 IMAP 命令"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "记录 IMAP 流量"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "命令和服务器回复将转到 LiveIMAP 下的 logcat。密码被省略。"},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "命令和服务器回复会写入此帐户的流量日志。登录数据会换成其长度；其他内容不会隐藏。"},
 {"key": "settings_share_log", "source": "Share log", "text": "分享日志"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "调试报告"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "在调试报告中显示用户名"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "压缩（COMPRESS）"},
 {"key": "settings_compression_on", "source": "On", "text": "在"},
 {"key": "settings_compression_off", "source": "Off", "text": "离开"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "自动（通过移动数据）"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "服务器不提供 COMPRESS=DEFLATE。"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "移动包括已删除邮件的整个文件夹"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "关闭：已标记为已删除的邮件保留在后面（UID 搜索未删除）。"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 个账户"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 个账户"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "已在没有通道绑定的情况下登录 (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "连接超时"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "读取超时"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "限制流量日志大小"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "流量日志大小"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP 部分缓存"}
 ]

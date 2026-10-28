@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Maaaring naipadala: nawala ang koneksyon pagkatapos maibigay ang mensahe. Suriin ang Naipadala bago mo muling subukan."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Hindi ma-save ang kopya sa device na ito; panatilihing bukas ang screen na ito."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Maaaring naipadala na (suriin ang Naipadala bago subukang muli)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Babala: naglalaman ito ng buong text ng bawat mensahe na nabasa o ipinadala habang naka-on ang pag-log, kasama ang mga katawan at attachment. Tinatanggal ang mga password. Ibahagi lamang ito sa isang taong pinagkakatiwalaan mo upang makita ang mail na iyon."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Babala: nasa loob ang buong teksto ng bawat mensaheng binasa o ipinadala habang naka-on ang pag-log, kasama ang katawan at mga attachment. Ang datos ng pag-login ay pinapalitan ng haba nito, ngunit kasama ang password na na-type sa ibang field. Ibahagi lamang sa taong pinagkakatiwalaan mong makita ang sulat na iyon."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Share naman"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "I-dismiss"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Ulat sa pag-debug ng LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Pag-log"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP command"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Mag-log ng trapiko ng IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Ang mga utos at tugon ng server ay mapupunta sa logcat sa ilalim ng LiveIMAP. Ang password ay tinanggal."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Ang mga utos at sagot ng server ay isinusulat sa log ng trapiko ng account na ito. Ang datos ng pag-login ay pinapalitan ng haba nito; wala nang iba pang itinatago."},
 {"key": "settings_share_log", "source": "Share log", "text": "Magbahagi ng log"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Ulat sa pag-debug"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Ipakita ang user name sa ulat ng pag-debug"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Compression (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Naka-on"},
 {"key": "settings_compression_off", "source": "Off", "text": "Naka-off"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Auto (naka-on sa mobile data)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Ang server ay hindi nag-aalok ng COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Kasama sa paglipat ng buong folder ang mga tinanggal na mensahe"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Naka-off: ang mga mensaheng minarkahan nang tinanggal ay mananatili sa likod (NA-UNDELET ANG PAGHAHANAP sa UID)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d account"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d account"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Naka-log in nang walang channel binding (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Timeout ng koneksyon"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Timeout ng pagbasa"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Limitahan ang laki ng log ng trapiko"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Laki ng log ng trapiko"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Cache ng mga bahagi ng JMAP"}
 ]

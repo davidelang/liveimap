@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Efallai eu bod wedi'u hanfon: collwyd y cysylltiad ar ôl i'r neges gael ei throsglwyddo. Gwiriwch Anfonwyd cyn i chi roi cynnig arall arni."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Nid oedd modd cadw'r copi ar y ddyfais hon; cadwch y sgrin hon ar agor."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Efallai ei fod wedi'i anfon (gwiriwch Anfon cyn rhoi cynnig arall arni)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Rhybudd: mae hwn yn cynnwys testun llawn pob neges a ddarllenwyd neu a anfonwyd tra'r oedd y mewngofnodi ymlaen, gan gynnwys cyrff ac atodiadau. Mae cyfrineiriau'n cael eu dileu. Rhannwch ef gyda rhywun rydych chi'n ymddiried ynddo yn unig i weld y post hwnnw."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Rhybudd: mae hyn yn cynnwys testun llawn pob neges a ddarllenwyd neu a anfonwyd tra roedd cofnodi ymlaen, gan gynnwys cyrff ac atodiadau. Mae data mewngofnodi yn cael ei ddisodli gan ei hyd, ond mae cyfrinair a deipiwyd mewn maes arall wedi’i gynnwys. Rhannwch ef dim ond gyda rhywun rydych yn ymddiried ynddo i weld y post hwnnw."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Rhannwch beth bynnag"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Diystyru"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Adroddiad dadfygio LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Logio"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Gorchmynion IMAP piblinell"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Logio traffig IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Mae gorchmynion ac atebion gweinydd yn mynd i logcat o dan LiveIMAP. Mae'r cyfrinair wedi'i hepgor."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Ysgrifennir gorchmynion ac atebion y gweinydd i log traffig y cyfrif hwn. Disodlir data mewngofnodi gan ei hyd; nid oes dim arall wedi’i guddio."},
 {"key": "settings_share_log", "source": "Share log", "text": "Rhannu log"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Adroddiad dadfygio"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Dangos enw defnyddiwr yn yr adroddiad dadfygio"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Cywasgu (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Ar"},
 {"key": "settings_compression_off", "source": "Off", "text": "I ffwrdd"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Auto (ymlaen dros ddata symudol)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Nid yw'r gweinydd yn cynnig COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Symud ffolder gyfan yn cynnwys negeseuon dileu"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Wedi'i ddiffodd: mae negeseuon sydd eisoes wedi'u marcio wedi'u dileu yn aros ar ôl (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d cyfrif", "one": "%1$d cyfrif", "two": "%1$d gyfrif", "few": "%1$d chyfrif", "many": "%1$d chyfrif", "other": "%1$d cyfrif"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d cyfrif", "one": "%1$d cyfrif", "two": "%1$d gyfrif", "few": "%1$d chyfrif", "many": "%1$d chyfrif", "other": "%1$d cyfrif"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Wedi mewngofnodi heb rwymo sianel (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Terfyn amser cysylltu"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Terfyn amser darllen"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Cyfyngu maint log traffig"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Maint log traffig"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Storfa rhannau JMAP"}
 ]

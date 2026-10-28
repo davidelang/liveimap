@@ -1,14 +1,10 @@
 package org.dlang.liveimap.fakeimap
 
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.nio.file.Files
 import org.dlang.liveimap.engine.ServerProbe
-import org.dlang.liveimap.engine.TrafficLog
-import org.dlang.liveimap.engine.TrafficRecorder
 import org.dlang.liveimap.engine.checkServer
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.TlsMode
@@ -58,14 +54,6 @@ class FakeImapF40Test {
         override fun close() = socket.close()
     }
 
-    private fun tempFile(name: String): File = File(Files.createTempDirectory("f40").toFile(), name)
-
-    private fun recorder() = TrafficRecorder(
-        tempFile("rec.jsonl"),
-        TrafficRecorder.RunHeader("liveimap", "test", "junit", "fake", "127.0.0.1", 0, "none", "imap", "f40"),
-        clock = { 1L },
-    )
-
     // ---- STARTTLS stripping ----
 
     @Test(timeout = 30_000)
@@ -103,89 +91,4 @@ class FakeImapF40Test {
         }
     }
 
-    // ---- LITERAL+ redaction ----
-
-    @Test(timeout = 30_000)
-    fun literalPlusLoginIsRedactedInBothLogs() {
-        val secret = "hunter2secret"
-        FakeImapServer(FakeImapProfile.Cyrus22).use { server ->
-            Wire(server.port).use { w ->
-                w.until("* OK")
-                // LITERAL+: the literals are sent without waiting, split across writes mid-literal.
-                w.send("A1 LOGIN {3+}\r\nada {${secret.length}+}\r\nhunt")
-                w.send("er2secret\r\n")
-                assertEquals("A1 OK\r\n", w.until("A1 "))
-                assertTrue(server.received.contains("A1 LOGIN \"ada\" \"$secret\""))
-                for (split in listOf(1, 3, 7, 1000)) {
-                    val log = TrafficLog(tempFile("t.log"), clock = { 1L })
-                    val rec = recorder()
-                    val bytes = w.sent.fold(ByteArray(0)) { a, b -> a + b }
-                    bytes.toList().chunked(split).forEach { chunk ->
-                        log.accept("main", TrafficLog.LOG_SENT, chunk.toByteArray())
-                        rec.accept("main", TrafficLog.LOG_SENT, chunk.toByteArray())
-                    }
-                    rec.flush()
-                    assertFalse("log split $split", log.file.readText().contains("hunter"))
-                    assertFalse("recorder split $split", rec.file.readText().contains("hunter"))
-                    assertFalse("recorder b64 split $split", rec.file.readText().contains(java.util.Base64.getEncoder().encodeToString(secret.toByteArray())))
-                }
-            }
-        }
-    }
-
-    // ---- VANISHED flood ----
-
-    @Test(timeout = 60_000)
-    fun vanishedFloodStaysWithinTheLogCap() {
-        FakeImapServer(FakeImapProfile.Cyrus22).use { server ->
-            server.vanishedFlood = 150_000
-            Wire(server.port).use { w ->
-                w.until("* OK")
-                server.script(FakeImapStep.VanishedFlood)
-                w.send("V1 SELECT INBOX\r\n")
-                val text = w.until("V1 ")
-                assertEquals(150_000, text.lines().count { it.startsWith("* VANISHED (EARLIER) ") })
-                assertTrue(text.contains("V1 OK"))
-                val log = TrafficLog(tempFile("t.log"), clock = { 1L })
-                for (b in w.got) log.accept("main", TrafficLog.LOG_RECEIVED, b)
-                assertTrue(log.file.length() <= TrafficLog.MAX_BYTES)
-                assertTrue(log.file.readText().contains("V1 OK"))
-                // The recorder keeps every line (no collapse): the replay tool needs the flood as it came.
-                val rec = recorder()
-                for (b in w.got) rec.accept("main", TrafficLog.LOG_RECEIVED, b)
-                rec.flush()
-                assertEquals(150_000, rec.file.readLines().count { it.contains("VANISHED (EARLIER)") })
-            }
-        }
-    }
-
-    // ---- IDLE bursts ----
-
-    @Test(timeout = 30_000)
-    fun idleBurstInOnePacketIsSeparateLines() {
-        val burst = listOf("* 5 EXISTS", "* 3 EXPUNGE", "* 2 FETCH (FLAGS (\\Seen))", "* 4 EXISTS", "* STATUS INBOX (MESSAGES 4)")
-        FakeImapServer(FakeImapProfile.Cyrus22).use { server ->
-            server.idleBurst = burst
-            Wire(server.port).use { w ->
-                w.until("* OK")
-                w.send("I1 IDLE\r\n")
-                val text = w.until("* STATUS")
-                assertTrue(text.startsWith("+ idling\r\n"))
-                for (l in burst) assertTrue(l, text.contains(l + "\r\n"))
-                w.send("DONE\r\n")
-                assertTrue(w.until("I1 ").startsWith("I1 OK"))
-                val rec = recorder()
-                for (b in w.got) rec.accept("main", TrafficLog.LOG_RECEIVED, b)
-                rec.flush()
-                val lines = rec.file.readLines()
-                for (l in burst) {
-                    assertEquals(l, 1, lines.count { it.contains("\"line\":" + org.dlang.liveimap.engine.jq(l)) })
-                }
-                // and in order
-                val idx = burst.map { l -> lines.indexOfFirst { it.contains(org.dlang.liveimap.engine.jq(l)) } }
-                assertEquals(idx.sorted(), idx)
-            }
-            assertTrue(server.received.contains("DONE"))
-        }
-    }
 }

@@ -144,7 +144,7 @@ CHOICE = {
         "MarkDeleted": "settings_mark_deleted", "MoveToTrash": "settings_move_to_trash",
         "DeletePermanently": "settings_delete_permanently",
     },
-    "compression": {"On": "settings_compression_on", "Off": "settings_compression_off", "Auto": "settings_compression_auto"},
+    "compression": {"On": "settings_compression_on", "Off": "settings_compression_off"},
     "threadIndexStyle": {"Expanded": "settings_thread_expanded", "Collapsed": "settings_thread_collapsed"},
     "dsnMode": {
         "Off": "settings_dsn_off", "Failure": "settings_dsn_failure",
@@ -920,7 +920,19 @@ def special_decode(key):
     if key == "readerTextLayout":
         return 'readerTextLayout = if ("readerTextLayout" !in values) d.readerTextLayout else enumValueOf<TextLayout>(values.getValue("readerTextLayout")),'
     if key == "compression":
-        return 'compression = if ("compression" !in values) d.compression else enumValueOf<Compression>(values.getValue("compression")),'
+        return "\n".join([
+            'compression = if ("compression" !in values) d.compression else when (values.getValue("compression")) {',
+            '    "Auto" -> Compression.On',
+            '    else -> enumValueOf<Compression>(values.getValue("compression"))',
+            "},",
+        ])
+    if key == "smtpNoAuth":
+        return "\n".join([
+            'smtpNoAuth = if ("smtpNoAuth" !in values) d.smtpNoAuth else when (values.getValue("smtpNoAuth")) {',
+            '    "Auto" -> SmtpNoAuth.Off',
+            '    else -> enumValueOf<SmtpNoAuth>(values.getValue("smtpNoAuth"))',
+            "},",
+        ])
     if key == "paneArrangement":
         return 'paneArrangement = if ("paneArrangement" !in values) d.paneArrangement else enumValueOf<ArrangementChoice>(values.getValue("paneArrangement")),'
     if key == "folderPosition":

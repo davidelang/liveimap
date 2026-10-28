@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Kan ha skickats: anslutningen bröts efter att meddelandet överlämnades. Markera Skickat innan du försöker igen."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Kopian på den här enheten kunde inte sparas. håll den här skärmen öppen."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Kan ha skickats (markera Skickat innan du försöker igen)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Varning: detta innehåller hela texten för alla meddelanden som lästes eller skickades medan inloggningen var på, inklusive brödtexter och bilagor. Lösenord tas bort. Dela det bara med någon du litar på för att se det meddelandet."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Varning: detta innehåller hela texten i varje meddelande som lästes eller skickades medan loggning var på, inklusive brödtext och bilagor. Inloggningsdata ersätts av sin längd, men ett lösenord som skrivs i ett annat fält ingår. Dela det bara med någon du litar på med den posten."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Dela ändå"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Avfärda"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP felsökningsrapport"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Skogsavverkning"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP-kommandon"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Logga IMAP-trafik"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Kommandon och serversvar går till logcat under LiveIMAP. Lösenordet utelämnas."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Kommandon och serversvar skrivs till det här kontots trafiklogg. Inloggningsdata ersätts av sin längd; inget annat döljs."},
 {"key": "settings_share_log", "source": "Share log", "text": "Dela logg"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Felsökningsrapport"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Visa användarnamn i felsökningsrapporten"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Kompression (KOMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "På"},
 {"key": "settings_compression_off", "source": "Off", "text": "Av"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Auto (på via mobildata)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Servern erbjuder inte COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Flytta hela mappen inkluderar raderade meddelanden"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Av: meddelanden som redan är markerade som borttagna stannar kvar (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d konton"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d konton"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Inloggad utan kanalbindning (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Tidsgräns för anslutning"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Tidsgräns för läsning"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Begränsa trafikloggens storlek"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Trafikloggens storlek"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP-delcache"}
 ]

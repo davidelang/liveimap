@@ -23,6 +23,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
 
 #include <atomic>
 #include <cerrno>
@@ -249,6 +251,162 @@ struct WatchNote {
     std::vector<std::string> flags;
 };
 
+
+struct TrafficFile {
+    int fd = -1;
+    int64_t bytes = 0;
+    std::string dir;
+    std::string conn;
+    int64_t rollBytes = 0;
+    bool failed = false;
+    std::string path;
+    TrafficFile() = default;
+    TrafficFile(const TrafficFile &) = delete;
+    TrafficFile & operator=(const TrafficFile &) = delete;
+    ~TrafficFile() {
+        if (fd >= 0) ::close(fd);
+        fd = -1;
+    }
+};
+
+std::atomic<uint64_t> gTrafficSerial{1};
+
+void trafficClose(TrafficFile * file) {
+    if (file == nullptr || file->fd < 0) return;
+    ::close(file->fd);
+    file->fd = -1;
+    file->bytes = 0;
+}
+
+void trafficFail(TrafficFile * file) {
+    if (file == nullptr || file->failed) return;
+    file->failed = true;
+    __android_log_print(ANDROID_LOG_WARN, "LiveIMAP", "traffic write failed for %s",
+        file->conn.empty() ? "?" : file->conn.c_str());
+    trafficClose(file);
+}
+
+bool trafficOpen(TrafficFile * file) {
+    if (file == nullptr || file->failed || file->dir.empty() || file->conn.empty()) return false;
+    trafficClose(file);
+    if (!file->dir.empty() && file->dir.back() != '/') file->dir.push_back('/');
+    mkdir(file->dir.c_str(), 0700);
+    uint64_t serial = gTrafficSerial.fetch_add(1);
+    long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    char name[160];
+    snprintf(name, sizeof(name), "%lld-%s-%llu.log", ms, file->conn.c_str(),
+        static_cast<unsigned long long>(serial));
+    std::string path = file->dir + name;
+    int fd = ::open(path.c_str(), O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0600);
+    if (fd < 0) {
+        trafficFail(file);
+        return false;
+    }
+    file->fd = fd;
+    file->path = std::move(path);
+    file->bytes = 0;
+    return true;
+}
+
+void trafficEnsure(TrafficFile * file) {
+    if (file == nullptr || file->fd >= 0 || file->failed || file->dir.empty()) return;
+    trafficOpen(file);
+}
+
+void trafficCheckLink(TrafficFile * file) {
+    if (file == nullptr || file->fd < 0) return;
+    struct stat st;
+    if (fstat(file->fd, &st) != 0 || st.st_nlink == 0) {
+        trafficClose(file);
+        trafficOpen(file);
+    }
+}
+
+void trafficMaybeRoll(TrafficFile * file) {
+    if (file == nullptr || file->fd < 0) return;
+    if (file->rollBytes > 0 && file->bytes > file->rollBytes) {
+        trafficClose(file);
+        trafficOpen(file);
+    }
+}
+
+void trafficWrite(TrafficFile * file, char dir, const char * data, size_t size) {
+    if (file == nullptr || file->failed || file->dir.empty() || data == nullptr) return;
+    trafficEnsure(file);
+    trafficCheckLink(file);
+    if (file->fd < 0) return;
+    long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    char header[192];
+    int hlen = snprintf(header, sizeof(header), "%lld %s %c %zu\n", ms, file->conn.c_str(), dir, size);
+    if (hlen <= 0 || hlen >= static_cast<int>(sizeof(header))) {
+        trafficFail(file);
+        return;
+    }
+    char nl = '\n';
+    struct iovec iov[3];
+    iov[0].iov_base = header;
+    iov[0].iov_len = static_cast<size_t>(hlen);
+    iov[1].iov_base = const_cast<char *>(data);
+    iov[1].iov_len = size;
+    iov[2].iov_base = &nl;
+    iov[2].iov_len = 1;
+    int niov = 3;
+    if (size == 0) niov = 2;
+    ssize_t n = ::writev(file->fd, iov, niov);
+    if (n < 0) {
+        trafficFail(file);
+        return;
+    }
+    file->bytes += n;
+    trafficMaybeRoll(file);
+}
+
+void trafficPrivate(TrafficFile * file, size_t n) {
+    char buf[64];
+    int len = snprintf(buf, sizeof(buf), "<private %zu bytes>", n);
+    if (len <= 0) return;
+    trafficWrite(file, '>', buf, static_cast<size_t>(len));
+}
+
+void trafficNote(TrafficFile * file, const std::string & text) {
+    if (text.empty()) return;
+    trafficWrite(file, '!', text.data(), text.size());
+}
+
+void trafficFromLibetpan(TrafficFile * file, int log_type, const char * str, size_t size) {
+    if (file == nullptr || str == nullptr || size == 0) return;
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE) {
+        trafficPrivate(file, size);
+        return;
+    }
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_SENT) {
+        trafficWrite(file, '>', str, size);
+        return;
+    }
+    if (log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
+        trafficWrite(file, '<', str, size);
+    }
+}
+
+void fileTrafficLogger(mailimap *, int log_type, const char * str, size_t size, void * context) {
+    trafficFromLibetpan(static_cast<TrafficFile *>(context), log_type, str, size);
+}
+
+void smtpFileLogger(mailsmtp *, int log_type, const char * str, size_t size, void * context) {
+    trafficFromLibetpan(static_cast<TrafficFile *>(context), log_type, str, size);
+}
+
+void bindTraffic(TrafficFile * file, const std::string & dir, const char * conn, int64_t roll) {
+    if (file == nullptr) return;
+    if (file->dir != dir || file->rollBytes != roll) trafficClose(file);
+    file->dir = dir;
+    file->conn = conn;
+    file->rollBytes = roll;
+    file->failed = false;
+}
+
 struct OwnerJob;
 
 struct LiveSession {
@@ -309,8 +467,14 @@ struct LiveSession {
     int smtpPort = 25;
     std::string from;
     bool pipelineCommands = true;
-    bool logImapTraffic = false;
-    std::string trafficLogPath;
+    int connectTimeoutSec = 30;
+    int readTimeoutSec = 60;
+    int idleRenewSec = 9 * 60;
+    int watchWakeMs = 5000;
+    std::string trafficDir;
+    int64_t trafficRollBytes = 0;
+    TrafficFile imapTraffic;
+    TrafficFile watchTraffic;
     std::string capabilityLine;
     std::map<std::string, char> delims;
     bool qresync = false;
@@ -406,10 +570,6 @@ struct JniCache {
     jmethodID onWatch = nullptr;
     jmethodID publishWatch = nullptr;
     jmethodID clearPublishedWatch = nullptr;
-    jclass trafficLog = nullptr;
-    jmethodID trafficAccept = nullptr;
-    jmethodID trafficFlush = nullptr;
-    jmethodID trafficNote = nullptr;
     jfieldID personal = nullptr;
     jfieldID other = nullptr;
     jfieldID shared = nullptr;
@@ -454,16 +614,6 @@ thread_local mailimap * tlsImap = nullptr;
 // The IMAP connection this thread holds via lockImapSession, so a user UID set can see whether a UID is in use.
 thread_local mailimap * tlsLockedImap = nullptr;
 thread_local LiveSession * tlsLive = nullptr;
-thread_local const char * tlsTrafficId = nullptr;
-
-struct TrafficIdScope {
-    const char * previous;
-    explicit TrafficIdScope(const char * id) : previous(tlsTrafficId) {
-        tlsTrafficId = id != nullptr && id[0] != 0 ? id : "main";
-    }
-    ~TrafficIdScope() { tlsTrafficId = previous; }
-};
-
 static int thread_ext_parse(int calling_parser, mailstream * fd, MMAPString * buffer,
     struct mailimap_parser_context * parser_ctx, size_t * indx,
     struct mailimap_extension_data ** result, size_t progr_rate, progress_function * progr_fun);
@@ -564,7 +714,7 @@ std::string asciiSafe(const char * text, const char * fallback) {
         }
     }
     if (out.empty()) {
-        return fallback != nullptr ? fallback : "imap error";
+        return fallback != nullptr ? fallback : "";
     }
     return out;
 }
@@ -573,7 +723,111 @@ std::string imapText(mailimap * session, const char * fallback) {
     if (session != nullptr && session->imap_response != nullptr && session->imap_response[0] != 0) {
         return asciiSafe(session->imap_response, fallback);
     }
-    return fallback != nullptr ? fallback : "imap error";
+    return fallback != nullptr ? fallback : "";
+}
+
+const char * imapErrorName(int r) {
+    switch (r) {
+    case MAILIMAP_NO_ERROR: return "MAILIMAP_NO_ERROR";
+    case MAILIMAP_NO_ERROR_AUTHENTICATED: return "MAILIMAP_NO_ERROR_AUTHENTICATED";
+    case MAILIMAP_NO_ERROR_NON_AUTHENTICATED: return "MAILIMAP_NO_ERROR_NON_AUTHENTICATED";
+    case MAILIMAP_ERROR_BAD_STATE: return "MAILIMAP_ERROR_BAD_STATE";
+    case MAILIMAP_ERROR_STREAM: return "MAILIMAP_ERROR_STREAM";
+    case MAILIMAP_ERROR_PARSE: return "MAILIMAP_ERROR_PARSE";
+    case MAILIMAP_ERROR_CONNECTION_REFUSED: return "MAILIMAP_ERROR_CONNECTION_REFUSED";
+    case MAILIMAP_ERROR_MEMORY: return "MAILIMAP_ERROR_MEMORY";
+    case MAILIMAP_ERROR_FATAL: return "MAILIMAP_ERROR_FATAL";
+    case MAILIMAP_ERROR_PROTOCOL: return "MAILIMAP_ERROR_PROTOCOL";
+    case MAILIMAP_ERROR_DONT_ACCEPT_CONNECTION: return "MAILIMAP_ERROR_DONT_ACCEPT_CONNECTION";
+    case MAILIMAP_ERROR_APPEND: return "MAILIMAP_ERROR_APPEND";
+    case MAILIMAP_ERROR_NOOP: return "MAILIMAP_ERROR_NOOP";
+    case MAILIMAP_ERROR_LOGOUT: return "MAILIMAP_ERROR_LOGOUT";
+    case MAILIMAP_ERROR_CAPABILITY: return "MAILIMAP_ERROR_CAPABILITY";
+    case MAILIMAP_ERROR_CHECK: return "MAILIMAP_ERROR_CHECK";
+    case MAILIMAP_ERROR_CLOSE: return "MAILIMAP_ERROR_CLOSE";
+    case MAILIMAP_ERROR_EXPUNGE: return "MAILIMAP_ERROR_EXPUNGE";
+    case MAILIMAP_ERROR_COPY: return "MAILIMAP_ERROR_COPY";
+    case MAILIMAP_ERROR_UID_COPY: return "MAILIMAP_ERROR_UID_COPY";
+    case MAILIMAP_ERROR_MOVE: return "MAILIMAP_ERROR_MOVE";
+    case MAILIMAP_ERROR_UID_MOVE: return "MAILIMAP_ERROR_UID_MOVE";
+    case MAILIMAP_ERROR_CREATE: return "MAILIMAP_ERROR_CREATE";
+    case MAILIMAP_ERROR_DELETE: return "MAILIMAP_ERROR_DELETE";
+    case MAILIMAP_ERROR_EXAMINE: return "MAILIMAP_ERROR_EXAMINE";
+    case MAILIMAP_ERROR_FETCH: return "MAILIMAP_ERROR_FETCH";
+    case MAILIMAP_ERROR_UID_FETCH: return "MAILIMAP_ERROR_UID_FETCH";
+    case MAILIMAP_ERROR_LIST: return "MAILIMAP_ERROR_LIST";
+    case MAILIMAP_ERROR_LOGIN: return "MAILIMAP_ERROR_LOGIN";
+    case MAILIMAP_ERROR_LSUB: return "MAILIMAP_ERROR_LSUB";
+    case MAILIMAP_ERROR_RENAME: return "MAILIMAP_ERROR_RENAME";
+    case MAILIMAP_ERROR_SEARCH: return "MAILIMAP_ERROR_SEARCH";
+    case MAILIMAP_ERROR_UID_SEARCH: return "MAILIMAP_ERROR_UID_SEARCH";
+    case MAILIMAP_ERROR_SELECT: return "MAILIMAP_ERROR_SELECT";
+    case MAILIMAP_ERROR_STATUS: return "MAILIMAP_ERROR_STATUS";
+    case MAILIMAP_ERROR_STORE: return "MAILIMAP_ERROR_STORE";
+    case MAILIMAP_ERROR_UID_STORE: return "MAILIMAP_ERROR_UID_STORE";
+    case MAILIMAP_ERROR_SUBSCRIBE: return "MAILIMAP_ERROR_SUBSCRIBE";
+    case MAILIMAP_ERROR_UNSUBSCRIBE: return "MAILIMAP_ERROR_UNSUBSCRIBE";
+    case MAILIMAP_ERROR_STARTTLS: return "MAILIMAP_ERROR_STARTTLS";
+    case MAILIMAP_ERROR_INVAL: return "MAILIMAP_ERROR_INVAL";
+    case MAILIMAP_ERROR_EXTENSION: return "MAILIMAP_ERROR_EXTENSION";
+    case MAILIMAP_ERROR_SASL: return "MAILIMAP_ERROR_SASL";
+    case MAILIMAP_ERROR_SSL: return "MAILIMAP_ERROR_SSL";
+    case MAILIMAP_ERROR_NEEDS_MORE_DATA: return "MAILIMAP_ERROR_NEEDS_MORE_DATA";
+    case MAILIMAP_ERROR_CUSTOM_COMMAND: return "MAILIMAP_ERROR_CUSTOM_COMMAND";
+    case MAILIMAP_ERROR_CLIENTID: return "MAILIMAP_ERROR_CLIENTID";
+    case MAILIMAP_ERROR_UNSELECT: return "MAILIMAP_ERROR_UNSELECT";
+    default: return "MAILIMAP_ERROR";
+    }
+}
+
+const char * smtpErrorName(int r) {
+    switch (r) {
+    case MAILSMTP_NO_ERROR: return "MAILSMTP_NO_ERROR";
+    case MAILSMTP_ERROR_UNEXPECTED_CODE: return "MAILSMTP_ERROR_UNEXPECTED_CODE";
+    case MAILSMTP_ERROR_SERVICE_NOT_AVAILABLE: return "MAILSMTP_ERROR_SERVICE_NOT_AVAILABLE";
+    case MAILSMTP_ERROR_STREAM: return "MAILSMTP_ERROR_STREAM";
+    case MAILSMTP_ERROR_HOSTNAME: return "MAILSMTP_ERROR_HOSTNAME";
+    case MAILSMTP_ERROR_NOT_IMPLEMENTED: return "MAILSMTP_ERROR_NOT_IMPLEMENTED";
+    case MAILSMTP_ERROR_ACTION_NOT_TAKEN: return "MAILSMTP_ERROR_ACTION_NOT_TAKEN";
+    case MAILSMTP_ERROR_EXCEED_STORAGE_ALLOCATION: return "MAILSMTP_ERROR_EXCEED_STORAGE_ALLOCATION";
+    case MAILSMTP_ERROR_IN_PROCESSING: return "MAILSMTP_ERROR_IN_PROCESSING";
+    case MAILSMTP_ERROR_INSUFFICIENT_SYSTEM_STORAGE: return "MAILSMTP_ERROR_INSUFFICIENT_SYSTEM_STORAGE";
+    case MAILSMTP_ERROR_MAILBOX_UNAVAILABLE: return "MAILSMTP_ERROR_MAILBOX_UNAVAILABLE";
+    case MAILSMTP_ERROR_MAILBOX_NAME_NOT_ALLOWED: return "MAILSMTP_ERROR_MAILBOX_NAME_NOT_ALLOWED";
+    case MAILSMTP_ERROR_BAD_SEQUENCE_OF_COMMAND: return "MAILSMTP_ERROR_BAD_SEQUENCE_OF_COMMAND";
+    case MAILSMTP_ERROR_USER_NOT_LOCAL: return "MAILSMTP_ERROR_USER_NOT_LOCAL";
+    case MAILSMTP_ERROR_TRANSACTION_FAILED: return "MAILSMTP_ERROR_TRANSACTION_FAILED";
+    case MAILSMTP_ERROR_MEMORY: return "MAILSMTP_ERROR_MEMORY";
+    case MAILSMTP_ERROR_AUTH_NOT_SUPPORTED: return "MAILSMTP_ERROR_AUTH_NOT_SUPPORTED";
+    case MAILSMTP_ERROR_AUTH_LOGIN: return "MAILSMTP_ERROR_AUTH_LOGIN";
+    case MAILSMTP_ERROR_AUTH_REQUIRED: return "MAILSMTP_ERROR_AUTH_REQUIRED";
+    case MAILSMTP_ERROR_AUTH_TOO_WEAK: return "MAILSMTP_ERROR_AUTH_TOO_WEAK";
+    case MAILSMTP_ERROR_AUTH_TRANSITION_NEEDED: return "MAILSMTP_ERROR_AUTH_TRANSITION_NEEDED";
+    case MAILSMTP_ERROR_AUTH_TEMPORARY_FAILTURE: return "MAILSMTP_ERROR_AUTH_TEMPORARY_FAILTURE";
+    case MAILSMTP_ERROR_AUTH_ENCRYPTION_REQUIRED: return "MAILSMTP_ERROR_AUTH_ENCRYPTION_REQUIRED";
+    case MAILSMTP_ERROR_STARTTLS_TEMPORARY_FAILURE: return "MAILSMTP_ERROR_STARTTLS_TEMPORARY_FAILURE";
+    case MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED: return "MAILSMTP_ERROR_STARTTLS_NOT_SUPPORTED";
+    case MAILSMTP_ERROR_CONNECTION_REFUSED: return "MAILSMTP_ERROR_CONNECTION_REFUSED";
+    case MAILSMTP_ERROR_AUTH_AUTHENTICATION_FAILED: return "MAILSMTP_ERROR_AUTH_AUTHENTICATION_FAILED";
+    case MAILSMTP_ERROR_SSL: return "MAILSMTP_ERROR_SSL";
+    case MAILSMTP_ERROR_CLIENTID_NOT_SUPPORTED: return "MAILSMTP_ERROR_CLIENTID_NOT_SUPPORTED";
+    default: return "MAILSMTP_ERROR";
+    }
+}
+
+std::string protocolError(const char * command, int code, const char * name, const char * response) {
+    const char * cmd = command != nullptr && command[0] != 0 ? command : "command";
+    const char * nm = name != nullptr ? name : "ERROR";
+    std::string text = std::string(cmd) + ": " + nm + " (" + std::to_string(code) + ")";
+    if (response != nullptr && response[0] != 0) {
+        std::string line = asciiSafe(response, "");
+        if (!line.empty()) text += " " + line;
+    }
+    return text;
+}
+
+std::string smtpDetail(const char * command, int code, const char * response) {
+    return protocolError(command, code, smtpErrorName(code), response);
 }
 
 void throwFailure(JNIEnv * env, const std::string & text) {
@@ -595,6 +849,10 @@ void throwConnectionLost(JNIEnv * env, const std::string & text) {
 }
 
 void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback) {
+    const char * command = fallback != nullptr && fallback[0] != 0 ? fallback : "IMAP";
+    const char * response = nullptr;
+    if (session != nullptr && session->imap != nullptr) response = session->imap->imap_response;
+    std::string detail = protocolError(command, r, imapErrorName(r), response);
     if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
         std::string host;
         int port = 0;
@@ -604,10 +862,10 @@ void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback
             if (session->imap != nullptr) {
                 mailimap_free(session->imap);
                 session->imap = nullptr;
+                trafficClose(&session->imapTraffic);
             }
         }
-        const char * why = fallback != nullptr && fallback[0] != 0 ? fallback : "imap error";
-        std::string lost = "IMAP connection to " + host + ":" + std::to_string(port) + " lost (" + why + ")";
+        std::string lost = "IMAP connection to " + host + ":" + std::to_string(port) + " lost (" + detail + ")";
         if (tlsResultUidCap) {
             lost += ": maxResultUids";
             tlsResultUidCap = false;
@@ -615,12 +873,7 @@ void throwImap(JNIEnv * env, LiveSession * session, int r, const char * fallback
         throwConnectionLost(env, lost);
         return;
     }
-    mailimap * imap = session != nullptr ? session->imap : nullptr;
-    std::string text = imapText(imap, fallback);
-    if (text == "Completed") {
-        text = fallback != nullptr ? fallback : "imap error";
-    }
-    throwFailure(env, text);
+    throwFailure(env, detail);
 }
 
 static bool requireClass(JNIEnv * env, jclass * slot, const char * name) {
@@ -672,7 +925,6 @@ bool resolveJni(JNIEnv * env) {
     if (!requireClass(env, &gJni.nativeBoxes, "org/dlang/liveimap/engine/NativeBoxes")) return false;
 
     if (!requireClass(env, &gJni.mailboxUids, "org/dlang/liveimap/session/MailboxUids")) return false;
-    if (!requireClass(env, &gJni.trafficLog, "org/dlang/liveimap/engine/TrafficLog")) return false;
     if (!requireMethod(env, &gJni.indexRowInit, gJni.indexRow, "<init>",
         "(JILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V")) return false;
     if (!requireMethod(env, &gJni.folderInit, gJni.folderEntry, "<init>",
@@ -700,11 +952,6 @@ bool resolveJni(JNIEnv * env) {
 
     if (!requireMethod(env, &gJni.mailboxUidsInit, gJni.mailboxUids, "<init>",
         "(Ljava/lang/String;Ljava/util/List;)V")) return false;
-    if (!requireStatic(env, &gJni.trafficAccept, gJni.trafficLog, "acceptNative",
-        "(Ljava/lang/String;I[B)V")) return false;
-    if (!requireStatic(env, &gJni.trafficFlush, gJni.trafficLog, "flushNative", "()V")) return false;
-    if (!requireStatic(env, &gJni.trafficNote, gJni.trafficLog, "noteNative",
-        "(Ljava/lang/String;Ljava/lang/String;)V")) return false;
     if (!requireField(env, &gJni.personal, gJni.nsKind, "Personal",
         "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
     if (!requireField(env, &gJni.other, gJni.nsKind, "Other",
@@ -1024,6 +1271,7 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     if (session->imap != nullptr) {
         mailimap_free(session->imap);
         session->imap = nullptr;
+        trafficClose(&session->imapTraffic);
         ERR_clear_error();
     }
     if (session->stagedReady != nullptr) {
@@ -2251,9 +2499,6 @@ char peekChar(MMAPString * buffer, size_t indx) {
 // "(1 2 3 ...)" nests one level per message, so a long mailing-list thread is a very deep tree. Parsing, freeing
 // and conversion are all iterative (explicit stacks), with no depth limit; only the total node count is bounded
 // against pathological responses.
-const size_t kMaxThreadNodes = 2000000;
-static_assert(kMaxThreadNodes == 2000000, "kMaxThreadNodes");
-
 // One top-level "( ... )" thread list (RFC 5256 thread-list), parsed without recursion. Members of a chain each
 // attach under the previous member; nested lists attach under the last member; a list that starts with "(" gets a
 // placeholder parent (has_uid 0) for its sub-lists.
@@ -2623,6 +2868,7 @@ void finishIdleStop(LiveSession * session) {
     if (session->watch != nullptr) {
         mailimap_free(session->watch);
         session->watch = nullptr;
+        trafficClose(&session->watchTraffic);
         ERR_clear_error();
     }
     JNIEnv * env = tlsOwnerEnv;
@@ -2770,11 +3016,7 @@ void handleUntagged(LiveSession * session, struct mailimap_response_data * data,
     }
 }
 
-// IDLE renew: DONE + IDLE well before NAT/firewall idle timeouts (often 10-15 min) and the server's 30 min
-// auto-logout; libetpan alone re-IDLEs at 28 min. Lab runs shorten it (nativeSetIdleRenewSeconds).
-std::atomic<int> gIdleRenewSec{9 * 60};
-// F38: IDLE poll backstop in ms (stop requests wake it through watchWakeFd). Configurable; default 5 s.
-std::atomic<int> gWatchWakeMs{5000};
+// IDLE renew and the poll backstop live on the session (nativeSetSessionLimits).
 
 /* F38: poll timeout for the watch loop. With a wake fd, wait until the renew or the DONE delay is due (at least 1 s,
    at most 30 min); without one, the configured short wake so a stop is noticed. */
@@ -2788,12 +3030,10 @@ int watchPollMs(bool hasWakeFd, long renewLeftSec, long doneDelaySec, int wakeMs
 }
 std::atomic<int> gIdleRenews{0};
 
-void postTrafficNote(const std::string & connectionId, const std::string & text);
-
-/* Watch trace (lab): one note per watch-loop decision, only while IMAP traffic logging is on. */
+/* Watch trace (lab): one note per watch-loop decision, only while this account's traffic directory is set. */
 void watchTrace(LiveSession * session, const std::string & text) {
-    if (session == nullptr || !session->logImapTraffic) return;
-    postTrafficNote("watch", "watch " + text);
+    if (session == nullptr || session->trafficDir.empty()) return;
+    trafficNote(&session->watchTraffic, "watch " + text);
 }
 
 /* IDLE renew DONE. libetpan's mailimap_idle_done() parses the DONE response with mailimap_parse_response(),
@@ -2877,7 +3117,7 @@ bool watchStep(LiveSession * session) {
     long idleAge = (long) std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - session->watchIdleSince).count();
     if (!session->watchStop.load() &&
-        (mailimap_idle_get_done_delay(session->watch) == 0 || idleAge >= gIdleRenewSec.load())) {
+        (mailimap_idle_get_done_delay(session->watch) == 0 || idleAge >= session->idleRenewSec)) {
         session->watchIdleSince = std::chrono::steady_clock::now();
         gIdleRenews.fetch_add(1);
         int doneR = watchRenewDone(session, generation);
@@ -2926,10 +3166,10 @@ bool watchStep(LiveSession * session) {
             pfd[nfd].events = POLLIN;
             nfd++;
         }
-        long renewLeft = gIdleRenewSec.load() - (long) std::chrono::duration_cast<std::chrono::seconds>(
+        long renewLeft = session->idleRenewSec - (long) std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::steady_clock::now() - session->watchIdleSince).count();
         int pollMs = watchPollMs(session->watchWakeFd >= 0 || session->jobFd.load() >= 0, renewLeft,
-            (long) mailimap_idle_get_done_delay(session->watch), gWatchWakeMs.load());
+            (long) mailimap_idle_get_done_delay(session->watch), session->watchWakeMs);
         int pr = poll(pfd, nfd, pollMs);
         if (pr > 0 && wakeSlot >= 0 && (pfd[wakeSlot].revents & POLLIN) != 0) {
             uint64_t drained = 0;
@@ -2975,9 +3215,6 @@ bool watchStep(LiveSession * session) {
     if (ctx != nullptr) mailimap_parser_context_free(ctx);
     return true;
 }
-
-const int kConnectTimeoutSec = 30;
-const int kReadTimeoutSec = 60;
 
 void enableKeepalive(int fd) {
     int on = 1;
@@ -3134,7 +3371,7 @@ int connectOne(const struct addrinfo * ai, int timeoutSec, std::string * why) {
 
 const int kConnectStaggerMs = 250;
 
-int tcpConnect(const char * proto, const char * host, int port, std::string * address, std::string * error) {
+int tcpConnect(const char * proto, const char * host, int port, std::string * address, std::string * error, int timeoutSec) {
     struct addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -3165,7 +3402,8 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     std::string failures;
     size_t nextStart = 0;
     auto raceStart = std::chrono::steady_clock::now();
-    auto deadline = raceStart + std::chrono::seconds(kConnectTimeoutSec);
+    if (timeoutSec < 1) timeoutSec = 1;
+    auto deadline = raceStart + std::chrono::seconds(timeoutSec);
     int winner = -1;
     std::string chosen;
     while (winner < 0) {
@@ -3249,110 +3487,16 @@ int tcpConnect(const char * proto, const char * host, int port, std::string * ad
     return winner;
 }
 
-std::string trafficConnectionId(LiveSession * live, mailimap * imap, mailstream * stream) {
-    if (live != nullptr) {
-        if (imap != nullptr && imap == live->watch) return "watch";
-        if (stream != nullptr && live->watch != nullptr && live->watch->imap_stream == stream) return "watch";
-        if (imap != nullptr && imap == live->imap) return "main";
-        if (stream != nullptr && live->imap != nullptr && live->imap->imap_stream == stream) return "main";
-    }
-    if (tlsTrafficId != nullptr && tlsTrafficId[0] != 0) return tlsTrafficId;
-    return "main";
-}
-
-bool beginTrafficJni(JNIEnv ** env, bool * attached) {
-    *env = nullptr;
-    *attached = false;
-    if (gVm == nullptr || gJni.trafficLog == nullptr) return false;
-    JNIEnv * local = nullptr;
-    jint got = gVm->GetEnv(reinterpret_cast<void **>(&local), JNI_VERSION_1_6);
-    if (got == JNI_EDETACHED) {
-        if (gVm->AttachCurrentThread(&local, nullptr) != 0) return false;
-        *attached = true;
-    } else if (got != JNI_OK) {
-        return false;
-    }
-    *env = local;
-    return local != nullptr;
-}
-
-void endTrafficJni(bool attached) {
-    if (attached && gVm != nullptr) gVm->DetachCurrentThread();
-}
-
-void postTrafficBytes(const std::string & connectionId, int logType, const char * data, size_t size) {
-    if (data == nullptr || size == 0 || gJni.trafficAccept == nullptr) return;
-    if (size > static_cast<size_t>(INT_MAX)) return;
-    JNIEnv * env = nullptr;
-    bool attached = false;
-    if (!beginTrafficJni(&env, &attached)) return;
-    jstring id = newString(env, connectionId.c_str());
-    jbyteArray bytes = env->NewByteArray(static_cast<jsize>(size));
-    if (id != nullptr && bytes != nullptr) {
-        env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(size), reinterpret_cast<const jbyte *>(data));
-        env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficAccept, id, logType, bytes);
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (id != nullptr) env->DeleteLocalRef(id);
-    if (bytes != nullptr) env->DeleteLocalRef(bytes);
-    endTrafficJni(attached);
-}
-
-void postTrafficNote(const std::string & connectionId, const std::string & text) {
-    if (gJni.trafficNote == nullptr || text.empty()) return;
-    JNIEnv * env = nullptr;
-    bool attached = false;
-    if (!beginTrafficJni(&env, &attached)) return;
-    jstring id = newString(env, connectionId.c_str());
-    jstring line = newString(env, text.c_str());
-    if (id != nullptr && line != nullptr) {
-        env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficNote, id, line);
-    }
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    if (id != nullptr) env->DeleteLocalRef(id);
-    if (line != nullptr) env->DeleteLocalRef(line);
-    endTrafficJni(attached);
-}
-
-void postTrafficFlush() {
-    if (gJni.trafficFlush == nullptr) return;
-    JNIEnv * env = nullptr;
-    bool attached = false;
-    if (!beginTrafficJni(&env, &attached)) return;
-    env->CallStaticVoidMethod(gJni.trafficLog, gJni.trafficFlush);
-    if (env->ExceptionCheck()) env->ExceptionClear();
-    endTrafficJni(attached);
-}
-
-// Sent and received stay separate streams. Kotlin owns the file.
-void logImapBuffer(LiveSession * live, int log_type, const char * str, size_t size,
-    const std::string & connectionId) {
-    if (live == nullptr || str == nullptr || size == 0) return;
-    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
-        return;
-    }
-    postTrafficBytes(connectionId, log_type, str, size);
-}
-
-void flushTrafficTail(LiveSession * live) {
-    (void)live;
-    postTrafficFlush();
-}
-
 void noteParsedRows(LiveSession * session, size_t count) {
-    if (session == nullptr || !session->logImapTraffic) return;
+    if (session == nullptr || session->trafficDir.empty()) return;
     std::string line = "parsed " + std::to_string(count);
-    // One logcat copy, debug level only (F10: the INFO duplicate doubled the exposure).
     __android_log_print(ANDROID_LOG_DEBUG, "LiveIMAP", "%s", line.c_str());
-    postTrafficNote("main", line);
+    trafficNote(&session->imapTraffic, line);
 }
 
 bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
     if (list != nullptr) mailimap_fetch_list_free(list);
     if (session != nullptr && session->imap != nullptr) {
-        // Tagged OK text would replace this fallback.
         session->imap->imap_response = nullptr;
     }
     throwImap(env, session, MAILIMAP_NO_ERROR, "fetch returned no rows");
@@ -3360,46 +3504,6 @@ bool abortEmptyIndexFetch(JNIEnv * env, LiveSession * session, clist * list) {
     return true;
 }
 
-void imapTrafficLogger(mailimap * session, int log_type, const char * str, size_t size, void * context) {
-    auto * live = static_cast<LiveSession *>(context);
-    if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(live, log_type, str, size, trafficConnectionId(live, session, nullptr));
-}
-
-// Watch connect already copied the log flag. This logger must not hold a LiveSession or read its fields:
-// the handshake runs after the session mutex is released.
-void imapTrafficLoggerCopied(mailimap *, int log_type, const char * str, size_t size, void * context) {
-    auto * id = static_cast<const char *>(context);
-    if (id == nullptr || str == nullptr || size == 0) return;
-    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
-        return;
-    }
-    postTrafficBytes(id, log_type, str, size);
-}
-
-void attachOpenedTrafficLogger(mailimap * imap, bool logTraffic, LiveSession * live, const char * copiedLogId) {
-    if (imap == nullptr || !logTraffic) return;
-    if (copiedLogId != nullptr) {
-        mailimap_set_logger(imap, imapTrafficLoggerCopied, const_cast<char *>(copiedLogId));
-        return;
-    }
-    if (live != nullptr) mailimap_set_logger(imap, imapTrafficLogger, live);
-}
-
-// SMTP copied the log flag before dropping the session mutex. This logger must not read the live session.
-void smtpTrafficLoggerCopied(mailsmtp *, int log_type, const char * str, size_t size, void *) {
-    if (str == nullptr || size == 0) return;
-    if (log_type != MAILSTREAM_LOG_TYPE_DATA_SENT_PRIVATE &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_SENT &&
-        log_type != MAILSTREAM_LOG_TYPE_DATA_RECEIVED) {
-        return;
-    }
-    postTrafficBytes("smtp", log_type, str, size);
-}
-
-// "* OK [INPROGRESS ("tag" done total)]": done/total may be NIL. A line split across reads is simply missed.
 void noteProgress(LiveSession * live, const char * str, size_t size) {
     std::string chunk(str, size);
     size_t at = 0;
@@ -3424,30 +3528,18 @@ void noteProgress(LiveSession * live, const char * str, size_t size) {
 
 void streamTrafficLogger(mailstream * stream, int log_type, const char * str, size_t size, void * context) {
     auto * live = static_cast<LiveSession *>(context);
-    if (live != nullptr && live->watchProgress && log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED && str != nullptr) {
+    if (live == nullptr) return;
+    if (live->watchProgress && log_type == MAILSTREAM_LOG_TYPE_DATA_RECEIVED && str != nullptr) {
         noteProgress(live, str, size);
     }
-    if (live == nullptr || !live->logImapTraffic) return;
-    logImapBuffer(live, log_type, str, size, trafficConnectionId(live, nullptr, stream));
+    TrafficFile * file = &live->imapTraffic;
+    if (stream != nullptr && live->watch != nullptr && live->watch->imap_stream == stream) file = &live->watchTraffic;
+    trafficFromLibetpan(file, log_type, str, size);
 }
 
-void setImapTrafficLogger(mailimap * imap, bool on, LiveSession * live) {
-    if (imap == nullptr) return;
-    if (!on) flushTrafficTail(live);
-    if (on) {
-        mailimap_set_logger(imap, imapTrafficLogger, live);
-        if (imap->imap_stream != nullptr) {
-            mailstream_set_logger(imap->imap_stream, streamTrafficLogger, live);
-        }
-    } else if (live != nullptr && live->watchProgress && imap->imap_stream != nullptr) {
-        mailimap_set_logger(imap, nullptr, nullptr);
-        mailstream_set_logger(imap->imap_stream, streamTrafficLogger, live);
-    } else {
-        mailimap_set_logger(imap, nullptr, nullptr);
-        if (imap->imap_stream != nullptr) {
-            mailstream_set_logger(imap->imap_stream, nullptr, nullptr);
-        }
-    }
+void attachTrafficLogger(mailimap * imap, TrafficFile * traffic) {
+    if (imap == nullptr || traffic == nullptr || traffic->dir.empty()) return;
+    mailimap_set_logger(imap, fileTrafficLogger, traffic);
 }
 
 struct TlsCapture {
@@ -3643,31 +3735,29 @@ void rejectImap(mailimap * imap) {
     mailimap_free(imap);
 }
 
-mailimap * openTcp(const char * host, int port, LiveSession * live, std::string * error, std::string * address,
-    bool logTraffic, const char * copiedLogId = nullptr) {
+mailimap * openTcp(const char * host, int port, std::string * error, std::string * address,
+    TrafficFile * traffic, int connectSec, int readSec) {
     mailimap * imap = mailimap_new(0, nullptr);
     if (imap == nullptr) {
-        *error = "imap error";
+        *error = protocolError("IMAP", MAILIMAP_ERROR_MEMORY, "MAILIMAP_ERROR_MEMORY", nullptr);
         return nullptr;
     }
-    mailimap_set_timeout(imap, kReadTimeoutSec);
-    int fd = tcpConnect("IMAP", host, port, address, error);
+    if (readSec < 1) readSec = 1;
+    if (connectSec < 1) connectSec = 1;
+    mailimap_set_timeout(imap, readSec);
+    int fd = tcpConnect("IMAP", host, port, address, error, connectSec);
     if (fd < 0) {
         mailimap_free(imap);
         return nullptr;
     }
-    mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
+    mailstream * stream = mailstream_socket_open_timeout(fd, readSec);
     if (stream == nullptr) {
         close(fd);
         *error = connectFailure("IMAP", host, port, *address, "connection failed");
         mailimap_free(imap);
         return nullptr;
     }
-    if (copiedLogId != nullptr) {
-        attachOpenedTrafficLogger(imap, logTraffic, nullptr, copiedLogId);
-    } else {
-        attachOpenedTrafficLogger(imap, logTraffic, live, nullptr);
-    }
+    attachTrafficLogger(imap, traffic);
     int r = mailimap_connect(imap, stream);
     if (!connectOk(r)) {
         *error = connectFailure("IMAP", host, port, *address, imapText(imap, "connection failed"));
@@ -3950,7 +4040,9 @@ struct ImapOpenMaterial {
     std::string clientP12PasswordMask;
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
-    bool logImapTraffic = false;
+    TrafficFile * traffic = nullptr;
+    int connectTimeoutSec = 30;
+    int readTimeoutSec = 60;
     JNIEnv * env = nullptr;
     ImapOpenMaterial() = default;
     ImapOpenMaterial(const ImapOpenMaterial &) = delete;
@@ -3967,12 +4059,13 @@ mailimap * openPlain(JNIEnv * env, const char * host, int port, const char * use
     LiveSession * live, std::string * error, std::string * connectedAddress, const ImapOpenMaterial * owned = nullptr,
     bool * authRejected = nullptr, std::string * tlsOut = nullptr) {
     std::string address;
-    bool logTraffic = owned != nullptr ? owned->logImapTraffic : (live != nullptr && live->logImapTraffic);
+    int connectSec = owned != nullptr ? owned->connectTimeoutSec : (live != nullptr ? live->connectTimeoutSec : 30);
+    int readSec = owned != nullptr ? owned->readTimeoutSec : (live != nullptr ? live->readTimeoutSec : 60);
+    TrafficFile * traffic = owned != nullptr ? owned->traffic : (live != nullptr ? &live->imapTraffic : nullptr);
+    if (live != nullptr && owned == nullptr) bindTraffic(&live->imapTraffic, live->trafficDir, "imap", live->trafficRollBytes);
     bool plaintextOk = owned != nullptr ? owned->allowPlaintextAuth : (live != nullptr && live->allowPlaintextAuth);
     std::string mechanism = owned != nullptr ? owned->authMechanism : (live != nullptr ? live->authMechanism : std::string());
-    mailimap * imap = owned != nullptr
-        ? openTcp(host, port, nullptr, error, &address, logTraffic, "watch")
-        : openTcp(host, port, live, error, &address, logTraffic, nullptr);
+    mailimap * imap = openTcp(host, port, error, &address, traffic, connectSec, readSec);
     if (imap == nullptr) return nullptr;
     if (!loginImap(env, imap, host, port, user, password, address, error, false, plaintextOk, mechanism,
             authRejected, tlsOut)) {
@@ -3988,7 +4081,9 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     const char * pin, bool publishOffer, const ImapOpenMaterial * owned = nullptr,
     bool * authRejected = nullptr, std::string * tlsOut = nullptr, std::vector<std::string> * certOffer = nullptr) {
     TlsCapture capture;
-    bool logTraffic = false;
+    TrafficFile * traffic = nullptr;
+    int connectSec = 30;
+    int readSec = 60;
     std::string mechanism;
     bool acceptInvalid = false;
     std::string p12PasswordClear;
@@ -4003,7 +4098,9 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         }
         capture.keyChainChain = &owned->keyChainChain;
         capture.keyChainKey = owned->keyChainKey;
-        logTraffic = owned->logImapTraffic;
+        traffic = owned->traffic;
+        connectSec = owned->connectTimeoutSec;
+        readSec = owned->readTimeoutSec;
         mechanism = owned->authMechanism;
         acceptInvalid = owned->acceptInvalidCert;
     } else if (live != nullptr) {
@@ -4016,7 +4113,10 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         }
         capture.keyChainChain = &live->keyChainChain;
         capture.keyChainKey = live->keyChainKey;
-        logTraffic = live->logImapTraffic;
+        bindTraffic(&live->imapTraffic, live->trafficDir, "imap", live->trafficRollBytes);
+        traffic = &live->imapTraffic;
+        connectSec = live->connectTimeoutSec;
+        readSec = live->readTimeoutSec;
         mechanism = live->authMechanism;
         acceptInvalid = live->acceptInvalidCert;
     }
@@ -4025,9 +4125,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     mailimap * imap = nullptr;
     bool tlsOk = false;
     if (strcmp(mode, "StartTls") == 0) {
-        imap = owned != nullptr
-            ? openTcp(host, port, nullptr, error, &address, logTraffic, "watch")
-            : openTcp(host, port, live, error, &address, logTraffic, nullptr);
+        imap = openTcp(host, port, error, &address, traffic, connectSec, readSec);
         if (imap == nullptr) {
             tlsCapture = nullptr;
             return nullptr;
@@ -4058,16 +4156,13 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     } else if (strcmp(mode, "Implicit") == 0) {
         imap = mailimap_new(0, nullptr);
         if (imap == nullptr) {
-            *error = "imap error";
+            *error = protocolError("IMAP", MAILIMAP_ERROR_MEMORY, "MAILIMAP_ERROR_MEMORY", nullptr);
             tlsCapture = nullptr;
             return nullptr;
         }
-        mailimap_set_timeout(imap, kReadTimeoutSec);
-        if (owned != nullptr) {
-            attachOpenedTrafficLogger(imap, logTraffic, nullptr, "watch");
-        } else {
-            attachOpenedTrafficLogger(imap, logTraffic, live, nullptr);
-        }
+        if (readSec < 1) readSec = 1;
+        mailimap_set_timeout(imap, readSec);
+        attachTrafficLogger(imap, traffic);
         if (port < 0 || port > 65535) {
             *error = connectFailure("IMAP", host, port, host != nullptr ? host : "", "connection failed");
             rejectImap(imap);
@@ -4075,7 +4170,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             return nullptr;
         }
         std::string dialError;
-        int fd = tcpConnect("IMAP", host, port, &address, &dialError);
+        int fd = tcpConnect("IMAP", host, port, &address, &dialError, connectSec);
         if (fd < 0) {
             *error = dialError;
             rejectImap(imap);
@@ -4083,7 +4178,7 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
             return nullptr;
         }
         mailstream * stream = mailstream_ssl_open_with_server_name_callback_timeout(
-            fd, kReadTimeoutSec, sniName(host), prepareTls, nullptr);
+            fd, readSec, sniName(host), prepareTls, nullptr);
         if (stream == nullptr) {
             close(fd);
             *error = connectFailure("IMAP", host, port, address, "connection failed");
@@ -4149,7 +4244,8 @@ void freeSession(LiveSession * session, JNIEnv *) {
     shutdownFd(session->smtpFd.load());
     session->watchPhase.store(3);
     signalWatchStop(session);
-    flushTrafficTail(session);
+    trafficClose(&session->imapTraffic);
+    trafficClose(&session->watchTraffic);
     session->ownerStop.store(true);
     kickOwner(session);
     // Closing from a watch callback runs on the owner. Joining it here would deadlock.
@@ -4361,8 +4457,10 @@ void compressSession(LiveSession * session) {
     if (session == nullptr || session->imap == nullptr) return;
     int r = mailimap_compress(session->imap);
     if (r == MAILIMAP_NO_ERROR) {
-        if (!session->logImapTraffic || session->imap->imap_stream == nullptr) return;
-        mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
+        if (session->imap->imap_stream == nullptr) return;
+        if (!session->trafficDir.empty() || session->watchProgress) {
+            mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
+        }
         return;
     }
     // Stay up, compression off, only when a tagged refusal left the stream in step.
@@ -4598,9 +4696,6 @@ bool appendUid(clist * list, uint32_t uid) {
     }
     return true;
 }
-
-constexpr uint64_t kMaxSeqSetUids = 2000000;  // one ESEARCH/PARTIAL answer; jelly has 200k
-static_assert(kMaxSeqSetUids == 2000000, "kMaxSeqSetUids");
 
 // F99: set when a '*' was read. '*' is not rewritten to uidnext-1 and is not expanded into the list.
 thread_local bool tlsSeqSawStar = false;
@@ -6634,7 +6729,7 @@ jobject newSessionOpen(JNIEnv * env, jlong handle, const std::string & tls, cons
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
+    jboolean pipelineFlag, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
@@ -6643,11 +6738,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     JChars p(env, password);
     JChars sh(env, smtpHost);
     JChars fr(env, from);
-    JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars smtpMode(env, smtpTlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !smtpMode.s || !pin.s) {
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !mode.s || !smtpMode.s || !pin.s) {
         return newSessionOpen(env, 0, "", "", false, {});
     }
     auto held = std::shared_ptr<LiveSession>(new LiveSession());
@@ -6664,8 +6758,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     session->smtpPort = smtpPort;
     session->from = fr.c()[0] != 0 ? fr.c() : u.c();
     session->pipelineCommands = pipelineFlag == JNI_TRUE;
-    session->logImapTraffic = logFlag == JNI_TRUE;
-    session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
     session->smtpTlsMode = smtpMode.c();
     session->certPin = pin.c();
@@ -6717,7 +6809,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
 extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobject,
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
+    jboolean pipelineFlag, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
     jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
@@ -6726,11 +6818,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     JChars p(env, password);
     JChars sh(env, smtpHost);
     JChars fr(env, from);
-    JChars path(env, logPath);
     JChars mode(env, tlsMode);
     JChars smtpMode(env, smtpTlsMode);
     JChars pin(env, certPin);
-    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !path.s || !mode.s || !smtpMode.s || !pin.s) {
+    if (!h.s || !u.s || !p.s || !sh.s || !fr.s || !mode.s || !smtpMode.s || !pin.s) {
         return newSessionOpen(env, 0, "", "", false, {});
     }
     auto held = std::shared_ptr<LiveSession>(new LiveSession());
@@ -6746,8 +6837,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     session->smtpPort = smtpPort;
     session->from = fr.c()[0] != 0 ? fr.c() : u.c();
     session->pipelineCommands = pipelineFlag == JNI_TRUE;
-    session->logImapTraffic = logFlag == JNI_TRUE;
-    session->trafficLogPath = path.c();
     session->tlsMode = mode.c();
     session->smtpTlsMode = smtpMode.c();
     session->certPin = pin.c();
@@ -6792,43 +6881,52 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         session->keyChainKey = env->NewGlobalRef(keyChainKey);
     }
     startOwner(held);
-    bool published = false;
-    jobject result = runFresh<jobject>(env, session, [&](JNIEnv * env) -> jobject {
-        TrafficIdScope idScope("main");
+    publishSession(session);
+    return newSessionOpen(env, reinterpret_cast<jlong>(session), "", "", false, {});
+}
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeConnect(JNIEnv * env, jobject, jlong handle) {
+    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobject {
+        LiveSession * session = lockSession(env, handle);
+        if (session == nullptr) return newSessionOpen(env, 0, "", "not connected", false, {});
+        std::string password = session->password;
+        xorMask(password, session->passwordMask);
+        SecretWipe wipePassword{password};
+        bindTraffic(&session->imapTraffic, session->trafficDir, "imap", session->trafficRollBytes);
         std::string error;
         std::string address;
         std::string tls;
         bool authRejected = false;
         std::vector<std::string> certOffer;
         mailimap * imap = nullptr;
-        if (strcmp(mode.c(), "None") == 0) {
-            imap = openPlain(env, h.c(), port, u.c(), p.c(), session, &error, &address, nullptr, &authRejected, &tls);
+        if (session->tlsMode == "None") {
+            imap = openPlain(env, session->host.c_str(), session->imapPort, session->user.c_str(), password.c_str(),
+                session, &error, &address, nullptr, &authRejected, &tls);
         } else {
-            imap = openTls(env, mode.c(), h.c(), port, u.c(), p.c(), session, &error, &address, session->certPin.c_str(), true,
+            imap = openTls(env, session->tlsMode.c_str(), session->host.c_str(), session->imapPort,
+                session->user.c_str(), password.c_str(), session, &error, &address, session->certPin.c_str(), true,
                 nullptr, &authRejected, &tls, &certOffer);
         }
         if (imap == nullptr) {
-            flushTrafficTail(session);
+            unlockSession(session);
             return newSessionOpen(env, 0, tls, error, authRejected, certOffer);
         }
         struct mailimap_capability_data * caps = nullptr;
         int r = mailimap_capability(imap, &caps);
         if (!cmdOk(r) || caps == nullptr) {
-            std::string why = serviceLabel("IMAP", h.c(), port) + " (" + address + "): capability failed: "
-                + imapText(imap, "capability failed");
+            std::string why = serviceLabel("IMAP", session->host.c_str(), session->imapPort) + " (" + address
+                + "): " + protocolError("capability", r, imapErrorName(r), imap->imap_response);
             mailimap_free(imap);
-            flushTrafficTail(session);
+            unlockSession(session);
             return newSessionOpen(env, 0, tls, why, false, certOffer);
         }
         session->imap = imap;
         session->capabilityLine = joinCapabilities(caps);
         mailimap_capability_data_free(caps);
-        publishSession(session);
-        published = true;
-        return newSessionOpen(env, reinterpret_cast<jlong>(session), tls, "", false, {});
+        unlockSession(session);
+        return newSessionOpen(env, handle, tls, "", false, {});
     });
-    if (!published) discardUnpublished(held);
-    return result;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -6861,21 +6959,47 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeEnable(JNIEnv * env, jo
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetSessionFlags(JNIEnv * env, jobject, jlong handle,
-    jboolean pipelineFlag, jboolean logFlag, jstring logPath) {
-    jstring g_logPath = logPath != nullptr ? static_cast<jstring>(env->NewGlobalRef(logPath)) : nullptr;
-    struct OwnerRefs { JNIEnv * e; jstring p0; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); } } ownerRefs{env, g_logPath};
+    jboolean pipelineFlag) {
     withOwnerCall(env, handle, [&](JNIEnv * env) -> void {
-        jstring logPath = g_logPath;
-
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return;
-    JChars path(env, logPath);
     session->pipelineCommands = pipelineFlag == JNI_TRUE;
-    session->logImapTraffic = logFlag == JNI_TRUE;
-    session->trafficLogPath = path.c();
-    setImapTrafficLogger(session->imap, session->logImapTraffic, session);
-    setImapTrafficLogger(session->watch, session->logImapTraffic, session);
     unlockSession(session);
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetSessionLimits(JNIEnv * env, jobject, jlong handle,
+    jint connectSec, jint readSec, jint idleRenewSec, jint watchWakeMs, jint maxResultUids, jstring trafficDir,
+    jlong trafficRollBytes) {
+    jstring g_dir = trafficDir != nullptr ? static_cast<jstring>(env->NewGlobalRef(trafficDir)) : nullptr;
+    struct OwnerRefs { JNIEnv * e; jstring p0; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); } } ownerRefs{env, g_dir};
+    withOwnerCall(env, handle, [&](JNIEnv * env) -> void {
+        jstring trafficDir = g_dir;
+        LiveSession * session = lockSession(env, handle);
+        if (session == nullptr) return;
+        if (connectSec >= 1) session->connectTimeoutSec = connectSec;
+        if (readSec >= 1) session->readTimeoutSec = readSec;
+        session->idleRenewSec = idleRenewSec;
+        if (watchWakeMs >= 100) session->watchWakeMs = watchWakeMs;
+        if (maxResultUids >= 1) {
+            session->maxResultUids.store(static_cast<uint64_t>(maxResultUids));
+            tlsMaxResultUids = static_cast<uint64_t>(maxResultUids);
+        }
+        JChars dir(env, trafficDir);
+        std::string next = dir.s ? dir.c() : "";
+        int64_t roll = trafficRollBytes > 0 ? static_cast<int64_t>(trafficRollBytes) : 0;
+        session->trafficDir = next;
+        session->trafficRollBytes = roll;
+        bindTraffic(&session->imapTraffic, next, "imap", roll);
+        bindTraffic(&session->watchTraffic, next, "watch", roll);
+        if (session->imap != nullptr) {
+            if (!next.empty()) mailimap_set_logger(session->imap, fileTrafficLogger, &session->imapTraffic);
+            if (session->imap->imap_stream != nullptr && (!next.empty() || session->watchProgress)) {
+                mailstream_set_logger(session->imap->imap_stream, streamTrafficLogger, session);
+            }
+        }
+        unlockSession(session);
     });
 }
 
@@ -7970,12 +8094,9 @@ bool applyFlagChange(JNIEnv * env, LiveSession * session, struct mailimap_set * 
 
 // UIDs named by a request set. '*' (set_first 0 or set_last 0) counts as the result UID cap.
 // A finite total above the cap is returned as that total.
-constexpr uint64_t kMaxSetExpand = 2000000;
-static_assert(kMaxSetExpand == 2000000, "kMaxSetExpand");
-
 uint64_t resultUidCap() {
     if (tlsMaxResultUids >= 1) return tlsMaxResultUids;
-    return kMaxSetExpand;
+    return 2000000ULL;
 }
 
 uint64_t requestedCount(struct mailimap_set * set) {
@@ -9763,7 +9884,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchLogin(JNIEnv * env
     owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
-    owned.logImapTraffic = session->logImapTraffic;
+    bindTraffic(&session->watchTraffic, session->trafficDir, "watch", session->trafficRollBytes);
+    owned.traffic = &session->watchTraffic;
+    owned.connectTimeoutSec = session->connectTimeoutSec;
+    owned.readTimeoutSec = session->readTimeoutSec;
     std::string error;
     mailimap * watch = nullptr;
     if (tlsMode == "None") {
@@ -9849,7 +9973,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         unlockSession(session);
         return 0;
     }
-    TrafficIdScope idScope("watch");
     std::string error;
     mailimap * watch = nullptr;
     // F13/F136/F261: connect, TLS, login, EXAMINE and the IDLE-start wait run without the session lock.
@@ -9878,7 +10001,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
-    owned.logImapTraffic = session->logImapTraffic;
+    bindTraffic(&session->watchTraffic, session->trafficDir, "watch", session->trafficRollBytes);
+    owned.traffic = &session->watchTraffic;
+    owned.connectTimeoutSec = session->connectTimeoutSec;
+    owned.readTimeoutSec = session->readTimeoutSec;
     const uint64_t generation = bumpWatchGeneration(session);
     // A 0 return must not leave this generation's callback published. Older publishes are cleared too,
     // unless a newer generation has already replaced them.
@@ -10345,7 +10471,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     // Owning copies. The conversation below must not read these from the live session or keep pointers into it.
     const std::string smtpHost = session->smtpHost;
     const int port = session->smtpPort;
-    const bool logTraffic = session->logImapTraffic;
+    TrafficFile smtpLog;
+    smtpLog.dir = session->trafficDir;
+    smtpLog.conn = "smtp";
+    smtpLog.rollBytes = session->trafficRollBytes;
+    const int connectSec = session->connectTimeoutSec > 0 ? session->connectTimeoutSec : 30;
+    const int readSec = session->readTimeoutSec > 0 ? session->readTimeoutSec : 60;
     const bool allowOldTls = session->allowOldTls;
     const bool allowPlaintextAuth = session->allowPlaintextAuth;
     const bool acceptInvalidCert = session->acceptInvalidCert;
@@ -10365,12 +10496,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } keyRef{env, keyChainKey};
     mailsmtp * smtp = mailsmtp_new(0, nullptr);
     if (smtp == nullptr) {
-        throwFailure(env, "smtp error");
+        throwFailure(env, smtpDetail("SMTP", MAILSMTP_ERROR_MEMORY, nullptr));
         return 0;
     }
-    // Same traffic log and recording as IMAP, connection id "smtp"; AUTH goes out as private data.
-    if (logTraffic) mailsmtp_set_logger(smtp, smtpTrafficLoggerCopied, nullptr);
-    mailsmtp_set_timeout(smtp, kReadTimeoutSec);
+    // Traffic file for this SMTP conversation and recording as IMAP, connection id "smtp"; AUTH goes out as private data.
+    if (!smtpLog.dir.empty()) mailsmtp_set_logger(smtp, smtpFileLogger, &smtpLog);
+    mailsmtp_set_timeout(smtp, readSec);
     const char * host = smtpHost.c_str();
     std::string address;
     std::string where;
@@ -10392,7 +10523,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             return 0;
         }
         std::string dialError;
-        int fd = tcpConnect("SMTP", host, port, &address, &dialError);
+        int fd = tcpConnect("SMTP", host, port, &address, &dialError, connectSec);
         if (fd < 0) {
             freeSmtp(session, smtp);
             throwFailure(env, dialError);
@@ -10416,7 +10547,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
         tlsCapture = &capture;
         mailstream * stream = mailstream_ssl_open_with_server_name_callback_timeout(
-            fd, kReadTimeoutSec, sniName(host), prepareTls, nullptr);
+            fd, readSec, sniName(host), prepareTls, nullptr);
         tlsCapture = nullptr;
         if (stream == nullptr) {
             freeSmtp(session, smtp);
@@ -10443,7 +10574,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         secured = true;
     } else {
         std::string dialError;
-        int fd = tcpConnect("SMTP", host, port, &address, &dialError);
+        int fd = tcpConnect("SMTP", host, port, &address, &dialError, connectSec);
         if (fd < 0) {
             freeSmtp(session, smtp);
             throwFailure(env, dialError);
@@ -10465,7 +10596,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             throwFailure(env, "not connected");
             return 0;
         }
-        mailstream * stream = mailstream_socket_open_timeout(fd, kReadTimeoutSec);
+        mailstream * stream = mailstream_socket_open_timeout(fd, readSec);
         if (stream == nullptr) {
             freeSmtp(session, smtp);
             close(fd);
@@ -10498,7 +10629,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                 throwFailure(env, "server does not offer STARTTLS");
                 return 0;
             } else {
-                std::string why = where + asciiSafe(smtp->response, "smtp error");
+                std::string why = where + smtpDetail("EHLO", r, smtp->response);
                 freeSmtp(session, smtp);
                 throwFailure(env, why);
                 return 0;
@@ -10564,13 +10695,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         r == MAILSMTP_ERROR_ACTION_NOT_TAKEN) {
         r = mailsmtp_helo(smtp);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = where + asciiSafe(smtp->response, "smtp error");
+            std::string why = where + smtpDetail("HELO", r, smtp->response);
             freeSmtp(session, smtp);
             throwFailure(env, why);
             return 0;
         }
     } else {
-        std::string why = where + asciiSafe(smtp->response, "smtp error");
+        std::string why = where + smtpDetail("EHLO", r, smtp->response);
         freeSmtp(session, smtp);
         throwFailure(env, why);
         return 0;
@@ -10609,7 +10740,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (mechanism == "EXTERNAL") {
         r = smtpAuthExternal(smtp);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = "SMTP AUTH EXTERNAL: " + asciiSafe(smtp->response, "smtp error");
+            std::string why = smtpDetail("SMTP AUTH EXTERNAL", r, smtp->response);
             if (!gClientCertError.empty()) why += " (" + gClientCertError + ")";
             freeSmtp(session, smtp);
             throwFailure(env, why);
@@ -10627,7 +10758,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
             authUser.c_str(), authPass.c_str(),
             nullptr);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = asciiSafe(smtp->response, "smtp error");
+            std::string why = smtpDetail("AUTH", r, smtp->response);
             freeSmtp(session, smtp);
             throwFailure(env, why);
             return 0;
@@ -10662,7 +10793,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     std::vector<char> messageBytes;
     if (!loadMessageFile(*path, messageBytes)) {
         freeSmtp(session, smtp);
-        throwFailure(env, "smtp error");
+        throwFailure(env, "could not read the message file");
         return 0;
     }
     const char * raw = messageBytes.empty() ? nullptr : messageBytes.data();
@@ -10721,7 +10852,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
                            : mailsmtp_mail(smtp, mailFrom.c_str());
     }
     if (r != MAILSMTP_NO_ERROR) {
-        std::string why = where + asciiSafe(smtp->response, "smtp error");
+        std::string why = where + smtpDetail("MAIL FROM", r, smtp->response);
         if (noCredentials && !offeredAuth.empty()) {
             why += " (no SMTP password is set: set it in Settings, or tick \"Same as IMAP password\")";
         }
@@ -10739,7 +10870,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         }
         if (js != nullptr) env->DeleteLocalRef(js);
         if (r != MAILSMTP_NO_ERROR) {
-            std::string why = where + asciiSafe(smtp->response, "smtp error");
+            std::string why = where + smtpDetail("RCPT", r, smtp->response);
             freeSmtp(session, smtp);
             throwFailure(env, why);
             return 0;
@@ -10755,7 +10886,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         // F50: a lost connection or timeout once the message was handed over leaves the result unknown (the server
         // may already have accepted it); say so instead of "not sent", so a retry does not send it twice.
         bool uncertain = bodySent && (r == MAILSMTP_ERROR_STREAM || r == MAILSMTP_ERROR_CONNECTION_REFUSED);
-        std::string why = std::string(uncertain ? "smtp-uncertain: " : "") + where + asciiSafe(smtp->response, "smtp error");
+        std::string why = std::string(uncertain ? "smtp-uncertain: " : "") + where + smtpDetail("DATA", r, smtp->response);
         freeSmtp(session, smtp);
         throwFailure(env, why);
         return 0;
@@ -10805,15 +10936,15 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
     if (strcmp(mode.c(), "Implicit") == 0) {
         imap = mailimap_new(0, nullptr);
         if (imap != nullptr) {
-            mailimap_set_timeout(imap, kReadTimeoutSec);
+            mailimap_set_timeout(imap, probe.readTimeoutSec);
             std::string dialError;
-            int fd = tcpConnect("IMAP", h.c(), port, &address, &dialError);
+            int fd = tcpConnect("IMAP", h.c(), port, &address, &dialError, probe.connectTimeoutSec);
             if (fd < 0) {
                 lines.push_back("error=" + dialError);
             } else {
                 tlsCapture = &capture;
                 mailstream * stream = mailstream_ssl_open_with_server_name_callback_timeout(
-                    fd, kReadTimeoutSec, sniName(h.c()), prepareTls, nullptr);
+                    fd, probe.readTimeoutSec, sniName(h.c()), prepareTls, nullptr);
                 tlsCapture = nullptr;
                 if (stream == nullptr) {
                     close(fd);
@@ -10830,10 +10961,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
                 }
             }
         } else {
-            lines.push_back("error=imap error");
+            lines.push_back("error=" + protocolError("IMAP", MAILIMAP_ERROR_MEMORY, "MAILIMAP_ERROR_MEMORY", nullptr));
         }
     } else {
-        imap = openTcp(h.c(), port, &probe, &error, &address, probe.logImapTraffic);
+        imap = openTcp(h.c(), port, &error, &address, nullptr, probe.connectTimeoutSec, probe.readTimeoutSec);
         if (imap == nullptr) {
             lines.push_back("error=" + error);
         } else {
@@ -10953,25 +11084,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeAbort(JNIEnv *, jobject
     int fd = session->abortFd.load();
     if (fd >= 0) shutdown(fd, SHUT_RDWR);
     shutdownFd(session->smtpFd.load());
-    releaseUsers(session);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetWatchWakeMillis(JNIEnv *, jclass, jint millis) {
-    gWatchWakeMs.store(millis >= 100 ? millis : 5000);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetIdleRenewSeconds(JNIEnv *, jclass, jint seconds) {
-    gIdleRenewSec.store(seconds > 0 ? seconds : 9 * 60);
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSetMaxResultUids(JNIEnv *, jobject, jlong handle, jint cap) {
-    auto * session = reinterpret_cast<LiveSession *>(handle);
-    std::shared_ptr<LiveSession> kept = retainSession(session);
-    if (!kept) return;
-    session->maxResultUids.store(cap >= 1 ? static_cast<uint64_t>(cap) : 2000000ULL);
     releaseUsers(session);
 }
 

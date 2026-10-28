@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Có thể đã được gửi: kết nối bị mất sau khi tin nhắn được chuyển giao. Kiểm tra Đã gửi trước khi bạn thử lại."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Không thể lưu bản sao trên thiết bị này; giữ màn hình này mở."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Có thể đã được gửi (chọn Đã gửi trước khi thử lại)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Cảnh báo: phần này chứa toàn bộ nội dung của mọi thư đã được đọc hoặc gửi trong khi đăng nhập, bao gồm nội dung và tệp đính kèm. Mật khẩu được loại bỏ. Chỉ chia sẻ nó với người mà bạn tin tưởng để xem thư đó."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Cảnh báo: tệp này chứa toàn văn mỗi thư đã đọc hoặc gửi khi ghi nhật ký đang bật, kể cả nội dung và tệp đính kèm. Dữ liệu đăng nhập được thay bằng độ dài của nó, nhưng mật khẩu gõ vào trường khác vẫn có. Chỉ chia sẻ với người bạn tin tưởng cho xem thư đó."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Vẫn chia sẻ"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Miễn nhiệm"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Báo cáo gỡ lỗi LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Ghi nhật ký"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Các lệnh IMAP đường ống"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Ghi lại lưu lượng truy cập IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Các lệnh và phản hồi của máy chủ sẽ được chuyển tới logcat trong LiveIMAP. Mật khẩu bị bỏ qua."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Lệnh và trả lời của máy chủ được ghi vào nhật ký lưu lượng của tài khoản này. Dữ liệu đăng nhập được thay bằng độ dài của nó; không có gì khác bị giấu."},
 {"key": "settings_share_log", "source": "Share log", "text": "Chia sẻ nhật ký"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Báo cáo gỡ lỗi"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Hiển thị tên người dùng trong báo cáo gỡ lỗi"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Nén (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "TRÊN"},
 {"key": "settings_compression_off", "source": "Off", "text": "Tắt"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Tự động (bật qua dữ liệu di động)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Máy chủ không cung cấp COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Di chuyển toàn bộ thư mục bao gồm các tin nhắn đã xóa"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Tắt: các tin nhắn đã được đánh dấu là đã xóa vẫn ở lại (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d tài khoản"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d tài khoản"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Đã đăng nhập không gắn kênh (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Hết giờ kết nối"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Hết giờ đọc"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Giới hạn kích thước nhật ký lưu lượng"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Kích thước nhật ký lưu lượng"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Bộ nhớ đệm phần JMAP"}
 ]

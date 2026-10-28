@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "อาจถูกส่งไปแล้ว: การเชื่อมต่อขาดหายไปหลังจากส่งข้อความไปแล้ว ตรวจสอบส่งแล้วก่อนที่จะลองอีกครั้ง"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "ไม่สามารถบันทึกสำเนาบนอุปกรณ์นี้ได้ เปิดหน้าจอนี้ไว้"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "อาจถูกส่งไปแล้ว (ตรวจสอบส่งก่อนลองอีกครั้ง)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "คำเตือน: ประกอบด้วยข้อความแบบเต็มของทุกข้อความที่ถูกอ่านหรือส่งขณะเข้าสู่ระบบ รวมถึงเนื้อหาและไฟล์แนบด้วย รหัสผ่านจะถูกลบออก แชร์เฉพาะกับคนที่คุณไว้วางใจให้มองเห็นอีเมลนั้นเท่านั้น"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "คำเตือน: ไฟล์นี้มีข้อความเต็มของทุกข้อความที่อ่านหรือส่งขณะเปิดการบันทึก รวมทั้งเนื้อหาและไฟล์แนบ ข้อมูลเข้าสู่ระบบถูกแทนที่ด้วยความยาว แต่รหัสผ่านที่พิมพ์ในช่องอื่นยังอยู่ แชร์เฉพาะกับคนที่คุณไว้ใจให้เห็นจดหมายนั้น"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "แชร์ยังไงก็ได้"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "อนุญาตให้ออกไป"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "รายงานการแก้ไขข้อบกพร่อง LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "การบันทึก"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "คำสั่ง IMAP ไปป์ไลน์"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "บันทึกการรับส่งข้อมูล IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "คำสั่งและการตอบกลับของเซิร์ฟเวอร์ไปที่ logcat ภายใต้ LiveIMAP รหัสผ่านจะถูกละเว้น"},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "คำสั่งและคำตอบของเซิร์ฟเวอร์ถูกเขียนลงบันทึกทราฟฟิกของบัญชีนี้ ข้อมูลเข้าสู่ระบบถูกแทนที่ด้วยความยาว ไม่มีอะไรอื่นถูกซ่อน"},
 {"key": "settings_share_log", "source": "Share log", "text": "แบ่งปันบันทึก"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "รายงานการแก้ปัญหา"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "แสดงชื่อผู้ใช้ในรายงานการแก้ไขข้อบกพร่อง"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "การบีบอัด (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "บน"},
 {"key": "settings_compression_off", "source": "Off", "text": "ปิด"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "อัตโนมัติ (เปิดผ่านข้อมูลมือถือ)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "เซิร์ฟเวอร์ไม่มี COMPRESS=DEFLATE"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "ย้ายทั้งโฟลเดอร์รวมถึงข้อความที่ถูกลบ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "ปิด: ข้อความที่ทำเครื่องหมายว่าลบแล้วจะยังคงอยู่ (UID SEARCH UNDELETED)"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d บัญชี"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d บัญชี"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "เข้าสู่ระบบโดยไม่ผูกช่องทาง (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "หมดเวลาเชื่อมต่อ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "หมดเวลาอ่าน"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "จำกัดขนาดบันทึกทราฟฟิก"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "ขนาดบันทึกทราฟฟิก"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "แคชส่วน JMAP"}
 ]

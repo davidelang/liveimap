@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Môže byť odoslaná: po odovzdaní správy sa spojenie prerušilo. Pred opätovným pokusom začiarknite políčko Odoslané."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Kópiu na tomto zariadení nebolo možné uložiť; nechajte túto obrazovku otvorenú."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Možno boli odoslané (pred opätovným pokusom začiarknite políčko Odoslané)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Upozornenie: Toto obsahuje úplný text každej správy, ktorá bola prečítaná alebo odoslaná počas prihlasovania, vrátane tiel a príloh. Heslá sú odstránené. Zdieľajte ho iba s niekým, komu dôverujete, že tento e-mail uvidí."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Upozornenie: obsahuje úplný text každej správy prečítanej alebo odoslanej pri zapnutom zázname, vrátane tiel a príloh. Prihlasovacie údaje sú nahradené svojou dĺžkou, ale heslo zadané do iného poľa je zahrnuté. Zdieľajte len s niekým, komu túto poštu zveríte."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Napriek tomu zdieľajte"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Odmietnuť"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "Správa o ladení LiveIMAP"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Ťažba dreva"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP príkazy"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Zaznamenať premávku IMAP"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Príkazy a odpovede servera idú do logcat pod LiveIMAP. Heslo je vynechané."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Príkazy a odpovede servera sa zapisujú do záznamu prevádzky tohto účtu. Prihlasovacie údaje sú nahradené svojou dĺžkou; nič iné sa neskrýva."},
 {"key": "settings_share_log", "source": "Share log", "text": "Zdieľať denník"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Správa o ladení"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Zobraziť meno používateľa v správe o ladení"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Kompresia (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Zapnuté"},
 {"key": "settings_compression_off", "source": "Off", "text": "Vypnuté"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Automaticky (zapnuté cez mobilné dáta)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Server neponúka COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Presunúť celý priečinok vrátane odstránených správ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Vypnuté: správy, ktoré už boli označené ako vymazané, zostanú pozadu (VYHĽADÁVANIE UID ZRUŠENÉ)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtov"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtov"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Prihlásené bez väzby kanála (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Časový limit pripojenia"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Časový limit čítania"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Obmedziť veľkosť záznamu prevádzky"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Veľkosť záznamu prevádzky"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Vyrovnávacia pamäť častí JMAP"}
 ]

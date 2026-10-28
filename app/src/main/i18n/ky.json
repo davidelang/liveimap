@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Жөнөтүлгөн болушу мүмкүн: билдирүү тапшырылгандан кийин байланыш үзүлгөн. Кайра аракет кылуудан мурун Жөнөтүлгөндү белгилеңиз."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Бул түзмөктөгү көчүрмөнү сактоо мүмкүн эмес; бул экранды ачык кармаңыз."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Жөнөтүлгөн болушу мүмкүн (кайра аракет кылуудан мурун Жөнөтүлгөндү белгилеңиз)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Эскертүү: бул системага кирүү учурунда окулган же жөнөтүлгөн ар бир билдирүүнүн толук текстин камтыйт, анын ичинде органдар жана тиркемелер. Сырсөздөр алынып салынды. Аны сиз ишенген адам менен гана бөлүшүңүз."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Эскертүү: журнал күйүк кезде окулган же жөнөтүлгөн ар бир каттын толук тексти, текст жана тиркемелер менен, бул жерде. Кирүү маалыматы узундугу менен алмашат, бирок башка талаага жазылган сырсөз камтылат. Аны ушул почтаны көрүүгө ишенген адам менен гана бөлүшүңүз."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Баары бир бөлүш"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Иштен чыгаруу"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP мүчүлүштүктөрдү оңдоо отчету"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Каттоо"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Түтүк IMAP буйруктары"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP трафигин журнал"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Буйруктар жана сервердин жооптору LiveIMAP астындагы logcat'ке өтөт. Сырсөз жок."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Буйруктар жана сервердин жооптору бул каттоо эсебинин трафик журналына жазылат. Кирүү маалыматы узундугу менен алмашат; башка эч нерсе жашырылбайт."},
 {"key": "settings_share_log", "source": "Share log", "text": "Журналды бөлүшүү"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Мүчүлүштүктөрдү оңдоо отчету"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Мүчүлүштүктөрдү оңдоо отчетунда колдонуучунун атын көрсөтүү"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Компрессия (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Күйүк"},
 {"key": "settings_compression_off", "source": "Off", "text": "Өчүк"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Авто (мобилдик Интернет аркылуу)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Сервер COMPRESS=DEFLATE сунуш кылбайт."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Бардык папканы жылдыруу жок кылынган билдирүүлөрдү камтыйт"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Өчүк: өчүрүлдү деп белгиленген билдирүүлөр артта калат (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d каттоо", "other": "%1$d каттоо"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d каттоо", "other": "%1$d каттоо"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Канал байлоосуз кирүү (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Туташуу мөөнөтү"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Окуу мөөнөтү"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Трафик журналынын көлөмүн чектөө"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Трафик журналынын көлөмү"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP бөлүк кэши"}
 ]

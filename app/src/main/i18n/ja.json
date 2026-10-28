@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "送信された可能性があります: メッセージが渡された後に接続が失われました。再試行する前に、「送信済み」をチェックしてください。"},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "このデバイス上のコピーを保存できませんでした。この画面を開いたままにしてください。"},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "送信された可能性があります (再試行する前に「送信済み」をチェックしてください)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "警告: これには、本文と添付ファイルを含む、ログがオンになっている間に読み取られたまたは送信されたすべてのメッセージの全文が含まれます。パスワードは削除されます。そのメールを見ることができると信頼できる人とのみ共有してください。"},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "警告: ログ記録がオンの間に読んだ、または送ったすべてのメッセージの全文が入ります。本文と添付ファイルも含みます。ログインデータは長さに置き換わりますが、ほかの欄に入力したパスワードは含まれます。そのメールを見せてよい相手にだけ共有してください。"},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "とにかく共有する"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "却下する"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAPデバッグレポート"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "ロギング"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "パイプライン IMAP コマンド"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP トラフィックのログを記録する"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "コマンドとサーバー応答は LiveIMAP の下の logcat に送られます。パスワードは省略しております。"},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "コマンドとサーバーの応答は、このアカウントのトラフィックログに書き込まれます。ログインデータは長さに置き換わります。それ以外は隠しません。"},
 {"key": "settings_share_log", "source": "Share log", "text": "ログを共有する"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "デバッグレポート"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "デバッグレポートにユーザー名を表示する"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "圧縮（COMPRESS）"},
 {"key": "settings_compression_on", "source": "On", "text": "の上"},
 {"key": "settings_compression_off", "source": "Off", "text": "オフ"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "自動 (モバイルデータ通信時)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "サーバーは COMPRESS=DEFLATE を提供しません。"},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "削除されたメッセージを含むフォルダー全体を移動する"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "オフ: すでに削除済みとしてマークされているメッセージは残ります (UID SEARCH UNDELETED)。"},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 件のアカウント"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 件のアカウント"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "チャネルバインディングなしでログインしました (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "接続のタイムアウト"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "読み取りのタイムアウト"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "トラフィックログのサイズを制限"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "トラフィックログのサイズ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP パートキャッシュ"}
 ]

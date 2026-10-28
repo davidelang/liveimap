@@ -202,6 +202,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
             }
             val sieveTlsMode = editor.settings.sieveTlsMode
             val pin = editor.settings.sieveCertPin
+            val cacheDir = LocalContext.current.applicationContext.cacheDir
             drafts.checkingSieve = true
             drafts.sieveReport = ""
             editor.ui.launch {
@@ -214,6 +215,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
                                 sieveTlsMode,
                                 pin,
                                 ::confirmMailCertificate,
+                                org.dlang.liveimap.engine.TrafficLog.writer(cacheDir, sieveAccount),
                                 editor.settings.sieveConnectSeconds,
                                 editor.settings.sieveReadSeconds,
                             ) { fingerprint ->

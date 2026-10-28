@@ -270,6 +270,16 @@
                   "kind": "number",
                   "default": 16777216,
                   "title": "setting_maxJmapResponseBytes_title"
+                },
+                {
+                  "setting": "jmapPartCacheMessages",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 200,
+                  "title": "setting_jmapPartCacheMessages_title",
+                  "min": 1,
+                  "max": 10000
                 }
               ],
               "summary": [
@@ -628,15 +638,13 @@
                   "type": "Enum",
                   "scope": "account",
                   "kind": "choice",
-                  "default": "Auto",
+                  "default": "Off",
                   "title": "setting_smtpNoAuth_title",
                   "choices": [
-                    "Auto",
                     "On",
                     "Off"
                   ],
                   "choiceTitles": {
-                    "Auto": "setting_smtpNoAuth_Auto",
                     "On": "settings_compression_on",
                     "Off": "settings_compression_off"
                   },
@@ -776,6 +784,26 @@
                   "min": 2,
                   "max": 20,
                   "titleArgs": "range"
+                },
+                {
+                  "setting": "connectTimeoutSec",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 30,
+                  "title": "setting_connectTimeoutSec_title",
+                  "min": 1,
+                  "max": 600
+                },
+                {
+                  "setting": "readTimeoutSec",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 60,
+                  "title": "setting_readTimeoutSec_title",
+                  "min": 1,
+                  "max": 3600
                 }
               ],
               "summary": [
@@ -1371,7 +1399,8 @@
                   "scope": "account",
                   "kind": "number",
                   "default": 2000000,
-                  "title": "setting_maxResultUids_title"
+                  "title": "setting_maxResultUids_title",
+                  "min": 1
                 }
               ],
               "summary": [
@@ -1608,13 +1637,11 @@
                   "title": "settings_compression",
                   "choices": [
                     "On",
-                    "Off",
-                    "Auto"
+                    "Off"
                   ],
                   "choiceTitles": {
                     "On": "settings_compression_on",
-                    "Off": "settings_compression_off",
-                    "Auto": "settings_compression_auto"
+                    "Off": "settings_compression_off"
                   },
                   "editor": "compression",
                   "opens": "inline"
@@ -2432,7 +2459,9 @@
               "scope": "account",
               "kind": "number",
               "default": 9,
-              "title": "setting_idleRenewMinutes_title"
+              "title": "setting_idleRenewMinutes_title",
+              "min": 1,
+              "max": 29
             },
             {
               "setting": "longSearchProgressSec",
@@ -2515,6 +2544,24 @@
                   "kind": "bool",
                   "default": false,
                   "title": "settings_log_traffic"
+                },
+                {
+                  "setting": "trafficLogSizeLimit",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "setting_trafficLogSizeLimit_title"
+                },
+                {
+                  "setting": "trafficLogMaxMb",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 4,
+                  "title": "setting_trafficLogMaxMb_title",
+                  "min": 1,
+                  "max": 64
                 },
                 {
                   "setting": "showUserInDebugReport",

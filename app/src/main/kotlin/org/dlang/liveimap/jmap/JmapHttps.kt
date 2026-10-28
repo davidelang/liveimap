@@ -107,13 +107,13 @@ class JmapHttpsFetch(
     }
 }
 
-private data class JmapFactoryKey(val host: String, val port: Int, val pin: String, val policy: TlsPolicy)
+private data class JmapFactoryKey(val accountId: String, val pin: String, val policy: TlsPolicy)
 
 private val jmapExchangeFactories = java.util.concurrent.ConcurrentHashMap<JmapFactoryKey, javax.net.ssl.SSLSocketFactory>()
 
-/** One factory per host, port, pin, and policy. A different pin is a different key. The manager checks the pin on every handshake. */
-private fun jmapExchangeFactory(host: String, port: Int, pin: String, policy: TlsPolicy): javax.net.ssl.SSLSocketFactory {
-    val key = JmapFactoryKey(host, port, pin, policy)
+/** One context per account. A new pin or policy builds another. The manager checks the certificate on every handshake. */
+private fun jmapExchangeFactory(accountId: String, host: String, pin: String, policy: TlsPolicy): javax.net.ssl.SSLSocketFactory {
+    val key = JmapFactoryKey(accountId, pin, policy)
     return jmapExchangeFactories.computeIfAbsent(key) {
         val manager = object : javax.net.ssl.X509TrustManager {
             override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
@@ -137,7 +137,7 @@ private fun jmapExchangeFactory(host: String, port: Int, pin: String, policy: Tl
 }
 
 /** Discovery exchange. [deferPinnable] is on: a certificate the system CAs reject can still be offered for pinning. */
-fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String) -> JmapHttpExchange = { url ->
+fun platformJmapExchange(pin: String, policy: TlsPolicy, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?): (String) -> JmapHttpExchange = { url ->
     val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
         // No Authorization on this call: a certificate the system CAs reject is left for the post-exchange check,
         // which can offer the pin.
@@ -145,7 +145,7 @@ fun platformJmapExchange(pin: String, policy: TlsPolicy = TlsPolicy()): (String)
             val https = this
             val host = jmapTrustHost(url)
             val port = if (https.url.port == -1) https.url.defaultPort else https.url.port
-            sslSocketFactory = jmapExchangeFactory(host, port, pin, policy)
+            sslSocketFactory = jmapExchangeFactory(accountKey, host, pin, policy)
             hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(https.url.host, ignoreCase = true) }
         }
         instanceFollowRedirects = false
@@ -216,7 +216,7 @@ private fun jmapTrustHost(url: String): String {
  * reject still reaches that check and can be offered for pinning. A call that will send credentials does not.
  * [policy] is applied once. acceptInvalidCert accepts a name, expiry, or trust failure. A changed certificate stays a failure.
  */
-fun pinJmapTls(connection: HttpsURLConnection, pin: String, policy: TlsPolicy = TlsPolicy(), deferPinnable: Boolean = false) {
+fun pinJmapTls(connection: HttpsURLConnection, pin: String, accountKey: String, policy: TlsPolicy = TlsPolicy(), deferPinnable: Boolean = false) {
     val host = jmapTrustHost(connection.url.toString())
     val manager = object : javax.net.ssl.X509TrustManager {
         override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
@@ -232,15 +232,19 @@ fun pinJmapTls(connection: HttpsURLConnection, pin: String, policy: TlsPolicy = 
 
         override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
     }
-    val context = javax.net.ssl.SSLContext.getInstance("TLS")
-    context.init(null, arrayOf(manager), null)
-    connection.sslSocketFactory = context.socketFactory
+    connection.sslSocketFactory = if (deferPinnable) {
+        val context = javax.net.ssl.SSLContext.getInstance("TLS")
+        context.init(null, arrayOf(manager), null)
+        context.socketFactory
+    } else {
+        jmapExchangeFactory(accountKey, host, pin, policy)
+    }
     // The verdict already ran in the handshake, including a stored pin that wins over the name.
     connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(connection.url.host, ignoreCase = true) }
 }
 
-fun pinnedJmapPost(pin: String, policy: TlsPolicy = TlsPolicy()): (String, String, String) -> JmapHttpExchange =
-    { url, body, authorization -> platformJmapPost(url, body, authorization, pin, policy) }
+fun pinnedJmapPost(pin: String, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, String, String) -> JmapHttpExchange =
+    { url, body, authorization -> platformJmapPost(url, body, authorization, pin, accountKey, traffic, policy) }
 
-fun pinnedJmapUpload(pin: String, policy: TlsPolicy = TlsPolicy()): (String, ByteArray, String, String) -> JmapHttpExchange =
-    { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin, policy) }
+fun pinnedJmapUpload(pin: String, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, ByteArray, String, String) -> JmapHttpExchange =
+    { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin, accountKey, traffic, policy) }

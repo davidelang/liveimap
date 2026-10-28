@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Hugsanlega hafa verið send: tengingin rofnaði eftir að skilaboðin voru afhent. Hakaðu við Sent áður en þú reynir aftur."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Ekki tókst að vista afritið á þessu tæki; haltu þessum skjá opnum."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Gæti hafa verið sendur (hakaðu við Sent áður en þú reynir aftur)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Viðvörun: þetta inniheldur allan texta allra skilaboða sem voru lesin eða send á meðan innskráning var á, þar á meðal meginmál og viðhengi. Lykilorð eru fjarlægð. Deildu því aðeins með einhverjum sem þú treystir til að sjá póstinn."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Viðvörun: þetta inniheldur allan texta hvers skeytis sem var lesið eða sent meðan skráning var á, að meðtöldum meginmáli og viðhengjum. Innskráningargögn er skipt út fyrir lengd þeirra, en lykilorð slegið inn í annað svæði er með. Deildu aðeins með einhverjum sem þú treystir til að sjá þann póst."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Deildu samt"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Segja frá"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP villuleitarskýrsla"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Skógarhögg"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "IMAP skipanir í leiðslum"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Skráðu IMAP umferð"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Skipanir og svör miðlara fara í logcat undir LiveIMAP. Lykilorði er sleppt."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Skipanir og svör þjóns eru skrifuð í umferðarskrá þessa reiknings. Innskráningargögnum er skipt út fyrir lengd þeirra; ekkert annað er falið."},
 {"key": "settings_share_log", "source": "Share log", "text": "Deila log"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Villuleitarskýrsla"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Sýna notandanafn í villuleitarskýrslunni"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Þjöppun (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Á"},
 {"key": "settings_compression_off", "source": "Off", "text": "Slökkt"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Sjálfvirkt (kveikt á farsímagögnum)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Þjónninn býður ekki upp á COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Færa alla möppuna inniheldur eydd skilaboð"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Slökkt: skilaboð sem þegar hafa verið merkt sem eytt verða eftir (UID SEARCH UNDLETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d reikningur", "other": "%1$d reikningar"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d reikningur", "other": "%1$d reikningar"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Skráð inn án rásarbindingar (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Tímamörk tengingar"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Tímamörk lestrar"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Takmarka stærð umferðarskrár"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Stærð umferðarskrár"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP-hlutaflýtiminni"}
 ]

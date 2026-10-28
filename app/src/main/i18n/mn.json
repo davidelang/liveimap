@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "Илгээсэн байж магадгүй: мессежийг шилжүүлсний дараа холболт тасарсан. Дахин оролдохоосоо өмнө \"Илгээсэн\"-ийг шалгана уу."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Энэ төхөөрөмж дээрх хуулбарыг хадгалах боломжгүй; энэ дэлгэцийг нээлттэй байлга."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "Илгээсэн байж магадгүй (дахин оролдохын өмнө Илгээсэн гэснийг шалгана уу)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Анхааруулга: Энэ нь нэвтэрч байх үед уншсан эсвэл илгээсэн мессеж бүрийн эх, хавсралт зэргийг бүрэн агуулна. Нууц үгийг устгасан. Үүнийг зөвхөн итгэдэг хүнтэйгээ хуваалцаарай."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Анхааруулга: бүртгэл асаалттай үед уншсан эсвэл илгээсэн захидал бүрийн бүтэн текст, үндсэн хэсэг ба хавсралтын хамт энд байна. Нэвтрэх өгөгдөл уртынхаа тоогоор солигдоно, гэхдээ өөр талбарт бичсэн нууц үг орсон. Үүнийг тэр шууданг харахыг зөвшөөрсөн хүнд л хуваалцаарай."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Ямартай ч хуваалцаарай"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Хаах"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP дибаг хийх тайлан"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "Мод бэлтгэх"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Дамжуулах хоолойн IMAP командууд"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "IMAP урсгалыг бүртгэх"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Тушаалууд болон серверийн хариултууд LiveIMAP доорх logcat руу очно. Нууц үгийг орхигдуулсан байна."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Тушаал ба серверийн хариу энэ бүртгэлийн урсгалын бүртгэлд бичигдэнэ. Нэвтрэх өгөгдөл уртынхаа тоогоор солигдоно; өөр юу ч нуугддаггүй."},
 {"key": "settings_share_log", "source": "Share log", "text": "Бүртгэлийг хуваалцах"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Дибаг хийх тайлан"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Дибаг хийх тайланд хэрэглэгчийн нэрийг харуулах"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Шахах (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Асаалттай"},
 {"key": "settings_compression_off", "source": "Off", "text": "Унтраах"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Автомат (мобайл дата дээр асаалттай)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Сервер нь COMPRESS=DEFLATE-г санал болгодоггүй."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Фолдерыг бүхэлд нь зөөхөд устгасан мессежүүд орно"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Унтраах: устгасан гэж тэмдэглэгдсэн мессежүүд үлдэнэ (UID SEARCH UNDELETED)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d бүртгэл", "other": "%1$d бүртгэл"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d бүртгэл", "other": "%1$d бүртгэл"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Сувгийн холболтгүйгээр нэвтэрсэн (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Холболтын хугацаа"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Унших хугацаа"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Урсгалын бүртгэлийн хэмжээг хязгаарлах"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Урсгалын бүртгэлийн хэмжээ"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "JMAP хэсгийн нөөц"}
 ]

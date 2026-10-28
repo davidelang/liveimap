@@ -21,12 +21,12 @@ private val Context.globalSettingsDataStore by preferencesDataStore(
 private val globalSettingsValue = stringPreferencesKey("value")
 
 object InstalledGlobals {
-    val maxRawViewBytes = AtomicInteger(1 shl 20)
-    val maxImageTrustBytes = AtomicInteger(2_000_000)
-    val indexPageSize = AtomicInteger(60)
-    val swipeThresholdPercent = AtomicInteger(40)
-    val moveChunk = AtomicInteger(1000)
-    val clientSortChunk = AtomicInteger(5000)
+    val maxRawViewBytes = AtomicInteger(SettingsDefaults.maxRawViewBytes.toInt())
+    val maxImageTrustBytes = AtomicInteger(SettingsDefaults.maxImageTrustBytes.toInt())
+    val indexPageSize = AtomicInteger(SettingsDefaults.indexPageSize)
+    val swipeThresholdPercent = AtomicInteger(SettingsDefaults.swipeThresholdPercent)
+    val moveChunk = AtomicInteger(SettingsDefaults.moveChunk)
+    val clientSortChunk = AtomicInteger(SettingsDefaults.clientSortChunk)
     val reconnectDelaysSec = AtomicReference(listOf(2, 10, 60))
 }
 
@@ -221,12 +221,12 @@ suspend fun startupSettingsError(context: Context): String? {
 
 internal fun installGlobals(record: String) {
     val defaults = mapOf(
-        "maxRawViewBytes" to (1 shl 20),
-        "maxImageTrustBytes" to 2_000_000,
-        "indexPageSize" to 60,
-        "swipeThresholdPercent" to 40,
-        "moveChunk" to 1000,
-        "clientSortChunk" to 5000,
+        "maxRawViewBytes" to SettingsDefaults.maxRawViewBytes.toInt(),
+        "maxImageTrustBytes" to SettingsDefaults.maxImageTrustBytes.toInt(),
+        "indexPageSize" to SettingsDefaults.indexPageSize,
+        "swipeThresholdPercent" to SettingsDefaults.swipeThresholdPercent,
+        "moveChunk" to SettingsDefaults.moveChunk,
+        "clientSortChunk" to SettingsDefaults.clientSortChunk,
     )
     val values = defaults.toMutableMap()
     var delays = listOf(2, 10, 60)
@@ -239,19 +239,27 @@ internal fun installGlobals(record: String) {
         val text = line.substring(eq + 1)
         if (key == "reconnectDelaysSec") {
             val parsed = ArrayList<Int>()
-            var ok = true
+            var bad = false
             for (part in text.split(",")) {
                 val number = part.toIntOrNull()
                 if (number == null) {
-                    ok = false
+                    bad = true
                     break
                 }
                 parsed.add(number)
             }
-            if (ok && parsed.isNotEmpty()) delays = parsed
+            if (bad || parsed.isEmpty()) {
+                android.util.Log.w("LiveIMAP", "unparseable global $line")
+                continue
+            }
+            delays = parsed
             continue
         }
-        val number = text.toIntOrNull() ?: continue
+        val number = text.toIntOrNull()
+        if (number == null) {
+            android.util.Log.w("LiveIMAP", "unparseable global $line")
+            continue
+        }
         if (key in values) values[key] = number
     }
     InstalledGlobals.maxRawViewBytes.set(values.getValue("maxRawViewBytes"))

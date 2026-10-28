@@ -3,7 +3,6 @@ package org.dlang.liveimap.ui.compose
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
-import org.dlang.liveimap.settings.openBound
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1144,7 +1143,7 @@ private fun ComposeLoaded(
         val credentials = store.accountById(via)
             ?: throw MailFailure(appContext.getString(R.string.compose_send_account_missing))
         val other = mailSession(via)
-        when (val opened = other.openWith(credentials)) {
+        when (val opened = other.open(credentials.settings)) {
             OpenResult.Connected -> Unit
             is OpenResult.Failed -> throw MailFailure(
                 appContext.getString(R.string.compose_send_account_failed, org.dlang.liveimap.accounts.accountVisibleName(credentials.settings), opened.text),
@@ -1286,7 +1285,7 @@ private fun ComposeLoaded(
                 }
                 var leftOver: String? = null
                 try {
-                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
+                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
                         bytes,
@@ -1295,8 +1294,8 @@ private fun ComposeLoaded(
                         account.username,
                         password,
                         account.jmapCertPin,
-                        pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
-                        pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
+                        pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                        pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                         // F150: the copy's own Sent choice (blank after "send without copy" or a no-Fcc bounce).
                         sentName = copy.mailbox,
                         saveCopy = copy.mailbox.isNotEmpty(),
@@ -1582,7 +1581,7 @@ private fun ComposeLoaded(
                 return@withLock
             }
             val opened = try {
-                session.openBound(store, settings)
+                session.open(settings)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: MailFailure) {
@@ -1752,7 +1751,7 @@ private fun ComposeLoaded(
                         }
                         var leftOver: String? = null
                         try {
-                            val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
+                            val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
                                 bytes,
@@ -1761,8 +1760,8 @@ private fun ComposeLoaded(
                                 account.username,
                                 password,
                                 account.jmapCertPin,
-                                pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
-                                pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
+                                pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                                pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                 sentName = account.sentMailbox,
                                 draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
@@ -2210,7 +2209,7 @@ private fun ComposeLoaded(
                                     return@launchLocked false
                                 }
                                 try {
-                                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy()), authorization = jmapBasicAuthorization(account.username, password), accountKey = accountId)
+                                    val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                                     keepCopyUntilSubmitted(
                                         bouncing,
                                         { writeCopy(appContext, it, accountId) },
@@ -2223,8 +2222,8 @@ private fun ComposeLoaded(
                                         account.username,
                                         password,
                                         account.jmapCertPin,
-                                        pinnedJmapUpload(account.jmapCertPin, account.tlsPolicy()),
-                                        pinnedJmapPost(account.jmapCertPin, account.tlsPolicy()),
+                                        pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                                        pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                         // F149: Fcc on bounce off means no Sent copy (staged in Drafts instead).
                                         sentName = savedMailbox,
                                         saveCopy = savedMailbox.isNotEmpty(),

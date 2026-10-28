@@ -26,18 +26,17 @@ interface Link {
     fun rewatch()
     fun close()
     fun emit(change: MailboxChange)
+    fun note(text: String) {}
 }
 
 class ConnectionKeeper(
     private val link: Link,
-    private val clock: () -> Long,
-    private val sleep: (Long) -> Unit,
 ) {
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Connected)
     val connectionState: StateFlow<ConnectionState> = state
 
     // Written from the native IDLE thread too (markWatchLost via onNativeWatch, F25).
-    @Volatile private var lastUsed = clock()
+    @Volatile private var lastUsed = nowMs()
     @Volatile private var lastSelect: SelectResult? = null
     @Volatile private var broken = false
     @Volatile private var watchLost = false
@@ -63,7 +62,7 @@ class ConnectionKeeper(
     }
 
     fun markUsed() {
-        lastUsed = clock()
+        lastUsed = nowMs()
         broken = false
         state.value = ConnectionState.Connected
     }
@@ -72,7 +71,7 @@ class ConnectionKeeper(
         lastSelect = null
         broken = false
         watchLost = false
-        lastUsed = clock()
+        lastUsed = nowMs()
         state.value = ConnectionState.Connected
     }
 
@@ -83,14 +82,14 @@ class ConnectionKeeper(
     internal fun resume(clock: LifecycleClock?, epoch: Long?) {
         if (clock != null) lifecycle = clock
         val life = clock ?: lifecycle
-        if (needsReconnect()) {
+        if (resumeNeedsReconnect()) {
             reconnect(fromResume = true, epoch = epoch, life = life)
             return
         }
         if (idleTooLong()) {
             try {
                 link.noop()
-                lastUsed = this.clock()
+                lastUsed = nowMs()
             } catch (_: ConnectionLost) {
                 reconnect(fromResume = true, epoch = epoch, life = life)
                 return
@@ -119,7 +118,7 @@ class ConnectionKeeper(
     private fun closeSuspended() {
         link.close()
         state.value = ConnectionState.Suspended
-        TrafficLog.noteStatus("Closed (background)")
+        link.note("Closed (background)")
     }
 
     // Epoch the command had selected, and the epoch after the reconnect that just finished.
@@ -131,18 +130,18 @@ class ConnectionKeeper(
         refuseDriftedEpoch(reportNewEpoch)
         return try {
             val value = block()
-            lastUsed = clock()
+            lastUsed = nowMs()
             value
         } catch (_: ConnectionLost) {
             reconnect()
             refuseDriftedEpoch(reportNewEpoch)
             try {
                 val value = block()
-                lastUsed = clock()
+                lastUsed = nowMs()
                 value
             } catch (again: ConnectionLost) {
                 broken = true
-                TrafficLog.noteStatus("Error ${again.text}")
+                link.note("Error ${again.text}")
                 throw again
             }
         }
@@ -153,12 +152,12 @@ class ConnectionKeeper(
         refuseDriftedEpoch(reportNewEpoch = false)
         return try {
             val value = block()
-            lastUsed = clock()
+            lastUsed = nowMs()
             value
         } catch (_: ConnectionLost) {
             broken = true
             val text = "Connection lost while $op; it may not have finished. Check the folder, then retry."
-            TrafficLog.noteStatus("Error $text")
+            link.note("Error $text")
             throw ConnectionLost(text)
         }
     }
@@ -176,22 +175,28 @@ class ConnectionKeeper(
     }
 
     private fun needsReconnect(): Boolean {
-        return broken || link.dead() ||
-            state.value is ConnectionState.Suspended ||
-            state.value is ConnectionState.Lost
+        return broken || link.dead() || state.value is ConnectionState.Lost
     }
 
-    private fun idleTooLong(): Boolean = clock() - lastUsed >= idleBeforeNoopMs
+    private fun resumeNeedsReconnect(): Boolean =
+        needsReconnect() || state.value is ConnectionState.Suspended
+
+    private fun nowMs(): Long = System.nanoTime() / 1_000_000L
+
+    private fun idleTooLong(): Boolean = nowMs() - lastUsed >= idleBeforeNoopMs
 
     /** True when the reconnect's folder epoch is not the one the command had selected. */
     private fun prepare(): Boolean {
+        if (state.value is ConnectionState.Suspended) {
+            throw ConnectionLost("Closed (background)")
+        }
         if (needsReconnect()) {
             return reconnect()
         }
         if (idleTooLong()) {
             try {
                 link.noop()
-                lastUsed = clock()
+                lastUsed = nowMs()
             } catch (_: ConnectionLost) {
                 return reconnect()
             }
@@ -252,7 +257,7 @@ class ConnectionKeeper(
                     if (!link.dead()) link.close()
                     if (state.value !is ConnectionState.Suspended) {
                         state.value = ConnectionState.Suspended
-                        TrafficLog.noteStatus("Closed (background)")
+                        link.note("Closed (background)")
                     }
                     outcome = kotlin.Result.failure(LifecycleStop())
                     rethrow = if (fromResume) null else ConnectionLost("Closed (background)")
@@ -268,14 +273,14 @@ class ConnectionKeeper(
 
     private fun driveReconnect(life: LifecycleClock?, epoch: Long): Boolean {
         state.value = ConnectionState.Reconnecting
-        TrafficLog.noteStatus("Reconnecting")
+        link.note("Reconnecting")
         link.close()
         var failure: Exception? = null
         var connected = false
         for (attempt in 0 until 2) {
             if (attempt == 1) {
                 stopOrSupersede(life, epoch)
-                sleep(3_000)
+                Thread.sleep(3_000)
             }
             stopOrSupersede(life, epoch)
             try {
@@ -291,7 +296,7 @@ class ConnectionKeeper(
             if (ownerMustStop(life, epoch)) stopForSuspend()
             val text = failureText(failure)
             state.value = ConnectionState.Lost(text)
-            TrafficLog.noteStatus("Error $text")
+            link.note("Error $text")
             broken = true
             throw ConnectionLost(text)
         }
@@ -314,7 +319,7 @@ class ConnectionKeeper(
         stopOrSupersede(life, epoch)
         watchLost = false
         broken = false
-        lastUsed = clock()
+        lastUsed = nowMs()
         publishConnected(life, epoch)
         stopOrSupersede(life, epoch)
         scheduleRewatch(life, epoch)
@@ -359,7 +364,7 @@ class ConnectionKeeper(
     private fun stopForSuspend(): Nothing {
         link.close()
         state.value = ConnectionState.Suspended
-        TrafficLog.noteStatus("Closed (background)")
+        link.note("Closed (background)")
         throw LifecycleStop()
     }
 
@@ -390,13 +395,13 @@ class ConnectionKeeper(
     private fun stopIdle() {
         link.close()
         state.value = ConnectionState.Suspended
-        TrafficLog.noteStatus("Closed (background)")
+        link.note("Closed (background)")
     }
 
     private fun failReconnect(error: Exception): Nothing {
         val text = failureText(error)
         state.value = ConnectionState.Lost(text)
-        TrafficLog.noteStatus("Error $text")
+        link.note("Error $text")
         broken = true
         if (error is ConnectionLost) {
             throw error

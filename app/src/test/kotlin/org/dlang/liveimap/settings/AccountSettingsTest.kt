@@ -49,10 +49,13 @@ class AccountSettingsTest {
             val a = AccountSettings(compression = mode)
             assertEquals(a, decodeAccountSettings(a.encode()))
         }
-        assertEquals(true, compressionWanted(Compression.On, false))
-        assertEquals(false, compressionWanted(Compression.Off, true))
-        assertEquals(true, compressionWanted(Compression.Auto, true))
-        assertEquals(false, compressionWanted(Compression.Auto, false))
+        assertEquals(Compression.On, AccountSettings().compression)
+        assertEquals(30, AccountSettings().connectTimeoutSec)
+        assertEquals(60, AccountSettings().readTimeoutSec)
+        assertEquals(true, AccountSettings().trafficLogSizeLimit)
+        assertEquals(4, AccountSettings().trafficLogMaxMb)
+        assertEquals(200, AccountSettings().jmapPartCacheMessages)
+        assertEquals(9, AccountSettings().idleRenewMinutes)
     }
 
     @Test
@@ -1122,7 +1125,7 @@ class AccountSettingsTest {
         assertTrue(saved.contains("smtpTlsMode=StartTls"))
         val noAuth = AccountSettings().encode().lineSequence()
             .filter { !it.startsWith("smtpNoAuth=") }.joinToString("\n")
-        assertEquals(SmtpNoAuth.Auto, decodeAccountSettings(noAuth).smtpNoAuth)
+        assertEquals(SmtpNoAuth.Off, decodeAccountSettings(noAuth).smtpNoAuth)
         val low = AccountSettings().encode().replace("pollSeconds=60", "pollSeconds=10")
         try {
             decodeAccountSettings(low)

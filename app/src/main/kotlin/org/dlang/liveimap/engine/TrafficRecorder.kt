@@ -2,17 +2,17 @@ package org.dlang.liveimap.engine
 
 import java.io.File
 import java.util.Base64
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.runBlocking
 
 /**
- * Recording mode for protocol traffic. One JSON-lines file per run.
- * Line 1 is the run header; every other line is one event.
- * Literals are kept in full (base64). Credentials are redacted.
- * Nothing is truncated or collapsed. tools/test-servers/record.py reads the same format.
+ * Lab recording. [start] notes the time. [stop] merges this run's events with traffic
+ * files written at or after that time.
  */
 class TrafficRecorder(
     val file: File,
     header: RunHeader,
-    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val trafficDir: File?,
 ) {
     data class RunHeader(
         val app: String,
@@ -26,177 +26,55 @@ class TrafficRecorder(
         val suite: String,
     )
 
-    private val halves = HashMap<String, Half>()
-    private val saslArmed = HashSet<String>()
+    private val started = System.currentTimeMillis()
+    private val events = Channel<String>(Channel.UNLIMITED)
+    private val lines = ArrayList<Pair<Long, String>>()
+    private val thread: Thread
 
     init {
         file.parentFile?.mkdirs()
         val h = header
-        write(
+        file.writeText(
             "{\"type\":\"run\",\"format\":1,\"app\":${jq(h.app)},\"commit\":${jq(h.commit)}," +
                 "\"tool\":${jq(h.tool)},\"server\":{\"name\":${jq(h.serverName)},\"host\":${jq(h.host)}," +
                 "\"port\":${h.port},\"tls\":${jq(h.tls)}},\"protocol\":${jq(h.protocol)}," +
-                "\"started\":${clock()},\"suite\":${jq(h.suite)}}",
-            truncate = true,
+                "\"started\":$started,\"suite\":${jq(h.suite)}}\n",
         )
-    }
-
-    @Synchronized
-    fun accept(conn: String, logType: Int, data: ByteArray) {
-        if (data.isEmpty()) return
-        when (logType) {
-            TrafficLog.LOG_PRIVATE -> privateLine(conn, data)
-            TrafficLog.LOG_SENT -> take(conn, "C", data)
-            TrafficLog.LOG_RECEIVED -> take(conn, "S", data)
-        }
+        thread = Thread({
+            runBlocking {
+                for (line in events) {
+                    val t = line.substringAfter("\"t\":").substringBefore(',').toLongOrNull() ?: started
+                    synchronized(lines) { lines.add(t to line) }
+                }
+            }
+        }, "traffic-recorder").apply { isDaemon = true; start() }
     }
 
     /** Connection events: connect, tls, starttls, close, error, or a native note. */
-    @Synchronized
     fun event(conn: String, kind: String, detail: String = "") {
-        write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":\"E\",\"event\":${jq(kind)},\"line\":${jq(detail)}}")
+        val t = System.currentTimeMillis()
+        events.trySend(
+            "{\"t\":$t,\"conn\":${jq(conn)},\"dir\":\"E\",\"event\":${jq(kind)},\"line\":${jq(detail)}}",
+        )
     }
 
-    @Synchronized
-    fun flush() {
-        for ((key, half) in halves) {
-            if (half.literalLeft == 0L && half.pending.size() > 0) {
-                val (conn, dir) = key.split('\u0000')
-                endLine(conn, dir, half)
+    fun finish() {
+        events.close()
+        thread.join()
+        val merged = ArrayList<Pair<Long, String>>()
+        synchronized(lines) { merged.addAll(lines) }
+        val dir = trafficDir
+        if (dir != null && dir.isDirectory) {
+            for (record in TrafficLog.orderedRecords(dir, started)) {
+                val b64 = Base64.getEncoder().encodeToString(record.bytes)
+                merged.add(
+                    record.t to
+                        "{\"t\":${record.t},\"conn\":${jq(record.conn)},\"dir\":${jq(record.dir.toString())},\"b64\":${jq(b64)}}",
+                )
             }
         }
-    }
-
-    // libetpan sends "tag AUTHENTICATE MECH" as private data: keep the command and mechanism, redact the rest.
-    private fun privateLine(conn: String, data: ByteArray) {
-        val text = String(data, Charsets.ISO_8859_1)
-        val m = authenticateHead.find(text)
-        if (m == null) {
-            line(conn, "C", null, data.size)
-        } else {
-            line(conn, "C", m.value, data.size - m.value.length)
-        }
-    }
-
-    private fun take(conn: String, dir: String, data: ByteArray) {
-        val half = halves.getOrPut(conn + '\u0000' + dir) { Half() }
-        var i = 0
-        while (i < data.size) {
-            if (half.literalLeft > 0) {
-                val n = minOf(half.literalLeft, (data.size - i).toLong()).toInt()
-                half.literal.write(data, i, n)
-                half.literalLeft -= n
-                i += n
-                if (half.literalLeft == 0L) literal(conn, dir, half)
-                continue
-            }
-            val b = data[i]
-            i++
-            if (b == '\n'.code.toByte()) {
-                endLine(conn, dir, half)
-            } else {
-                half.pending.write(b.toInt())
-            }
-        }
-    }
-
-    private fun endLine(conn: String, dir: String, half: Half) {
-        var bytes = half.pending.toByteArray()
-        half.pending.reset()
-        if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) bytes = bytes.copyOf(bytes.size - 1)
-        val text = String(bytes, Charsets.ISO_8859_1)
-        val key = conn
-        if (dir == "S" && saslChallenge(text)) saslArmed.add(key)
-        if (dir == "C") {
-            // Continuation of a credential command (LOGIN user {n} / pass {m}): redact it and its literals (F10).
-            if (half.secret) {
-                line(conn, dir, null, text.length)
-                if (!armLiteral(conn, dir, half, text)) half.secret = false
-                return
-            }
-            val red = redact(key, text)
-            if (red != null) {
-                line(conn, dir, red.first, red.second)
-                if (armLiteral(conn, dir, half, text)) half.secret = true
-                return
-            }
-        }
-        line(conn, dir, text, 0)
-        val size = literalSize(text)
-        if (size != null) {
-            half.literalLeft = size
-            half.literal.reset()
-            if (size == 0L) literal(conn, dir, half)
-        }
-    }
-
-    /** Returns (kept text, redacted bytes) when the line carries a credential. */
-    private fun redact(key: String, text: String): Pair<String?, Int>? {
-        val tokens = imapTokens(text)
-        val cmd = tokens.getOrNull(1)?.uppercase()
-        val isCommand = tokens.size >= 2 && tokens[1].all { it.isLetter() }
-        if (cmd == "AUTHENTICATE") {
-            if (tokens.size >= 4) {
-                saslArmed.remove(key)
-                return tokens.subList(0, 3).joinToString(" ") to (text.length - tokens.subList(0, 3).joinToString(" ").length)
-            }
-            saslArmed.add(key)
-            return null
-        }
-        if (saslArmed.contains(key) && !isCommand) {
-            saslArmed.remove(key)
-            return null to text.length
-        }
-        if (isCommand) saslArmed.remove(key)
-        if (cmd == "LOGIN" && tokens.size >= 3) {
-            val kept = tokens.subList(0, 2).joinToString(" ")
-            return kept to (text.length - kept.length)
-        }
-        if (tokens.size >= 3 && tokens[0].equals("AUTH", ignoreCase = true)) { // SMTP AUTH
-            val kept = tokens.subList(0, 2).joinToString(" ")
-            return kept to (text.length - kept.length)
-        }
-        return null
-    }
-
-    private fun line(conn: String, dir: String, text: String?, redacted: Int) {
-        val body = if (text == null) "\"redacted\":$redacted" else {
-            val r = if (redacted > 0) ",\"redacted\":$redacted" else ""
-            "\"line\":${jq(text)}$r"
-        }
-        write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},$body}")
-    }
-
-    private fun armLiteral(conn: String, dir: String, half: Half, text: String): Boolean {
-        val size = literalSize(text) ?: return false
-        half.literalLeft = size
-        half.literal.reset()
-        if (size == 0L) literal(conn, dir, half)
-        return true
-    }
-
-    private fun literal(conn: String, dir: String, half: Half) {
-        if (half.secret) {
-            val n = half.literal.size()
-            half.literal.reset()
-            write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},\"redacted\":$n}")
-            return
-        }
-        val b64 = Base64.getEncoder().encodeToString(half.literal.toByteArray())
-        half.literal.reset()
-        write("{\"t\":${clock()},\"conn\":${jq(conn)},\"dir\":${jq(dir)},\"literal_b64\":${jq(b64)}}")
-    }
-
-    private fun write(json: String, truncate: Boolean = false) {
-        val bytes = (json + "\n").toByteArray(Charsets.UTF_8)
-        if (truncate) file.writeBytes(bytes) else file.appendBytes(bytes)
-    }
-
-    private class Half {
-        val pending = java.io.ByteArrayOutputStream()
-        val literal = java.io.ByteArrayOutputStream()
-        var literalLeft = 0L
-        var secret = false
+        merged.sortBy { it.first }
+        for ((_, line) in merged) file.appendText(line + "\n")
     }
 
     companion object {
@@ -204,14 +82,14 @@ class TrafficRecorder(
         var active: TrafficRecorder? = null
             private set
 
-        fun start(file: File, header: RunHeader): TrafficRecorder {
-            val r = TrafficRecorder(file, header)
+        fun start(file: File, header: RunHeader, cacheDir: File, accountId: String): TrafficRecorder {
+            val r = TrafficRecorder(file, header, TrafficLog.trafficLogDir(cacheDir, accountId))
             active = r
             return r
         }
 
         fun stop() {
-            active?.flush()
+            active?.finish()
             active = null
         }
 
@@ -220,11 +98,6 @@ class TrafficRecorder(
         }
     }
 }
-
-private val recLiteral = Regex("""~?\{(\d+)[+-]?\}$""")
-
-private fun literalSize(line: String): Long? =
-    recLiteral.find(line)?.groupValues?.get(1)?.toLongOrNull()
 
 internal fun jq(s: String): String {
     val out = StringBuilder(s.length + 2)
@@ -243,5 +116,3 @@ internal fun jq(s: String): String {
     out.append('"')
     return out.toString()
 }
-
-private val authenticateHead = Regex("^[A-Za-z0-9.]+ AUTHENTICATE [A-Za-z0-9_-]+", RegexOption.IGNORE_CASE)

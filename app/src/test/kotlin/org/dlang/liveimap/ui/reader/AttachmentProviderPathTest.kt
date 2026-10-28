@@ -18,7 +18,7 @@ class AttachmentProviderPathTest {
     @Test fun traversalAndForeignNamesAreRefused() {
         val dir = Files.createTempDirectory("cache").toFile()
         for (name in listOf(
-            null, "", "imap-traffic.log", "../$ok", "sub/$ok",
+            null, "", "notes.log", "../$ok", "sub/$ok",
             "liveimap-0123456789abcdef-7-a/../../x", "liveimap-0123456789ABCDEF-7-x", "liveimap-0123456789abcdef-x-y",
             "$ok\u0000", "liveimap-0123456789abcdef-7-a b",
         )) {

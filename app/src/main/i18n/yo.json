@@ -128,7 +128,7 @@
 {"key": "compose_send_uncertain", "source": "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.", "text": "O le ti firanṣẹ: asopọ ti sọnu lẹhin ti o ti fi ifiranṣẹ naa ranṣẹ. Ṣayẹwo Firanṣẹ ṣaaju ki o to tun gbiyanju."},
 {"key": "compose_copy_not_saved", "source": "The copy on this device could not be saved; keep this screen open.", "text": "Ẹda ti o wa lori ẹrọ yii ko le wa ni fipamọ; jẹ ki iboju yii ṣii."},
 {"key": "unsent_uncertain", "source": "May have been sent (check Sent before retrying)", "text": "O le ti firanṣẹ (ṣayẹwo Ti firanṣẹ ṣaaju ki o to tun gbiyanju)"},
-{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Passwords are removed. Share it only with someone you trust to see that mail.", "text": "Ìkìlọ̀: èyí ní ẹ̀kúnrẹ́rẹ́ ọ̀rọ̀ nínú gbogbo ìfiránṣẹ́ tí a kà tàbí tí a fi ránṣẹ́ nígbà tí wọ́n ti ń wọlé, pẹ̀lú àwọn ara àti àwọn asomọ. Awọn ọrọigbaniwọle ti wa ni kuro. Pin rẹ nikan pẹlu ẹnikan ti o gbẹkẹle lati rii meeli yẹn."},
+{"key": "traffic_share_warning", "source": "Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.", "text": "Ìkìlọ̀: èyí ní ọ̀rọ̀ kíkún ti gbogbo ìfiránṣẹ́ tí a kà tàbí tí a fi ránṣẹ́ nígbà tí àkọsílẹ̀ wà ní títàn, pẹ̀lú ara àti àwọn àfikún. Dátà ìwọlé ni a rọ́pò pẹ̀lú gígùn rẹ̀, ṣùgbọ́n ọ̀rọ̀ aṣínà tí a tẹ̀ sínú ààyè mìíràn wà nínú. Pín pẹ̀lú ẹni tí o gbẹ́kẹ̀ lé láti rí ìwé náà nìkan."},
 {"key": "traffic_share_anyway", "source": "Share anyway", "text": "Pin lonakona"},
 {"key": "debug_dismiss", "source": "Dismiss", "text": "Yọọ kuro"},
 {"key": "debug_clipboard", "source": "LiveIMAP debug report", "text": "LiveIMAP yokokoro Iroyin"},
@@ -562,7 +562,7 @@
 {"key": "settings_logging", "source": "Logging", "text": "wíwọlé"},
 {"key": "settings_pipeline", "source": "Pipeline IMAP commands", "text": "Pipeline IMAP pipaṣẹ"},
 {"key": "settings_log_traffic", "source": "Log IMAP traffic", "text": "Wọle IMAP ijabọ"},
-{"key": "settings_log_note", "source": "Commands and server replies go to logcat under LiveIMAP. The password is omitted.", "text": "Awọn aṣẹ ati awọn idahun olupin lọ si logcat labẹ LiveIMAP. Awọn ọrọigbaniwọle ti wa ni ti own."},
+{"key": "settings_log_note", "source": "Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden.", "text": "Àwọn àṣẹ àti ìdáhùn olùpèsè ni a kọ sínú àkọsílẹ̀ ìrìnàjò àkántì yìí. Dátà ìwọlé ni a rọ́pò pẹ̀lú gígùn rẹ̀; kò sí ohun mìíràn tí a fi pamọ́."},
 {"key": "settings_share_log", "source": "Share log", "text": "Pin log"},
 {"key": "settings_debug_report", "source": "Debug report", "text": "Iroyin yokokoro"},
 {"key": "settings_show_user", "source": "Show user name in the debug report", "text": "Ṣe afihan orukọ olumulo ninu ijabọ yokokoro"},
@@ -887,7 +887,6 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Funmorawon (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Tan-an"},
 {"key": "settings_compression_off", "source": "Off", "text": "Paa"},
-{"key": "settings_compression_auto", "source": "Auto (on over mobile data)", "text": "Laifọwọyi (lori data alagbeka)"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Olupin naa ko funni ni COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Gbe gbogbo folda pẹlu awọn ifiranṣẹ paarẹ"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Pipa: awọn ifiranṣẹ ti o ti samisi paarẹ duro lẹhin (ṢIṢIṢẸ WA UID)."},
@@ -1122,5 +1121,11 @@
 {"key": "settings_logging_line", "source": "%1$s%2$s", "text": "%1$s%2$s"},
 {"key": "sending_rule_numbered", "source": "%1$d. %2$s", "text": "%1$d. %2$s"},
 {"key": "address_book_row", "source": "%1$s  %2$s  %3$s", "text": "%1$s  %2$s  %3$s"},
-{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d àwọn àkántì"}}
+{"key": "settings_account_count", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d àwọn àkántì"}},
+{"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Wọle lai so ọna (%1$s)"},
+{"key": "setting_connectTimeoutSec_title", "source": "Connect timeout", "text": "Akoko ipari asopọ"},
+{"key": "setting_readTimeoutSec_title", "source": "Read timeout", "text": "Akoko ipari kika"},
+{"key": "setting_trafficLogSizeLimit_title", "source": "Limit traffic log size", "text": "Dín ìwọn àkọsílẹ̀ ìrìnàjò kù"},
+{"key": "setting_trafficLogMaxMb_title", "source": "Traffic log size", "text": "Ìwọn àkọsílẹ̀ ìrìnàjò"},
+{"key": "setting_jmapPartCacheMessages_title", "source": "JMAP part cache", "text": "Káàṣì awọn apá JMAP"}
 ]

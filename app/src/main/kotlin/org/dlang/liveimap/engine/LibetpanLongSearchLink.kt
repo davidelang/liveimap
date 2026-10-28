@@ -13,6 +13,7 @@ import org.dlang.liveimap.settings.AccountSettings
 /** A fresh libetpan connection for one long search in [folder]; never shared with the main session. */
 class LibetpanLongSearchLink(
     private val account: AccountSettings,
+    private val accountId: String,
     private val folder: FolderAt,
     private val confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },
     private val confirmPlaintext: suspend () -> Boolean = { confirmMailPlaintext() },
@@ -20,12 +21,16 @@ class LibetpanLongSearchLink(
     /** A mailbox name with no listed epoch. A name that has an epoch uses the primary constructor. */
     constructor(
         account: AccountSettings,
+        accountId: String,
         mailbox: String,
         confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },
         confirmPlaintext: suspend () -> Boolean = { confirmMailPlaintext() },
-    ) : this(account, FolderAt(mailbox), confirmCert, confirmPlaintext)
+    ) : this(account, accountId, FolderAt(mailbox), confirmCert, confirmPlaintext)
 
-    private val session = LibetpanMailSession()
+    private val session = LibetpanMailSession(
+        LiveImapApplication.context ?: error("no application"),
+        accountId,
+    )
 
     override suspend fun open() {
         // Same prompts as the main session; an account already confirmed there answers without asking again.
