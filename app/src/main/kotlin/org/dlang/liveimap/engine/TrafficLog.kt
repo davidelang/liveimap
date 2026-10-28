@@ -231,19 +231,22 @@ internal fun trafficIdOk(id: String): Boolean {
     return true
 }
 
-private fun openExclusive(path: File): FileOutputStream? {
+private class TrafficOut(val stream: FileOutputStream, val osFd: Boolean)
+
+private fun openExclusive(path: File): TrafficOut? {
     return try {
         // O_WRONLY: an open with no access mode is O_RDONLY, and the later write fails.
         val flags = android.system.OsConstants.O_WRONLY or android.system.OsConstants.O_CREAT or
             android.system.OsConstants.O_EXCL or android.system.OsConstants.O_APPEND or
             android.system.OsConstants.O_CLOEXEC
         val fd = android.system.Os.open(path.absolutePath, flags, 384)
-        FileOutputStream(fd)
+        // FileOutputStream(fd) does not own the descriptor, so close must Os.close it.
+        TrafficOut(FileOutputStream(fd), osFd = true)
     } catch (error: Throwable) {
         if (error.javaClass.name == "android.system.ErrnoException") return null
         if (path.exists()) return null
         try {
-            FileOutputStream(path, true)
+            TrafficOut(FileOutputStream(path, true), osFd = false)
         } catch (_: Exception) {
             null
         }
@@ -261,7 +264,7 @@ private class AccountTrafficWriter(
 
     private val channel = Channel<Item>(64)
     private val drops = AtomicInteger()
-    private var open: FileOutputStream? = null
+    private var open: TrafficOut? = null
     private var openPath: File? = null
     private var openBytes = 0L
 
@@ -309,12 +312,12 @@ private class AccountTrafficWriter(
         }
         val t = System.currentTimeMillis()
         val payload = recordBytes(t, conn, dirCh, bytes)
-        file.write(payload)
+        file.stream.write(payload)
         openBytes += payload.size
         if (rollBytes > 0 && openBytes > rollBytes) closeOpen()
     }
 
-    private fun ensure(): FileOutputStream? {
+    private fun ensure(): TrafficOut? {
         val current = open
         if (current != null) return current
         repeat(8) {
@@ -330,10 +333,10 @@ private class AccountTrafficWriter(
         return null
     }
 
-    private fun stillLinked(file: FileOutputStream): Boolean {
+    private fun stillLinked(file: TrafficOut): Boolean {
         val path = openPath
         return try {
-            val stat = android.system.Os.fstat(file.fd)
+            val stat = android.system.Os.fstat(file.stream.fd)
             stat.st_nlink.toLong() != 0L
         } catch (_: Throwable) {
             path != null && path.exists()
@@ -341,13 +344,22 @@ private class AccountTrafficWriter(
     }
 
     private fun closeOpen() {
-        try {
-            open?.close()
-        } catch (_: Exception) {
-        }
+        val current = open
         open = null
         openPath = null
         openBytes = 0
+        if (current == null) return
+        val fd = if (current.osFd) current.stream.fd else null
+        try {
+            current.stream.close()
+        } catch (_: Exception) {
+        }
+        if (fd != null) {
+            try {
+                android.system.Os.close(fd)
+            } catch (_: Throwable) {
+            }
+        }
     }
 }
 
