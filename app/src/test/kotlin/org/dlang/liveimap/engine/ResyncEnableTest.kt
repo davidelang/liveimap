@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine
 
+import org.dlang.liveimap.settings.SmtpNoAuth
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -13,10 +14,11 @@ class ResyncEnableTest {
 
     /** F52 (David): no implicit IMAP-to-SMTP fallback, even for the same host. */
     @Test fun smtpPasswordNeverFallsBackSilently() {
-        assertEquals("", smtpPasswordFor(false, "", "imap-secret"))  // no AUTH, never the IMAP password
-        assertEquals("smtp-secret", smtpPasswordFor(false, "smtp-secret", "imap-secret"))
-        assertEquals("imap-secret", smtpPasswordFor(true, "", "imap-secret"))
-        assertEquals("imap-secret", smtpPasswordFor(true, "stale", "imap-secret"))
-        assertEquals("", smtpPasswordFor(true, "", ""))
+        assertEquals("", smtpPasswordFor(false, "", "imap-secret", SmtpNoAuth.Off))
+        assertEquals("", smtpPasswordFor(false, "smtp-secret", "imap-secret", SmtpNoAuth.On))
+        assertEquals("smtp-secret", smtpPasswordFor(false, "smtp-secret", "imap-secret", SmtpNoAuth.Off))
+        assertEquals("imap-secret", smtpPasswordFor(true, "", "imap-secret", SmtpNoAuth.Off))
+        assertEquals("imap-secret", smtpPasswordFor(true, "stale", "imap-secret", SmtpNoAuth.Off))
+        assertEquals("", smtpPasswordFor(true, "", "", SmtpNoAuth.Off))
     }
 }

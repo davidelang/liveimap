@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.engine.openResultAfterPlusFallback
 import org.dlang.liveimap.session.OpenResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
