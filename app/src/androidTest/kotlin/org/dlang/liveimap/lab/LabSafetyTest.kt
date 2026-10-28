@@ -83,7 +83,7 @@ class LabSafetyTest {
                 check(r is OpenResult.Connected) { r.toString() }
                 session.capabilities.sorted().joinToString(" ")
             }
-            var uids = emptyList<Long>()
+            var uids = LongArray(0)
             step("select") { session.select(box).toString() }
             step("list") { uids = session.searchCriterion("NotDeleted", ""); uids.joinToString(",") }
             suspend fun delete(uid: Long) {

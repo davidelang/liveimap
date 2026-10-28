@@ -676,9 +676,9 @@ class LabSuiteTest {
                         }
                     }
                     if (session.featureCaps.threadReferences) {
-                        val tree = session.threadMatching(org.dlang.liveimap.settings.SortKey.ThreadReferences, group)
+                        val flat = session.threadMatching(org.dlang.liveimap.settings.SortKey.ThreadReferences, group)
                         val inTree = ArrayList<Long>()
-                        tree?.forEachPreorder { n -> n.uid?.let { inTree.add(it) } }
+                        for (uid in flat.uids) if (uid >= 0L) inTree.add(uid)
                         if (inTree.sorted() != want) throw IllegalStateException("THREAD got $inTree want $want")
                         notes.add("thread")
                     }
