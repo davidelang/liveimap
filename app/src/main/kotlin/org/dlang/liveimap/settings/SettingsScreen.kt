@@ -459,6 +459,7 @@ fun SettingsTree(
     onCopyContacts: () -> Unit,
     onEditBook: () -> Unit,
     onOpenPanel: (String, String) -> Unit,
+    onNavigate: (String) -> Unit = {},
     page: String = "top",
     accountId: String? = null,
     editorId: String? = null,
@@ -471,7 +472,7 @@ fun SettingsTree(
     }
     if (gate == "") return
     if (!editor.ready) return
-    if (!accountId.isNullOrEmpty()) {
+    if (!accountId.isNullOrEmpty() && accountId != "_") {
         LaunchedEffect(accountId) {
             if (editor.editingId != accountId) editor.selectAccount(accountId)
         }
@@ -490,6 +491,7 @@ fun SettingsTree(
         onCopyContacts = onCopyContacts,
         onEditBook = onEditBook,
         onOpenPanel = onOpenPanel,
+        onNavigate = onNavigate,
         onEditFavorite = { favorite ->
             editingFavorite = favorite
             favoriteDraft = if (favorite.label.isNotBlank()) {
@@ -520,10 +522,21 @@ fun SettingsTree(
             if (page == "accounts") {
                 AccountListEditor(
                     accounts = editor.accounts,
-                    onPick = { editor.selectAccount(it) },
+                    onPick = { id ->
+                        editor.selectAccount(id)
+                        onNavigate("settings/account/$id")
+                    },
                     onRemove = { editor.removeAccount(it) },
                     onAdd = { editor.addAccount() },
                 )
+            } else if (page == "editor" && editorId == "pinerc") {
+                PinercEditor(editor)
+            } else if (page == "editor") {
+                when (val found = findSettingsEditor(roots, editorId)) {
+                    is TreeNode.Group -> renderSettingsNode(found, depth, walk)
+                    is TreeNode.Editor -> found.children.forEach { renderSettingsNode(it, depth, walk) }
+                    else -> Unit
+                }
             } else {
                 val shown: List<TreeNode> = when (page) {
                     "top" -> roots.filter { it is TreeNode.Page && it.page == "top" }
@@ -694,6 +707,7 @@ internal class SettingsWalk(
     val onCopyContacts: () -> Unit,
     val onEditBook: () -> Unit,
     val onOpenPanel: (String, String) -> Unit,
+    val onNavigate: (String) -> Unit,
     val onEditFavorite: (FolderFavorite) -> Unit,
     val picking: MutableState<MailboxPick?>,
     var drafts: ServerDrafts? = null,
@@ -1050,7 +1064,23 @@ internal fun EditorEntry(node: TreeNode.Editor, walk: SettingsWalk) {
         OpenRow(stringResource(R.string.settings_toolbars)) { walk.onOpenPanel("index", "") }
         return
     }
-    OpenRow(stringResource(title)) { }
+    if (node.editor == "accountList" && walk.editor.accounts.isEmpty()) {
+        AccountListEditor(
+            accounts = emptyList(),
+            onPick = {},
+            onRemove = {},
+            onAdd = { walk.editor.addAccount() },
+        )
+        return
+    }
+    OpenRow(stringResource(title)) {
+        if (node.editor == "accountList") {
+            walk.onNavigate("settings/accounts")
+        } else {
+            val id = walk.editor.editingId ?: "_"
+            walk.onNavigate("settings/account/$id/editor/${node.editor}")
+        }
+    }
 }
 
 @Composable

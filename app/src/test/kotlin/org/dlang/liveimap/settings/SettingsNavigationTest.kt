@@ -22,5 +22,13 @@ class SettingsNavigationTest {
         assertTrue(nav.contains("folderLists/starts"))
         assertFalse(nav.contains("toolbar" + "AccountId"))
         assertFalse(nav.contains("settings/folders/"))
+        val screen = listOf(
+            File("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt"),
+            File("app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt"),
+        ).first { it.isFile }.readText()
+        assertTrue(screen.contains("settings/accounts"))
+        assertTrue(screen.contains("settings/account/"))
+        assertTrue(screen.contains("editor/"))
+        assertFalse(screen.contains("OpenRow(stringResource(title)) { }"))
     }
 }

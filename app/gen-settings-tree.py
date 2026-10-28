@@ -717,13 +717,306 @@ def emit(doc, kt_root, tree_bytes):
     print("groups", len(groups), "leaves", len(leaves), "fingerprint", fingerprint)
 
 
+ENUM_CLASS = {
+    "tlsMode": "TlsMode",
+    "smtpTlsMode": "TlsMode",
+    "smtpNoAuth": "SmtpNoAuth",
+    "sieveTlsMode": "TlsMode",
+    "threadIndexStyle": "ThreadIndexStyle",
+    "inboxStart": "StartRule",
+    "folderStart": "StartRule",
+    "startAfterChange": "StartAfterChange",
+    "pinercStartDefault": "PinercStartDefault",
+    "bodyView": "BodyView",
+    "readerTextLayout": "TextLayout",
+    "nonAsciiDisplay": "NonAsciiDisplay",
+    "deletePolicy": "DeletePolicy",
+    "moveMethod": "MoveMethod",
+    "compression": "Compression",
+    "saveNameRule": "SaveNameRule",
+    "dsnMode": "org.dlang.liveimap.ui.compose.DsnMode",
+    "theme": "ThemeMode",
+    "density": "Density",
+    "dateFormat": "DateFormat",
+    "multiPane": "MultiPane",
+    "folderPane": "LayoutChoice",
+    "foldPosture": "LayoutChoice",
+    "paneArrangement": "ArrangementChoice",
+    "previewSize": "PreviewChoice",
+    "folderPosition": "FolderPositionChoice",
+    "clientSortCollation": "ClientSortCollation",
+}
+
+SET_FIELDS = {
+    "expandedFolders",
+    "hiddenCapabilities",
+    "sortAskSkip",
+    "threadAskSkip",
+    "searchAskSkip",
+    "fallbackAskSkip",
+}
+
+TYPE_OVERRIDE = {
+    "defaultView": "FolderView",
+    "folderViews": "Map<String, FolderView>",
+    "folderStarts": "Map<String, StartRule>",
+    "favorites": "List<FolderFavorite>",
+    "inboundRules": "List<InboundRule>",
+    "savedSearches": "List<SavedSearch>",
+    "savedAdvanced": "List<SavedAdvanced>",
+    "swipeTrailing": "SwipeBinding",
+    "swipeLeading": "SwipeBinding",
+    "readerSwipeTrailing": "SwipeBinding",
+    "readerSwipeLeading": "SwipeBinding",
+    "altAddresses": "List<String>",
+    "watchedFolders": "List<String>",
+    "completionSources": "List<String>",
+    "extraAddressBooks": "List<String>",
+    "globalAddressBooks": "List<String>",
+}
+
+# Readers that are not the type's ordinary decode. The id still comes from the JSON leaf.
+DECODE_READER = {
+    "authMechanism": 'percentDecode(values.getValue("authMechanism")).trim().uppercase()',
+    "completionSources": 'decodeCompletionSources(values["completionSources"])',
+    "customLayout": 'values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty()',
+    "readerTextZoom": 'clampTextZoom(parseIntField(values.getValue("readerTextZoom")))',
+    "composerWrapColumn": 'parseIntField(values.getValue("composerWrapColumn")).coerceIn(0, 998)',
+    "sievePort": 'parseSievePort(values.getValue("sievePort"))',
+    "maxConnections": 'org.dlang.liveimap.session.clampMaxConnections(parseIntField(values.getValue("maxConnections")))',
+    "askSort": 'parseAskLimit(values.getValue("askSort"))',
+    "askThread": 'parseAskLimit(values.getValue("askThread"))',
+    "askSearch": 'parseAskLimit(values.getValue("askSearch"))',
+    "askFallback": 'parseAskLimit(values.getValue("askFallback"))',
+    "bodyView": "decodeBodyView(values)",
+    "sigDashes": 'values.getValue("sigDashes") == "true"',
+    "sigAtBottom": 'values.getValue("sigAtBottom") == "true"',
+    "smtpSameAsImap": 'values["smtpSameAsImap"] == "true"',
+}
+
+SETTINGS_DEFAULT_ENUM = {
+    "tlsMode",
+    "multiPane",
+    "folderPane",
+    "paneArrangement",
+    "previewSize",
+    "folderPosition",
+}
+
+
+def account_leaves(leaves):
+    found = [leaf for leaf in leaves if leaf.get("scope") == "account"]
+    for leaf in found:
+        if leaf.get("derived") and leaf["setting"] != "preferHtml":
+            raise SystemExit("derived account leaf " + leaf["setting"])
+    return found
+
+
+def kt_type(leaf):
+    key = leaf["setting"]
+    if key in ENUM_CLASS:
+        return ENUM_CLASS[key]
+    if key in SET_FIELDS:
+        return "Set<String>"
+    if key in TYPE_OVERRIDE:
+        return TYPE_OVERRIDE[key]
+    kind = leaf["type"]
+    if kind in ("String", "Encoded"):
+        return "String"
+    if kind == "Int":
+        return "Int"
+    if kind == "Bool":
+        return "Boolean"
+    if kind == "StringList":
+        return "List<String>"
+    raise SystemExit("no Kotlin type for " + key)
+
+
+def kt_default(leaf):
+    key = leaf["setting"]
+    typ = kt_type(leaf)
+    default = leaf.get("default")
+    if key == "smtpTlsMode":
+        return "enumValueOf(SettingsDefaults.tlsMode)"
+    if key in SETTINGS_DEFAULT_ENUM:
+        return "enumValueOf(SettingsDefaults.%s)" % key
+    if key == "clientSortCollation":
+        if default == "locale":
+            return "ClientSortCollation.Locale"
+        if default == "plain":
+            return "ClientSortCollation.Plain"
+        raise SystemExit("clientSortCollation default")
+    if key in ENUM_CLASS:
+        return "%s.%s" % (ENUM_CLASS[key], default)
+    if typ == "Int":
+        return "SettingsDefaults.%s" % key
+    if typ == "Boolean":
+        return "true" if default else "false"
+    if typ == "String":
+        return kt_string("" if default is None else default)
+    if typ == "FolderView":
+        return "parseView(%s)" % kt_string(default)
+    if typ == "SwipeBinding":
+        return "parseSwipe(%s)" % kt_string(default)
+    if typ.startswith("Map"):
+        if default not in (None, ""):
+            raise SystemExit("map default " + key)
+        return "emptyMap()"
+    if typ.startswith("Set"):
+        if default not in (None, "", []):
+            raise SystemExit("set default " + key)
+        return "emptySet()"
+    if typ.startswith("List"):
+        if key == "completionSources":
+            if default != ["pine"]:
+                raise SystemExit("completionSources default")
+            return "listOf(pineSourceId)"
+        if default not in (None, "", []):
+            raise SystemExit("list default " + key)
+        return "emptyList()"
+    raise SystemExit("default " + key)
+
+
+def encode_put(leaf):
+    key = leaf["setting"]
+    if key in COMPLEX:
+        value = COMPLEX[key][0]
+    else:
+        typ = kt_type(leaf)
+        if typ == "String":
+            value = "percentEncode(%s)" % key
+        elif typ in ("Int", "Boolean"):
+            value = key
+        elif key in ENUM_CLASS:
+            value = "%s.name" % key
+        else:
+            raise SystemExit("encode " + key)
+    return 'put("%s=${%s}")' % (key, value)
+
+
+def decode_reader(leaf):
+    key = leaf["setting"]
+    if key in DECODE_READER:
+        return DECODE_READER[key]
+    if key in COMPLEX and key != "clientSortCollation":
+        return COMPLEX[key][1].replace("value.text", 'values.getValue("%s")' % key)
+    typ = kt_type(leaf)
+    if typ == "String":
+        return 'percentDecode(values.getValue("%s"))' % key
+    if typ == "Boolean":
+        return 'parseBoolean(values.getValue("%s"))' % key
+    if typ == "Int":
+        return 'parseIntField(values.getValue("%s"))' % key
+    if key in ENUM_CLASS:
+        return "enumValueOf<%s>(values.getValue(%s))" % (ENUM_CLASS[key], json.dumps(key))
+    raise SystemExit("decode " + key)
+
+
+def special_decode(key):
+    if key == "tlsMode":
+        return "tlsMode = decodedTlsMode,"
+    if key == "smtpTlsMode":
+        return "smtpTlsMode = decodedSmtpTls,"
+    if key == "readerTextLayout":
+        return 'readerTextLayout = if ("readerTextLayout" !in values) d.readerTextLayout else enumValueOf<TextLayout>(values.getValue("readerTextLayout")),'
+    if key == "compression":
+        return 'compression = if ("compression" !in values) d.compression else enumValueOf<Compression>(values.getValue("compression")),'
+    if key == "paneArrangement":
+        return 'paneArrangement = if ("paneArrangement" !in values) d.paneArrangement else enumValueOf<ArrangementChoice>(values.getValue("paneArrangement")),'
+    if key == "folderPosition":
+        return 'folderPosition = if ("folderPosition" !in values) d.folderPosition else enumValueOf<FolderPositionChoice>(values.getValue("folderPosition")),'
+    if key == "dsnMode":
+        return 'dsnMode = if ("dsnMode" !in values) d.dsnMode else enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(values.getValue("dsnMode")),'
+    if key == "nonAsciiDisplay":
+        return 'nonAsciiDisplay = if ("nonAsciiDisplay" !in values) d.nonAsciiDisplay else enumValueOf<NonAsciiDisplay>(values.getValue("nonAsciiDisplay")),'
+    if key == "previewSize":
+        return 'previewSize = if ("previewSize" !in values) d.previewSize else enumValueOf<PreviewChoice>(values.getValue("previewSize")),'
+    if key == "idleWakeSeconds":
+        return "\n".join([
+            'idleWakeSeconds = field("idleWakeSeconds", d.idleWakeSeconds) {',
+            '    val seconds = parseIntField(values.getValue("idleWakeSeconds"))',
+            '    if (seconds !in IdleWakeSeconds) throw IllegalArgumentException("bad idleWakeSeconds")',
+            "    seconds",
+            "},",
+        ])
+    if key == "clientSortCollation":
+        return "\n".join([
+            'clientSortCollation = if ("clientSortCollation" !in values) {',
+            "    d.clientSortCollation",
+            "} else {",
+            '    val word = values.getValue("clientSortCollation")',
+            '    if (word != "locale" && word != "plain") throw IllegalArgumentException("clientSortCollation")',
+            '    field("clientSortCollation", d.clientSortCollation) { clientSortCollationOf(word) }',
+            "},",
+        ])
+    if key == "unlabeledCharset":
+        return "\n".join([
+            'unlabeledCharset = if ("unlabeledCharset" !in values) {',
+            "    d.unlabeledCharset",
+            "} else {",
+            "    val decoded = try {",
+            '        percentDecode(values.getValue("unlabeledCharset"))',
+            "    } catch (_: IllegalArgumentException) {",
+            '        throw IllegalArgumentException("unlabeledCharset")',
+            "    }",
+            '    if (!knownUnlabeledCharset(decoded)) throw IllegalArgumentException("unlabeledCharset")',
+            '    field("unlabeledCharset", d.unlabeledCharset) { decoded }',
+            "},",
+        ])
+    return None
+
+
+def decode_line(leaf):
+    key = leaf["setting"]
+    special = special_decode(key)
+    if special is not None:
+        return special
+    return '%s = field("%s", d.%s) { %s },' % (key, key, key, decode_reader(leaf))
+
+
+def indent_block(text, spaces):
+    pad = " " * spaces
+    return "\n".join(pad + line if line else line for line in text.split("\n"))
+
+
+def generated_account_record(leaves):
+    rows = account_leaves(leaves)
+    fields = []
+    names = []
+    puts = []
+    decoded = []
+    for leaf in rows:
+        names.append('    "%s",' % leaf["setting"])
+        puts.append("    " + encode_put(leaf))
+        if leaf.get("derived"):
+            continue
+        fields.append("    val %s: %s = %s," % (leaf["setting"], kt_type(leaf), kt_default(leaf)))
+        decoded.append(indent_block(decode_line(leaf), 8))
+    return {
+        "gen-fields": "\n".join(fields),
+        "gen-names": "\n".join(names),
+        "gen-encode": "\n".join(puts),
+        "gen-decode": "\n".join(decoded),
+    }
+
+
 def emit_access(doc, leaves, groups, kt_dir):
-    # The account record body is the frozen template beside this script, filled on first --upgrade.
+    # Constructor fields, fieldNames, encode() lines and the decode table come from the JSON ids.
     template_path = Path(__file__).with_name("gen-account-template.kt")
     if not template_path.is_file():
         (kt_dir / "SettingsAccessGenerated.kt").write_text(access_stub())
         return
     body = template_path.read_text()
+    for marker, text in generated_account_record(leaves).items():
+        token = "/* @%s */" % marker
+        if token not in body:
+            raise SystemExit("missing " + token)
+        body = body.replace(token, text, 1)
+    global _FIELD_TYPES
+    _FIELD_TYPES = {}
+    for leaf in account_leaves(leaves):
+        if not leaf.get("derived"):
+            _FIELD_TYPES[leaf["setting"]] = kt_type(leaf)
     group_of = {}
     def visit(node, group):
         if "group" in node:
@@ -854,13 +1147,13 @@ COMPLEX = {
 }
 
 
+_FIELD_TYPES = {}
+
+
 def field_types():
-    template = Path(__file__).with_name("gen-account-template.kt").read_text()
-    head = template.split("data class AccountSettings(", 1)[1].split(") {", 1)[0]
-    out = {}
-    for match in re.finditer(r"val (\w+): ([^=]+)=", head):
-        out[match.group(1)] = match.group(2).strip()
-    return out
+    if not _FIELD_TYPES:
+        raise SystemExit("account field types are not loaded")
+    return _FIELD_TYPES
 
 
 def with_expr(key):

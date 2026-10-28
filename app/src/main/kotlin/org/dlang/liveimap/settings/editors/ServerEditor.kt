@@ -299,6 +299,60 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             },
         )
     }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AccountListEditor(
+            accounts = editor.accounts,
+            onPick = { editor.selectAccount(it) },
+            onRemove = { editor.removeAccount(it) },
+            onAdd = { editor.addAccount() },
+        )
+        for (child in node.children) {
+            renderSettingsNode(child, depth, walk)
+        }
+        PinercEditor(editor, sections, depth)
+        // David, 2026-10-12: Save and Test account side by side; Test account logs in (IMAP or JMAP, and SMTP).
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            androidx.compose.material3.Button(
+                onClick = { drafts.saveServer(editor) },
+                enabled = drafts.hasDraft && !drafts.serverChecking,
+                modifier = Modifier.testTag("account-save"),
+            ) { Text(stringResource(R.string.settings_save)) }
+            TextButton(
+                onClick = {
+                    if (!drafts.probing) {
+                        val candidate = drafts.savedServer(editor, server)
+                        drafts.probing = true
+                        drafts.serverReport = emptyList()
+                        editor.ui.launch {
+                            val id = editor.bound.chosenAccountId()
+                            try {
+                                drafts.serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, drafts.passwordDraft ?: editor.password, drafts.smtpPasswordDraft ?: editor.smtpPassword))
+                            } finally {
+                                drafts.probing = false
+                            }
+                        }
+                    }
+                },
+                enabled = !drafts.probing,
+                modifier = Modifier.testTag("account-test"),
+            ) {
+                Text(stringResource(if (drafts.probing) R.string.settings_testing else R.string.settings_test_account))
+            }
+        }
+        for (line in drafts.serverReport) {
+            Text(text = line, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        // F46: the acceptance runner is a developer tool; release builds do not show it.
+        if (com.davidlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
+    }
+}
+
+
+@Composable
+internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null, depth: Int = 0) {
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importGeneration by remember { mutableStateOf(0) }
     var importError by remember { mutableStateOf<Int?>(null) }
@@ -443,23 +497,9 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             }
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        AccountListEditor(
-            accounts = editor.accounts,
-            onPick = { editor.selectAccount(it) },
-            onRemove = { editor.removeAccount(it) },
-            onAdd = { editor.addAccount() },
-        )
-        for (child in node.children) {
-            renderSettingsNode(child, depth, walk)
-        }
-        SettingsNode(
-            title = stringResource(R.string.settings_import),
-            depth = depth,
-            summary = stringResource(R.string.settings_import_pinerc),
-            expanded = "import" in sections.open,
-            onToggle = { sections.toggle("import") },
-        ) {
+    @Composable
+    fun PinercButtons() {
+
             TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
                 Text(stringResource(R.string.settings_import_pinerc))
             }
@@ -468,44 +508,18 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             }) {
                 Text(stringResource(R.string.settings_export_pinerc))
             }
+    }
+    if (sections == null) {
+        PinercButtons()
+    } else {
+        SettingsNode(
+            title = stringResource(R.string.settings_import),
+            depth = depth,
+            summary = stringResource(R.string.settings_import_pinerc),
+            expanded = "import" in sections.open,
+            onToggle = { sections.toggle("import") },
+        ) {            PinercButtons()
         }
-        // David, 2026-10-12: Save and Test account side by side; Test account logs in (IMAP or JMAP, and SMTP).
-        androidx.compose.foundation.layout.Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            androidx.compose.material3.Button(
-                onClick = { drafts.saveServer(editor) },
-                enabled = drafts.hasDraft && !drafts.serverChecking,
-                modifier = Modifier.testTag("account-save"),
-            ) { Text(stringResource(R.string.settings_save)) }
-            TextButton(
-                onClick = {
-                    if (!drafts.probing) {
-                        val candidate = drafts.savedServer(editor, server)
-                        drafts.probing = true
-                        drafts.serverReport = emptyList()
-                        editor.ui.launch {
-                            val id = editor.bound.chosenAccountId()
-                            try {
-                                drafts.serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, drafts.passwordDraft ?: editor.password, drafts.smtpPasswordDraft ?: editor.smtpPassword))
-                            } finally {
-                                drafts.probing = false
-                            }
-                        }
-                    }
-                },
-                enabled = !drafts.probing,
-                modifier = Modifier.testTag("account-test"),
-            ) {
-                Text(stringResource(if (drafts.probing) R.string.settings_testing else R.string.settings_test_account))
-            }
-        }
-        for (line in drafts.serverReport) {
-            Text(text = line, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
-        }
-        // F46: the acceptance runner is a developer tool; release builds do not show it.
-        if (com.davidlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()
     }
     val error = importError
     if (error != null) {

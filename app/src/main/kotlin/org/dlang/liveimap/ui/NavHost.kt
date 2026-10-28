@@ -921,6 +921,7 @@ private fun LiveImapNavHostReady() {
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> navController.navigate(route) },
                         page = "top",
                     )
                 }
@@ -931,6 +932,7 @@ private fun LiveImapNavHostReady() {
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> navController.navigate(route) },
                         page = "ui",
                     )
                 }
@@ -941,6 +943,7 @@ private fun LiveImapNavHostReady() {
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> navController.navigate(route) },
                         page = "accounts",
                     )
                 }
@@ -959,6 +962,7 @@ private fun LiveImapNavHostReady() {
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> navController.navigate(route) },
                         page = "editor",
                         accountId = accountId,
                         editorId = editorId,
@@ -975,6 +979,7 @@ private fun LiveImapNavHostReady() {
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> navController.navigate(route) },
                         page = "account",
                         accountId = accountId,
                     )
