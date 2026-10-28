@@ -206,7 +206,8 @@ private data class AndroidContactSnapshot(
 private val androidContacts = AtomicReference(
     AndroidContactSnapshot(sets = null, entries = null, androidLoadedAt = 0L),
 )
-private const val AndroidCacheMs = 5 * 60 * 1000L
+private val AndroidCacheMs: Long
+    get() = org.dlang.liveimap.settings.SettingsDefaults.androidContactsCacheSeconds * 1000L
 
 fun hasReadContacts(context: Context): Boolean =
     context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED

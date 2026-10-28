@@ -3852,3 +3852,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-26 - Lab containers are created with published ports only.
 
 ## 2026-10-26 - Settings passwords can be shown.
+
+## 2026-10-27 - Settings tree
+
+- Implement sandbox/plans/settings-tree-20261027-2059-plan.md. One JSON tree for setting id, type, scope, default, constraints, placement and visibility. UI string and per-account string. Generated accessors. Toolbar line in the UI string. Pinerc follows the tree.

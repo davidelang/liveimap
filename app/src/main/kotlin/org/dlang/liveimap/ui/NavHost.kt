@@ -129,10 +129,10 @@ import org.dlang.liveimap.settings.PaneArrangement
 import org.dlang.liveimap.settings.ArrangementChoice
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DrawerAccount
-import org.dlang.liveimap.settings.ExpandedFoldersScreen
+import org.dlang.liveimap.settings.editors.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
-import org.dlang.liveimap.settings.FolderStartsScreen
-import org.dlang.liveimap.settings.FolderViewsScreen
+import org.dlang.liveimap.settings.editors.FolderStartsScreen
+import org.dlang.liveimap.settings.editors.FolderViewsScreen
 import org.dlang.liveimap.settings.LayoutChoice
 import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.LayoutApply
@@ -394,7 +394,7 @@ private fun LiveImapNavHostReady() {
     val composeRetryOnOpen = rememberSaveable { mutableStateOf(false) }
     val composeAccount = rememberSaveable { mutableStateOf("") } // F121: the opener's account
     val composeForward = rememberSaveable { mutableStateOf("") }
-    val toolbarAccountId = rememberSaveable { mutableStateOf("") }
+
     val filterEditIndex = rememberSaveable { mutableStateOf(-1) }
     val filterSeedFrom = rememberSaveable { mutableStateOf("") }
     val filterSeedTo = rememberSaveable { mutableStateOf("") }
@@ -532,8 +532,7 @@ private fun LiveImapNavHostReady() {
         navController.navigate("compose")
     }
 
-    fun openToolbar(name: String, accountId: String) {
-        toolbarAccountId.value = accountId
+    fun openToolbar(name: String) {
         navController.navigate("toolbar/$name")
     }
 
@@ -546,7 +545,7 @@ private fun LiveImapNavHostReady() {
                         onCompose = { seed -> openCompose(seed) },
                         onOpenUnsent = { navController.navigate("unsent") },
                         onOpenHelp = { navController.navigate("help") },
-                        onCustomize = { accountId -> openToolbar("folders", accountId) },
+                        onCustomize = { openToolbar("folders") },
                         focusMailbox = focusMailbox.value,
                         focusToken = focusToken.value,
                         onOpenDrawer = openDrawerState.value,
@@ -563,7 +562,7 @@ private fun LiveImapNavHostReady() {
                     onCompose = { seed -> openCompose(seed) },
                     onOpenUnsent = { navController.navigate("unsent") },
                     onOpenHelp = { navController.navigate("help") },
-                    onCustomize = { accountId -> openToolbar("folders", accountId) },
+                    onCustomize = { openToolbar("folders") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
@@ -678,8 +677,8 @@ private fun LiveImapNavHostReady() {
                                 if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
                                 navController.popBackStack()
                             },
-                            onCustomize = { accountId -> openToolbar("index", accountId) },
-                            onCustomizeSelection = { accountId -> openToolbar("selection", accountId) },
+                            onCustomize = { openToolbar("index") },
+                            onCustomizeSelection = { openToolbar("selection") },
                             watchMailbox = watch,
                             onAdvanced = { openAdvanced() },
                             advancedQuery = advancedQuery.ifEmpty { null },
@@ -743,7 +742,7 @@ private fun LiveImapNavHostReady() {
                                     },
                                     onBack = { paneUid = -1L },
                                     onFolderViewSaved = { noteFolderView() },
-                                    onCustomize = { accountId -> openToolbar("reader", accountId) },
+                                    onCustomize = { openToolbar("reader") },
                                     onFilterLike = { from, to, listId, subject, accountId ->
                                         openFilterEditor(-1, from, to, listId, subject, accountId, "")
                                     },
@@ -798,42 +797,37 @@ private fun LiveImapNavHostReady() {
                 )
             }
             composable("toolbar/index") {
-                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Index, accountId)
+                        ToolbarEditorPage(ToolbarScreen.Index)
                     }
                 }
             }
             composable("toolbar/selection") {
-                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Selection, accountId)
+                        ToolbarEditorPage(ToolbarScreen.Selection)
                     }
                 }
             }
             composable("toolbar/folders") {
-                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Folders, accountId)
+                        ToolbarEditorPage(ToolbarScreen.Folders)
                     }
                 }
             }
             composable("toolbar/reader") {
-                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Reader, accountId)
+                        ToolbarEditorPage(ToolbarScreen.Reader)
                     }
                 }
             }
             composable("toolbar/compose") {
-                val accountId = rememberSaveable { toolbarAccountId.value }
                 UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Compose, accountId)
+                        ToolbarEditorPage(ToolbarScreen.Compose)
                     }
                 }
             }
@@ -875,7 +869,7 @@ private fun LiveImapNavHostReady() {
                             handle["folderViewToken"] = next
                         }
                     },
-                    onCustomize = { accountId -> openToolbar("reader", accountId) },
+                    onCustomize = { openToolbar("reader") },
                     onFilterLike = { from, to, listId, subject, accountId ->
                         openFilterEditor(-1, from, to, listId, subject, accountId, "")
                     },
@@ -901,7 +895,7 @@ private fun LiveImapNavHostReady() {
                     unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
                     retryOnOpen = composeRetryOnOpen.value,
                     onOpenUnsent = { navController.navigate("unsent") },
-                    onCustomize = { accountId -> openToolbar("compose", accountId) },
+                    onCustomize = { openToolbar("compose") },
                 )
             }
             composable("unsent") {
@@ -926,25 +920,81 @@ private fun LiveImapNavHostReady() {
                     SettingsTree(
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, accountId -> openToolbar(name, accountId) },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        page = "top",
                     )
                 }
             }
-            composable("settings/folders/expanded") {
+            composable("settings/global") {
+                UpPage(stringResource(R.string.settings_all_accounts), onUp = { navController.popBackStack() }) {
+                    SettingsTree(
+                        onCopyContacts = { navController.navigate("contacts") },
+                        onEditBook = { navController.navigate("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        page = "ui",
+                    )
+                }
+            }
+            composable("settings/accounts") {
+                UpPage(stringResource(R.string.settings_accounts), onUp = { navController.popBackStack() }) {
+                    SettingsTree(
+                        onCopyContacts = { navController.navigate("contacts") },
+                        onEditBook = { navController.navigate("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        page = "accounts",
+                    )
+                }
+            }
+            composable(
+                route = "settings/account/{accountId}/editor/{editorId}",
+                arguments = listOf(
+                    navArgument("accountId") { type = NavType.StringType },
+                    navArgument("editorId") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                val accountId = entry.arguments?.getString("accountId").orEmpty()
+                val editorId = entry.arguments?.getString("editorId").orEmpty()
+                UpPage(stringResource(R.string.drawer_settings), onUp = { navController.popBackStack() }) {
+                    SettingsTree(
+                        onCopyContacts = { navController.navigate("contacts") },
+                        onEditBook = { navController.navigate("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        page = "editor",
+                        accountId = accountId,
+                        editorId = editorId,
+                    )
+                }
+            }
+            composable(
+                route = "settings/account/{accountId}",
+                arguments = listOf(navArgument("accountId") { type = NavType.StringType }),
+            ) { entry ->
+                val accountId = entry.arguments?.getString("accountId").orEmpty()
+                UpPage(stringResource(R.string.settings_account), onUp = { navController.popBackStack() }) {
+                    SettingsTree(
+                        onCopyContacts = { navController.navigate("contacts") },
+                        onEditBook = { navController.navigate("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        page = "account",
+                        accountId = accountId,
+                    )
+                }
+            }
+            composable("folderLists/expanded") {
                 UpPage(stringResource(R.string.settings_expanded_folders), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     ExpandedFoldersScreen()
                 }
             }
-            composable("settings/folders/views") {
+            composable("folderLists/views") {
                 UpPage(stringResource(R.string.settings_folder_views), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderViewsScreen()
                 }
             }
-            composable("settings/folders/starts") {
+            composable("folderLists/starts") {
                 UpPage(stringResource(R.string.settings_start_per_folder), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {

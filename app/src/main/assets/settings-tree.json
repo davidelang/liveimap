@@ -1,878 +1,2664 @@
-[
-  {
-    "title": "Account",
-    "children": [
-      {
-        "title": "Identity",
-        "children": [
-          {
-            "setting": "friendlyName",
-            "default": ""
-          },
-          {
-            "setting": "email",
-            "default": ""
-          },
-          {
-            "setting": "displayName",
-            "default": ""
-          },
-          {
-            "setting": "altAddresses",
-            "default": []
-          }
-        ]
-      },
-      {
-        "title": "Mail access",
-        "children": [
-          {
-            "setting": "jmapFolders",
-            "default": false
-          },
-          {
-            "setting": "maxJmapResponseBytes",
-            "default": 16777216
-          }
-        ]
-      },
-      {
-        "title": "Server",
-        "children": [
-          {
-            "setting": "imapHost",
-            "default": ""
-          },
-          {
-            "setting": "imapPort",
-            "default": 993,
-            "hardLimit": {
+{
+  "pages": [
+    {
+      "page": "top",
+      "title": "drawer_settings",
+      "children": [
+        {
+          "page": "ui",
+          "title": "settings_all_accounts",
+          "summary": [
+            {
+              "text": "settings_all_accounts_summary"
+            }
+          ],
+          "children": [
+            {
+              "setting": "indexPageSize",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 60,
+              "title": "setting_indexPageSize_title"
+            },
+            {
+              "setting": "swipeThresholdPercent",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 40,
+              "title": "setting_swipeThresholdPercent_title",
               "min": 1,
-              "max": 65535
-            }
-          },
-          {
-            "setting": "username",
-            "default": ""
-          },
-          {
-            "setting": "tlsMode",
-            "default": "Implicit"
-          },
-          {
-            "setting": "allowPlaintextAuth",
-            "default": false
-          },
-          {
-            "setting": "acceptInvalidCert",
-            "default": false
-          },
-          {
-            "setting": "allowOldTls",
-            "default": false
-          },
-          {
-            "setting": "authMechanism",
-            "default": ""
-          },
-          {
-            "setting": "clientCert",
-            "default": ""
-          },
-          {
-            "setting": "clientCertAlias",
-            "default": ""
-          },
-          {
-            "setting": "certPin",
-            "default": ""
-          },
-          {
-            "setting": "jmapCertPin",
-            "default": ""
-          },
-          {
-            "setting": "pipelineCommands",
-            "default": true
-          }
-        ]
-      },
-      {
-        "title": "Sending",
-        "children": [
-          {
-            "setting": "emailSubmission",
-            "default": false
-          },
-          {
-            "setting": "smtpHost",
-            "default": ""
-          },
-          {
-            "setting": "smtpPort",
-            "default": 465,
-            "hardLimit": {
+              "max": 99
+            },
+            {
+              "setting": "reconnectDelaysSec",
+              "type": "IntList",
+              "scope": "ui",
+              "kind": "text",
+              "default": [
+                2,
+                10,
+                60
+              ],
+              "title": "setting_reconnectDelaysSec_title",
+              "minItems": 1,
+              "itemMin": 1,
+              "itemMax": 86400
+            },
+            {
+              "setting": "maxRawViewBytes",
+              "type": "Long",
+              "scope": "ui",
+              "kind": "number",
+              "default": 1048576,
+              "title": "setting_maxRawViewBytes_title"
+            },
+            {
+              "setting": "maxImageTrustBytes",
+              "type": "Long",
+              "scope": "ui",
+              "kind": "number",
+              "default": 2000000,
+              "title": "setting_maxImageTrustBytes_title"
+            },
+            {
+              "setting": "moveChunk",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 1000,
+              "title": "setting_moveChunk_title",
               "min": 1,
-              "max": 65535
-            }
-          },
-          {
-            "setting": "smtpTlsMode",
-            "default": "Implicit"
-          },
-          {
-            "setting": "smtpUsername",
-            "default": ""
-          },
-          {
-            "setting": "smtpSameAsImap",
-            "default": false
-          },
-          {
-            "setting": "smtpNoAuth",
-            "default": "Auto"
-          },
-          {
-            "setting": "sieveHost",
-            "default": ""
-          },
-          {
-            "setting": "sievePort",
-            "default": 4190,
-            "hardLimit": {
+              "max": 2147483647
+            },
+            {
+              "setting": "clientSortChunk",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 5000,
+              "title": "setting_clientSortChunk_title",
               "min": 1,
-              "max": 65535
+              "max": 2147483647
+            },
+            {
+              "editor": "toolbars",
+              "opens": "screen",
+              "title": "settings_toolbars",
+              "settings": [
+                {
+                  "setting": "indexBar",
+                  "type": "Encoded",
+                  "scope": "ui",
+                  "kind": "subscreen",
+                  "default": "T:Search|O:Refresh,Filter|H:",
+                  "title": "settings_panel_index"
+                },
+                {
+                  "setting": "selectionBar",
+                  "type": "Encoded",
+                  "scope": "ui",
+                  "kind": "subscreen",
+                  "default": "T:Delete|O:Seen,Flag,Move|H:",
+                  "title": "settings_panel_selection"
+                },
+                {
+                  "setting": "folderBar",
+                  "type": "Encoded",
+                  "scope": "ui",
+                  "kind": "subscreen",
+                  "default": "T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:",
+                  "title": "settings_panel_folders"
+                },
+                {
+                  "setting": "readerToolbar",
+                  "type": "Encoded",
+                  "scope": "ui",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "settings_panel_reader",
+                  "nullable": true
+                },
+                {
+                  "setting": "composeBar",
+                  "type": "Encoded",
+                  "scope": "ui",
+                  "kind": "subscreen",
+                  "default": "T:|O:Postpone|H:",
+                  "title": "settings_panel_compose"
+                },
+                {
+                  "setting": "toolbarRows",
+                  "type": "Int",
+                  "scope": "ui",
+                  "kind": "number",
+                  "default": 2,
+                  "title": "toolbar_rows",
+                  "min": 1,
+                  "max": 4
+                }
+              ]
+            },
+            {
+              "setting": "settingsOpensOn",
+              "type": "Enum",
+              "scope": "ui",
+              "kind": "choice",
+              "default": "drawer",
+              "title": "setting_settingsOpensOn_title",
+              "choices": [
+                "drawer",
+                "lastEdited"
+              ],
+              "choiceTitles": {
+                "drawer": "setting_settingsOpensOn_drawer",
+                "lastEdited": "setting_settingsOpensOn_lastEdited"
+              }
             }
-          },
-          {
-            "setting": "sieveTlsMode",
-            "default": "StartTls"
-          },
-          {
-            "setting": "sieveCertPin",
-            "default": ""
-          },
-          {
-            "setting": "sieveConnectSeconds",
-            "default": 30
-          },
-          {
-            "setting": "sieveReadSeconds",
-            "default": 60
-          }
-        ]
-      },
-      {
-        "title": "Watched folders",
-        "children": [
-          {
-            "setting": "watchedFolders",
-            "default": []
-          },
-          {
-            "setting": "extraIdleBudget",
-            "default": 2,
-            "min": 0,
-            "max": 8,
-            "hardLimit": {
-              "min": 0,
-              "max": 8
+          ]
+        },
+        {
+          "editor": "accountList",
+          "opens": "screen",
+          "title": "settings_accounts",
+          "summary": [
+            {
+              "plural": "settings_account_count",
+              "count": "$accounts"
             }
-          },
-          {
-            "setting": "maxConnections",
-            "default": 8,
-            "hardLimit": {
-              "min": 2,
-              "max": 20
+          ]
+        },
+        {
+          "editor": "pinerc",
+          "opens": "screen",
+          "title": "settings_import"
+        }
+      ]
+    },
+    {
+      "page": "account",
+      "title": "settings_account",
+      "children": [
+        {
+          "group": "account",
+          "title": "settings_group_account_title",
+          "label": "Account",
+          "header": "label",
+          "children": [
+            {
+              "group": "identity",
+              "title": "settings_group_identity_title",
+              "label": "Identity",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "friendlyName",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_friendly_name"
+                },
+                {
+                  "setting": "email",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_email",
+                  "pinerc": "user-domain",
+                  "pinercFormat": "email"
+                },
+                {
+                  "setting": "displayName",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_display_name",
+                  "pinerc": "personal-name",
+                  "pinercFormat": "text"
+                },
+                {
+                  "setting": "altAddresses",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": [],
+                  "title": "settings_alt_addresses",
+                  "pinerc": "alt-addresses",
+                  "pinercFormat": "list",
+                  "format": "commaList"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "email",
+                    "empty": true
+                  },
+                  "value": {
+                    "setting": "displayName"
+                  }
+                },
+                {
+                  "value": {
+                    "setting": "email"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "mail_access",
+              "title": "settings_group_mail_access_title",
+              "label": "Mail access",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "jmapFolders",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_mail_access"
+                },
+                {
+                  "setting": "maxJmapResponseBytes",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 16777216,
+                  "title": "setting_maxJmapResponseBytes_title"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "jmapFolders",
+                    "titles": {
+                      "true": "settings_access_jmap",
+                      "false": "settings_access_imap"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "group": "server",
+              "title": "settings_group_server_title",
+              "label": "Server",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "imapHost",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_imap_host",
+                  "server": true,
+                  "titleWhen": [
+                    {
+                      "when": {
+                        "setting": "jmapFolders",
+                        "equals": true
+                      },
+                      "title": "settings_jmap_host"
+                    }
+                  ],
+                  "pinerc": "inbox-path",
+                  "pinercFormat": "remote"
+                },
+                {
+                  "setting": "imapPort",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 993,
+                  "title": "settings_imap_port",
+                  "server": true,
+                  "min": 1,
+                  "max": 65535,
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  },
+                  "pinerc": "inbox-path",
+                  "pinercFormat": "remote"
+                },
+                {
+                  "setting": "username",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_username",
+                  "pinerc": "user-id",
+                  "pinercFormat": "text"
+                },
+                {
+                  "setting": "tlsMode",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Implicit",
+                  "title": "settings_tls",
+                  "server": true,
+                  "choices": [
+                    "None",
+                    "StartTls",
+                    "Implicit"
+                  ],
+                  "choiceTitles": {
+                    "None": "settings_tls_none",
+                    "StartTls": "settings_tls_starttls",
+                    "Implicit": "settings_tls_implicit"
+                  },
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  },
+                  "pinerc": "inbox-path",
+                  "pinercFormat": "remote"
+                },
+                {
+                  "setting": "allowPlaintextAuth",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_allowPlaintextAuth_title",
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "acceptInvalidCert",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_accept_invalid_cert",
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  },
+                  "pinerc": "inbox-path",
+                  "pinercFormat": "novalidate"
+                },
+                {
+                  "setting": "allowOldTls",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_allowOldTls_title",
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "authMechanism",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_authMechanism_title",
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "clientCert",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_clientCert_title",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  },
+                  "editor": "clientCert",
+                  "opens": "inline"
+                },
+                {
+                  "setting": "clientCertAlias",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_clientCertAlias_title",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  },
+                  "editor": "clientCert",
+                  "opens": "inline"
+                },
+                {
+                  "setting": "certPin",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_certPin_title",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "jmapFolders",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "jmapCertPin",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_jmapCertPin_title",
+                  "server": true
+                },
+                {
+                  "setting": "pipelineCommands",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_pipeline"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "imapHost",
+                    "empty": true
+                  },
+                  "text": "settings_no_server"
+                },
+                {
+                  "when": {
+                    "setting": "jmapFolders",
+                    "equals": true
+                  },
+                  "value": {
+                    "setting": "imapHost"
+                  }
+                },
+                {
+                  "text": "settings_host_port",
+                  "args": [
+                    {
+                      "setting": "imapHost"
+                    },
+                    {
+                      "setting": "imapPort"
+                    }
+                  ]
+                }
+              ],
+              "editor": "server",
+              "opens": "inline",
+              "introWhen": [
+                {
+                  "when": {
+                    "setting": "jmapFolders",
+                    "equals": true
+                  },
+                  "text": "settings_jmap_server_note"
+                },
+                {
+                  "text": "settings_plaintext_ports"
+                }
+              ]
+            },
+            {
+              "group": "sending",
+              "title": "settings_group_sending_title",
+              "label": "Sending",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "emailSubmission",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_email_submission"
+                },
+                {
+                  "setting": "smtpHost",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_smtp_host",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  },
+                  "pinerc": "smtp-server",
+                  "pinercFormat": "smtp"
+                },
+                {
+                  "setting": "smtpPort",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 465,
+                  "title": "settings_smtp_port",
+                  "server": true,
+                  "min": 1,
+                  "max": 65535,
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  },
+                  "pinerc": "smtp-server",
+                  "pinercFormat": "smtp"
+                },
+                {
+                  "setting": "smtpTlsMode",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Implicit",
+                  "title": "setting_smtpTlsMode_title",
+                  "server": true,
+                  "choices": [
+                    "None",
+                    "StartTls",
+                    "Implicit"
+                  ],
+                  "choiceTitles": {
+                    "None": "settings_tls_none",
+                    "StartTls": "settings_tls_starttls",
+                    "Implicit": "settings_tls_implicit"
+                  },
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  },
+                  "pinerc": "smtp-server",
+                  "pinercFormat": "smtp"
+                },
+                {
+                  "setting": "smtpUsername",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_smtp_username",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  },
+                  "enabledWhen": {
+                    "setting": "smtpNoAuth",
+                    "notEquals": "On"
+                  },
+                  "pinerc": "smtp-server",
+                  "pinercFormat": "smtp"
+                },
+                {
+                  "setting": "smtpSameAsImap",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_smtpSameAsImap_title",
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  },
+                  "enabledWhen": {
+                    "setting": "smtpNoAuth",
+                    "notEquals": "On"
+                  }
+                },
+                {
+                  "setting": "smtpNoAuth",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Auto",
+                  "title": "setting_smtpNoAuth_title",
+                  "choices": [
+                    "Auto",
+                    "On",
+                    "Off"
+                  ],
+                  "choiceTitles": {
+                    "Auto": "setting_smtpNoAuth_Auto",
+                    "On": "settings_compression_on",
+                    "Off": "settings_compression_off"
+                  },
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "sieveHost",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_sieve_host",
+                  "server": true
+                },
+                {
+                  "setting": "sievePort",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 4190,
+                  "title": "settings_sieve_port",
+                  "server": true,
+                  "min": 1,
+                  "max": 65535
+                },
+                {
+                  "setting": "sieveTlsMode",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "StartTls",
+                  "title": "settings_sieve_tls",
+                  "server": true,
+                  "choices": [
+                    "None",
+                    "StartTls",
+                    "Implicit"
+                  ],
+                  "choiceTitles": {
+                    "None": "settings_tls_none",
+                    "StartTls": "settings_tls_starttls",
+                    "Implicit": "settings_tls_implicit"
+                  }
+                },
+                {
+                  "setting": "sieveCertPin",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "setting_sieveCertPin_title",
+                  "server": true
+                },
+                {
+                  "setting": "sieveConnectSeconds",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 30,
+                  "title": "setting_sieveConnectSeconds_title",
+                  "server": true
+                },
+                {
+                  "setting": "sieveReadSeconds",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 60,
+                  "title": "setting_sieveReadSeconds_title",
+                  "server": true
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "emailSubmission",
+                    "equals": true
+                  },
+                  "text": "settings_send_over_jmap"
+                },
+                {
+                  "when": {
+                    "setting": "smtpHost",
+                    "empty": true
+                  },
+                  "text": "settings_no_smtp"
+                },
+                {
+                  "text": "settings_host_port",
+                  "args": [
+                    {
+                      "setting": "smtpHost"
+                    },
+                    {
+                      "setting": "smtpPort"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "group": "watched_folders",
+              "title": "settings_group_watched_folders_title",
+              "label": "Watched folders",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "watchedFolders",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "settings_watched_folders",
+                  "editor": "folderLists",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "extraIdleBudget",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 2,
+                  "title": "settings_extra_idle_budget",
+                  "min": 0,
+                  "max": 8
+                },
+                {
+                  "setting": "maxConnections",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 8,
+                  "title": "settings_max_connections",
+                  "min": 2,
+                  "max": 20,
+                  "titleArgs": "range"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "watchedFolders",
+                    "empty": true
+                  },
+                  "text": "settings_watched_none"
+                },
+                {
+                  "value": {
+                    "count": "watchedFolders"
+                  }
+                }
+              ],
+              "visibleWhen": {
+                "setting": "jmapFolders",
+                "equals": false
+              }
+            },
+            {
+              "group": "sending_rules",
+              "title": "settings_group_sending_rules_title",
+              "label": "Sending rules",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "sendingRules",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "settings_sending_rules",
+                  "pinerc": "patterns-roles",
+                  "pinercFormat": "roles",
+                  "editor": "rules",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "signature",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_signature",
+                  "pinerc": "literal-signature",
+                  "pinercFormat": "signature"
+                },
+                {
+                  "setting": "sigDashes",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_sig_dashes",
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "sigAtBottom",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_sig_bottom",
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "quotePrefix",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "> ",
+                  "title": "pinerc_quote_prefix",
+                  "pinerc": "reply-indent-string",
+                  "pinercFormat": "text"
+                },
+                {
+                  "setting": "replyLeadIn",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "On {date}, {from} wrote:",
+                  "title": "settings_lead_in",
+                  "pinerc": "reply-leadin",
+                  "pinercFormat": "leadin"
+                },
+                {
+                  "setting": "dsnMode",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Off",
+                  "title": "settings_dsn",
+                  "choices": [
+                    "Off",
+                    "Failure",
+                    "FailureDelay",
+                    "All"
+                  ],
+                  "choiceTitles": {
+                    "Off": "settings_dsn_off",
+                    "Failure": "settings_dsn_failure",
+                    "FailureDelay": "settings_dsn_delay",
+                    "All": "settings_dsn_all"
+                  },
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "composerHeaders",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_composer_headers",
+                  "pinerc": "customized-hdrs",
+                  "pinercFormat": "headers"
+                },
+                {
+                  "setting": "inboundRules",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "setting_inboundRules_title",
+                  "editor": "rules",
+                  "opens": "screen"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_rules_summary",
+                  "args": [
+                    {
+                      "format": "rulesWho"
+                    },
+                    {
+                      "count": "sendingRules"
+                    }
+                  ]
+                }
+              ]
             }
-          }
-        ]
-      },
-      {
-        "title": "Sending rules",
-        "children": [
-          {
-            "setting": "sendingRules",
-            "default": ""
-          },
-          {
-            "setting": "signature",
-            "default": ""
-          },
-          {
-            "setting": "sigDashes",
-            "default": true
-          },
-          {
-            "setting": "sigAtBottom",
-            "default": false
-          },
-          {
-            "setting": "quotePrefix",
-            "default": "> "
-          },
-          {
-            "setting": "replyLeadIn",
-            "default": "On {date}, {from} wrote:"
-          },
-          {
-            "setting": "dsnMode",
-            "default": "Off"
-          },
-          {
-            "setting": "composerHeaders",
-            "default": ""
-          },
-          {
-            "setting": "inboundRules",
-            "default": ""
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Mailboxes",
-    "children": [
-      {
-        "title": "Special-use",
-        "children": [
-          {
-            "setting": "sentMailbox",
-            "default": ""
-          },
-          {
-            "setting": "postponedMailbox",
-            "default": ""
-          },
-          {
-            "setting": "addressBookMailbox",
-            "default": ""
-          },
-          {
-            "setting": "spamMailbox",
-            "default": ""
-          },
-          {
-            "setting": "trashMailbox",
-            "default": ""
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Folders",
-    "children": [
-      {
-        "title": "Folder list",
-        "children": [
-          {
-            "setting": "showUnreadCounts",
-            "default": false
-          },
-          {
-            "setting": "expandedFolders",
-            "default": []
-          }
-        ]
-      },
-      {
-        "title": "Folder views",
-        "children": [
-          {
-            "setting": "defaultView",
-            "default": "Arrival|newest"
-          },
-          {
-            "setting": "folderViews",
-            "default": ""
-          },
-          {
-            "setting": "threadIndexStyle",
-            "default": "Expanded"
-          }
-        ]
-      },
-      {
-        "title": "Start position",
-        "children": [
-          {
-            "setting": "inboxStart",
-            "default": "Newest"
-          },
-          {
-            "setting": "folderStart",
-            "default": "Newest"
-          },
-          {
-            "setting": "folderStarts",
-            "default": ""
-          },
-          {
-            "setting": "startAfterChange",
-            "default": "RerunRule"
-          },
-          {
-            "setting": "showRecentRules",
-            "default": true
-          },
-          {
-            "setting": "openAtInIndexMenu",
-            "default": false
-          },
-          {
-            "setting": "pinercStartDefault",
-            "default": "LeaveUnchanged"
-          }
-        ]
-      },
-      {
-        "title": "Large folders",
-        "children": [
-          {
-            "setting": "askSort",
-            "default": -1
-          },
-          {
-            "setting": "askThread",
-            "default": -1
-          },
-          {
-            "setting": "askSearch",
-            "default": -1
-          },
-          {
-            "setting": "askFallback",
-            "default": -1
-          },
-          {
-            "setting": "sortAskSkip",
-            "default": []
-          },
-          {
-            "setting": "threadAskSkip",
-            "default": []
-          },
-          {
-            "setting": "searchAskSkip",
-            "default": []
-          },
-          {
-            "setting": "fallbackAskSkip",
-            "default": []
-          },
-          {
-            "setting": "savedSearches",
-            "default": ""
-          },
-          {
-            "setting": "savedAdvanced",
-            "default": ""
-          },
-          {
-            "setting": "maxResultUids",
-            "default": 2000000
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Reading",
-    "children": [
-      {
-        "title": "Opening",
-        "children": [
-          {
-            "setting": "markSeenOnOpen",
-            "default": true
-          },
-          {
-            "setting": "bodyView",
-            "default": "PlainOrError"
-          },
-          {
-            "setting": "preferHtml",
-            "default": false
-          },
-          {
-            "setting": "readerTextLayout",
-            "default": "Text"
-          },
-          {
-            "setting": "readerTextZoom",
-            "default": 100,
-            "min": 50,
-            "max": 300,
-            "hardLimit": {
-              "min": 50,
-              "max": 300
+          ],
+          "summary": [
+            {
+              "when": {
+                "setting": "imapHost",
+                "empty": true
+              },
+              "text": "settings_no_server"
+            },
+            {
+              "value": {
+                "setting": "imapHost"
+              }
             }
-          },
-          {
-            "setting": "viewerHeaders",
-            "default": ""
-          },
-          {
-            "setting": "nonAsciiDisplay",
-            "default": "HighlightSuspicious"
-          }
-        ]
-      },
-      {
-        "title": "Deleting",
-        "children": [
-          {
-            "setting": "showDeleted",
-            "default": true
-          },
-          {
-            "setting": "autoExpunge",
-            "default": false
-          },
-          {
-            "setting": "askBeforeExpunge",
-            "default": true
-          },
-          {
-            "setting": "deletePolicy",
-            "default": "MarkDeleted"
-          },
-          {
-            "setting": "moveMethod",
-            "default": "CopyThenMarkDeleted"
-          },
-          {
-            "setting": "moveAllIncludesDeleted",
-            "default": false
-          },
-          {
-            "setting": "compression",
-            "default": "On"
-          }
-        ]
-      },
-      {
-        "title": "Actions",
-        "children": [
-          {
-            "setting": "swipeTrailing",
-            "default": "Delete||"
-          },
-          {
-            "setting": "swipeLeading",
-            "default": "ReplyAll||"
-          },
-          {
-            "setting": "readerSwipeTrailing",
-            "default": "Next||"
-          },
-          {
-            "setting": "readerSwipeLeading",
-            "default": "Previous||"
-          },
-          {
-            "setting": "bounceFcc",
-            "default": false
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Compose",
-    "children": [
-      {
-        "title": "Composing",
-        "children": [
-          {
-            "setting": "composerWrapColumn",
-            "default": 74,
-            "min": 0,
-            "max": 998,
-            "hardLimit": {
-              "min": 0,
-              "max": 998
+          ]
+        },
+        {
+          "group": "mailboxes",
+          "title": "settings_group_mailboxes_title",
+          "label": "Mailboxes",
+          "header": "label",
+          "children": [
+            {
+              "group": "special_use",
+              "title": "settings_group_special_use_title",
+              "label": "Special-use",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "sentMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_sent_mailbox",
+                  "pinerc": "default-fcc",
+                  "pinercFormat": "folder"
+                },
+                {
+                  "setting": "postponedMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_postponed_mailbox",
+                  "pinerc": "postponed-folder",
+                  "pinercFormat": "folder"
+                },
+                {
+                  "setting": "addressBookMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_address_book_mailbox",
+                  "pinerc": "address-book",
+                  "pinercFormat": "books"
+                },
+                {
+                  "setting": "spamMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_spam_mailbox"
+                },
+                {
+                  "setting": "trashMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_trash_mailbox"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_mailboxes_set",
+                  "args": [
+                    {
+                      "countSet": [
+                        "sentMailbox",
+                        "postponedMailbox",
+                        "addressBookMailbox",
+                        "spamMailbox",
+                        "trashMailbox"
+                      ]
+                    }
+                  ]
+                }
+              ]
             }
-          },
-          {
-            "setting": "quellFlowed",
-            "default": false
-          }
-        ]
-      },
-      {
-        "title": "Replying",
-        "children": [
-          {
-            "setting": "replyAboveQuote",
-            "default": false
-          }
-        ]
-      },
-      {
-        "title": "Forwarding",
-        "children": [
-          {
-            "setting": "includeForwardAttachments",
-            "default": true
-          },
-          {
-            "setting": "forwardAsAttachment",
-            "default": false
-          }
-        ]
-      },
-      {
-        "title": "Fcc",
-        "children": [
-          {
-            "setting": "savedMailbox",
-            "default": ""
-          },
-          {
-            "setting": "saveNameRule",
-            "default": "DefaultFolder"
-          },
-          {
-            "setting": "lastSaveMailbox",
-            "default": ""
-          }
-        ]
-      },
-      {
-        "title": "Address completion",
-        "children": [
-          {
-            "setting": "completionSources",
-            "default": [
-              "pine"
-            ]
-          }
-        ]
-      },
-      {
-        "title": "Address book",
-        "children": [
-          {
-            "setting": "addressBookHistory",
-            "default": 3
-          },
-          {
-            "setting": "addressBookNeverTrim",
-            "default": false
-          },
-          {
-            "setting": "extraAddressBooks",
-            "default": []
-          },
-          {
-            "setting": "globalAddressBooks",
-            "default": []
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Appearance",
-    "children": [
-      {
-        "title": "Theme",
-        "children": [
-          {
-            "setting": "theme",
-            "default": "FollowSystem"
-          },
-          {
-            "setting": "dynamicColor",
-            "default": true
-          }
-        ]
-      },
-      {
-        "title": "Display",
-        "children": [
-          {
-            "setting": "density",
-            "default": "Compact"
-          },
-          {
-            "setting": "dateFormat",
-            "default": "Short"
-          },
-          {
-            "setting": "datePattern",
-            "default": ""
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Layout",
-    "children": [
-      {
-        "title": "Custom panel layout",
-        "children": [
-          {
-            "setting": "customLayout",
-            "default": ""
-          }
-        ]
-      },
-      {
-        "setting": "multiPane",
-        "default": "Auto"
-      },
-      {
-        "setting": "folderPane",
-        "default": "Auto"
-      },
-      {
-        "setting": "foldPosture",
-        "default": "Off"
-      },
-      {
-        "setting": "fullScreen",
-        "default": false
-      },
-      {
-        "setting": "paneArrangement",
-        "default": "Auto"
-      },
-      {
-        "setting": "previewSize",
-        "default": "Auto"
-      },
-      {
-        "setting": "folderPosition",
-        "default": "Auto"
-      }
-    ]
-  },
-  {
-    "title": "Slower",
-    "children": [
-      {
-        "setting": "clientSort",
-        "default": false
-      },
-      {
-        "setting": "clientSortCollation",
-        "default": "locale",
-        "choices": [
-          "locale",
-          "plain"
-        ]
-      },
-      {
-        "setting": "unlabeledCharset",
-        "default": "ISO-8859-1"
-      },
-      {
-        "setting": "clientThread",
-        "default": false
-      },
-      {
-        "setting": "pollForNewMail",
-        "default": false
-      },
-      {
-        "setting": "pollSeconds",
-        "default": 60,
-        "hardLimit": {
-          "min": 15,
-          "max": 600
-        }
-      },
-      {
-        "setting": "idleFallbackSeconds",
-        "default": 60
-      },
-      {
-        "setting": "keepAliveMinutes",
-        "default": 9
-      },
-      {
-        "setting": "idleRenewMinutes",
-        "default": 9
-      },
-      {
-        "setting": "longSearchProgressSec",
-        "default": 60
-      },
-      {
-        "setting": "longSearchQuietSec",
-        "default": 600
-      },
-      {
-        "setting": "statusVisibleCounts",
-        "default": false
-      },
-      {
-        "setting": "forceSlowerFallbacks",
-        "default": false
-      },
-      {
-        "setting": "maxRawViewBytes",
-        "default": 1048576
-      },
-      {
-        "setting": "maxImageTrustBytes",
-        "default": 2000000
-      },
-      {
-        "setting": "indexPageSize",
-        "default": 60
-      },
-      {
-        "setting": "swipeThresholdPercent",
-        "default": 40,
-        "hardLimit": {
-          "min": 1,
-          "max": 99
-        }
-      },
-      {
-        "setting": "moveChunk",
-        "default": 1000,
-        "hardLimit": {
-          "min": 1,
-          "max": 2147483647
-        }
-      },
-      {
-        "setting": "clientSortChunk",
-        "default": 5000,
-        "hardLimit": {
-          "min": 1,
-          "max": 2147483647
-        }
-      },
-      {
-        "setting": "reconnectDelaysSec",
-        "default": [2, 10, 60],
-        "hardLimit": {
-          "minItems": 1,
-          "itemMin": 1,
-          "itemMax": 86400
-        }
-      }
-    ]
-  },
-  {
-    "title": "Debug",
-    "children": [
-      {
-        "title": "Logging",
-        "children": [
-          {
-            "setting": "logImapTraffic",
-            "default": false
-          },
-          {
-            "setting": "showUserInDebugReport",
-            "default": false
-          },
-          {
-            "setting": "idleWakeSeconds",
-            "default": 5,
-            "choices": [
-              1,
-              2,
-              5,
-              10,
-              30,
-              60
-            ],
-            "hardLimit": {
-              "min": 1,
-              "max": 60
+          ],
+          "summary": [
+            {
+              "text": "settings_mailboxes_set",
+              "args": [
+                {
+                  "countSet": [
+                    "sentMailbox",
+                    "postponedMailbox",
+                    "addressBookMailbox",
+                    "spamMailbox",
+                    "trashMailbox"
+                  ]
+                }
+              ]
             }
-          }
-        ]
-      },
-      {
-        "title": "Hide capabilities",
-        "children": [
-          {
-            "setting": "hiddenCapabilities",
-            "default": []
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "title": "Toolbars",
-    "children": [
-      {
-        "title": "Index toolbar",
-        "children": [
-          {
-            "setting": "indexBar",
-            "default": "T:Search|O:Refresh,Filter|H:"
-          }
-        ]
-      },
-      {
-        "title": "Selection toolbar",
-        "children": [
-          {
-            "setting": "selectionBar",
-            "default": "T:Delete|O:Seen,Flag,Move|H:"
-          }
-        ]
-      },
-      {
-        "title": "Folder toolbar",
-        "children": [
-          {
-            "setting": "folderBar",
-            "default": "T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:"
-          }
-        ]
-      },
-      {
-        "title": "Reader toolbar",
-        "children": [
-          {
-            "setting": "readerToolbar",
-            "default": ""
-          }
-        ]
-      },
-      {
-        "title": "Compose toolbar",
-        "children": [
-          {
-            "setting": "composeBar",
-            "default": "T:|O:Postpone|H:"
-          }
-        ]
-      },
-      {
-        "setting": "toolbarRows",
-        "default": 2,
-        "min": 1,
-        "max": 4,
-        "hardLimit": {
-          "min": 1,
-          "max": 4
+          ]
+        },
+        {
+          "group": "folders",
+          "title": "settings_group_folders_title",
+          "label": "Folders",
+          "header": "label",
+          "children": [
+            {
+              "group": "folder_list",
+              "title": "settings_group_folder_list_title",
+              "label": "Folder list",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "showUnreadCounts",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_show_unread"
+                },
+                {
+                  "setting": "expandedFolders",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "settings_expanded_folders",
+                  "editor": "folderLists",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "folderCountFreshSeconds",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 300,
+                  "title": "setting_folderCountFreshSeconds_title",
+                  "min": 1,
+                  "max": 86400
+                }
+              ],
+              "summary": [
+                {
+                  "plural": "settings_expanded",
+                  "count": "expandedFolders"
+                }
+              ]
+            },
+            {
+              "group": "folder_views",
+              "title": "settings_group_folder_views_title",
+              "label": "Folder views",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "defaultView",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "Arrival|newest",
+                  "title": "settings_default_view",
+                  "pinerc": "sort-key",
+                  "pinercFormat": "sort"
+                },
+                {
+                  "setting": "folderViews",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "settings_folder_views",
+                  "editor": "folderLists",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "threadIndexStyle",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Expanded",
+                  "title": "settings_thread_index",
+                  "choices": [
+                    "Expanded",
+                    "Collapsed"
+                  ],
+                  "choiceTitles": {
+                    "Expanded": "settings_thread_expanded",
+                    "Collapsed": "settings_thread_collapsed"
+                  },
+                  "pinerc": "threading-index-style",
+                  "pinercFormat": "threadStyle"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_sort_line",
+                  "args": [
+                    {
+                      "choiceTitle": "defaultView",
+                      "field": "key"
+                    },
+                    {
+                      "setting": "defaultView",
+                      "field": "newestFirst",
+                      "titles": {
+                        "true": "reader_newest",
+                        "false": "reader_oldest"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "group": "start_position",
+              "title": "settings_group_start_position_title",
+              "label": "Start position",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "inboxStart",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Newest",
+                  "title": "settings_inbox_opens",
+                  "choices": [
+                    "FirstUnseen",
+                    "FirstRecent",
+                    "FirstImportant",
+                    "FirstImportantOrUnseen",
+                    "FirstImportantOrRecent",
+                    "First",
+                    "Last",
+                    "Newest"
+                  ],
+                  "choiceTitles": {
+                    "FirstUnseen": "label_first_unread",
+                    "FirstRecent": "label_first_recent",
+                    "FirstImportant": "label_first_important",
+                    "FirstImportantOrUnseen": "label_first_important_unread",
+                    "FirstImportantOrRecent": "label_first_important_recent",
+                    "First": "label_top",
+                    "Last": "label_bottom",
+                    "Newest": "label_newest_message"
+                  },
+                  "pinerc": "incoming-startup-rule",
+                  "pinercFormat": "startup"
+                },
+                {
+                  "setting": "folderStart",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Newest",
+                  "title": "settings_other_opens",
+                  "choices": [
+                    "FirstUnseen",
+                    "FirstRecent",
+                    "FirstImportant",
+                    "FirstImportantOrUnseen",
+                    "FirstImportantOrRecent",
+                    "First",
+                    "Last",
+                    "Newest"
+                  ],
+                  "choiceTitles": {
+                    "FirstUnseen": "label_first_unread",
+                    "FirstRecent": "label_first_recent",
+                    "FirstImportant": "label_first_important",
+                    "FirstImportantOrUnseen": "label_first_important_unread",
+                    "FirstImportantOrRecent": "label_first_important_recent",
+                    "First": "label_top",
+                    "Last": "label_bottom",
+                    "Newest": "label_newest_message"
+                  }
+                },
+                {
+                  "setting": "folderStarts",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "setting_folderStarts_title",
+                  "editor": "folderLists",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "startAfterChange",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "RerunRule",
+                  "title": "settings_after_change",
+                  "choices": [
+                    "RerunRule",
+                    "KeepTopVisible"
+                  ],
+                  "choiceTitles": {
+                    "RerunRule": "label_rerun_rule",
+                    "KeepTopVisible": "label_keep_top"
+                  }
+                },
+                {
+                  "setting": "showRecentRules",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_show_recent"
+                },
+                {
+                  "setting": "openAtInIndexMenu",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_open_at_menu"
+                },
+                {
+                  "setting": "pinercStartDefault",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "LeaveUnchanged",
+                  "title": "setting_pinercStartDefault_title",
+                  "choices": [
+                    "LeaveUnchanged",
+                    "AlpineDefault"
+                  ],
+                  "choiceTitles": {
+                    "LeaveUnchanged": "label_leave_unchanged",
+                    "AlpineDefault": "label_alpine_default"
+                  }
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_inbox_line",
+                  "args": [
+                    {
+                      "choiceTitle": "inboxStart"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "group": "large_folders",
+              "title": "settings_group_large_folders_title",
+              "label": "Large folders",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "askSort",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": -1,
+                  "title": "settings_ask_sort"
+                },
+                {
+                  "setting": "askThread",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": -1,
+                  "title": "settings_ask_thread"
+                },
+                {
+                  "setting": "askSearch",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": -1,
+                  "title": "settings_ask_search"
+                },
+                {
+                  "setting": "askFallback",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": -1,
+                  "title": "settings_ask_fallback"
+                },
+                {
+                  "setting": "sortAskSkip",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "setting_sortAskSkip_title"
+                },
+                {
+                  "setting": "threadAskSkip",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "setting_threadAskSkip_title"
+                },
+                {
+                  "setting": "searchAskSkip",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "setting_searchAskSkip_title"
+                },
+                {
+                  "setting": "fallbackAskSkip",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "setting_fallbackAskSkip_title"
+                },
+                {
+                  "setting": "savedSearches",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "setting_savedSearches_title"
+                },
+                {
+                  "setting": "savedAdvanced",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "setting_savedAdvanced_title"
+                },
+                {
+                  "setting": "maxResultUids",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 2000000,
+                  "title": "setting_maxResultUids_title"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_ask_note"
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "text": "settings_sort_line",
+              "args": [
+                {
+                  "choiceTitle": "defaultView",
+                  "field": "key"
+                },
+                {
+                  "setting": "defaultView",
+                  "field": "newestFirst",
+                  "titles": {
+                    "true": "reader_newest",
+                    "false": "reader_oldest"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "group": "reading",
+          "title": "settings_group_reading_title",
+          "label": "Reading",
+          "header": "label",
+          "children": [
+            {
+              "group": "opening",
+              "title": "settings_group_opening_title",
+              "label": "Opening",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "markSeenOnOpen",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_mark_seen"
+                },
+                {
+                  "setting": "bodyView",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "PlainOrError",
+                  "title": "setting_bodyView_title",
+                  "choices": [
+                    "PlainOrHtml",
+                    "PlainOrText",
+                    "PlainOrError",
+                    "Headers",
+                    "Raw"
+                  ],
+                  "choiceTitles": {
+                    "PlainOrHtml": "label_html",
+                    "PlainOrText": "label_html_text",
+                    "PlainOrError": "label_plain",
+                    "Headers": "label_headers",
+                    "Raw": "label_raw"
+                  }
+                },
+                {
+                  "setting": "preferHtml",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_preferHtml_title",
+                  "derived": true
+                },
+                {
+                  "setting": "readerTextLayout",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Text",
+                  "title": "settings_reader_display",
+                  "choices": [
+                    "Text",
+                    "Flowed",
+                    "Monospaced"
+                  ],
+                  "choiceTitles": {
+                    "Text": "label_plain",
+                    "Flowed": "display_flowed",
+                    "Monospaced": "settings_monospace"
+                  }
+                },
+                {
+                  "setting": "readerTextZoom",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 100,
+                  "title": "settings_text_size",
+                  "min": 50,
+                  "max": 300
+                },
+                {
+                  "setting": "viewerHeaders",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_viewer_headers",
+                  "pinerc": "viewer-hdrs",
+                  "pinercFormat": "headers"
+                },
+                {
+                  "setting": "nonAsciiDisplay",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "HighlightSuspicious",
+                  "title": "settings_non_ascii",
+                  "choices": [
+                    "Normal",
+                    "HighlightSuspicious",
+                    "HighlightAll",
+                    "Warn",
+                    "Escape"
+                  ],
+                  "choiceTitles": {
+                    "Normal": "settings_non_ascii_normal",
+                    "HighlightSuspicious": "settings_non_ascii_suspicious",
+                    "HighlightAll": "settings_non_ascii_all",
+                    "Warn": "settings_non_ascii_warn",
+                    "Escape": "settings_non_ascii_escape"
+                  }
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "choiceTitle": "bodyView"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "deleting",
+              "title": "settings_group_deleting_title",
+              "label": "Deleting",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "showDeleted",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_show_deleted"
+                },
+                {
+                  "setting": "autoExpunge",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_auto_expunge"
+                },
+                {
+                  "setting": "askBeforeExpunge",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_ask_expunge",
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "deletePolicy",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "MarkDeleted",
+                  "title": "setting_deletePolicy_title",
+                  "choices": [
+                    "MarkDeleted",
+                    "MoveToTrash",
+                    "DeletePermanently"
+                  ],
+                  "choiceTitles": {
+                    "MarkDeleted": "settings_mark_deleted",
+                    "MoveToTrash": "settings_move_to_trash",
+                    "DeletePermanently": "settings_delete_permanently"
+                  },
+                  "editor": "deletePolicy",
+                  "opens": "inline"
+                },
+                {
+                  "setting": "moveMethod",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "CopyThenMarkDeleted",
+                  "title": "settings_move_method",
+                  "choices": [
+                    "CopyThenMarkDeleted",
+                    "ImapMove"
+                  ],
+                  "choiceTitles": {
+                    "CopyThenMarkDeleted": "settings_copy_then_mark",
+                    "ImapMove": "settings_imap_move"
+                  },
+                  "editor": "moveMethod",
+                  "opens": "inline"
+                },
+                {
+                  "setting": "moveAllIncludesDeleted",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_moveAllIncludesDeleted_title"
+                },
+                {
+                  "setting": "compression",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "On",
+                  "title": "settings_compression",
+                  "choices": [
+                    "On",
+                    "Off",
+                    "Auto"
+                  ],
+                  "choiceTitles": {
+                    "On": "settings_compression_on",
+                    "Off": "settings_compression_off",
+                    "Auto": "settings_compression_auto"
+                  },
+                  "editor": "compression",
+                  "opens": "inline"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "askBeforeExpunge",
+                    "titles": {
+                      "true": "settings_ask_expunge",
+                      "false": "settings_expunge_without"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "group": "actions",
+              "title": "settings_group_actions_title",
+              "label": "Actions",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "swipeTrailing",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "Delete||",
+                  "title": "setting_swipeTrailing_title",
+                  "editor": "swipes",
+                  "opens": "popup"
+                },
+                {
+                  "setting": "swipeLeading",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "ReplyAll||",
+                  "title": "setting_swipeLeading_title",
+                  "editor": "swipes",
+                  "opens": "popup"
+                },
+                {
+                  "setting": "readerSwipeTrailing",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "Next||",
+                  "title": "setting_readerSwipeTrailing_title",
+                  "editor": "swipes",
+                  "opens": "popup"
+                },
+                {
+                  "setting": "readerSwipeLeading",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "Previous||",
+                  "title": "setting_readerSwipeLeading_title",
+                  "editor": "swipes",
+                  "opens": "popup"
+                },
+                {
+                  "setting": "bounceFcc",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_bounce_fcc"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_swipe_line",
+                  "args": [
+                    {
+                      "choiceTitle": "swipeTrailing",
+                      "field": "action"
+                    },
+                    {
+                      "choiceTitle": "swipeLeading",
+                      "field": "action"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "choiceTitle": "bodyView"
+              }
+            }
+          ]
+        },
+        {
+          "group": "compose",
+          "title": "settings_group_compose_title",
+          "label": "Compose",
+          "header": "label",
+          "children": [
+            {
+              "group": "composing",
+              "title": "settings_group_composing_title",
+              "label": "Composing",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "composerWrapColumn",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 74,
+                  "title": "settings_wrap_column",
+                  "min": 0,
+                  "max": 998,
+                  "pinerc": "composer-wrap-column",
+                  "pinercFormat": "int"
+                },
+                {
+                  "setting": "quellFlowed",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "setting_quellFlowed_title"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "composerWrapColumn"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "replying",
+              "title": "settings_group_replying_title",
+              "label": "Replying",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "replyAboveQuote",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_reply_above"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "replyAboveQuote",
+                    "titles": {
+                      "true": "settings_reply_above",
+                      "false": "settings_reply_below"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "group": "forwarding",
+              "title": "settings_group_forwarding_title",
+              "label": "Forwarding",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "includeForwardAttachments",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_include_attachments"
+                },
+                {
+                  "setting": "forwardAsAttachment",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_forward_attachment"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "forwardAsAttachment",
+                    "equals": true
+                  },
+                  "text": "settings_forward_attachment"
+                },
+                {
+                  "when": {
+                    "setting": "includeForwardAttachments",
+                    "equals": true
+                  },
+                  "text": "settings_include_short"
+                },
+                {
+                  "text": "settings_attachments_off"
+                }
+              ]
+            },
+            {
+              "group": "fcc",
+              "title": "settings_group_fcc_title",
+              "label": "Fcc",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "savedMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "settings_saved_mailbox",
+                  "pinerc": "default-saved-msg-folder",
+                  "pinercFormat": "mailbox"
+                },
+                {
+                  "setting": "saveNameRule",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "DefaultFolder",
+                  "title": "settings_save_rule",
+                  "choices": [
+                    "DefaultFolder",
+                    "ByFrom",
+                    "BySender",
+                    "ByRecipient",
+                    "LastFolderUsed"
+                  ],
+                  "choiceTitles": {
+                    "DefaultFolder": "settings_save_default",
+                    "ByFrom": "settings_save_from",
+                    "BySender": "settings_save_sender",
+                    "ByRecipient": "settings_save_recipient",
+                    "LastFolderUsed": "settings_save_last"
+                  },
+                  "pinerc": "saved-msg-name-rule",
+                  "pinercFormat": "saveRule"
+                },
+                {
+                  "setting": "lastSaveMailbox",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "mailbox",
+                  "default": "",
+                  "title": "setting_lastSaveMailbox_title"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "choiceTitle": "saveNameRule"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "address_completion",
+              "title": "settings_group_address_completion_title",
+              "label": "Address completion",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "completionSources",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [
+                    "pine"
+                  ],
+                  "title": "setting_completionSources_title",
+                  "editor": "addressBooks",
+                  "opens": "screen"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "completionSources",
+                    "empty": true
+                  },
+                  "text": "settings_no_sources"
+                },
+                {
+                  "when": {
+                    "setting": "completionSources",
+                    "equals": [
+                      "pine"
+                    ]
+                  },
+                  "text": "settings_pine"
+                },
+                {
+                  "plural": "settings_sources",
+                  "count": "completionSources"
+                }
+              ]
+            },
+            {
+              "group": "address_book",
+              "title": "settings_group_address_book_title",
+              "label": "Address book",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "addressBookHistory",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 3,
+                  "title": "settings_history_label",
+                  "pinerc": "remote-abook-history",
+                  "pinercFormat": "int"
+                },
+                {
+                  "setting": "addressBookNeverTrim",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_never_trim"
+                },
+                {
+                  "setting": "extraAddressBooks",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "settings_extra_books",
+                  "pinerc": "address-book",
+                  "pinercFormat": "booksExtra",
+                  "editor": "addressBooks",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "globalAddressBooks",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "settings_global_books",
+                  "pinerc": "global-address-book",
+                  "pinercFormat": "books",
+                  "editor": "addressBooks",
+                  "opens": "screen"
+                },
+                {
+                  "setting": "androidContactsCacheSeconds",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 300,
+                  "title": "setting_androidContactsCacheSeconds_title",
+                  "min": 0,
+                  "max": 86400
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "addressBookNeverTrim",
+                    "equals": true
+                  },
+                  "text": "settings_never_trim"
+                },
+                {
+                  "text": "settings_history",
+                  "args": [
+                    {
+                      "setting": "addressBookHistory"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "setting": "replyAboveQuote",
+                "titles": {
+                  "true": "settings_reply_above",
+                  "false": "settings_reply_below"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "group": "appearance",
+          "title": "settings_group_appearance_title",
+          "label": "Appearance",
+          "header": "label",
+          "children": [
+            {
+              "group": "theme",
+              "title": "settings_group_theme_title",
+              "label": "Theme",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "theme",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "FollowSystem",
+                  "title": "settings_theme",
+                  "choices": [
+                    "Dark",
+                    "Light",
+                    "FollowSystem"
+                  ],
+                  "choiceTitles": {
+                    "Dark": "label_dark",
+                    "Light": "label_light",
+                    "FollowSystem": "label_system"
+                  }
+                },
+                {
+                  "setting": "dynamicColor",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_dynamic_color",
+                  "visibleWhen": {
+                    "sdkAtLeast": 31
+                  }
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "all": [
+                      {
+                        "sdkAtLeast": 31
+                      },
+                      {
+                        "setting": "dynamicColor",
+                        "equals": true
+                      }
+                    ]
+                  },
+                  "text": "settings_dynamic_line",
+                  "args": [
+                    {
+                      "choiceTitle": "theme"
+                    }
+                  ]
+                },
+                {
+                  "value": {
+                    "choiceTitle": "theme"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "display",
+              "title": "settings_group_display_title",
+              "label": "Display",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "density",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Compact",
+                  "title": "settings_density",
+                  "choices": [
+                    "Compact",
+                    "Medium",
+                    "Large"
+                  ],
+                  "choiceTitles": {
+                    "Compact": "label_compact",
+                    "Medium": "label_comfortable",
+                    "Large": "label_large"
+                  }
+                },
+                {
+                  "setting": "dateFormat",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Short",
+                  "title": "settings_date_format",
+                  "choices": [
+                    "Local",
+                    "Short",
+                    "Relative",
+                    "Custom"
+                  ],
+                  "choiceTitles": {
+                    "Local": "label_local",
+                    "Short": "label_short",
+                    "Relative": "label_relative",
+                    "Custom": "label_custom"
+                  }
+                },
+                {
+                  "setting": "datePattern",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_date_pattern",
+                  "visibleWhen": {
+                    "setting": "dateFormat",
+                    "equals": "Custom"
+                  }
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_display_line",
+                  "args": [
+                    {
+                      "choiceTitle": "density"
+                    },
+                    {
+                      "choiceTitle": "dateFormat"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "choiceTitle": "theme"
+              }
+            }
+          ]
+        },
+        {
+          "group": "layout",
+          "title": "settings_group_layout_title",
+          "label": "Layout",
+          "header": "label",
+          "children": [
+            {
+              "group": "custom_panel_layout",
+              "title": "settings_group_custom_panel_layout_title",
+              "label": "Custom panel layout",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "customLayout",
+                  "type": "Encoded",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": "",
+                  "title": "layout_custom",
+                  "enabledWhen": {
+                    "setting": "multiPane",
+                    "notEquals": "Off"
+                  },
+                  "editor": "paneLayout",
+                  "opens": "screen"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "customLayout",
+                    "empty": true
+                  },
+                  "text": "settings_pane_auto"
+                },
+                {
+                  "text": "layout_custom"
+                }
+              ]
+            },
+            {
+              "setting": "multiPane",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Auto",
+              "title": "settings_multi_pane",
+              "choices": [
+                "Off",
+                "Wide",
+                "Auto"
+              ],
+              "choiceTitles": {
+                "Off": "settings_multi_pane_off",
+                "Wide": "settings_multi_pane_wide",
+                "Auto": "settings_pane_auto"
+              }
+            },
+            {
+              "setting": "folderPane",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Auto",
+              "title": "settings_folder_pane",
+              "choices": [
+                "Off",
+                "On",
+                "Auto"
+              ],
+              "choiceTitles": {
+                "Off": "settings_multi_pane_off",
+                "On": "settings_multi_pane_wide",
+                "Auto": "settings_pane_auto"
+              },
+              "enabledWhen": {
+                "setting": "multiPane",
+                "notEquals": "Off"
+              }
+            },
+            {
+              "setting": "foldPosture",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Off",
+              "title": "settings_fold_posture",
+              "choices": [
+                "Off",
+                "On",
+                "Auto"
+              ],
+              "choiceTitles": {
+                "Off": "settings_multi_pane_off",
+                "On": "settings_multi_pane_wide",
+                "Auto": "settings_pane_auto"
+              },
+              "enabledWhen": {
+                "setting": "multiPane",
+                "notEquals": "Off"
+              }
+            },
+            {
+              "setting": "fullScreen",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "settings_full_screen"
+            },
+            {
+              "setting": "paneArrangement",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Auto",
+              "title": "settings_pane_arrangement",
+              "choices": [
+                "Auto",
+                "SideBySide",
+                "Stacked"
+              ],
+              "choiceTitles": {
+                "Auto": "settings_pane_auto",
+                "SideBySide": "settings_pane_side_by_side",
+                "Stacked": "settings_pane_stacked"
+              },
+              "enabledWhen": {
+                "setting": "multiPane",
+                "notEquals": "Off"
+              }
+            },
+            {
+              "setting": "previewSize",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Auto",
+              "title": "settings_preview_size",
+              "choices": [
+                "Auto",
+                "Density",
+                "None",
+                "Small",
+                "Large"
+              ],
+              "choiceTitles": {
+                "Auto": "settings_pane_auto",
+                "Density": "settings_preview_density",
+                "None": "settings_preview_none",
+                "Small": "settings_preview_small",
+                "Large": "settings_preview_large"
+              }
+            },
+            {
+              "setting": "folderPosition",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "Auto",
+              "title": "settings_folder_position",
+              "choices": [
+                "Auto",
+                "Beside",
+                "AboveList"
+              ],
+              "choiceTitles": {
+                "Auto": "settings_pane_auto",
+                "Beside": "settings_folder_beside",
+                "AboveList": "settings_folder_above"
+              },
+              "enabledWhen": {
+                "setting": "multiPane",
+                "notEquals": "Off"
+              }
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "choiceTitle": "multiPane"
+              }
+            }
+          ]
+        },
+        {
+          "group": "slower",
+          "title": "settings_group_slower_title",
+          "label": "Slower",
+          "header": "label",
+          "children": [
+            {
+              "setting": "clientSort",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "settings_client_sort"
+            },
+            {
+              "setting": "clientSortCollation",
+              "type": "Enum",
+              "scope": "account",
+              "kind": "choice",
+              "default": "locale",
+              "title": "setting_clientSortCollation_title",
+              "choices": [
+                "locale",
+                "plain"
+              ],
+              "choiceTitles": {
+                "locale": "setting_clientSortCollation_locale",
+                "plain": "setting_clientSortCollation_plain"
+              }
+            },
+            {
+              "setting": "unlabeledCharset",
+              "type": "String",
+              "scope": "account",
+              "kind": "text",
+              "default": "ISO-8859-1",
+              "title": "setting_unlabeledCharset_title"
+            },
+            {
+              "setting": "clientThread",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "settings_client_thread"
+            },
+            {
+              "setting": "pollForNewMail",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "settings_poll_mail"
+            },
+            {
+              "setting": "pollSeconds",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 60,
+              "title": "setting_pollSeconds_title",
+              "min": 15,
+              "max": 600
+            },
+            {
+              "setting": "idleFallbackSeconds",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 60,
+              "title": "setting_idleFallbackSeconds_title"
+            },
+            {
+              "setting": "keepAliveMinutes",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 9,
+              "title": "setting_keepAliveMinutes_title"
+            },
+            {
+              "setting": "idleRenewMinutes",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 9,
+              "title": "setting_idleRenewMinutes_title"
+            },
+            {
+              "setting": "longSearchProgressSec",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 60,
+              "title": "setting_longSearchProgressSec_title"
+            },
+            {
+              "setting": "longSearchQuietSec",
+              "type": "Int",
+              "scope": "account",
+              "kind": "number",
+              "default": 600,
+              "title": "setting_longSearchQuietSec_title"
+            },
+            {
+              "setting": "statusVisibleCounts",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "setting_statusVisibleCounts_title"
+            },
+            {
+              "setting": "forceSlowerFallbacks",
+              "type": "Bool",
+              "scope": "account",
+              "kind": "bool",
+              "default": false,
+              "title": "settings_force_slower"
+            }
+          ],
+          "summary": [
+            {
+              "when": {
+                "any": [
+                  {
+                    "setting": "clientSort",
+                    "equals": true
+                  },
+                  {
+                    "setting": "clientThread",
+                    "equals": true
+                  },
+                  {
+                    "setting": "pollForNewMail",
+                    "equals": true
+                  },
+                  {
+                    "setting": "statusVisibleCounts",
+                    "equals": true
+                  }
+                ]
+              },
+              "text": "settings_slower_on"
+            },
+            {
+              "text": "settings_slower_off"
+            }
+          ]
+        },
+        {
+          "group": "debug",
+          "title": "settings_group_debug_title",
+          "label": "Debug",
+          "header": "label",
+          "children": [
+            {
+              "group": "logging",
+              "title": "settings_group_logging_title",
+              "label": "Logging",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "logImapTraffic",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_log_traffic"
+                },
+                {
+                  "setting": "showUserInDebugReport",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": false,
+                  "title": "settings_show_user"
+                },
+                {
+                  "setting": "idleWakeSeconds",
+                  "type": "Int",
+                  "scope": "account",
+                  "kind": "number",
+                  "default": 5,
+                  "title": "setting_idleWakeSeconds_title",
+                  "choices": [
+                    1,
+                    2,
+                    5,
+                    10,
+                    30,
+                    60
+                  ],
+                  "min": 1,
+                  "max": 60
+                }
+              ],
+              "summary": [
+                {
+                  "text": "settings_logging_line",
+                  "args": [
+                    {
+                      "setting": "pipelineCommands",
+                      "titles": {
+                        "true": "settings_pipeline_on",
+                        "false": "settings_pipeline_off"
+                      }
+                    },
+                    {
+                      "setting": "logImapTraffic",
+                      "titles": {
+                        "true": "settings_log_on",
+                        "false": "settings_log_off"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "group": "hide_capabilities",
+              "title": "settings_group_hide_capabilities_title",
+              "label": "Hide capabilities",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "hiddenCapabilities",
+                  "type": "StringList",
+                  "scope": "account",
+                  "kind": "subscreen",
+                  "default": [],
+                  "title": "setting_hiddenCapabilities_title",
+                  "editor": "hiddenOptions",
+                  "opens": "screen"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "setting": "hiddenCapabilities",
+                    "empty": true
+                  },
+                  "text": "settings_hide_none"
+                },
+                {
+                  "text": "settings_hide_count",
+                  "args": [
+                    {
+                      "count": "hiddenCapabilities"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "setting": "logImapTraffic",
+                "titles": {
+                  "true": "settings_traffic_on",
+                  "false": "settings_traffic_off"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "group": "favorites",
+          "title": "settings_group_favorites_title",
+          "label": "Favorites",
+          "header": "label",
+          "children": [
+            {
+              "setting": "favorites",
+              "type": "Encoded",
+              "scope": "account",
+              "kind": "subscreen",
+              "default": "",
+              "title": "settings_favorites",
+              "pinerc": "incoming-folders",
+              "pinercFormat": "incoming",
+              "editor": "folderLists",
+              "opens": "screen"
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "count": "favorites"
+              }
+            }
+          ]
         }
-      }
-    ]
-  },
-  {
-    "title": "Favorites",
-    "children": [
-      {
-        "setting": "favorites",
-        "default": ""
-      }
-    ]
-  }
-]
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "setting": "settingsLastEditedAccount",
+      "type": "String",
+      "scope": "ui",
+      "kind": "text",
+      "default": "",
+      "title": "setting_settingsLastEditedAccount_title"
+    },
+    {
+      "setting": "toolbars",
+      "type": "Encoded",
+      "scope": "ui",
+      "kind": "text",
+      "default": "",
+      "title": "settings_toolbars"
+    }
+  ]
+}

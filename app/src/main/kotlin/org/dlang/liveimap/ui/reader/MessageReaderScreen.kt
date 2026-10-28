@@ -401,7 +401,7 @@ fun MessageReaderScreen(
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val appContext = LocalContext.current.applicationContext
@@ -442,7 +442,7 @@ private fun MessageReaderLoaded(
     onAdvance: (Long, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
     val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
@@ -2031,7 +2031,7 @@ private fun MessageReaderLoaded(
                         }
                     }
                     ToolbarIconRows(
-                        maxRows = account.toolbarRows,
+                        maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
                         onRows = { count -> iconRows = count },
                         icons = readerIcons,
                     )
@@ -2301,7 +2301,7 @@ private fun MessageReaderLoaded(
                     text = { Text(customize) },
                     onClick = {
                         moreMenu = false
-                        onCustomize(accountId)
+                        onCustomize()
                     },
                 )
                 }

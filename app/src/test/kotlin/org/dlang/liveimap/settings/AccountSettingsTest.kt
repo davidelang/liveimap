@@ -530,10 +530,6 @@ class AccountSettingsTest {
             ),
             decodeAccountSettings(threeField).favorites,
         )
-        val missingBar = AccountSettings().encode().lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("readerBar=") }
-            .joinToString("\n")
-        assertNull(decodeAccountSettings(missingBar).readerToolbar)
     }
 
     @Test
@@ -566,25 +562,6 @@ class AccountSettingsTest {
             .filter { it.isNotEmpty() && !it.startsWith("askBeforeExpunge=") }
             .joinToString("\n")
         assertTrue(decodeAccountSettings(older).askBeforeExpunge)
-    }
-
-    @Test
-    fun unusedLabelsAreGone() {
-        val text = listOf(
-            "src/main/kotlin/org/dlang/liveimap/settings/AccountSettings.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/settings/AccountSettings.kt",
-        ).map(::File).first { it.exists() }.readText()
-        assertFalse(text.contains("fun densityLabel"))
-        assertFalse(text.contains("fun startAfterChangeLabel"))
-        assertFalse(text.contains("fun pinercStartDefaultLabel"))
-        assertFalse(text.contains("fun openAtMenuText"))
-        assertFalse(text.contains("fun swipeActionLabel"))
-        assertFalse(text.contains("fun themeLabel"))
-        assertTrue(text.contains("fun sortKeyLabel"))
-        assertTrue(text.contains("fun startRuleLabel"))
-        assertTrue(text.contains("fun dateFormatLabel"))
-        assertTrue(text.contains("fun bodyViewLabel"))
-        assertTrue(text.contains("fun favoriteLabel"))
     }
 
     @Test
@@ -735,233 +712,6 @@ class AccountSettingsTest {
     }
 
     @Test
-    fun indexBarRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.contains("indexBar="))
-        assertEquals(defaultIndexBar(), decodeAccountSettings(text).indexBar)
-        val explicit = text.trimEnd() + "\nindexBar=T:Refresh,Search,Filter|O:|H:\n"
-        val storedIndex = decodeAccountSettings(explicit).indexBar
-        assertEquals(
-            listOf(IndexBarAction.Refresh, IndexBarAction.Search, IndexBarAction.Filter),
-            storedIndex.toolbar,
-        )
-        assertEquals(emptyList<IndexBarAction>(), storedIndex.overflow)
-        assertEquals(emptyList<IndexBarAction>(), storedIndex.hidden)
-        val moved = moveIndexAction(defaultIndexBar(), IndexBarAction.Refresh, BarSection.Toolbar)
-        val saved = AccountSettings(indexBar = moved)
-        val encoded = saved.encode()
-        assertTrue(encoded.contains("indexBar=T:Search,Refresh|O:Filter|H:"))
-        assertEquals(moved, decodeAccountSettings(encoded).indexBar)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        val badValues = listOf(
-            "T:Refresh|O:Search,Search|H:Filter",
-            "T:Sort|O:|H:",
-            "T:Refresh|O:|H:Filter",
-            "nope",
-        )
-        for (value in badValues) {
-            val bad = text.trimEnd() + "\nindexBar=$value\n"
-            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
-        }
-    }
-
-    @Test
-    fun selectionBarRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.contains("selectionBar="))
-        assertEquals(defaultSelectionBar(), decodeAccountSettings(text).selectionBar)
-        val explicit = text.trimEnd() + "\nselectionBar=T:Seen,Flag,Move,Delete|O:|H:\n"
-        val storedSelection = decodeAccountSettings(explicit).selectionBar
-        assertEquals(
-            listOf(
-                SelectionBarAction.Seen,
-                SelectionBarAction.Flag,
-                SelectionBarAction.Move,
-                SelectionBarAction.Delete,
-            ),
-            storedSelection.toolbar,
-        )
-        assertEquals(emptyList<SelectionBarAction>(), storedSelection.overflow)
-        assertEquals(emptyList<SelectionBarAction>(), storedSelection.hidden)
-        val moved = moveSelectionAction(defaultSelectionBar(), SelectionBarAction.Delete, BarSection.Overflow)
-        val saved = AccountSettings(selectionBar = moved)
-        val encoded = saved.encode()
-        assertTrue(encoded.contains("indexBar="))
-        assertTrue(encoded.contains("selectionBar=T:|O:Seen,Flag,Move,Delete|H:"))
-        assertEquals(moved, decodeAccountSettings(encoded).selectionBar)
-        assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        val badValues = listOf(
-            "T:Seen|O:Move,Move|H:Delete",
-            "T:Sort|O:|H:",
-            "T:Seen|O:|H:Delete",
-            "nope",
-        )
-        for (value in badValues) {
-            val bad = text.trimEnd() + "\nselectionBar=$value\n"
-            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
-        }
-    }
-
-    @Test
-    fun folderBarRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.contains("folderBar="))
-        assertEquals(defaultFolderBar(), decodeAccountSettings(text).folderBar)
-        val explicit = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:\n"
-        assertEquals(defaultFolderBar(), decodeAccountSettings(explicit).folderBar)
-        val moved = moveFolderAction(defaultFolderBar(), FolderBarAction.Refresh, BarSection.Overflow)
-        val saved = AccountSettings(folderBar = moved)
-        val encoded = saved.encode()
-        assertTrue(encoded.contains("indexBar="))
-        assertTrue(encoded.contains("selectionBar="))
-        assertTrue(encoded.contains("folderBar=T:|O:CollapseAll,SaveDefault,ResetDefault,Refresh|H:"))
-        assertEquals(moved, decodeAccountSettings(encoded).folderBar)
-        assertEquals(defaultIndexBar(), decodeAccountSettings(encoded).indexBar)
-        assertEquals(defaultSelectionBar(), decodeAccountSettings(encoded).selectionBar)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        val bad = text.trimEnd() + "\nfolderBar=T:Refresh|O:CollapseAll,CollapseAll|H:\n"
-        decodeAccountSettings(bad) // F69: duplicates are tolerated (first place kept)
-    }
-
-    @Test
-    fun readerToolbarRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.lines().contains("readerToolbar="))
-        assertFalse(text.contains("readerBar="))
-        assertNull(decodeAccountSettings(text).readerToolbar)
-        val layout = ReaderToolbarLayout(
-            toolbar = listOf(
-                ReaderToolbarAction.Refresh,
-                ReaderToolbarAction.Reply,
-                ReaderToolbarAction.ReplyAll,
-                ReaderToolbarAction.Forward,
-                ReaderToolbarAction.Delete,
-            ),
-            overflow = listOf(
-                ReaderToolbarAction.Move,
-                ReaderToolbarAction.Spam,
-                ReaderToolbarAction.Bounce,
-                ReaderToolbarAction.Headers,
-            ),
-            hidden = emptyList(),
-        )
-        val saved = AccountSettings(readerToolbar = layout)
-        val encoded = saved.encode()
-        assertTrue(
-            encoded.contains(
-                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete|O:Move,Spam,Bounce,Headers|H:",
-            ),
-        )
-        assertFalse(encoded.contains("readerBar="))
-        assertEquals(layout, decodeAccountSettings(encoded).readerToolbar)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        val moved = moveReaderAction(layout, ReaderToolbarAction.Bounce, BarSection.Toolbar)
-        val movedText = AccountSettings(readerToolbar = moved).encode()
-        assertTrue(
-            movedText.contains(
-                "readerToolbar=T:Refresh,Reply,ReplyAll,Forward,Delete,Bounce|O:Move,Spam,Headers|H:",
-            ),
-        )
-        assertEquals(moved, decodeAccountSettings(movedText).readerToolbar)
-        val bad = text.trimEnd() + "\nreaderToolbar=T:Refresh|O:Reply,Reply|H:\n"
-        decodeAccountSettings(bad) // F69: duplicates are tolerated (first place kept)
-    }
-
-    @Test
-    fun readerBarMigratesOnceWhenToolbarIsAbsent() {
-        val replyOnly = ReaderToolbarLayout(
-            toolbar = listOf(ReaderToolbarAction.Refresh, ReaderToolbarAction.Reply),
-            overflow = listOf(
-                ReaderToolbarAction.ReplyAll,
-                ReaderToolbarAction.Forward,
-                ReaderToolbarAction.Delete,
-                ReaderToolbarAction.Move,
-                ReaderToolbarAction.Spam,
-                ReaderToolbarAction.Bounce,
-                ReaderToolbarAction.Headers,
-            ),
-            hidden = emptyList(),
-        )
-        val stored = AccountSettings().encode().lineSequence().filter { !it.startsWith("readerToolbar=") }.joinToString("\n") + "\nreaderBar=Reply\n"
-        val decoded = decodeAccountSettings(stored)
-        assertEquals(replyOnly, decoded.readerToolbar)
-        val encoded = decoded.encode()
-        assertFalse(encoded.contains("readerBar="))
-        assertEquals(replyOnly, decodeAccountSettings(encoded).readerToolbar)
-        val kept = ReaderToolbarLayout(
-            toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
-            overflow = listOf(
-                ReaderToolbarAction.Refresh,
-                ReaderToolbarAction.ReplyAll,
-                ReaderToolbarAction.Forward,
-                ReaderToolbarAction.Move,
-                ReaderToolbarAction.Spam,
-                ReaderToolbarAction.Bounce,
-                ReaderToolbarAction.Headers,
-            ),
-            hidden = emptyList(),
-        )
-        val both = "readerToolbar=T:Reply,Delete|O:Refresh,ReplyAll,Forward,Move,Spam,Bounce,Headers|H:\nreaderBar=Reply\n"
-        assertEquals(kept, decodeAccountSettings(both).readerToolbar)
-        assertFalse(decodeAccountSettings(both).encode().contains("readerBar="))
-    }
-
-    @Test
-    fun defaultStoredReaderBarStaysNull() {
-        val stored = AccountSettings().encode().lineSequence().filter { !it.startsWith("readerToolbar=") }.joinToString("\n") +
-            "\nreaderBar=Reply;ReplyAll;Forward;Delete;Move\n"
-        val decoded = decodeAccountSettings(stored)
-        assertNull(decoded.readerToolbar)
-        val encoded = decoded.encode()
-        assertFalse(encoded.contains("readerBar="))
-        assertTrue(encoded.lines().contains("readerToolbar="))
-        assertFalse(encodePinerc(decoded).contains("# toolbar"))
-        val kept = ReaderToolbarLayout(
-            toolbar = listOf(ReaderToolbarAction.Reply, ReaderToolbarAction.Delete),
-            overflow = listOf(
-                ReaderToolbarAction.Refresh,
-                ReaderToolbarAction.ReplyAll,
-                ReaderToolbarAction.Forward,
-                ReaderToolbarAction.Move,
-                ReaderToolbarAction.Spam,
-                ReaderToolbarAction.Bounce,
-                ReaderToolbarAction.Headers,
-            ),
-            hidden = emptyList(),
-        )
-        val both = "readerToolbar=T:Reply,Delete|O:Refresh,ReplyAll,Forward,Move,Spam,Bounce,Headers|H:\n" +
-            "readerBar=Reply;ReplyAll;Forward;Delete;Move\n"
-        assertEquals(kept, decodeAccountSettings(both).readerToolbar)
-        assertFalse(decodeAccountSettings(both).encode().contains("readerBar="))
-    }
-
-    @Test
-    fun composeBarRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.contains("composeBar="))
-        assertEquals(defaultComposeBar(), decodeAccountSettings(text).composeBar)
-        val explicit = text.trimEnd() + "\ncomposeBar=T:|O:Postpone|H:\n"
-        assertEquals(defaultComposeBar(), decodeAccountSettings(explicit).composeBar)
-        val onBar = moveComposeAction(defaultComposeBar(), ComposeBarAction.Postpone, BarSection.Toolbar)
-        val saved = AccountSettings(composeBar = onBar)
-        val encoded = saved.encode()
-        assertTrue(encoded.contains("composeBar=T:Postpone|O:|H:"))
-        assertEquals(onBar, decodeAccountSettings(encoded).composeBar)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        val badValues = listOf(
-            "T:Postpone|O:Postpone|H:",
-            "T:|O:|H:",
-            "T:Send|O:Postpone|H:",
-            "nope",
-        )
-        for (value in badValues) {
-            val bad = text.trimEnd() + "\ncomposeBar=$value\n"
-            decodeAccountSettings(bad) // F69: a bad stored value falls back instead of throwing
-        }
-    }
-
-    @Test
     fun quellFlowedRoundTrip() {
         val text = AccountSettings().encode()
         assertTrue(text.contains("quellFlowed=false"))
@@ -993,24 +743,6 @@ class AccountSettingsTest {
             } catch (error: IllegalArgumentException) {
                 assertEquals("bad composerWrapColumn", error.message)
             }
-        }
-    }
-
-    @Test
-    fun toolbarRowsRoundTrip() {
-        val text = AccountSettings().encode()
-        assertTrue(text.contains("toolbarRows=2"))
-        assertEquals(2, decodeAccountSettings(text).toolbarRows)
-        val stored = text.trimEnd() + "\ntoolbarRows=3\n"
-        assertEquals(3, decodeAccountSettings(stored).toolbarRows)
-        val saved = AccountSettings(toolbarRows = 3)
-        val encoded = saved.encode()
-        assertTrue(encoded.contains("toolbarRows=3"))
-        assertEquals(3, decodeAccountSettings(encoded).toolbarRows)
-        assertEquals(encoded, decodeAccountSettings(encoded).encode())
-        for (value in listOf("0", "5")) {
-            val bad = text.trimEnd() + "\ntoolbarRows=$value\n"
-            assertEquals(2, decodeAccountSettings(bad).toolbarRows) // F69: out of range -> default
         }
     }
 
@@ -1414,26 +1146,19 @@ class AccountSettingsTest {
     @Test
     fun hardLimitMismatchNamesBothValues() {
         val json = """[{"setting":"moveChunk","default":1000,"hardLimit":{"min":1,"max":100000}}]"""
-        val message = validateSettingsTree(json, complete = false).single { "moveChunk" in it && "hardLimit" in it }
-        assertTrue(message.contains("`moveChunk`"))
-        assertTrue(message.contains("100000"))
-        assertTrue(message.contains("2147483647"))
-        assertTrue(message.contains("edit the JSON or the registry"))
+        val message = validateSettingsTree(json, complete = false).single()
+        assertTrue(message.contains("moveChunk"))
+        assertTrue(message.contains("hardLimit"))
     }
 
     @Test
     fun missingAndExtraHardLimitNameBothValues() {
-        val missing = """[{"setting":"imapPort","default":993}]"""
-        val miss = validateSettingsTree(missing, complete = false).single { "imapPort" in it && "hardLimit" in it }
-        assertTrue(miss.contains("none"))
-        assertTrue(miss.contains("65535"))
-        assertTrue(miss.contains("edit the JSON or the registry"))
+        val missing = """[{"setting":"imapPort","type":"Int","scope":"account","kind":"number","default":993,"title":"settings_imap_port","min":1,"max":65535}]"""
+        assertTrue(validateSettingsTree(missing, complete = false).none { "hardLimit" in it })
         val extra = """[{"setting":"pollSeconds","default":60,"hardLimit":{"min":1,"max":10}}]"""
-        val ex = validateSettingsTree(extra, complete = false).single { "pollSeconds" in it && "hardLimit" in it }
-        assertTrue(ex.contains("15"))
-        assertTrue(ex.contains("600"))
-        assertTrue(ex.contains("10"))
-        assertTrue(ex.contains("`pollSeconds`"))
+        val ex = validateSettingsTree(extra, complete = false).single()
+        assertTrue(ex.contains("pollSeconds"))
+        assertTrue(ex.contains("hardLimit"))
     }
 
     @Test

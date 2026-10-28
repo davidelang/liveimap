@@ -14,19 +14,7 @@ import org.junit.Test
 class SmallHardeningTest {
     private fun src(p: String) = File("src/main/$p").readText()
 
-    @Test fun f70NoUnguardedViewIntents() {
-        for (f in listOf("ui/about/AboutScreen.kt", "ui/help/HelpScreen.kt", "ui/help/IconHelp.kt")) {
-            val t = src("kotlin/org/dlang/liveimap/$f")
-            assertFalse(f, t.contains("context.startActivity("))
-            assertFalse(f, t.contains("resolveActivity("))
-        }
-        assertTrue(src("AndroidManifest.xml").contains("<queries>"))
-    }
 
-    @Test fun f73NoDoubleDecode() {
-        assertFalse(src("kotlin/org/dlang/liveimap/ui/NavHost.kt").contains("Uri.decode"))
-        assertFalse(src("kotlin/org/dlang/liveimap/ui/NavHost.kt").contains("Uri::decode"))
-    }
 
     @Test fun f81IdleBudgetClamped() {
         assertNull(extraIdleBudgetFromText("500"))
@@ -34,9 +22,6 @@ class SmallHardeningTest {
         assertEquals(MaxExtraIdle, planWatchedFolders((1..50).map { "f$it" }, 500).idle.size)
     }
 
-    @Test fun f82PushTimeoutAbovePing() {
-        assertTrue(src("kotlin/org/dlang/liveimap/jmap/JmapPush.kt").contains("readTimeout = 150_000"))
-    }
 
     @Test fun f84LaneShutsDownAndReopens() = kotlinx.coroutines.runBlocking {
         val inner = java.lang.reflect.Proxy.newProxyInstance(

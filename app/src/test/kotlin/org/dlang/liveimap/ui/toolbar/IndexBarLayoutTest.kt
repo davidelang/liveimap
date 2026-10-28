@@ -347,9 +347,17 @@ class IndexBarLayoutTest {
             swapped.toolbar,
         )
         assertEquals(layout, moveReaderActionBy(layout, ReaderToolbarAction.Refresh, -1))
-        assertEquals(defaultReaderToolbar(), effectiveReaderToolbar(AccountSettings()))
-        assertEquals(layout, effectiveReaderToolbar(AccountSettings(readerToolbar = layout)))
-        assertEquals(replyOnly, effectiveReaderToolbar(AccountSettings(readerToolbar = replyOnly)))
+        val previous = ToolbarStore.record
+        try {
+            ToolbarStore.replace(ToolbarRecord())
+            assertEquals(defaultReaderToolbar(), effectiveReaderToolbar(AccountSettings()))
+            ToolbarStore.replace(ToolbarRecord(readerToolbar = layout))
+            assertEquals(layout, effectiveReaderToolbar(AccountSettings()))
+            ToolbarStore.replace(ToolbarRecord(readerToolbar = replyOnly))
+            assertEquals(replyOnly, effectiveReaderToolbar(AccountSettings()))
+        } finally {
+            ToolbarStore.replace(previous)
+        }
     }
 
     @Test

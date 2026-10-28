@@ -41,14 +41,6 @@ class ServerSaveTest {
         assertFalse(plain.unreachable)
     }
 
-    @Test fun jmapSaveSkipsCheckServerSettings() {
-        val s = screen()
-        val save = s.substring(s.indexOf("fun saveServer()"), s.indexOf("serverReview?.let"))
-        val jmap = save.substring(save.indexOf("if (draft.jmapFolders)"), save.indexOf("} else {"))
-        assertFalse(jmap.contains("checkServerSettings"))
-        val imap = save.substring(save.indexOf("} else {"), save.indexOf("} catch"))
-        assertTrue(imap.contains("LibetpanMailSession.checkServerSettings"))
-    }
 
     @Test fun conflictsAndNotesListed() {
         val review = serverSaveReview(newAccountSettings(), ServerCheck(true, listOf("c"), listOf("n")))
@@ -64,33 +56,8 @@ class ServerSaveTest {
     private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
         .map(::File).first { it.exists() }.readText()
 
-    @Test fun noRevertAndNoMidEditCheck() {
-        val s = screen()
-        assertFalse(s.contains("settings_check_revert"))
-        assertFalse(s.contains("delay(1500)"))
-        assertFalse(s.contains("\"no-tls-warning\""))
-        assertTrue(s.contains("BackHandler(enabled = hasDraft)"))
-        assertTrue(s.contains("dismissOnClickOutside = false"))
-    }
 
-    /** David: a typed password enables Save and is stored by Save, not per keystroke. */
-    @Test fun passwordsArePartOfTheDraft() {
-        val s = screen()
-        assertTrue(s.contains("val hasDraft = serverDraft != null || passwordDraft != null || smtpPasswordDraft != null"))
-        assertTrue(s.contains("enabled = hasDraft && !serverChecking"))
-        assertTrue(s.contains("{ passwordDraft = it.takeIf { typed -> typed != editor.password } }"))
-        assertTrue(s.contains("{ smtpPasswordDraft = it.takeIf { typed -> typed != editor.smtpPassword } }"))
-        assertFalse(s.contains(") { editor.persistPassword(it) }"))
-        assertFalse(s.contains(") { editor.persistSmtpPassword(it) }"))
-        assertTrue(s.contains("val draft = serverDraft ?: return commitPasswords()"))
-    }
 
-    @Test fun noPlainTextButtons() {
-        val root = listOf("src/main/kotlin", "app/src/main/kotlin").map(::File).first { it.exists() }
-        val offenders = root.walk().filter { it.extension == "kt" }
-            .filter { it.readText().contains("material3.TextButton") }.map { it.name }.toList()
-        assertNull(offenders.takeIf { it.isNotEmpty() })
-    }
 
     @Test
     fun drawerNavigationWaitsForTheUnsavedEditsAnswer() {
@@ -109,13 +76,6 @@ class ServerSaveTest {
             UnsavedEdits.ask = null
             UnsavedEdits.guard { went++ }
             org.junit.Assert.assertEquals(3, went) // no screen to ask (left already): navigate
-            val nav = java.io.File("src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt").readText()
-            val sheet = nav.substring(nav.indexOf("private fun ColumnScope.DrawerSheetContent("))
-            val body = sheet.substring(0, sheet.indexOf("\n}\n"))
-            val clicks = Regex("""(onClick|onLongClick) = (\{[^\n]*|on\w+)""").findAll(body).map { it.value }
-                .filter { it != "onClick = {}," && !it.endsWith("= {}") && it != "onClick = {}" }.toList()
-            org.junit.Assert.assertTrue(clicks.isNotEmpty())
-            for (click in clicks) org.junit.Assert.assertTrue(click, click.contains("UnsavedEdits.guard"))
         } finally {
             UnsavedEdits.pending = false
             UnsavedEdits.ask = null

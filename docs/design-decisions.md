@@ -694,6 +694,13 @@ trivial, complex things are possible, and roles are built on the same rules.
 
 ## Translations
 
+* The coder writes the translations. A change that adds, changes, or removes any
+  string in `app/src/main/res/values/strings.xml` (including settings titles,
+  summaries, and group titles) also writes that string in every
+  `app/src/main/i18n/<locale>.json` in the same change. The coder translates
+  it. An `<locale>.override.json` entry stays; only the machine file's
+  `source` changes. A removed string is removed from every i18n file.
+  `generateAppI18n` fails the build otherwise.
 * The en-US source stays the hand-edited `app/src/main/res/values/strings.xml`.
   String ids are not generated.
 * Each shipped locale is a committed machine translation,

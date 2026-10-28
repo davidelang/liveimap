@@ -737,8 +737,8 @@ fun MessageIndexScreen(
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: (String?) -> Unit,
-    onCustomize: (String) -> Unit = { _ -> },
-    onCustomizeSelection: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
+    onCustomizeSelection: () -> Unit = {},
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -782,8 +782,8 @@ private fun MessageIndexLoaded(
     onOpen: (Long, Int, String, Long) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: (String?) -> Unit,
-    onCustomize: (String) -> Unit = { _ -> },
-    onCustomizeSelection: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
+    onCustomizeSelection: () -> Unit = {},
     watchMailbox: Boolean = true,
     onAdvanced: () -> Unit = {},
     advancedQuery: String? = null,
@@ -2434,7 +2434,7 @@ private fun MessageIndexLoaded(
                     )
                     if (multiSelect) {
                         DebugStatusIcon(debugStatus)
-                        val selectionLayout = account.selectionBar
+                        val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
                         val seenText = stringResource(
                             if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
                         )
@@ -2539,7 +2539,7 @@ private fun MessageIndexLoaded(
                             }
                         }
                         ToolbarIconRows(
-                            maxRows = account.toolbarRows,
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
                             onRows = { count -> iconRows = count },
                             icons = selectionIcons,
                         )
@@ -2710,7 +2710,7 @@ private fun MessageIndexLoaded(
                                                 text = { Text(title) },
                                                 onClick = {
                                                     selectionMore = false
-                                                    onCustomizeSelection(accountId)
+                                                    onCustomizeSelection()
                                                 },
                                             )
                                         }
@@ -2720,7 +2720,7 @@ private fun MessageIndexLoaded(
                         }
                     } else {
                         DebugStatusIcon(debugStatus)
-                        val barLayout = account.indexBar
+                        val barLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.indexBar()
                         if (!connected) {
                             if (IndexBarAction.Refresh in barLayout.toolbar) {
                                 HelpIconButton(
@@ -2802,7 +2802,7 @@ private fun MessageIndexLoaded(
                             }
                         }
                         ToolbarIconRows(
-                            maxRows = account.toolbarRows,
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
                             onRows = { count -> iconRows = count },
                             icons = indexIcons,
                         )
@@ -3085,7 +3085,7 @@ private fun MessageIndexLoaded(
                                         text = { Text(title) },
                                         onClick = {
                                             menuOpen = false
-                                            onCustomize(accountId)
+                                            onCustomize()
                                         },
                                     )
                                 }

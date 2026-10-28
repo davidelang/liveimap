@@ -62,6 +62,9 @@ private const val gcmTagBits = 128
 
 private val Context.accountSettingsDataStore by preferencesDataStore(name = "account_settings")
 
+suspend fun accountSettingsStoredKeys(context: Context): Set<String> =
+    context.accountSettingsDataStore.data.first().asMap().keys.map { it.name }.toSet()
+
 class AccountStore private constructor(private val context: Context) {
     private val accountCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val accountActor = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -231,7 +234,8 @@ class AccountStore private constructor(private val context: Context) {
                     AccountChoice(
                         id = id,
                         name = listedName(account),
-                        chosen = account === chosen,
+                        drawer = account === chosen,
+                        editing = false,
                     )
                 }
             }

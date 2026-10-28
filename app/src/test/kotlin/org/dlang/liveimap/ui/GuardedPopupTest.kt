@@ -20,7 +20,8 @@ class GuardedPopupTest {
     @Test
     fun eachPopupCallsTheFilter() {
         val expected = listOf(
-            "kotlin/org/dlang/liveimap/settings/SettingsScreen.kt" to 4,
+            "kotlin/org/dlang/liveimap/settings/SettingsScreen.kt" to 3,
+            "kotlin/org/dlang/liveimap/settings/editors/ServerEditor.kt" to 1,
             "kotlin/org/dlang/liveimap/ui/folder/MailboxChooser.kt" to 1,
             "kotlin/org/dlang/liveimap/ui/debug/DebugReportReview.kt" to 1,
             "kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt" to 1,

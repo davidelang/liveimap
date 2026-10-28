@@ -461,8 +461,7 @@ fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
 
 fun resetReaderToolbar(): ReaderToolbarLayout = defaultReaderToolbar()
 
-fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout =
-    settings.readerToolbar ?: defaultReaderToolbar()
+fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout = effectiveReaderToolbar()
 
 fun visibleReaderActions(
     actions: List<ReaderToolbarAction>,

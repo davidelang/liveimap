@@ -229,7 +229,7 @@ fun FolderListScreen(
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
     onOpenHelp: () -> Unit,
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -255,7 +255,7 @@ fun FolderListScreen(
         }
         // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
         if (accountId != null || accountChecked) {
-            NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, { onCustomize("") }, onOpenHelp, onOpenAbout, onOpenSettings)
+            NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, onCustomize, onOpenHelp, onOpenAbout, onOpenSettings)
         }
         return
     }
@@ -299,7 +299,7 @@ private fun FolderListLoaded(
     onCompose: (ComposeSeed) -> Unit,
     onOpenUnsent: () -> Unit,
     onOpenHelp: () -> Unit,
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
     focusMailbox: String? = null,
     focusToken: Int = 0,
     onOpenDrawer: (() -> Unit)? = null,
@@ -357,8 +357,8 @@ private fun FolderListLoaded(
                 null
             }
             if (loaded != null) {
-                folderBar = loaded.folderBar
-                toolbarRows = loaded.toolbarRows
+                folderBar = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderBar()
+                toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows()
             }
         }
         onStopOrDispose { job.cancel() }
@@ -433,8 +433,8 @@ private fun FolderListLoaded(
             addressBookMailbox = settings.addressBookMailbox
             favorites = settings.favorites
             showUnreadCounts = settings.showUnreadCounts
-            folderBar = settings.folderBar
-            toolbarRows = settings.toolbarRows
+            folderBar = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderBar()
+            toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows()
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -807,7 +807,7 @@ private fun FolderListLoaded(
                                                 text = { Text(title) },
                                                 onClick = {
                                                     moreMenu = false
-                                                    onCustomize(accountId)
+                                                    onCustomize()
                                                 },
                                             )
                                         }

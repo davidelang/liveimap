@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import org.dlang.liveimap.settings.ToolbarRevision
 import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
@@ -61,24 +62,6 @@ import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
-internal fun applyToolbarField(
-    current: AccountSettings,
-    indexBar: IndexBarLayout? = null,
-    selectionBar: SelectionBarLayout? = null,
-    folderBar: FolderBarLayout? = null,
-    readerToolbar: ReaderToolbarLayout? = null,
-    composeBar: ComposeBarLayout? = null,
-    toolbarRows: Int? = null,
-): AccountSettings = when {
-    indexBar != null -> current.copy(indexBar = indexBar)
-    selectionBar != null -> current.copy(selectionBar = selectionBar)
-    folderBar != null -> current.copy(folderBar = folderBar)
-    readerToolbar != null -> current.copy(readerToolbar = readerToolbar)
-    composeBar != null -> current.copy(composeBar = composeBar)
-    toolbarRows != null -> current.copy(toolbarRows = toolbarRows)
-    else -> current
-}
-
 enum class ToolbarScreen {
     Index,
     Selection,
@@ -88,80 +71,48 @@ enum class ToolbarScreen {
 }
 
 private class ToolbarSettings(
-    private val accountStore: DataStoreSettingsStore?,
+    private val appContext: android.content.Context,
     private val scope: CoroutineScope,
 ) {
-    var settings by mutableStateOf<AccountSettings?>(null)
+    suspend fun load() = Unit
 
-    suspend fun load() {
-        settings = accountStore?.load()
+    private fun write(next: ToolbarRecord) {
+        ToolbarStore.replace(next)
+        scope.launch { ToolbarStore.save(appContext) }
+        ToolbarRevision.bump()
     }
 
     fun persistIndex(next: IndexBarLayout) {
-        val current = settings ?: return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, indexBar = next)
-        scope.launch {
-            store.update { applyToolbarField(it, indexBar = next) }
-        }
+        write(ToolbarStore.record.copy(indexBar = next))
     }
 
     fun persistSelection(next: SelectionBarLayout) {
-        val current = settings ?: return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, selectionBar = next)
-        scope.launch {
-            store.update { applyToolbarField(it, selectionBar = next) }
-        }
+        write(ToolbarStore.record.copy(selectionBar = next))
     }
 
     fun persistFolder(next: FolderBarLayout) {
-        val current = settings ?: return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, folderBar = next)
-        scope.launch {
-            store.update { applyToolbarField(it, folderBar = next) }
-        }
+        write(ToolbarStore.record.copy(folderBar = next))
     }
 
     fun persistReader(next: ReaderToolbarLayout) {
-        val current = settings ?: return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, readerToolbar = next)
-        scope.launch {
-            store.update { applyToolbarField(it, readerToolbar = next) }
-        }
+        write(ToolbarStore.record.copy(readerToolbar = next))
     }
 
     fun persistCompose(next: ComposeBarLayout) {
-        val current = settings ?: return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, composeBar = next)
-        scope.launch {
-            store.update { applyToolbarField(it, composeBar = next) }
-        }
+        write(ToolbarStore.record.copy(composeBar = next))
     }
 
-    fun persistToolbarRows(next: Int) {
-        val current = settings ?: return
-        if (next !in 1..4 || next == current.toolbarRows) return
-        val store = accountStore ?: return
-        settings = applyToolbarField(current, toolbarRows = next)
-        scope.launch {
-            store.update { applyToolbarField(it, toolbarRows = next) }
-        }
+    fun writeToolbarRows(next: Int) {
+        if (next !in 1..4 || next == ToolbarStore.toolbarRows()) return
+        write(ToolbarStore.record.copy(toolbarRows = next))
     }
 }
 
 @Composable
-fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: ScrollState) {
-    LocalScreenAccounts.current.Register(accountId)
+fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
     val appContext = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
-    val accountStore = remember(accountId) {
-        if (accountId.isBlank()) null else DataStoreSettingsStore(appContext).forAccount(accountId)
-    }
-    val holder = remember(accountStore, scope) { ToolbarSettings(accountStore, scope) }
+    val holder = remember(appContext, scope) { ToolbarSettings(appContext, scope) }
     LaunchedEffect(holder) { holder.load() }
     var announcement by remember { mutableStateOf("") }
     Column(
@@ -173,27 +124,27 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             text = announcement,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
-        val loaded = holder.settings ?: return@Column
+        val loaded = ToolbarStore.record
         when (screen) {
         ToolbarScreen.Index -> SectionEditor(
             rowsIn = { section -> loaded.indexBar.actionsIn(section) },
             labelRes = ::indexBarActionRes,
             onMoveBy = { action, delta ->
-                val current = holder.settings?.indexBar
+                val current = ToolbarStore.record.indexBar
                 if (current != null) {
                     holder.persistIndex(moveIndexActionBy(current, action, delta))
                     movedBySentence(appContext, action, delta, ::indexBarActionRes)?.let { announcement = it }
                 }
             },
             onMoveTo = { action, target ->
-                val current = holder.settings?.indexBar
+                val current = ToolbarStore.record.indexBar
                 if (current != null) {
                     holder.persistIndex(moveIndexAction(current, action, target))
                     announcement = movedToSentence(appContext, action, target, ::indexBarActionRes)
                 }
             },
             onDrag = { from, to ->
-                val current = holder.settings?.indexBar
+                val current = ToolbarStore.record.indexBar
                 if (current != null) {
                     val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
                     holder.persistIndex(dragIndexLayout(current, from, to))
@@ -205,28 +156,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             },
             onReset = { holder.persistIndex(resetIndexBar()) },
             toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            onToolbarRows = { next -> holder.writeToolbarRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Selection -> SectionEditor(
             rowsIn = { section -> loaded.selectionBar.actionsIn(section) },
             labelRes = ::selectionBarActionRes,
             onMoveBy = { action, delta ->
-                val current = holder.settings?.selectionBar
+                val current = ToolbarStore.record.selectionBar
                 if (current != null) {
                     holder.persistSelection(moveSelectionActionBy(current, action, delta))
                     movedBySentence(appContext, action, delta, ::selectionBarActionRes)?.let { announcement = it }
                 }
             },
             onMoveTo = { action, target ->
-                val current = holder.settings?.selectionBar
+                val current = ToolbarStore.record.selectionBar
                 if (current != null) {
                     holder.persistSelection(moveSelectionAction(current, action, target))
                     announcement = movedToSentence(appContext, action, target, ::selectionBarActionRes)
                 }
             },
             onDrag = { from, to ->
-                val current = holder.settings?.selectionBar
+                val current = ToolbarStore.record.selectionBar
                 if (current != null) {
                     val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
                     holder.persistSelection(dragSelectionLayout(current, from, to))
@@ -238,28 +189,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
             toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            onToolbarRows = { next -> holder.writeToolbarRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Folders -> SectionEditor(
             rowsIn = { section -> loaded.folderBar.actionsIn(section) },
             labelRes = ::folderBarActionRes,
             onMoveBy = { action, delta ->
-                val current = holder.settings?.folderBar
+                val current = ToolbarStore.record.folderBar
                 if (current != null) {
                     holder.persistFolder(moveFolderActionBy(current, action, delta))
                     movedBySentence(appContext, action, delta, ::folderBarActionRes)?.let { announcement = it }
                 }
             },
             onMoveTo = { action, target ->
-                val current = holder.settings?.folderBar
+                val current = ToolbarStore.record.folderBar
                 if (current != null) {
                     holder.persistFolder(moveFolderAction(current, action, target))
                     announcement = movedToSentence(appContext, action, target, ::folderBarActionRes)
                 }
             },
             onDrag = { from, to ->
-                val current = holder.settings?.folderBar
+                val current = ToolbarStore.record.folderBar
                 if (current != null) {
                     val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
                     holder.persistFolder(dragFolderLayout(current, from, to))
@@ -271,28 +222,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             },
             onReset = { holder.persistFolder(resetFolderBar()) },
             toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            onToolbarRows = { next -> holder.writeToolbarRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Reader -> SectionEditor(
-            rowsIn = { section -> effectiveReaderToolbar(loaded).actionsIn(section) },
+            rowsIn = { section -> effectiveReaderToolbar().actionsIn(section) },
             labelRes = ::readerToolbarActionRes,
             onMoveBy = { action, delta ->
-                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                val current = effectiveReaderToolbar()
                 if (current != null) {
                     holder.persistReader(moveReaderActionBy(current, action, delta))
                     movedBySentence(appContext, action, delta, ::readerToolbarActionRes)?.let { announcement = it }
                 }
             },
             onMoveTo = { action, target ->
-                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                val current = effectiveReaderToolbar()
                 if (current != null) {
                     holder.persistReader(moveReaderAction(current, action, target))
                     announcement = movedToSentence(appContext, action, target, ::readerToolbarActionRes)
                 }
             },
             onDrag = { from, to ->
-                val current = holder.settings?.let { effectiveReaderToolbar(it) }
+                val current = effectiveReaderToolbar()
                 if (current != null) {
                     val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
                     holder.persistReader(dragReaderLayout(current, from, to))
@@ -304,28 +255,28 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
             toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            onToolbarRows = { next -> holder.writeToolbarRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Compose -> SectionEditor(
             rowsIn = { section -> loaded.composeBar.actionsIn(section) },
             labelRes = ::composeBarActionRes,
             onMoveBy = { action, delta ->
-                val current = holder.settings?.composeBar
+                val current = ToolbarStore.record.composeBar
                 if (current != null) {
                     holder.persistCompose(moveComposeActionBy(current, action, delta))
                     movedBySentence(appContext, action, delta, ::composeBarActionRes)?.let { announcement = it }
                 }
             },
             onMoveTo = { action, target ->
-                val current = holder.settings?.composeBar
+                val current = ToolbarStore.record.composeBar
                 if (current != null) {
                     holder.persistCompose(moveComposeAction(current, action, target))
                     announcement = movedToSentence(appContext, action, target, ::composeBarActionRes)
                 }
             },
             onDrag = { from, to ->
-                val current = holder.settings?.composeBar
+                val current = ToolbarStore.record.composeBar
                 if (current != null) {
                     val landing = dragLanding(current.toolbar, current.overflow, current.hidden, from, to)
                     holder.persistCompose(dragComposeLayout(current, from, to))
@@ -337,7 +288,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
             },
             onReset = { holder.persistCompose(resetComposeBar()) },
             toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.persistToolbarRows(next) },
+            onToolbarRows = { next -> holder.writeToolbarRows(next) },
             scrollState = scrollState,
         )
         }
@@ -347,7 +298,6 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, accountId: String, scrollState: S
 @Composable
 fun ToolbarEditorPage(
     screen: ToolbarScreen,
-    accountId: String,
 ) {
     val scroll = rememberScrollState()
     Column(
@@ -359,7 +309,7 @@ fun ToolbarEditorPage(
             }
             .verticalScroll(scroll),
     ) {
-        ToolbarEditorScreen(screen, accountId, scroll)
+        ToolbarEditorScreen(screen, scroll)
     }
 }
 

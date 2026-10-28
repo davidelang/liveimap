@@ -8,7 +8,8 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.extraWatchPlan
 import org.dlang.liveimap.settings.SettingsStore
 
-internal const val CountFreshMillis = 300_000L
+internal val CountFreshMillis: Long
+    get() = org.dlang.liveimap.settings.SettingsDefaults.folderCountFreshSeconds * 1000L
 
 data class FolderRow(
     val mailbox: String,

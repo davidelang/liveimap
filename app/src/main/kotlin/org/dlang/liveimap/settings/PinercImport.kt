@@ -76,7 +76,14 @@ data class PinercPhrases(
 fun parsePinerc(text: String): Map<String, String?> =
     parseEntries(text).mapValues { it.value.decoded }
 
-fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases): PinercPreview {
+fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases): PinercPreview =
+    PinercRun(text, current, phrases).run()
+
+private class PinercRun(
+    val text: String,
+    val current: AccountSettings,
+    val phrases: PinercPhrases,
+) {
     val entries = parseEntries(text)
     var next = current
     val skipped = mutableListOf<String>()
@@ -84,289 +91,365 @@ fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases
     var omitted = 0
     var inboxUserApplied = false
     var inboxVote: TlsMode? = null
+    var comparisonHost = ""
+    var collectionRaw: String? = null
+    var appliedAlpineDefault = false
+    var offerAutoExpunge = false
 
-    val inbox = entries["inbox-path"]?.decoded
-    if (inbox != null) {
-        if (!inbox.startsWith("{")) {
-            skipped.add(phrases.inboxBraces)
-        } else {
-            val spec = parseRemoteSpec(inbox)
-            if (spec != null) {
-                val port = spec.port ?: if (spec.mode == TlsMode.Implicit) 993 else 143
-                next = next.copy(imapHost = spec.host, imapPort = port)
-                if (spec.user != null) {
-                    next = next.copy(username = spec.user)
-                    inboxUserApplied = true
+    fun run(): PinercPreview {
+        for (step in listOf(
+            ::applyInbox,
+            ::applySmtp,
+            ::applyIdentity,
+            ::applyPersonal,
+            ::applyAlt,
+            ::applySent,
+            ::applyPostponed,
+            ::applyBooks,
+            ::applyIncoming,
+            ::applyHistory,
+            ::applySort,
+            ::applyStartup,
+            ::applyFeatures,
+            ::applyPlain,
+            ::countOmitted,
+        )) step()
+        return finish()
+    }
+
+    private fun applyInbox() {
+        val inbox = entries["inbox-path"]?.decoded
+        if (inbox != null) {
+            if (!inbox.startsWith("{")) {
+                skipped.add(phrases.inboxBraces)
+            } else {
+                val spec = parseRemoteSpec(inbox)
+                if (spec != null) {
+                    val port = spec.port ?: if (spec.mode == TlsMode.Implicit) 993 else 143
+                    next = next.copy(
+                        imapHost = spec.host,
+                        imapPort = port,
+                        acceptInvalidCert = spec.acceptInvalidCert,
+                    )
+                    if (spec.user != null) {
+                        next = next.copy(username = spec.user)
+                        inboxUserApplied = true
+                    }
+                    inboxVote = spec.mode
                 }
-                inboxVote = spec.mode
             }
         }
-    }
-    val comparisonHost = next.imapHost
-    val collectionRaw = entries["folder-collections"]?.raw
-
-    val smtp = entries["smtp-server"]
-    if (smtp != null && smtp.raw.isNotEmpty()) {
-        val first = splitList(smtp.raw).firstOrNull { it.isNotEmpty() }
-        if (first != null) {
-            val spec = parseRemoteSpec(first)
-            if (spec != null) {
-                val port = spec.port ?: when {
-                    spec.mode == TlsMode.Implicit -> 465
-                    spec.submit -> 587
-                    else -> 25
-                }
-                val smtpMode = spec.mode ?: if (spec.submit) TlsMode.StartTls else null
-                next = next.copy(
-                    smtpHost = spec.host,
-                    smtpPort = port,
-                    smtpTlsMode = smtpMode ?: next.smtpTlsMode,
-                )
-                val imapUser = if (inboxUserApplied) next.username else current.username
-                if (spec.user != null && spec.user != imapUser) {
-                    next = next.copy(smtpUsername = spec.user)
-                }
-            }
-        }
-    }
-    if (inboxVote != null) next = next.copy(tlsMode = inboxVote)
-
-    val userId = entries["user-id"]?.decoded
-    val domain = entries["user-domain"]?.decoded
-    if (!inboxUserApplied && userId != null) {
-        next = next.copy(username = userId)
-    }
-    val local = if (userId != null) {
-        userId
-    } else if (inboxUserApplied) {
-        next.username
-    } else {
-        null
-    }
-    if (local != null) {
-        val email = if ('@' in local) {
-            local
-        } else if (!domain.isNullOrEmpty()) {
-            "$local@$domain"
-        } else {
-            null
-        }
-        if (email != null) next = next.copy(email = email)
+        comparisonHost = next.imapHost
+        collectionRaw = entries["folder-collections"]?.raw
     }
 
-    val personal = entries["personal-name"]?.decoded
-    if (personal != null) next = next.copy(displayName = personal)
-
-    val alt = entries["alt-addresses"]
-    if (alt != null && alt.raw.isNotEmpty()) {
-        val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
-        next = next.copy(altAddresses = specs)
-    }
-
-    val sent = entries["default-fcc"]
-    if (sent?.decoded != null) {
-        when (val folder = classifyFolder(sent.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
-            FolderKind.Local -> skipped.add(phrases.local)
-            is FolderKind.Mailbox -> next = next.copy(sentMailbox = folder.name)
-            is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-            FolderKind.Empty -> Unit
-        }
-    }
-
-    val postponed = entries["postponed-folder"]
-    if (postponed?.decoded != null) {
-        when (val folder = classifyFolder(postponed.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
-            FolderKind.Local -> skipped.add(phrases.local)
-            is FolderKind.Mailbox -> next = next.copy(postponedMailbox = folder.name)
-            is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-            FolderKind.Empty -> Unit
-        }
-    }
-
-    // The first address-book on this server is the account's book; the others become extra books, and
-    // global-address-book entries become read-only books (with the contacts work).
-    fun bookMailboxes(key: String): List<String>? {
-        val raw = entries[key]?.raw ?: return null
-        if (raw.isEmpty()) return null
-        val out = ArrayList<String>()
-        for (item in splitList(raw)) {
-            if (item.isEmpty()) continue
-            when (val folder = classifyFolder(item, allowPlain = false, comparisonHost, collectionRaw)) {
-                FolderKind.Local -> skipped.add(phrases.local)
-                is FolderKind.Mailbox -> if (folder.name !in out) out.add(folder.name)
-                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-                FolderKind.Empty -> Unit
-            }
-        }
-        return out
-    }
-    val books = bookMailboxes("address-book")
-    if (books != null && books.isNotEmpty()) {
-        next = next.copy(addressBookMailbox = books.first(), extraAddressBooks = books.drop(1))
-    }
-    val globals = bookMailboxes("global-address-book")
-    if (globals != null) next = next.copy(globalAddressBooks = globals.filter { it !in (books ?: emptyList()) })
-
-    val incoming = entries["incoming-folders"]
-    if (incoming != null && incoming.raw.isNotEmpty()) {
-        val built = next.favorites.toMutableList()
-        for (piece in splitOutsideQuotes(incoming.raw)) {
-            val (label, specText) = nicknameSplit(piece)
-            val spec = if (specText.startsWith("=")) specText.substring(1) else specText
-            when (val folder = classifyFolder(spec, allowPlain = true, comparisonHost, collectionRaw)) {
-                FolderKind.Local -> skipped.add(phrases.local)
-                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-                FolderKind.Empty -> Unit
-                is FolderKind.Mailbox -> {
-                    if (folder.name.equals("INBOX", ignoreCase = true)) {
-                        Unit
-                    } else if (built.any { sameLeaf(it, folder.name) }) {
-                        Unit
-                    } else {
-                        val favorite = FolderFavorite(
-                            node = false,
-                            mailbox = folder.name,
-                            delimiter = '.',
-                            label = label,
-                        )
-                        built.add(favorite)
-                        addedFavorites.add(favorite)
+    private fun applySmtp() {
+        val smtp = entries["smtp-server"]
+        if (smtp != null && smtp.raw.isNotEmpty()) {
+            val first = splitList(smtp.raw).firstOrNull { it.isNotEmpty() }
+            if (first != null) {
+                val spec = parseRemoteSpec(first)
+                if (spec != null) {
+                    val port = spec.port ?: when {
+                        spec.mode == TlsMode.Implicit -> 465
+                        spec.submit -> 587
+                        else -> 25
+                    }
+                    val smtpMode = spec.mode ?: if (spec.submit) TlsMode.StartTls else null
+                    next = next.copy(
+                        smtpHost = spec.host,
+                        smtpPort = port,
+                        smtpTlsMode = smtpMode ?: next.smtpTlsMode,
+                    )
+                    val imapUser = if (inboxUserApplied) next.username else current.username
+                    if (spec.user != null && spec.user != imapUser) {
+                        next = next.copy(smtpUsername = spec.user)
                     }
                 }
             }
         }
-        next = next.copy(favorites = built)
+        val vote = inboxVote
+        if (vote != null) next = next.copy(tlsMode = vote)
     }
 
-    val history = entries["remote-abook-history"]
-    if (history != null) {
-        val raw = history.decoded?.trim().orEmpty()
-        val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
-        if (number == null) skipped.add(phrases.history)
-        else next = next.copy(addressBookHistory = number)
-    }
-
-    val sort = entries["sort-key"]?.decoded
-    if (sort != null) {
-        val view = parseSort(sort)
-        if (view == null) {
-            skipped.add(phrases.sort)
+    private fun applyIdentity() {
+        val userId = entries["user-id"]?.decoded
+        val domain = entries["user-domain"]?.decoded
+        if (!inboxUserApplied && userId != null) {
+            next = next.copy(username = userId)
+        }
+        val local = if (userId != null) {
+            userId
+        } else if (inboxUserApplied) {
+            next.username
         } else {
-            next = next.copy(defaultView = view)
+            null
+        }
+        if (local != null) {
+            val email = if ('@' in local) {
+                local
+            } else if (!domain.isNullOrEmpty()) {
+                "$local@$domain"
+            } else {
+                null
+            }
+            if (email != null) next = next.copy(email = email)
         }
     }
 
-    var appliedAlpineDefault = false
-    if ("incoming-startup-rule" in entries) {
-        val raw = entries["incoming-startup-rule"]?.decoded?.trim().orEmpty()
-        val mapped = parseStartupRule(raw)
-        if (mapped == null) {
-            skipped.add(phrases.rule)
-        } else {
-            next = next.copy(inboxStart = mapped)
-        }
-    } else if (current.pinercStartDefault == PinercStartDefault.AlpineDefault) {
-        next = next.copy(inboxStart = StartRule.FirstUnseen)
-        appliedAlpineDefault = true
+    private fun applyPersonal() {
+        val personal = entries["personal-name"]?.decoded
+        if (personal != null) next = next.copy(displayName = personal)
     }
 
-    var offerAutoExpunge = false
-    val features = entries["feature-list"]
-    if (features?.decoded != null) {
-        var ask: Boolean? = null
-        for (item in splitList(features.raw)) {
-            if (item.isEmpty()) continue
-            when (item) {
-                "expunge-without-confirm",
-                "expunge-without-confirm-everywhere",
-                -> ask = false
-                "no-expunge-without-confirm",
-                "no-expunge-without-confirm-everywhere",
-                -> ask = true
-                "expunge-only-manually" -> skipped.add(phrases.expunge)
-                "enable-sigdashes" -> next = next.copy(sigDashes = true)
-                "no-enable-sigdashes" -> next = next.copy(sigDashes = false)
-                "signature-at-bottom" -> next = next.copy(sigAtBottom = true)
-                "no-signature-at-bottom" -> next = next.copy(sigAtBottom = false)
-                "enable-delivery-status-notification" ->
-                    next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.FailureDelay)
-                "no-enable-delivery-status-notification" ->
-                    next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.Off)
-                else -> omitted += 1
+    private fun applyAlt() {
+        val alt = entries["alt-addresses"]
+        if (alt != null && alt.raw.isNotEmpty()) {
+            val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
+            next = next.copy(altAddresses = specs)
+        }
+    }
+
+    private fun applySent() {
+        val sent = entries["default-fcc"]
+        if (sent?.decoded != null) {
+            when (val folder = classifyFolder(sent.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
+                FolderKind.Local -> skipped.add(phrases.local)
+                is FolderKind.Mailbox -> next = next.copy(sentMailbox = folder.name)
+                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+                FolderKind.Empty -> Unit
             }
         }
-        if (ask != null) next = next.copy(askBeforeExpunge = ask)
-        offerAutoExpunge = ask == false
     }
 
-    entries["literal-signature"]?.decoded?.let { next = next.copy(signature = pineEscapes(it)) }
-    entries["reply-indent-string"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(quotePrefix = it) }
-    entries["reply-leadin"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(replyLeadIn = pineLeadIn(it)) }
-    entries["customized-hdrs"]?.let { v ->
-        if (v.raw.isNotEmpty()) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
+    private fun applyPostponed() {
+        val postponed = entries["postponed-folder"]
+        if (postponed?.decoded != null) {
+            when (val folder = classifyFolder(postponed.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
+                FolderKind.Local -> skipped.add(phrases.local)
+                is FolderKind.Mailbox -> next = next.copy(postponedMailbox = folder.name)
+                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+                FolderKind.Empty -> Unit
+            }
+        }
     }
-    entries["default-composer-hdrs"]?.let { v ->
-        if (v.raw.isNotEmpty() && entries["customized-hdrs"] == null) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
-    }
-    entries["viewer-hdrs"]?.let { v ->
-        if (v.raw.isNotEmpty()) next = next.copy(viewerHeaders = headerList(splitList(v.raw)))
-    }
-    entries["patterns-roles"]?.let { v ->
-        if (v.raw.isNotEmpty()) {
-            val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
-            for (item in splitOutsideQuotes(v.raw)) {
-                if (item.isBlank()) continue
-                val rule = pineRole(item)
-                when {
-                    rule == null -> skipped.add(phrases.roleSkipped.format(item.take(40)))
-                    // F106: an empty pattern matches every compose, so it would silently set From/Reply-To/Fcc
-                    rule.conditions.isEmpty -> skipped.add(phrases.roleNoConditions.format(rule.name))
-                    else -> imported.add(rule)
+
+    private fun applyBooks() {
+        // The first address-book on this server is the account's book; the others become extra books, and
+        // global-address-book entries become read-only books (with the contacts work).
+        fun bookMailboxes(key: String): List<String>? {
+            val raw = entries[key]?.raw ?: return null
+            if (raw.isEmpty()) return null
+            val out = ArrayList<String>()
+            for (item in splitList(raw)) {
+                if (item.isEmpty()) continue
+                when (val folder = classifyFolder(item, allowPlain = false, comparisonHost, collectionRaw)) {
+                    FolderKind.Local -> skipped.add(phrases.local)
+                    is FolderKind.Mailbox -> if (folder.name !in out) out.add(folder.name)
+                    is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+                    FolderKind.Empty -> Unit
                 }
             }
-            if (imported.isNotEmpty()) {
-                val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
-                val merged = existing + imported.filter { r -> existing.none { it.name == r.name } }
-                next = next.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(merged))
-            }
+            return out
         }
+        val books = bookMailboxes("address-book")
+        if (books != null && books.isNotEmpty()) {
+            next = next.copy(addressBookMailbox = books.first(), extraAddressBooks = books.drop(1))
+        }
+        val globals = bookMailboxes("global-address-book")
+        if (globals != null) next = next.copy(globalAddressBooks = globals.filter { it !in (books ?: emptyList()) })
     }
 
-    for (name in entries.keys) {
-        if ("pass" in name) {
-            skipped.add(phrases.passwords)
-            continue
-        }
-        when (name) {
-            "stay-open-folders", "folder-collections" ->
-                skipped.add(phrases.folders)
-            "signature-file" -> skipped.add(phrases.signatureFile)
-            "patterns-other" -> {
-                val raw = entries[name]?.raw.orEmpty()
-                if (raw.contains("/START=", ignoreCase = true)) {
-                    skipped.add(phrases.perFolder)
-                } else {
-                    omitted += 1
+    private fun applyIncoming() {
+        val incoming = entries["incoming-folders"]
+        if (incoming != null && incoming.raw.isNotEmpty()) {
+            val built = next.favorites.toMutableList()
+            for (piece in splitOutsideQuotes(incoming.raw)) {
+                val (label, specText) = nicknameSplit(piece)
+                val spec = if (specText.startsWith("=")) specText.substring(1) else specText
+                when (val folder = classifyFolder(spec, allowPlain = true, comparisonHost, collectionRaw)) {
+                    FolderKind.Local -> skipped.add(phrases.local)
+                    is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+                    FolderKind.Empty -> Unit
+                    is FolderKind.Mailbox -> {
+                        if (folder.name.equals("INBOX", ignoreCase = true)) {
+                            Unit
+                        } else if (built.any { sameLeaf(it, folder.name) }) {
+                            Unit
+                        } else {
+                            val favorite = FolderFavorite(
+                                node = false,
+                                mailbox = folder.name,
+                                delimiter = '.',
+                                label = label,
+                            )
+                            built.add(favorite)
+                            addedFavorites.add(favorite)
+                        }
+                    }
                 }
             }
-            else -> if (name !in appliedNames) omitted += 1
+            next = next.copy(favorites = built)
         }
     }
 
-    val rows = diffRows(current, next, phrases).toMutableList()
-    if (appliedAlpineDefault) {
-        val inboxPrefix = "${phrases.inboxOpens}:"
-        rows.removeAll { it.startsWith(inboxPrefix) }
-        rows.add(phrases.inboxDefault)
+    private fun applyHistory() {
+        val history = entries["remote-abook-history"]
+        if (history != null) {
+            val raw = history.decoded?.trim().orEmpty()
+            val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
+            if (number == null) skipped.add(phrases.history)
+            else next = next.copy(addressBookHistory = number)
+        }
     }
-    for (favorite in addedFavorites) rows.add(favoriteRow(favorite, phrases))
-    return PinercPreview(
-        next = next,
-        rows = rows,
-        skipped = skipped,
-        omittedCount = omitted,
-        offerAutoExpunge = offerAutoExpunge,
-    )
+
+    private fun applySort() {
+        val sort = entries["sort-key"]?.decoded
+        if (sort != null) {
+            val view = parseSort(sort)
+            if (view == null) {
+                skipped.add(phrases.sort)
+            } else {
+                next = next.copy(defaultView = view)
+            }
+        }
+    }
+
+    private fun applyStartup() {
+        appliedAlpineDefault = false
+        if ("incoming-startup-rule" in entries) {
+            val raw = entries["incoming-startup-rule"]?.decoded?.trim().orEmpty()
+            val mapped = parseStartupRule(raw)
+            if (mapped == null) {
+                skipped.add(phrases.rule)
+            } else {
+                next = next.copy(inboxStart = mapped)
+            }
+        } else if (current.pinercStartDefault == PinercStartDefault.AlpineDefault) {
+            next = next.copy(inboxStart = StartRule.FirstUnseen)
+            appliedAlpineDefault = true
+        }
+    }
+
+    private fun applyFeatures() {
+        offerAutoExpunge = false
+        val features = entries["feature-list"]
+        if (features?.decoded != null) {
+            var ask: Boolean? = null
+            for (item in splitList(features.raw)) {
+                if (item.isEmpty()) continue
+                when (item) {
+                    "expunge-without-confirm",
+                    "expunge-without-confirm-everywhere",
+                    -> ask = false
+                    "no-expunge-without-confirm",
+                    "no-expunge-without-confirm-everywhere",
+                    -> ask = true
+                    "expunge-only-manually" -> skipped.add(phrases.expunge)
+                    "enable-sigdashes" -> next = next.copy(sigDashes = true)
+                    "no-enable-sigdashes" -> next = next.copy(sigDashes = false)
+                    "signature-at-bottom" -> next = next.copy(sigAtBottom = true)
+                    "no-signature-at-bottom" -> next = next.copy(sigAtBottom = false)
+                    "enable-delivery-status-notification" ->
+                        next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.FailureDelay)
+                    "no-enable-delivery-status-notification" ->
+                        next = next.copy(dsnMode = org.dlang.liveimap.ui.compose.DsnMode.Off)
+                    else -> omitted += 1
+                }
+            }
+            if (ask != null) next = next.copy(askBeforeExpunge = ask)
+            offerAutoExpunge = ask == false
+        }
+    }
+
+    private fun applyPlain() {
+        entries["literal-signature"]?.decoded?.let { next = next.copy(signature = pineEscapes(it)) }
+        entries["reply-indent-string"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(quotePrefix = it) }
+        entries["reply-leadin"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(replyLeadIn = pineLeadIn(it)) }
+        entries["customized-hdrs"]?.let { v ->
+            if (v.raw.isNotEmpty()) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
+        }
+        entries["default-composer-hdrs"]?.let { v ->
+            if (v.raw.isNotEmpty() && entries["customized-hdrs"] == null) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
+        }
+        entries["viewer-hdrs"]?.let { v ->
+            if (v.raw.isNotEmpty()) next = next.copy(viewerHeaders = headerList(splitList(v.raw)))
+        }
+        entries["patterns-roles"]?.let { v ->
+            if (v.raw.isNotEmpty()) {
+                val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
+                for (item in splitOutsideQuotes(v.raw)) {
+                    if (item.isBlank()) continue
+                    val rule = pineRole(item)
+                    when {
+                        rule == null -> skipped.add(phrases.roleSkipped.format(item.take(40)))
+                        // F106: an empty pattern matches every compose, so it would silently set From/Reply-To/Fcc
+                        rule.conditions.isEmpty -> skipped.add(phrases.roleNoConditions.format(rule.name))
+                        else -> imported.add(rule)
+                    }
+                }
+                if (imported.isNotEmpty()) {
+                    val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
+                    val merged = existing + imported.filter { r -> existing.none { it.name == r.name } }
+                    next = next.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(merged))
+                }
+            }
+        }
+
+        entries["default-saved-msg-folder"]?.decoded?.let { decoded ->
+            if (decoded.isNotEmpty()) next = next.copy(savedMailbox = decoded)
+        }
+        entries["saved-msg-name-rule"]?.decoded?.let { raw ->
+            parsePinercSaveRule(raw)?.let { next = next.copy(saveNameRule = it) }
+        }
+        entries["threading-index-style"]?.decoded?.let { raw ->
+            parsePinercThreadStyle(raw)?.let { next = next.copy(threadIndexStyle = it) }
+        }
+        entries["composer-wrap-column"]?.decoded?.let { raw ->
+            val column = raw.trim().toIntOrNull()
+            if (column != null) next = next.copy(composerWrapColumn = column.coerceIn(0, 998))
+        }
+    }
+
+    private fun countOmitted() {
+        for (name in entries.keys) {
+            if ("pass" in name) {
+                skipped.add(phrases.passwords)
+                continue
+            }
+            when (name) {
+                "stay-open-folders", "folder-collections" ->
+                    skipped.add(phrases.folders)
+                "signature-file" -> skipped.add(phrases.signatureFile)
+                "patterns-other" -> {
+                    val raw = entries[name]?.raw.orEmpty()
+                    if (raw.contains("/START=", ignoreCase = true)) {
+                        skipped.add(phrases.perFolder)
+                    } else {
+                        omitted += 1
+                    }
+                }
+                else -> if (name !in appliedNames) omitted += 1
+            }
+        }
+    }
+
+    private fun finish(): PinercPreview {
+        val rows = diffRows(current, next, phrases).toMutableList()
+        if (appliedAlpineDefault) {
+            val inboxPrefix = "${phrases.inboxOpens}:"
+            rows.removeAll { it.startsWith(inboxPrefix) }
+            rows.add(phrases.inboxDefault)
+        }
+        for (favorite in addedFavorites) rows.add(favoriteRow(favorite, phrases))
+        return PinercPreview(
+            next = next,
+            rows = rows,
+            skipped = skipped,
+            omittedCount = omitted,
+            offerAutoExpunge = offerAutoExpunge,
+        )
+    }
 }
 
 fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): AccountSettings =
@@ -387,12 +470,13 @@ fun encodePinerc(settings: AccountSettings): String {
     if (settings.dateFormat != DateFormat.Local) {
         lines.add("# date format: ${dateFormatLabel(settings.dateFormat)}")
     }
-    if ((settings.readerToolbar != null && settings.readerToolbar != defaultReaderToolbar()) ||
-        settings.indexBar != defaultIndexBar() ||
-        settings.selectionBar != defaultSelectionBar() ||
-        settings.folderBar != defaultFolderBar() ||
-        settings.composeBar != defaultComposeBar() ||
-        settings.toolbarRows != 2
+    val bars = org.dlang.liveimap.ui.toolbar.ToolbarStore.record
+    if ((bars.readerToolbar != null && bars.readerToolbar != defaultReaderToolbar()) ||
+        bars.indexBar != defaultIndexBar() ||
+        bars.selectionBar != defaultSelectionBar() ||
+        bars.folderBar != defaultFolderBar() ||
+        bars.composeBar != defaultComposeBar() ||
+        bars.toolbarRows != 2
     ) {
         lines.add("# toolbar")
     }
@@ -416,12 +500,6 @@ fun encodePinerc(settings: AccountSettings): String {
     if (settings.savedSearches.isNotEmpty() || settings.savedAdvanced.isNotEmpty()) {
         lines.add("# saved searches")
     }
-    lines.add(
-        "# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, " +
-            "threading-index-style, or composer-wrap-column. It reads the expunge confirm tokens, " +
-            "enable-sigdashes, signature-at-bottom, and enable-delivery-status-notification.",
-    )
-
     fun add(name: String, value: String) {
         if (value.isEmpty()) return
         lines.add("$name=$value")
@@ -633,6 +711,10 @@ private val appliedNames = setOf(
     "default-composer-hdrs",
     "viewer-hdrs",
     "patterns-roles",
+    "default-saved-msg-folder",
+    "saved-msg-name-rule",
+    "threading-index-style",
+    "composer-wrap-column",
 )
 
 /** Pine's literal-signature escapes: \n newline, \t tab, \\ backslash. */
@@ -722,6 +804,7 @@ private data class RemoteSpec(
     val user: String?,
     val mode: TlsMode?,
     val submit: Boolean,
+    val acceptInvalidCert: Boolean = false,
 )
 
 private sealed class FolderKind {
@@ -1044,11 +1127,13 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
     var mode: TlsMode? = null
     var submit = false
     var user: String? = null
+    var acceptInvalid = false
     for (flag in flags) {
         if (flag.isEmpty()) continue
         when {
             flag.equals("submit", ignoreCase = true) -> submit = true
             flag.startsWith("user=", ignoreCase = true) -> user = unquoteSpecValue(flag.substring(5))
+            flag.equals("novalidate-cert", ignoreCase = true) -> acceptInvalid = true
             mode != null -> Unit
             flag.equals("notls", ignoreCase = true) ||
                 flag.equals("nostarttls", ignoreCase = true) -> mode = TlsMode.None
@@ -1057,7 +1142,7 @@ private fun parseRemoteSpec(value: String): RemoteSpec? {
                 flag.equals("starttls", ignoreCase = true) -> mode = TlsMode.StartTls
         }
     }
-    return RemoteSpec(host, port, user, mode, submit)
+    return RemoteSpec(host, port, user, mode, submit, acceptInvalid)
 }
 
 private fun classifyFolder(
@@ -1186,7 +1271,8 @@ private fun pinercTls(mode: TlsMode): String = when (mode) {
 private fun pinercInbox(settings: AccountSettings): String {
     if (settings.imapHost.isEmpty()) return ""
     val user = if (settings.username.isEmpty()) "" else "/user=${quoteSpecValue(settings.username)}"
-    return "{${settings.imapHost}:${settings.imapPort}/${pinercTls(settings.tlsMode)}$user}INBOX"
+    val noval = if (settings.acceptInvalidCert) "/novalidate-cert" else ""
+    return "{${settings.imapHost}:${settings.imapPort}/${pinercTls(settings.tlsMode)}$noval$user}INBOX"
 }
 
 private fun pinercSmtp(settings: AccountSettings): String {
@@ -1236,6 +1322,21 @@ private fun pinercStartup(rule: StartRule): String? = when (rule) {
     StartRule.First -> "first"
     StartRule.Last -> "last"
     StartRule.Newest -> null
+}
+
+private fun parsePinercSaveRule(raw: String): SaveNameRule? = when (raw.trim()) {
+    "default-folder" -> SaveNameRule.DefaultFolder
+    "by-from" -> SaveNameRule.ByFrom
+    "by-sender" -> SaveNameRule.BySender
+    "by-recipient" -> SaveNameRule.ByRecipient
+    "last-folder-used" -> SaveNameRule.LastFolderUsed
+    else -> null
+}
+
+private fun parsePinercThreadStyle(raw: String): ThreadIndexStyle? = when (raw.trim()) {
+    "exp" -> ThreadIndexStyle.Expanded
+    "coll" -> ThreadIndexStyle.Collapsed
+    else -> null
 }
 
 private fun pinercSaveRule(rule: SaveNameRule): String = when (rule) {

@@ -438,7 +438,7 @@ fun ComposeScreen(
     unsentId: String? = null,
     retryOnOpen: Boolean = false,
     onOpenUnsent: () -> Unit = {},
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -471,7 +471,7 @@ private fun ComposeLoaded(
     unsentId: String? = null,
     retryOnOpen: Boolean = false,
     onOpenUnsent: () -> Unit = {},
-    onCustomize: (String) -> Unit = { _ -> },
+    onCustomize: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val acceptedNotice = stringResource(R.string.compose_accepted)
@@ -1878,8 +1878,8 @@ private fun ComposeLoaded(
                 actions = {
                     if (seed.kind != ComposeKind.Bounce) {
                         if (!deliveryDone) {
-                            val composeIcons = ArrayList<@Composable () -> Unit>(account.composeBar.toolbar.size)
-                            for (action in account.composeBar.toolbar) {
+                            val composeIcons = ArrayList<@Composable () -> Unit>(org.dlang.liveimap.ui.toolbar.ToolbarStore.composeBar().toolbar.size)
+                            for (action in org.dlang.liveimap.ui.toolbar.ToolbarStore.composeBar().toolbar) {
                                 when (action) {
                                     ComposeBarAction.Postpone -> composeIcons.add {
                                         HelpIconButton(
@@ -1898,7 +1898,7 @@ private fun ComposeLoaded(
                                 }
                             }
                             ToolbarIconRows(
-                                maxRows = account.toolbarRows,
+                                maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
                                 onRows = { count -> iconRows = count },
                                 icons = composeIcons,
                             )
@@ -1948,7 +1948,7 @@ private fun ComposeLoaded(
                                     onDismissRequest = { overflow = false },
                                 ) {
                                     ObscuredTouchFilter()
-                                    for (entry in composeMenu(account.composeBar)) {
+                                    for (entry in composeMenu(org.dlang.liveimap.ui.toolbar.ToolbarStore.composeBar())) {
                                         when (entry) {
                                             is ComposeMenuEntry.Action -> when (entry.action) {
                                                 ComposeBarAction.Postpone -> {
@@ -1976,7 +1976,7 @@ private fun ComposeLoaded(
                                                     text = { Text(title) },
                                                     onClick = {
                                                         overflow = false
-                                                        onCustomize(accountId)
+                                                        onCustomize()
                                                     },
                                                 )
                                             }

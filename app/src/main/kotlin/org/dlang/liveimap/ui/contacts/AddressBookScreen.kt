@@ -229,7 +229,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                 }
                 for (e in st?.entries.orEmpty()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${e.nickname}  ${e.fullname}  ${e.address}", Modifier.weight(1f))
+                        Text(stringResource(R.string.address_book_row, e.nickname, e.fullname, e.address), Modifier.weight(1f))
                         if (!chosen.second) {
                             TextButton(onClick = { draft = Draft(e.nickname, e) }, enabled = !busy) { Text(stringResource(R.string.book_edit)) }
                             TextButton(onClick = { deleting = e.nickname }, enabled = !busy) { Text(stringResource(R.string.book_delete)) }

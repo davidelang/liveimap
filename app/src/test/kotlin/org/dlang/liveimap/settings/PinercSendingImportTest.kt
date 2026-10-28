@@ -11,6 +11,8 @@ import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.IndexBarAction
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarAction
 import org.dlang.liveimap.ui.toolbar.ReaderToolbarLayout
+import org.dlang.liveimap.ui.toolbar.ToolbarRecord
+import org.dlang.liveimap.ui.toolbar.ToolbarStore
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar
 import org.dlang.liveimap.ui.toolbar.moveIndexAction
@@ -147,10 +149,19 @@ class PinercSendingImportTest {
             ),
             hidden = emptyList(),
         )
-        assertTrue(encodePinerc(AccountSettings(readerToolbar = custom)).contains("# toolbar"))
-        assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
-        assertFalse(encodePinerc(AccountSettings(readerToolbar = defaultReaderToolbar())).contains("# toolbar"))
-        val index = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
-        assertTrue(encodePinerc(AccountSettings(indexBar = index)).contains("# toolbar"))
+        val previous = ToolbarStore.record
+        try {
+            ToolbarStore.replace(ToolbarRecord(readerToolbar = custom))
+            assertTrue(encodePinerc(AccountSettings()).contains("# toolbar"))
+            ToolbarStore.replace(ToolbarRecord())
+            assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
+            ToolbarStore.replace(ToolbarRecord(readerToolbar = defaultReaderToolbar()))
+            assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
+            val index = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
+            ToolbarStore.replace(ToolbarRecord(indexBar = index))
+            assertTrue(encodePinerc(AccountSettings()).contains("# toolbar"))
+        } finally {
+            ToolbarStore.replace(previous)
+        }
     }
 }

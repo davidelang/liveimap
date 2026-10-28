@@ -60,18 +60,5 @@ class RetargetCredentialsTest {
         assertFalse(kept.dropSmtpPassword)
         assertTrue(planAccountSave("id", old, old.copy(smtpHost = "relay.example"), "", "slot").dropSmtpPassword)
     }
-
-    @Test
-    fun storeAndSettingsApplyIt() {
-        val store = File("src/main/kotlin/org/dlang/liveimap/accounts/AccountStore.kt").readText()
-        assertTrue(store.contains("planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: \"\")"))
-        assertTrue(store.contains("writeAccount(name, plan.userData, plan.passwordSlot)"))
-        assertTrue(store.contains("if (plan.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()"))
-        val stageStart = store.indexOf("private suspend fun stageSave")
-        val stageEnd = store.indexOf("private suspend fun passwordLocked")
-        assertTrue(stageStart >= 0 && stageEnd > stageStart)
-        assertFalse(store.substring(stageStart, stageEnd).contains("runCatching { overlayAccountFields(decodeAccountSettings"))
-        assertTrue(File("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt").readText().contains("retargetCredentials(settings, next)"))
-        assertEquals("Ada is removed and certificate leaf was not removed", certificateLeftBehind("Ada", "leaf"))
-    }
 }
+

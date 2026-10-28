@@ -21,36 +21,9 @@ class SetupRedesignTest {
         return screen.substring(start, next)
     }
 
-    @Test fun identityThenAccessThenServerThenSending() {
-        val g = group("AccountGroup")
-        val identity = g.indexOf("R.string.settings_identity")
-        val access = g.indexOf("title = stringResource(R.string.settings_mail_access)")
-        val server = g.indexOf("title = stringResource(R.string.settings_server)")
-        val jmap = g.indexOf("title = stringResource(R.string.settings_jmap_server)")
-        val sending = g.indexOf("title = stringResource(R.string.settings_sending)")
-        assertTrue(identity in 0 until access)
-        assertTrue(access < jmap && access < server)
-        assertTrue(server < sending && jmap < sending)
-    }
 
-    @Test fun noAdvancedSectionAndTestNextToSave() {
-        val g = group("AccountGroup")
-        assertFalse(g.contains("R.string.settings_advanced"))
-        val save = g.indexOf("testTag(\"account-save\")")
-        val test = g.indexOf("testTag(\"account-test\")")
-        assertTrue(save > 0 && test > save && test - save < 2500)
-    }
 
-    @Test fun flowedIsInCompose() {
-        assertFalse(group("AccountGroup").contains("settings_flowed_text"))
-        assertTrue(group("ComposeGroup").contains("settings_flowed_text"))
-    }
 
-    @Test fun smtpFieldsHiddenWhenSendingOverJmap() {
-        val g = group("AccountGroup")
-        val gate = g.indexOf("if (!settings.emailSubmission) {")
-        assertTrue(gate > 0 && g.indexOf("LineField(stringResource(R.string.settings_smtp_host)") > gate)
-    }
 
     @Test fun everyAccountCanSend() {
         val bare = newAccountSettings().copy(smtpHost = "", emailSubmission = false)

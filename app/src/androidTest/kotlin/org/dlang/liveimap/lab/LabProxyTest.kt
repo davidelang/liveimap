@@ -36,7 +36,7 @@ class LabProxyTest {
         data class Target(val host: String, val port: Int, val tls: String, val user: String, val password: String)
         val target = runBlocking {
             val accounts = store.listAccounts()
-            val original = accounts.firstOrNull { it.chosen }?.id
+            val original = accounts.firstOrNull { it.drawer }?.id
             var found: Target? = null
             try {
                 for (a in accounts) {

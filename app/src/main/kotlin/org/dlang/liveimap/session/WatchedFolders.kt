@@ -128,7 +128,8 @@ fun watchedFoldersFromText(text: String): List<String> {
 
 /** Optional minus and digits that fit in an Int, or null. Does not open a socket. */
 /** F81: upper bound on extra IDLE connections, so a pasted list cannot open hundreds of logins. */
-const val MaxExtraIdle = 8
+val MaxExtraIdle: Int
+    get() = org.dlang.liveimap.settings.SettingsDefaults.extraIdleBudgetMax
 
 private val signedDigits = Regex("-?\\d+")
 

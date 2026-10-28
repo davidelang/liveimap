@@ -17,6 +17,7 @@
 - Build: `./build_app --standard --test`. Agents never pass `--play`: only David runs the Play build, by hand.
 - Play-only code (`app/src/play`) compiles without signing: `./build_app --standard --test -- compilePlayReleaseKotlin`.
 - Commit: `./build_app --standard --test "<message>"|@<msg_file> <paths...>` (builds, then commits exactly the named paths and tags builds)
+- A change that adds, changes or removes any string in `res/values/strings.xml` (including settings titles, summaries and group titles) also writes that string in every `app/src/main/i18n/<locale>.json` in the same change, translated by the coder; every `<locale>.override.json` entry stays and only the machine file's `source` changes; a removed string is removed from every i18n file; `generateAppI18n` fails the build otherwise.
 
 ## Review after implement
 - Record HEAD before the executor starts. Phases are internal steps: `git diff` each phase's paths against its observable; no per-phase commit. Before handoff, re-read the plan once.

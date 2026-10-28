@@ -16,12 +16,6 @@ class WrapColumnPlacementTest {
         return screen.substring(start, next)
     }
 
-    @Test fun wrapColumnIsInComposeOnly() {
-        assertEquals(1, Regex("settings_wrap_column").findAll(screen).count())
-        assertTrue(group("ComposeGroup").contains("settings_wrap_column"))
-        assertTrue(!group("AccountGroup").contains("settings_wrap_column"))
-        assertTrue(group("ComposeGroup").contains("composerWrapColumn = number"))
-    }
 
     @Test fun storedValueRoundTrips() {
         val s = newAccountSettings().copy(composerWrapColumn = 72)

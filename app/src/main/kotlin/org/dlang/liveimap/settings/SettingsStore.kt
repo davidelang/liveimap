@@ -10,7 +10,8 @@ import org.dlang.liveimap.accounts.AccountTarget
 data class AccountChoice(
     val id: String,
     val name: String,
-    val chosen: Boolean,
+    val drawer: Boolean,
+    val editing: Boolean = false,
 )
 
 data class DrawerAccount(
@@ -93,7 +94,7 @@ class DataStoreSettingsStore(
 
     override suspend fun chosenAccountId(): String? {
         boundAccountId?.let { return it }
-        val id = store.listAccounts().firstOrNull { it.chosen }?.id
+        val id = store.listAccounts().firstOrNull { it.drawer }?.id
         if (id.isNullOrEmpty()) return null
         return id
     }

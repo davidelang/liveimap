@@ -22,7 +22,7 @@ class LabAccountCopyTest {
     fun exportAccount() = runBlocking {
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
         val accounts = store.listAccounts()
-        val original = accounts.firstOrNull { it.chosen }?.id
+        val original = accounts.firstOrNull { it.drawer }?.id
         var out: Pair<String, String>? = null
         try {
             for (a in accounts) {
@@ -48,7 +48,7 @@ class LabAccountCopyTest {
         val (s64, p64) = java.io.File("/data/local/tmp/lab-acct").readText().trim().split(":")
         val src = decodeAccountSettings(String(Base64.decode(s64, Base64.NO_WRAP)))
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
-        val original = store.listAccounts().firstOrNull { it.chosen }?.id
+        val original = store.listAccounts().firstOrNull { it.drawer }?.id
         store.addAccount()
         store.load()
         store.save(

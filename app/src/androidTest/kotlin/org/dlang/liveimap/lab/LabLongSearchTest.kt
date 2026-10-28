@@ -28,7 +28,7 @@ class LabLongSearchTest {
         check(!match.contains("asgard", ignoreCase = true) && match != "10.0.0.100") { "never on asgard" }
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
         val accounts = store.listAccounts()
-        val original = accounts.firstOrNull { it.chosen }?.id
+        val original = accounts.firstOrNull { it.drawer }?.id
         try {
             var account: org.dlang.liveimap.settings.AccountSettings? = null
             for (a in accounts) {

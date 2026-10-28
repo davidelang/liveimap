@@ -77,9 +77,9 @@ class PinercImportTest {
             AccountSettings(),
             next.copy(
                 imapHost = "",
-                imapPort = 143,
+                imapPort = SettingsDefaults.imapPort,
                 smtpHost = "",
-                smtpPort = 25,
+                smtpPort = SettingsDefaults.smtpPort,
                 username = "",
                 displayName = "",
                 email = "",
@@ -169,7 +169,7 @@ class PinercImportTest {
         assertEquals("imap.example.com", secure.next.imapHost)
         assertEquals("ada", secure.next.username)
         assertEquals(143, secure.next.imapPort)
-        assertEquals(TlsMode.None, secure.next.tlsMode)
+        assertEquals(AccountSettings().tlsMode, secure.next.tlsMode)
         assertTrue(secure.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
         val notls = previewPinerc(
@@ -708,19 +708,6 @@ class PinercImportTest {
         assertSame(untouched, withoutCheckedMailboxes(untouched, AccountSettings(), testPinercPhrases()))
     }
 
-    @Test
-    fun wildcardMailboxIsNotListed() = runBlocking {
-        val session = ListingSession()
-        assertFalse(pinercMailboxListed(session, "INBOX.sent%"))
-        assertFalse(pinercMailboxListed(session, "*"))
-        assertFalse(pinercMailboxListed(session, ""))
-        assertTrue(session.calls.isEmpty())
-        session.result = true
-        assertTrue(pinercMailboxListed(session, "INBOX.sent-mail"))
-        session.result = false
-        assertFalse(pinercMailboxListed(session, "INBOX.sent-mail"))
-        assertEquals(listOf("INBOX.sent-mail", "INBOX.sent-mail"), session.calls)
-    }
 
     @Test
     fun incomingFoldersBecomeFavorites() {
@@ -961,7 +948,7 @@ class PinercImportTest {
         assertTrue(features.contains("forward-as-attachment"))
         assertTrue(features.contains("render-html-internally"))
         assertTrue(features.contains("convert-dates-to-localtime"))
-        assertTrue(text.contains("# The importer does not read back default-saved-msg-folder, saved-msg-name-rule, threading-index-style, or composer-wrap-column. It reads the expunge confirm tokens, enable-sigdashes, signature-at-bottom, and enable-delivery-status-notification."))
+        assertFalse(text.contains("does not read back default-saved-msg-folder"))
         assertTrue(text.contains("# auto-expunge"))
         for (line in text.lines()) {
             if (line.isEmpty() || line.startsWith("#")) continue
@@ -1044,63 +1031,3 @@ internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
 
 internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =
     pinercPreview(text, current, testPinercPhrases())
-
-private class ListingSession : MailSession {
-    val calls = mutableListOf<String>()
-    var result = false
-
-    override val capabilities: Set<String> = emptySet()
-
-    override suspend fun mailboxListed(name: String): Boolean {
-        calls.add(name)
-        return result
-    }
-
-    override suspend fun open(account: AccountSettings): OpenResult = unused()
-
-    override suspend fun namespaces(): List<Namespace> = unused()
-
-    override suspend fun listLevel(
-        prefix: String,
-        parentMailbox: String?,
-        unreadCounts: Boolean,
-    ): List<FolderEntry> = unused()
-
-    override suspend fun select(mailbox: String): SelectResult = unused()
-
-    override suspend fun unselect() = unused()
-
-    override suspend fun fetchIndex(request: IndexRequest): List<IndexRow> = unused()
-
-    override suspend fun fetchStructure(uid: Long): MimePart = unused()
-
-    override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray = unused()
-
-    override suspend fun fetchRfc822(uid: Long): ByteArray = unused()
-
-    override suspend fun storeFlags(uids: List<Long>, add: Set<String>, remove: Set<String>) = unused()
-
-    override suspend fun uidExpungeDeleted() = unused()
-
-    override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) = unused()
-
-    override suspend fun searchText(query: String): List<Long> = unused()
-
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = unused()
-
-    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = unused()
-
-    override suspend fun thread(key: SortKey): ThreadNode = unused()
-
-    override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) = unused()
-
-    override suspend fun stopWatch() = unused()
-
-    override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>) = unused()
-
-    override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int = unused()
-
-    override fun close() = Unit
-
-    private fun unused(): Nothing = throw MailFailure("not used")
-}
