@@ -37,8 +37,10 @@ internal fun accountRemoval(
 ): AccountRemoval {
     val present = removeId.isNotBlank() && accounts.any { it.userData[userAccountId] == removeId }
     if (!present) return AccountRemoval(remove = false, selectedId = selectedId)
-    val next = if (selectedId == removeId) {
-        val remaining = accounts.filter { it.userData[userAccountId] != removeId }
+    val remaining = accounts.filter { it.userData[userAccountId] != removeId }
+    val next = if (remaining.isEmpty()) {
+        null
+    } else if (selectedId == removeId) {
         chooseAccount(remaining, null)?.userData?.get(userAccountId)
     } else {
         selectedId
