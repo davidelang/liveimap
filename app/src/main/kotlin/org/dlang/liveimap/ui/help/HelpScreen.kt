@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.engine.trafficText
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.debug.DebugReportReview
 

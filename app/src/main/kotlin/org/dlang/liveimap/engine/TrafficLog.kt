@@ -20,6 +20,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.encode
@@ -107,7 +108,7 @@ object TrafficLog {
         val out = ArrayList<TrafficRecord>()
         var i = 0
         while (i < raw.size) {
-            val nl = raw.indexOf('\n'.code.toByte(), i)
+            val nl = nextByte(raw, i, '\n'.code.toByte())
             if (nl < 0) break
             val header = String(raw, i, nl - i, Charsets.US_ASCII)
             val parts = header.split(' ')
@@ -214,6 +215,15 @@ data class TrafficRecord(
     val bytes: ByteArray,
     val name: String,
 )
+
+private fun nextByte(raw: ByteArray, from: Int, b: Byte): Int {
+    var i = from
+    while (i < raw.size) {
+        if (raw[i] == b) return i
+        i++
+    }
+    return -1
+}
 
 internal fun trafficIdOk(id: String): Boolean {
     if (id.isBlank() || id == "." || id == "..") return false

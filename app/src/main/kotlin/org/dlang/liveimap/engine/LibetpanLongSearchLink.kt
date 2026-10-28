@@ -1,5 +1,6 @@
 package org.dlang.liveimap.engine
 
+import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.LongSearchLink

@@ -185,6 +185,7 @@ internal fun sieveCheckText(caps: SieveCapabilities): String {
 @Composable
 internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
     val noSieveHost = stringResource(R.string.settings_sieve_no_host)
+    val cacheDir = LocalContext.current.applicationContext.cacheDir
     TextButton(
         onClick = {
             if (drafts.checkingSieve) return@TextButton
@@ -202,7 +203,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
             }
             val sieveTlsMode = editor.settings.sieveTlsMode
             val pin = editor.settings.sieveCertPin
-            val cacheDir = LocalContext.current.applicationContext.cacheDir
+            val trafficId = sieveAccount.orEmpty()
             drafts.checkingSieve = true
             drafts.sieveReport = ""
             editor.ui.launch {
@@ -215,7 +216,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
                                 sieveTlsMode,
                                 pin,
                                 ::confirmMailCertificate,
-                                org.dlang.liveimap.engine.TrafficLog.writer(cacheDir, sieveAccount),
+                                org.dlang.liveimap.engine.TrafficLog.writer(cacheDir, trafficId),
                                 editor.settings.sieveConnectSeconds,
                                 editor.settings.sieveReadSeconds,
                             ) { fingerprint ->

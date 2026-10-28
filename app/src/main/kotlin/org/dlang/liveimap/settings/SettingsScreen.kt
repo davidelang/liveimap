@@ -129,6 +129,7 @@ import org.dlang.liveimap.engine.ClientCertStore
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.engine.trafficText
 import org.dlang.liveimap.engine.probeServer
 import org.dlang.liveimap.engine.sieve.SieveCapabilities
 import org.dlang.liveimap.engine.sieve.SieveFailure
@@ -840,7 +841,7 @@ internal fun LoggingExtras(editor: SettingsEditor) {
             androidVersion = Build.VERSION.RELEASE,
             device = device,
             settings = editor.settings,
-            traffic = trafficText(editor.appContext.cacheDir, editor.editingId),
+            traffic = editor.editingId?.let { trafficText(editor.appContext.cacheDir, it) } ?: "",
         ).lines()
     }) { Text(stringResource(R.string.settings_debug_report)) }
     if (confirmShareLog) {
@@ -852,10 +853,10 @@ internal fun LoggingExtras(editor: SettingsEditor) {
                 TextButton(onClick = {
                     confirmShareLog = false
                     val id = editor.editingId
-                    if (TrafficLog.trafficLogFile(editor.appContext.cacheDir, id) == null) {
-                        android.util.Log.w("LiveIMAP", "traffic directory refused for $id")
-                    } else {
+                    if (id != null && TrafficLog.trafficLogFile(editor.appContext.cacheDir, id) != null) {
                         TrafficLog.share(contextState.value, id)
+                    } else if (id != null) {
+                        android.util.Log.w("LiveIMAP", "traffic directory refused for $id")
                     }
                 }) { Text(stringResource(R.string.traffic_share_anyway)) }
             },
