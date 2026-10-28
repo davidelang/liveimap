@@ -233,8 +233,10 @@ internal fun trafficIdOk(id: String): Boolean {
 
 private fun openExclusive(path: File): FileOutputStream? {
     return try {
-        val flags = android.system.OsConstants.O_CREAT or android.system.OsConstants.O_EXCL or
-            android.system.OsConstants.O_APPEND or android.system.OsConstants.O_CLOEXEC
+        // O_WRONLY: an open with no access mode is O_RDONLY, and the later write fails.
+        val flags = android.system.OsConstants.O_WRONLY or android.system.OsConstants.O_CREAT or
+            android.system.OsConstants.O_EXCL or android.system.OsConstants.O_APPEND or
+            android.system.OsConstants.O_CLOEXEC
         val fd = android.system.Os.open(path.absolutePath, flags, 384)
         FileOutputStream(fd)
     } catch (error: Throwable) {

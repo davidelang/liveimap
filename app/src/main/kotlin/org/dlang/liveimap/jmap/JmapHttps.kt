@@ -111,28 +111,103 @@ private data class JmapFactoryKey(val accountId: String, val pin: String, val po
 
 private val jmapExchangeFactories = java.util.concurrent.ConcurrentHashMap<JmapFactoryKey, javax.net.ssl.SSLSocketFactory>()
 
-/** One context per account. A new pin or policy builds another. The manager checks the certificate on every handshake. */
-private fun jmapExchangeFactory(accountId: String, host: String, pin: String, policy: TlsPolicy): javax.net.ssl.SSLSocketFactory {
+/** One context per account. A new pin or policy builds another. Each handshake uses that socket's host. */
+private fun jmapExchangeFactory(accountId: String, pin: String, policy: TlsPolicy): javax.net.ssl.SSLSocketFactory {
     val key = JmapFactoryKey(accountId, pin, policy)
     return jmapExchangeFactories.computeIfAbsent(key) {
-        val manager = object : javax.net.ssl.X509TrustManager {
+        val manager = object : javax.net.ssl.X509ExtendedTrustManager() {
             override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
                 throw java.security.cert.CertificateException("client trust is not used")
 
-            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {
-                val ders = chain?.map { it.encoded } ?: emptyList()
-                val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
-                if (verdict.isEmpty()) return
-                // Discovery is unauthenticated: a pinnable failure is offered after the exchange.
-                if (jmapPinnable(verdict)) return
-                throw java.security.cert.CertificateException(verdict)
-            }
+            override fun checkClientTrusted(
+                chain: Array<out java.security.cert.X509Certificate>?,
+                authType: String?,
+                socket: java.net.Socket?,
+            ) = throw java.security.cert.CertificateException("client trust is not used")
+
+            override fun checkClientTrusted(
+                chain: Array<out java.security.cert.X509Certificate>?,
+                authType: String?,
+                engine: javax.net.ssl.SSLEngine?,
+            ) = throw java.security.cert.CertificateException("client trust is not used")
+
+            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) =
+                throw java.security.cert.CertificateException("no peer host")
+
+            override fun checkServerTrusted(
+                chain: Array<out java.security.cert.X509Certificate>?,
+                authType: String?,
+                socket: java.net.Socket?,
+            ) = jmapCheckHandshake(jmapHandshakeHost(socket), chain, pin, policy)
+
+            override fun checkServerTrusted(
+                chain: Array<out java.security.cert.X509Certificate>?,
+                authType: String?,
+                engine: javax.net.ssl.SSLEngine?,
+            ) = jmapCheckHandshake(jmapHandshakeHost(engine), chain, pin, policy)
 
             override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = emptyArray()
         }
         val context = javax.net.ssl.SSLContext.getInstance("TLS")
         context.init(null, arrayOf(manager), null)
         context.socketFactory
+    }
+}
+
+private fun jmapHandshakeHost(socket: java.net.Socket?): String {
+    val ssl = socket as? javax.net.ssl.SSLSocket
+        ?: throw java.security.cert.CertificateException("no peer socket")
+    return jmapSessionHost(ssl.handshakeSession)
+}
+
+private fun jmapHandshakeHost(engine: javax.net.ssl.SSLEngine?): String {
+    if (engine == null) throw java.security.cert.CertificateException("no peer socket")
+    return jmapSessionHost(engine.handshakeSession)
+}
+
+private fun jmapSessionHost(session: javax.net.ssl.SSLSession?): String {
+    val host = session?.peerHost
+    if (host.isNullOrEmpty()) throw java.security.cert.CertificateException("no peer host")
+    if (host.startsWith("[") && host.endsWith("]") && host.length >= 2) {
+        return host.substring(1, host.length - 1)
+    }
+    return host
+}
+
+private fun jmapCheckHandshake(
+    host: String,
+    chain: Array<out java.security.cert.X509Certificate>?,
+    pin: String,
+    policy: TlsPolicy,
+) {
+    val ders = chain?.map { it.encoded } ?: emptyList()
+    val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
+    if (verdict.isEmpty()) return
+    // Discovery is unauthenticated: a pinnable failure is offered after the exchange.
+    if (jmapPinnable(verdict)) return
+    throw java.security.cert.CertificateException(verdict)
+}
+
+/** The URL host, checked against this connection's certificate. A pinnable chain still finishes so discovery can offer it. */
+private fun jmapCertificateVerifier(
+    connection: HttpsURLConnection,
+    pin: String,
+    policy: TlsPolicy,
+): javax.net.ssl.HostnameVerifier {
+    return javax.net.ssl.HostnameVerifier { name, session ->
+        if (!name.equals(connection.url.host, ignoreCase = true)) return@HostnameVerifier false
+        val host = try {
+            jmapTrustHost(connection.url.toString())
+        } catch (_: JmapFailure) {
+            return@HostnameVerifier false
+        }
+        val ders = try {
+            session.peerCertificates.map { (it as java.security.cert.X509Certificate).encoded }
+        } catch (_: Exception) {
+            return@HostnameVerifier false
+        }
+        val verdict = applyTlsPolicy(PeerTrust.check(host, ders, pin), policy)
+        verdict.isEmpty() || jmapPinnable(verdict)
     }
 }
 
@@ -143,10 +218,8 @@ fun platformJmapExchange(pin: String, policy: TlsPolicy, accountKey: String, tra
         // which can offer the pin.
         if (this is HttpsURLConnection) {
             val https = this
-            val host = jmapTrustHost(url)
-            val port = if (https.url.port == -1) https.url.defaultPort else https.url.port
-            sslSocketFactory = jmapExchangeFactory(accountKey, host, pin, policy)
-            hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(https.url.host, ignoreCase = true) }
+            sslSocketFactory = jmapExchangeFactory(accountKey, pin, policy)
+            hostnameVerifier = jmapCertificateVerifier(https, pin, policy)
         }
         instanceFollowRedirects = false
         connectTimeout = 15_000
@@ -237,10 +310,9 @@ fun pinJmapTls(connection: HttpsURLConnection, pin: String, accountKey: String, 
         context.init(null, arrayOf(manager), null)
         context.socketFactory
     } else {
-        jmapExchangeFactory(accountKey, host, pin, policy)
+        jmapExchangeFactory(accountKey, pin, policy)
     }
-    // The verdict already ran in the handshake, including a stored pin that wins over the name.
-    connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { name, _ -> name.equals(connection.url.host, ignoreCase = true) }
+    connection.hostnameVerifier = jmapCertificateVerifier(connection, pin, policy)
 }
 
 fun pinnedJmapPost(pin: String, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, String, String) -> JmapHttpExchange =

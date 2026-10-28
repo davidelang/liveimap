@@ -298,7 +298,8 @@ bool trafficOpen(TrafficFile * file) {
     snprintf(name, sizeof(name), "%lld-%s-%llu.log", ms, file->conn.c_str(),
         static_cast<unsigned long long>(serial));
     std::string path = file->dir + name;
-    int fd = ::open(path.c_str(), O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0600);
+    // O_WRONLY: an open with no access mode is O_RDONLY, and writev then fails with EBADF.
+    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_APPEND | O_CLOEXEC, 0600);
     if (fd < 0) {
         trafficFail(file);
         return false;
