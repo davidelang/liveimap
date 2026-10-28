@@ -1220,7 +1220,7 @@ private fun MessageIndexLoaded(
     }
 
     fun runExpunge(offer: MailUndo) {
-        if (offer.uids.isEmpty()) return
+        if (offer.source.isEmpty()) return
         if (account.askBeforeExpunge) {
             pendingExpungeUids = offer.source
             confirmExpunge = true
@@ -1229,7 +1229,7 @@ private fun MessageIndexLoaded(
         enqueueModel {
             var ok = false
 
-            model.expungeUids(offer.uids)
+            model.expungeUids(offer.source)
             sync.block()
             ok = model.notice == null
         
@@ -3587,7 +3587,7 @@ private fun MessageIndexLoaded(
                                 enqueueModel {
                                     var ok = false
 
-                                    if (specific != null) model.expungeUids(specific.map { it.uid }) else model.expunge()
+                                    if (specific != null) model.expungeUids(specific) else model.expunge()
                                     pull()
                                     ok = model.notice == null
                                 

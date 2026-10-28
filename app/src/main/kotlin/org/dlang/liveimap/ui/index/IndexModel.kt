@@ -2088,10 +2088,13 @@ class IndexModel(
         return reloadKeepingAnchor()
     }
 
-    suspend fun expungeUids(uids: List<Long>): List<IndexRow> {
-        if (uids.isEmpty()) return heldRows
+    suspend fun expungeUids(refs: List<MessageRef>): List<IndexRow> {
+        if (refs.isEmpty()) return heldRows
         try {
-            home().uidExpunge(uids)
+            // Each ref names its folder and UIDVALIDITY. A hit from another mailbox is expunged there.
+            session.onRefs(accountKey, refs) { s, _, group ->
+                s.uidExpunge(group.map { it.uid })
+            }
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
