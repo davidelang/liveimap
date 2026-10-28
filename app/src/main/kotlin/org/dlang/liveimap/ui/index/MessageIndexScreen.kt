@@ -793,6 +793,90 @@ fun MessageIndexScreen(
     )
 }
 
+/** Unkeyed index state. One remember, so the screen method stays inside the code-unit budget. */
+private class IndexScreenMemory(
+    reuseWindow: Boolean,
+    model: IndexModel,
+    held: IndexScreenHeld,
+) {
+    val cancelSearch = mutableStateOf(false)
+    val searchProgress = mutableStateOf<String?>(null)
+    val loading = mutableStateOf(!reuseWindow)
+    val longProgress = mutableStateOf<org.dlang.liveimap.session.SearchProgress?>(null)
+    val banner = mutableStateOf<String?>(null)
+    val fetchNotice = mutableStateOf(if (reuseWindow) model.notice else null)
+    val loadToken = mutableIntStateOf(0)
+    val snackEvent = mutableIntStateOf(0)
+    val snackMessage = mutableStateOf("")
+    val pendingNew = mutableIntStateOf(if (reuseWindow) model.pendingNew else 0)
+    val newMailUnnumbered = mutableStateOf(reuseWindow && model.newMailUnnumbered)
+    val userMovedSincePill = mutableStateOf(false)
+    val lastReported = mutableStateOf<String?>(null)
+    val view = mutableStateOf(if (reuseWindow) model.view else FolderView(SortKey.Arrival, true))
+    val account = mutableStateOf(if (reuseWindow) model.account else AccountSettings())
+    val menuKeys = mutableStateOf(model.menuKeys)
+    val anchorPage = mutableStateOf(if (reuseWindow) model.anchorPage else 0)
+    val connected = mutableStateOf(reuseWindow)
+    val menuOpen = mutableStateOf(false)
+    val iconRows = mutableIntStateOf(1)
+    val openAt = mutableStateOf(false)
+    val searchFieldOpen = mutableStateOf(false)
+    val saveNameOpen = mutableStateOf(false)
+    val saveName = mutableStateOf("")
+    val savedOpen = mutableStateOf(false)
+    val savedItems = mutableStateOf<List<SavedSearch>>(emptyList())
+    val filterOpen = mutableStateOf(false)
+    val filterActive = mutableStateOf(reuseWindow && model.filterActive)
+    val canWiden = mutableStateOf(reuseWindow && model.canWiden)
+    val narrowArmed = mutableStateOf(false)
+    val prompt = mutableStateOf<FilterChoice?>(null)
+    val promptText = mutableStateOf("")
+    val filters = mutableStateOf(if (reuseWindow) model.filters else emptyList())
+    val summaries = mutableStateOf(if (reuseWindow) model.summaries else emptyMap())
+    val threadMembers = mutableStateOf(if (reuseWindow) model.threadMembers else emptyMap())
+    val threadHidden = mutableStateOf(if (reuseWindow) model.threadHidden else emptyMap())
+    val threadDepth = mutableStateOf(if (reuseWindow) model.threadDepth else emptyMap())
+    val refreshing = mutableStateOf(false)
+    val threadAsk = mutableStateOf<FolderView?>(null)
+    val threadAskFromConnect = mutableStateOf(false)
+    val threadExists = mutableIntStateOf(0)
+    val fallbackAsk = mutableStateOf<FolderView?>(null)
+    val fallbackAskFromConnect = mutableStateOf(false)
+    val fallbackExists = mutableIntStateOf(0)
+    val sortAsk = mutableStateOf<FolderView?>(null)
+    val sortAskFromConnect = mutableStateOf(false)
+    val sortExists = mutableIntStateOf(0)
+    val searchAsk = mutableStateOf<String?>(null)
+    val searchExists = mutableIntStateOf(0)
+    val savingSkip = mutableStateOf(false)
+    val multiSelect = mutableStateOf(
+        reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value),
+    )
+    val mailboxExists = mutableIntStateOf(0)
+    val selectionMore = mutableStateOf(false)
+    val confirmExpunge = mutableStateOf(false)
+    val confirmMarkAllRead = mutableStateOf(false)
+    val pendingExpungeUids = mutableStateOf<List<MessageRef>?>(null)
+    val pendingPermanent = mutableStateOf<PendingDelete?>(null)
+    val folderInfo = mutableStateOf<SelectResult?>(null)
+    val jumpOpen = mutableStateOf(false)
+    val jumpText = mutableStateOf("")
+    val nextFolderTarget = mutableStateOf<String?>(null)
+    val leavingIndex = mutableStateOf(false)
+    val undoOffer = mutableStateOf<MailUndo?>(null)
+    val undoToken = mutableIntStateOf(0)
+    val snackMode = mutableStateOf("retry")
+    val flagUid = mutableStateOf<MessageRef?>(null)
+    val allowNewer = mutableStateOf(true)
+}
+
+@Composable
+private fun rememberIndexMemory(
+    reuseWindow: Boolean,
+    model: IndexModel,
+    held: IndexScreenHeld,
+): IndexScreenMemory = remember { IndexScreenMemory(reuseWindow, model, held) }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MessageIndexLoaded(
@@ -869,76 +953,77 @@ private fun MessageIndexLoaded(
             }
         }
     }
-    val cancelSearch = remember { mutableStateOf(false) }
-    var searchProgress by remember { mutableStateOf<String?>(null) }
+    val mem = rememberIndexMemory(reuseWindow, model, held)
+    val cancelSearch = mem.cancelSearch
+    var searchProgress by mem.searchProgress
     val watchRecovery = remember { WatchBackoff() }
     val indexWatch = remember { arrayOfNulls<Job>(1) }
     val sync = remember { SnapshotSync() }
     val listState = rememberLazyListState()
     var rows by held.rowsState
-    var loading by remember { mutableStateOf(!reuseWindow) }
-    var longProgress by remember { mutableStateOf<org.dlang.liveimap.session.SearchProgress?>(null) }
+    var loading by mem.loading
+    var longProgress by mem.longProgress
     DisposableEffect(model) {
         model.onSearchProgress = { longProgress = it }
         onDispose { model.onSearchProgress = null }
     }
-    var banner by remember { mutableStateOf<String?>(null) }
-    var fetchNotice by remember { mutableStateOf(if (reuseWindow) model.notice else null) }
-    var loadToken by remember { mutableIntStateOf(0) }
-    var snackEvent by remember { mutableIntStateOf(0) }
-    var snackMessage by remember { mutableStateOf("") }
-    var pendingNew by remember { mutableIntStateOf(if (reuseWindow) model.pendingNew else 0) }
-    var newMailUnnumbered by remember { mutableStateOf(reuseWindow && model.newMailUnnumbered) }
-    val userMovedSincePill = remember { mutableStateOf(false) }
-    var lastReported by remember { mutableStateOf<String?>(null) }
+    var banner by mem.banner
+    var fetchNotice by mem.fetchNotice
+    var loadToken by mem.loadToken
+    var snackEvent by mem.snackEvent
+    var snackMessage by mem.snackMessage
+    var pendingNew by mem.pendingNew
+    var newMailUnnumbered by mem.newMailUnnumbered
+    val userMovedSincePill = mem.userMovedSincePill
+    var lastReported by mem.lastReported
     val snackbarHostState = remember { SnackbarHostState() }
-    var view by remember { mutableStateOf(if (reuseWindow) model.view else FolderView(SortKey.Arrival, true)) }
-    var account by remember { mutableStateOf(if (reuseWindow) model.account else AccountSettings()) }
-    var menuKeys by remember { mutableStateOf(model.menuKeys) }
-    var anchorPage by remember { mutableStateOf(if (reuseWindow) model.anchorPage else 0) }
-    var connected by remember { mutableStateOf(reuseWindow) }
-    var menuOpen by remember { mutableStateOf(false) }
-    var iconRows by remember { mutableIntStateOf(1) }
-    var openAt by remember { mutableStateOf(false) }
+    var view by mem.view
+    var account by mem.account
+    var menuKeys by mem.menuKeys
+    var anchorPage by mem.anchorPage
+    var connected by mem.connected
+    var menuOpen by mem.menuOpen
+    var iconRows by mem.iconRows
+    var openAt by mem.openAt
     var heading by remember(mailbox) {
         mutableStateOf(
             if (reuseWindow) MailboxTitle(held.headingLeaf, held.headingParent) else MailboxTitle(mailbox, ""),
         )
     }
     var searchVisible by rememberSaveable { mutableStateOf(false) }
-    var searchFieldOpen by remember { mutableStateOf(false) }
+    var searchFieldOpen by mem.searchFieldOpen
     var query by rememberSaveable { mutableStateOf("") }
-    var saveNameOpen by remember { mutableStateOf(false) }
-    var saveName by remember { mutableStateOf("") }
-    var savedOpen by remember { mutableStateOf(false) }
-    var savedItems by remember { mutableStateOf<List<SavedSearch>>(emptyList()) }
-    var filterOpen by remember { mutableStateOf(false) }
-    var filterActive by remember { mutableStateOf(reuseWindow && model.filterActive) }
-    var canWiden by remember { mutableStateOf(reuseWindow && model.canWiden) }
-    var narrowArmed by remember { mutableStateOf(false) }
-    var prompt by remember { mutableStateOf<FilterChoice?>(null) }
-    var promptText by remember { mutableStateOf("") }
-    var filters by remember { mutableStateOf(if (reuseWindow) model.filters else emptyList()) }
-    var summaries by remember { mutableStateOf(if (reuseWindow) model.summaries else emptyMap()) }
-    var threadMembers by remember { mutableStateOf(if (reuseWindow) model.threadMembers else emptyMap()) }
-    var threadHidden by remember { mutableStateOf(if (reuseWindow) model.threadHidden else emptyMap()) }
-    var threadDepth by remember { mutableStateOf(if (reuseWindow) model.threadDepth else emptyMap()) }
-    var refreshing by remember { mutableStateOf(false) }
-    var threadAsk by remember { mutableStateOf<FolderView?>(null) }
-    var threadAskFromConnect by remember { mutableStateOf(false) }
-    var threadExists by remember { mutableIntStateOf(0) }
+    var saveNameOpen by mem.saveNameOpen
+    var saveName by mem.saveName
+    var savedOpen by mem.savedOpen
+    var savedItems by mem.savedItems
+    var filterOpen by mem.filterOpen
+    var filterActive by mem.filterActive
+    var canWiden by mem.canWiden
+    var narrowArmed by mem.narrowArmed
+    var prompt by mem.prompt
+    var promptText by mem.promptText
+    var filters by mem.filters
+    var summaries by mem.summaries
+    var threadMembers by mem.threadMembers
+    var threadHidden by mem.threadHidden
+    var threadDepth by mem.threadDepth
+    var refreshing by mem.refreshing
+    var threadAsk by mem.threadAsk
+    var threadAskFromConnect by mem.threadAskFromConnect
+    var threadExists by mem.threadExists
     var threadConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
-    var fallbackAsk by remember { mutableStateOf<FolderView?>(null) }
-    var fallbackAskFromConnect by remember { mutableStateOf(false) }
-    var fallbackExists by remember { mutableIntStateOf(0) }
-    var sortAsk by remember { mutableStateOf<FolderView?>(null) }
-    var sortAskFromConnect by remember { mutableStateOf(false) }
-    var sortExists by remember { mutableIntStateOf(0) }
+    var fallbackAsk by mem.fallbackAsk
+    var fallbackAskFromConnect by mem.fallbackAskFromConnect
+    var fallbackExists by mem.fallbackExists
+    var sortAsk by mem.sortAsk
+    var sortAskFromConnect by mem.sortAskFromConnect
+    var sortExists by mem.sortExists
     var sortConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
-    var searchAsk by remember { mutableStateOf<String?>(null) }
-    var searchExists by remember { mutableIntStateOf(0) }
+    var searchAsk by mem.searchAsk
+    var searchExists by mem.searchExists
     var searchConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
-    var savingSkip by remember { mutableStateOf(false) }
+    var savingSkip by mem.savingSkip
     var expandedThreads by held.expandedThreadsState
     model.noteExpanded(expandedThreads.map { it.uid }.toSet())
     val threadChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
@@ -946,34 +1031,32 @@ private fun MessageIndexLoaded(
     val sortChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
     val searchChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
     val sequenceMeasurer = rememberTextMeasurer()
-    var multiSelect by remember {
-        mutableStateOf(reuseWindow && (held.selectedState.value.isNotEmpty() || held.allMailboxState.value))
-    }
+    var multiSelect by mem.multiSelect
     var selected by held.selectedState
     var selectedHits by held.selectedHitsState
     fun foreignRow(row: IndexRow) = row.mailbox.isNotEmpty() && row.mailbox != mailbox
     var allMailbox by held.allMailboxState
-    var mailboxExists by remember { mutableIntStateOf(0) }
+    var mailboxExists by mem.mailboxExists
     var folderExists by remember(mailbox) { mutableIntStateOf(0) }
-    var selectionMore by remember { mutableStateOf(false) }
-    var confirmExpunge by remember { mutableStateOf(false) }
-    var confirmMarkAllRead by remember { mutableStateOf(false) }
-    var pendingExpungeUids by remember { mutableStateOf<List<MessageRef>?>(null) }
-    var pendingPermanent by remember { mutableStateOf<PendingDelete?>(null) }
+    var selectionMore by mem.selectionMore
+    var confirmExpunge by mem.confirmExpunge
+    var confirmMarkAllRead by mem.confirmMarkAllRead
+    var pendingExpungeUids by mem.pendingExpungeUids
+    var pendingPermanent by mem.pendingPermanent
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
-    var folderInfo by remember { mutableStateOf<SelectResult?>(null) }
-    var jumpOpen by remember { mutableStateOf(false) }
-    var jumpText by remember { mutableStateOf("") }
-    var nextFolderTarget by remember { mutableStateOf<String?>(null) }
-    var leavingIndex by remember { mutableStateOf(false) }
-    var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
-    var undoToken by remember { mutableIntStateOf(0) }
-    var snackMode by remember { mutableStateOf("retry") }
-    var flagUid by remember { mutableStateOf<MessageRef?>(null) }
+    var folderInfo by mem.folderInfo
+    var jumpOpen by mem.jumpOpen
+    var jumpText by mem.jumpText
+    var nextFolderTarget by mem.nextFolderTarget
+    var leavingIndex by mem.leavingIndex
+    var undoOffer by mem.undoOffer
+    var undoToken by mem.undoToken
+    var snackMode by mem.snackMode
+    var flagUid by mem.flagUid
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     val anchorState = rememberUpdatedState(anchorPage)
     val watchMailboxNow = rememberUpdatedState(watchMailbox)
-    val allowNewer = remember { mutableStateOf(true) }
+    val allowNewer = mem.allowNewer
 
     val overlayBack = confirmMarkAllRead || prompt != null || filterOpen || menuOpen || openAt || jumpOpen ||
         nextFolderTarget != null || flagUid != null || searchVisible || multiSelect || saveNameOpen
