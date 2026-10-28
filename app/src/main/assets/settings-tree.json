@@ -423,21 +423,6 @@
                   }
                 },
                 {
-                  "setting": "clientCert",
-                  "type": "String",
-                  "scope": "account",
-                  "kind": "text",
-                  "default": "",
-                  "title": "setting_clientCert_title",
-                  "server": true,
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  },
-                  "editor": "clientCert",
-                  "opens": "inline"
-                },
-                {
                   "setting": "clientCertAlias",
                   "type": "String",
                   "scope": "account",
@@ -654,13 +639,60 @@
                   }
                 },
                 {
+                  "setting": "sieveSameAsInbound",
+                  "type": "Bool",
+                  "scope": "account",
+                  "kind": "bool",
+                  "default": true,
+                  "title": "settings_sieve_same_as_inbound",
+                  "server": true
+                },
+                {
                   "setting": "sieveHost",
                   "type": "String",
                   "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "settings_sieve_host",
-                  "server": true
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "sieveSameAsInbound",
+                    "equals": false
+                  },
+                  "pinerc": "sieve-server",
+                  "pinercFormat": "text"
+                },
+                {
+                  "setting": "sieveUsername",
+                  "type": "String",
+                  "scope": "account",
+                  "kind": "text",
+                  "default": "",
+                  "title": "settings_sieve_username",
+                  "server": true,
+                  "visibleWhen": {
+                    "setting": "sieveSameAsInbound",
+                    "equals": false
+                  }
+                },
+                {
+                  "setting": "passwordStorage",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "googleRestore",
+                  "title": "setting_passwordStorage_title",
+                  "server": true,
+                  "choices": [
+                    "googleRestore",
+                    "none",
+                    "passwordManager"
+                  ],
+                  "choiceTitles": {
+                    "googleRestore": "password_storage_google_restore",
+                    "none": "password_storage_none",
+                    "passwordManager": "password_storage_manager"
+                  }
                 },
                 {
                   "setting": "sievePort",

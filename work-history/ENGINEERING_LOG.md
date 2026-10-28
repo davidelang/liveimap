@@ -3883,3 +3883,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/message-identity-20261028-1154-plan.md
 - Work: MessageRef across search, flat IMAP thread, array orders, split index and folder row, attachment names, account binding
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-28 - Account delete, backup, and guided setup
+
+- Approved plan: sandbox/plans/account-delete-20261028-1417-plan.md
+- Passwords stay in AccountManager slots under an AndroidKeyStore key. deleteAccount removes the account except its traffic files. The last account can be deleted and setup is guided. Sieve same-as-inbound is a setting. Client certificates are keystore-only.
+
+## 2026-10-28 - Account delete restart
+
+- Approved plan: sandbox/plans/account-delete-20261028-1417-plan.md
+- Clean restart at builds 2f85bcb. Passwords in AccountManager slots, deleteAccount, guided setup, Sieve same-as-inbound, keystore-only client certificates.

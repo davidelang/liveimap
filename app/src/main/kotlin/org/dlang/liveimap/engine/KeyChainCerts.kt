@@ -81,12 +81,30 @@ object KeyChainCerts {
         return LAB_PREFIX + name
     }
 
+    /** Checks that [p12] opens with [password] and holds a private key with a certificate; returns its subject. */
+    fun check(p12: ByteArray, password: String): String {
+        val store = KeyStore.getInstance("PKCS12")
+        try {
+            store.load(ByteArrayInputStream(p12), password.toCharArray())
+        } catch (e: Exception) {
+            throw IllegalArgumentException("not a PKCS#12 file, or wrong password", e)
+        }
+        for (alias in store.aliases()) {
+            if (!store.isKeyEntry(alias)) continue
+            val cert = store.getCertificate(alias) as? X509Certificate ?: continue
+            return cert.subjectX500Principal.name
+        }
+        throw IllegalArgumentException("the PKCS#12 file has no private key with a certificate")
+    }
+
     /** Deletes an app-imported key (alias with [LAB_PREFIX]); system KeyChain aliases are left alone. */
     fun removeImported(alias: String) {
         if (!alias.startsWith(LAB_PREFIX)) return
-        runCatching {
-            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias.removePrefix(LAB_PREFIX))
-        }
+        val name = alias.removePrefix(LAB_PREFIX)
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        if (!keyStore.containsAlias(name)) return
+        keyStore.deleteEntry(name)
+        if (keyStore.containsAlias(name)) throw ImportedKeyStillPresent(name)
     }
 
     fun subject(cert: KeyChainCert): String =
@@ -100,6 +118,8 @@ object KeyChainCerts {
  * private operation on an already padded block (OpenSSL applies RSA-PSS padding itself: TLS 1.3 and
  * rsa_pss_rsae_*), 2 = ECDSA over a digest (DER signature). Returns null on failure (the handshake then fails).
  */
+class ImportedKeyStillPresent(val alias: String) : Exception(alias)
+
 object KeyChainSigner {
     const val RSA_PKCS1 = 0
     const val RSA_RAW = 1

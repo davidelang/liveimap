@@ -52,17 +52,18 @@ import org.dlang.liveimap.engine.sieve.openAndDeliverLiveimap
 import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.sieveEndpoint
+import org.dlang.liveimap.accounts.AccountStore
+import org.dlang.liveimap.settings.SieveTargetException
+import org.dlang.liveimap.settings.sieveTarget
 import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.settings.tlsPolicy
 
 @Composable
 fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
+    if (accountId.isEmpty()) return
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
-    val store = remember(accountId) {
-        DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })
-    }
+    val store = remember(accountId) { DataStoreSettingsStore(appContext, accountId) }
     val scope = rememberCoroutineScope()
     var rules by remember { mutableStateOf<List<InboundRule>?>(null) }
     var uploading by remember { mutableStateOf(false) }
@@ -153,20 +154,28 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                             uploadReport = "account settings need attention: $blocked"
                             return@launch
                         }
-                        val password = store.password()
-                        val (host, port) = sieveEndpoint(account)
+                        val login = try {
+                            sieveTarget(account, store.password(), AccountStore.shared(appContext).sievePassword(accountId))
+                        } catch (error: SieveTargetException) {
+                            uploadReport = if (error.kind == "password") {
+                                appContext.getString(R.string.error_password_missing)
+                            } else {
+                                appContext.getString(R.string.settings_sieve_no_host)
+                            }
+                            return@launch
+                        }
                         val warning = withContext(account.tlsPolicy()) {
                             openAndDeliverLiveimap(
-                                host,
-                                port,
+                                login.host,
+                                login.port,
                                 account.sieveTlsMode,
                                 account.sieveCertPin,
                                 ::confirmMailCertificate,
                                 { fingerprint ->
                                     store.update { it.copy(sieveCertPin = fingerprint) } // F55: only the pin; no stale snapshot
                                 },
-                                account.username,
-                                password,
+                                login.username,
+                                login.password,
                                 script,
                                 account.allowPlaintextAuth,
                                 org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId),
@@ -212,11 +221,10 @@ fun FilterEditorScreen(
     seed: List<RuleCriterion>,
     onDone: () -> Unit,
 ) {
+    if (accountId.isEmpty()) return
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
-    val store = remember(accountId) {
-        DataStoreSettingsStore(appContext, accountId.takeIf { it.isNotEmpty() })
-    }
+    val store = remember(accountId) { DataStoreSettingsStore(appContext, accountId) }
     val scope = rememberCoroutineScope()
     var from by rememberSaveable { mutableStateOf(seedValue(seed, RuleField.From)) }
     var to by rememberSaveable { mutableStateOf(seedValue(seed, RuleField.To)) }

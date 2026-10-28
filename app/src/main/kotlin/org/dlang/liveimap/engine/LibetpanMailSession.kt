@@ -334,7 +334,7 @@ class LibetpanMailSession(
             credentials!!.password
         } else {
             try {
-                runBlocking { ownStore().password() }
+                runBlocking { ownStore().password() } ?: return OpenResult.Failed("password missing")
             } catch (error: Exception) {
                 return OpenResult.Failed(error.message ?: "keystore unavailable")
             }
@@ -452,7 +452,7 @@ class LibetpanMailSession(
 
     private fun sessionPassword(): String {
         credentials?.let { return it.password }
-        return runBlocking { ownStore().password() }
+        return runBlocking { ownStore().password() } ?: throw MailFailure("password missing")
     }
 
     private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
@@ -463,7 +463,7 @@ class LibetpanMailSession(
             credentials!!.password
         } else {
             try {
-                runBlocking { ownStore().password() }
+                runBlocking { ownStore().password() } ?: return OpenResult.Failed("password missing")
             } catch (error: Exception) {
                 return OpenResult.Failed(error.message ?: "keystore unavailable")
             }
@@ -474,11 +474,7 @@ class LibetpanMailSession(
             statusNote(account, "Authenticating")
         }
         TrafficRecorder.event("main", "connect", "${account.imapHost}:${account.imapPort} ${account.tlsMode.name}")
-        val clientCert = ClientCertStore.load(account.clientCert)
-        if (account.clientCert.isNotBlank() && clientCert == null) {
-            throw MailFailure("client certificate missing; import it again in account settings")
-        }
-        val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
+        val keyChain = KeyChainCerts.load(account.clientCertAlias)
         val opened = if (stageCommand) {
             nativeStage(
                 account.imapHost,
@@ -496,8 +492,6 @@ class LibetpanMailSession(
                 account.acceptInvalidCert,
                 account.allowOldTls,
                 account.authMechanism,
-                clientCert?.p12,
-                clientCert?.password ?: "",
                 keyChain?.chain,
                 keyChain?.key,
             )
@@ -518,8 +512,6 @@ class LibetpanMailSession(
                 account.acceptInvalidCert,
                 account.allowOldTls,
                 account.authMechanism,
-                clientCert?.p12,
-                clientCert?.password ?: "",
                 keyChain?.chain,
                 keyChain?.key,
             )
@@ -2054,13 +2046,16 @@ class LibetpanMailSession(
         val key = refusedSecurityKey ?: account?.preservedSecurityKey()
         if (key != null) throw MailFailure("account settings need attention: $key")
         val acct = account ?: throw MailFailure("no account")
-        val ownSmtpPassword = credentials?.smtpPassword ?: runBlocking { ownStore().smtpPassword() }
+        val ownSmtpPassword = if (credentials != null) credentials!!.smtpPassword else runBlocking { ownStore().smtpPassword() }
         // Same-as-IMAP uses the IMAP password. On sends no password. Off sends the resolved password.
-        val imapPassword = loggedInPassword.orEmpty()
+        val imapPassword = loggedInPassword ?: credentials?.password
         val same = acct.smtpSameAsImap
         val mode = acct.smtpNoAuth
-        if (same && imapPassword.isEmpty() && mode != SmtpNoAuth.On) throw MailFailure("needs-password")
-        val smtpPassword = smtpPasswordFor(same, ownSmtpPassword, imapPassword, mode)
+        if (same && imapPassword == null && mode != SmtpNoAuth.On) throw MailFailure("password missing")
+        if (!same && ownSmtpPassword == null && mode != SmtpNoAuth.On) throw MailFailure("password missing")
+        val resolvedImap = imapPassword.orEmpty()
+        if (same && resolvedImap.isEmpty() && mode != SmtpNoAuth.On) throw MailFailure("needs-password")
+        val smtpPassword = smtpPasswordFor(same, ownSmtpPassword.orEmpty(), resolvedImap, mode)
         if (mode == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         return keeper.write("send") {
@@ -2089,12 +2084,19 @@ class LibetpanMailSession(
             ?: throw MailFailure("not connected")
         val preserved = acct.preservedSecurityKey()
         if (preserved != null) throw MailFailure("FAIL account settings need attention: $preserved")
-        val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password.orEmpty()
-        val ownSmtpPassword = probe?.smtpPassword ?: credentials?.smtpPassword ?: ""
-        if (acct.smtpSameAsImap && imapPassword.isEmpty() && acct.smtpNoAuth != SmtpNoAuth.On) {
+        val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password
+        val ownSmtpPassword = if (probe != null) probe.smtpPassword else credentials?.smtpPassword
+        if (acct.smtpSameAsImap && imapPassword == null && acct.smtpNoAuth != SmtpNoAuth.On) {
+            throw MailFailure("password missing")
+        }
+        if (!acct.smtpSameAsImap && ownSmtpPassword == null && acct.smtpNoAuth != SmtpNoAuth.On) {
+            throw MailFailure("password missing")
+        }
+        val resolvedImap = imapPassword.orEmpty()
+        if (acct.smtpSameAsImap && resolvedImap.isEmpty() && acct.smtpNoAuth != SmtpNoAuth.On) {
             throw MailFailure("needs-password")
         }
-        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword, imapPassword, acct.smtpNoAuth)
+        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword.orEmpty(), resolvedImap, acct.smtpNoAuth)
         if (acct.smtpNoAuth == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         // A staged session has no IMAP handle and does not dial imapHost.
@@ -2114,8 +2116,7 @@ class LibetpanMailSession(
 
     private fun stageSmtp(account: AccountSettings, password: String): SessionOpen {
         val from = if (account.email.isNotEmpty()) account.email else account.username
-        val clientCert = ClientCertStore.load(account.clientCert)
-        val keyChain = if (clientCert == null) KeyChainCerts.load(account.clientCertAlias) else null
+        val keyChain = KeyChainCerts.load(account.clientCertAlias)
         val opened = nativeStage(
             account.imapHost,
             account.imapPort,
@@ -2132,8 +2133,6 @@ class LibetpanMailSession(
             account.acceptInvalidCert,
             account.allowOldTls,
             account.authMechanism,
-            clientCert?.p12,
-            clientCert?.password ?: "",
             keyChain?.chain,
             keyChain?.key,
         )
@@ -2378,8 +2377,6 @@ class LibetpanMailSession(
         acceptInvalidCert: Boolean,
         allowOldTls: Boolean,
         authMechanism: String,
-        clientP12: ByteArray?,
-        clientP12Password: String,
         keyChainChain: Array<ByteArray>?,
         keyChainKey: Any?,
     ): SessionOpen
@@ -2400,8 +2397,6 @@ class LibetpanMailSession(
         acceptInvalidCert: Boolean,
         allowOldTls: Boolean,
         authMechanism: String,
-        clientP12: ByteArray?,
-        clientP12Password: String,
         keyChainChain: Array<ByteArray>?,
         keyChainKey: Any?,
     ): SessionOpen

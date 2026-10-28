@@ -25,6 +25,9 @@ fun AccountListEditor(
     onPick: (String) -> Unit,
     onRemove: (String) -> Unit,
     onAdd: () -> Unit,
+    deletingName: String? = null,
+    deleteError: String? = null,
+    onRetryDelete: () -> Unit = {},
 ) {
     var removing by remember { mutableStateOf<String?>(null) }
     Column {
@@ -43,13 +46,9 @@ fun AccountListEditor(
                 leadingContent = {
                     RadioButton(selected = account.editing, onClick = { onPick(account.id) })
                 },
-                trailingContent = if (accounts.size < 2) {
-                    null
-                } else {
-                    {
-                        TextButton(onClick = { removing = account.id }) {
-                            Text(stringResource(R.string.settings_remove_account))
-                        }
+                trailingContent = {
+                    TextButton(onClick = { removing = account.id }) {
+                        Text(stringResource(R.string.settings_remove_account))
                     }
                 },
                 modifier = Modifier.fillMaxWidth().clickable { onPick(account.id) },
@@ -57,6 +56,11 @@ fun AccountListEditor(
         }
         TextButton(onClick = onAdd) {
             Text(stringResource(R.string.settings_add_account))
+        }
+        if (deletingName != null) Text(stringResource(R.string.account_delete_progress, deletingName))
+        if (deleteError != null) {
+            Text(deleteError)
+            TextButton(onClick = onRetryDelete) { Text(stringResource(R.string.account_delete_retry)) }
         }
     }
     val pending = removing

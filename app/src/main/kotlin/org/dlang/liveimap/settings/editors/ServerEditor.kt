@@ -127,7 +127,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
-import org.dlang.liveimap.engine.ClientCertStore
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -191,7 +190,14 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
             if (drafts.checkingSieve) return@TextButton
             val sieveStore = editor.bound
             val sieveAccount = editor.editingId
-            val (host, port) = sieveEndpoint(editor.settings)
+            val login = try {
+                org.dlang.liveimap.settings.sieveTarget(editor.settings, "", "")
+            } catch (_: org.dlang.liveimap.settings.SieveTargetException) {
+                drafts.sieveReport = noSieveHost
+                return@TextButton
+            }
+            val host = login.host
+            val port = login.port
             if (host.isBlank()) {
                 drafts.sieveReport = noSieveHost
                 return@TextButton
@@ -274,6 +280,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                     drafts.serverReview = null
                     drafts.serverDraft?.let { editor.persist(drafts.savedServer(editor, it)) }
                     drafts.commitPasswords(editor)
+                    if (editor.creating) editor.finishNewAccount()
                     drafts.serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
@@ -307,7 +314,16 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             accounts = editor.accounts,
             onPick = { editor.selectAccount(it) },
             onRemove = { editor.removeAccount(it) },
-            onAdd = { editor.addAccount() },
+            onAdd = {
+                if (editor.accounts.isEmpty()) walk.onNavigate("settings/setup")
+                else {
+                    editor.beginNewAccount()
+                    walk.onNavigate("settings/account/_")
+                }
+            },
+            deletingName = editor.deleteName,
+            deleteError = accountDeleteError(editor),
+            onRetryDelete = { editor.retryDelete() },
         )
         for (child in node.children) {
             renderSettingsNode(child, depth, walk)

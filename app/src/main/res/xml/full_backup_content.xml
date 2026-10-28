@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <exclude domain="sharedpref" path="liveimap_secret.xml" />
-    <exclude domain="file" path="." />
+    <include domain="file" path="datastore/account_settings.preferences_pb" />
+    <include domain="file" path="datastore/global_settings.preferences_pb" />
 </full-backup-content>

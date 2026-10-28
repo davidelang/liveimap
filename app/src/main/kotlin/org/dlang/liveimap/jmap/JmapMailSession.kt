@@ -1317,7 +1317,10 @@ fun platformJmapMailSession(context: android.content.Context, accountId: String)
                 authorization = auth,
             )
         },
-        passwordOf = { _ -> org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).password() },
+        passwordOf = { _ ->
+            org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).password()
+                ?: throw org.dlang.liveimap.session.MailFailure("password missing")
+        },
         savePin = { pin ->
             org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).update { it.copy(jmapCertPin = pin) }
         },

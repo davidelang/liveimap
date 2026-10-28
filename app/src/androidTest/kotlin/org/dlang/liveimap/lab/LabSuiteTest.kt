@@ -33,6 +33,7 @@ import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,20 +96,11 @@ class LabSuiteTest {
             logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
             authMechanism = arg("labMech"),
-            // Lab client certificate (lab.py LAB_CLIENT_CERT=1): PKCS#12 passed base64, imported like the UI does.
-            // labClientCertKind=keystore: the same p12 goes into this app's AndroidKeyStore (non-exportable),
-            // so OpenSSL signs through the JNI KeyChain path instead of holding the key.
-            clientCertAlias = arg("labClientCertB64").takeIf { it.isNotEmpty() && arg("labClientCertKind") == "keystore" }?.let {
+            // Lab client certificate (lab.py LAB_CLIENT_CERT=1): the p12 goes into this app's AndroidKeyStore.
+            clientCertAlias = arg("labClientCertB64").takeIf { it.isNotEmpty() }?.let {
                 org.dlang.liveimap.engine.KeyChainCerts.appContext = ctx.applicationContext
                 org.dlang.liveimap.engine.KeyChainCerts.importLab(
                     "lab-client", android.util.Base64.decode(it, android.util.Base64.DEFAULT), arg("labClientCertPass"),
-                )
-            } ?: "",
-            clientCert = arg("labClientCertB64").takeIf { it.isNotEmpty() && arg("labClientCertKind") != "keystore" }?.let {
-                org.dlang.liveimap.engine.ClientCertStore.import(
-                    java.io.File(ctx.filesDir, "client-certs"),
-                    android.util.Base64.decode(it, android.util.Base64.DEFAULT),
-                    arg("labClientCertPass"),
                 )
             } ?: "",
             email = arg("labRcpt"),
@@ -726,6 +718,8 @@ class LabSuiteTest {
             if (recorded != null) store.selectAccount(recorded)
             if (labId.isNotEmpty()) deleteLabAccount(ctx, labId)
             if (decoyId.isNotEmpty()) deleteLabAccount(ctx, decoyId)
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            assertFalse(keyStore.containsAlias("lab-client"))
             File(dir, "$run.steps.tsv").writeText(steps.toString())
         }
         assertEquals("failed steps:\n$steps", 0, failed)

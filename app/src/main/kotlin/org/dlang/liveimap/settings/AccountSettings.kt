@@ -279,6 +279,12 @@ enum class SmtpNoAuth {
     Off,
 }
 
+enum class PasswordStorageChoice {
+    googleRestore,
+    none,
+    passwordManager,
+}
+
 fun defaultImapPort(mode: TlsMode): Int = if (mode == TlsMode.Implicit) 993 else 143
 
 fun defaultSmtpPort(mode: TlsMode): Int = when (mode) {
@@ -409,9 +415,36 @@ internal fun parseAskLimit(value: String): Int {
     return number
 }
 
-fun sieveEndpoint(settings: AccountSettings): Pair<String, Int> {
-    val host = if (settings.sieveHost.isBlank()) settings.imapHost else settings.sieveHost
-    return host to settings.sievePort
+class SieveTargetException(val kind: String) : Exception(kind)
+
+class SieveLogin(
+    val host: String,
+    val port: Int,
+    val username: String,
+    val password: String,
+)
+
+fun sieveTarget(settings: AccountSettings, inboundPassword: String?, sievePassword: String?): SieveLogin {
+    val same = settings.sieveSameAsInbound
+    val host = if (same) {
+        if (settings.jmapFolders) {
+            try {
+                org.dlang.liveimap.jmap.jmapServerTarget(settings.imapHost).host
+            } catch (_: org.dlang.liveimap.jmap.JmapFailure) {
+                ""
+            }
+        } else {
+            settings.imapHost
+        }
+    } else {
+        settings.sieveHost
+    }
+    if (!same && settings.sieveHost.isBlank()) throw SieveTargetException("host")
+    if (host.isBlank()) throw SieveTargetException("host")
+    val password = if (same) inboundPassword else sievePassword
+    if (password == null) throw SieveTargetException("password")
+    val username = if (same) settings.username else settings.sieveUsername
+    return SieveLogin(host, settings.sievePort, username, password)
 }
 
 internal fun parseSievePort(value: String): Int {

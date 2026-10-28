@@ -26,15 +26,16 @@ class AccountDataTest {
         assertEquals(plainA, chooseAccount(listOf(plainA, plainB), "missing"))
 
         assertNull(chooseAccount(emptyList(), "missing"))
-        assertEquals("smtpPassword.abc", smtpPasswordKeyFor("abc"))
+        assertEquals("smtpPasswordSlot", userSmtpPasswordSlot)
+        assertEquals("sievePasswordSlot", userSievePasswordSlot)
     }
 
     @Test
-    fun accountRemovalKeepsTheLastAccount() {
+    fun accountRemovalAllowsTheLastAccount() {
         val only = ManagedAccount("one", mapOf(userAccountId to "only"), "")
         val kept = accountRemoval(listOf(only), "only", "kept")
-        assertFalse(kept.remove)
-        assertEquals("kept", kept.selectedId)
+        assertTrue(kept.remove)
+        assertNull(kept.selectedId)
 
         val a = ManagedAccount("a", mapOf(userAccountId to "a"), "")
         val b = ManagedAccount("b", mapOf(userAccountId to "b"), "")
@@ -119,20 +120,4 @@ class AccountDataTest {
         email = "ada@example.com",
         sentMailbox = "Sent",
     )
-}
-
-private class FakeCipher(private val decryptFails: Boolean = false) : AccountCipher {
-    override fun encrypt(accountId: String, password: String): String {
-        val raw = password.toByteArray(Charsets.UTF_8)
-        val flipped = ByteArray(raw.size) { index -> (raw[index].toInt() xor 0xA5).toByte() }
-        val body = java.util.Base64.getEncoder().withoutPadding().encodeToString(flipped)
-        return "v1:$body"
-    }
-
-    override fun decrypt(accountId: String, passwordSlot: String): String {
-        if (decryptFails) error("cipher failed")
-        val flipped = java.util.Base64.getDecoder().decode(passwordSlot.removePrefix("v1:"))
-        val raw = ByteArray(flipped.size) { index -> (flipped[index].toInt() xor 0xA5).toByte() }
-        return raw.toString(Charsets.UTF_8)
-    }
 }

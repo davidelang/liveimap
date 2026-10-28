@@ -80,7 +80,7 @@ fun checkServer(settings: AccountSettings, probe: ServerProbe, oldTlsWorks: Bool
     val mechanisms = words.filter { it.startsWith("AUTH=") }.map { it.removePrefix("AUTH=") }.toSet()
     val loginDisabled = "LOGINDISABLED" in words
     val secure = settings.tlsMode != TlsMode.None
-    val hasClientCert = settings.clientCert.isNotBlank() || settings.clientCertAlias.isNotBlank()
+    val hasClientCert = settings.clientCertAlias.isNotBlank()
     val couldUse = imapAuthOrder(caps, tls = secure, plaintextOk = true, channelBinding = secure, clientMechanisms = "", clientCert = hasClientCert)
     val withoutPlaintext = imapAuthOrder(caps, tls = secure, plaintextOk = false, channelBinding = secure, clientMechanisms = "", clientCert = hasClientCert)
     if (loginDisabled && couldUse.isEmpty()) {

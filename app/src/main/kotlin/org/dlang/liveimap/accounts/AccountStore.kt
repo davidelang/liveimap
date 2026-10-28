@@ -10,10 +10,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.SharedPreferences
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
 import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -21,9 +17,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import java.io.File
 import java.security.KeyStore
 import java.util.concurrent.atomic.AtomicReference
-import javax.crypto.Cipher
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +32,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.dlang.liveimap.engine.ImportedKeyStillPresent
+import org.dlang.liveimap.engine.KeyChainCerts
+import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapPlainHttp
 import org.dlang.liveimap.jmap.jmapServerTarget
@@ -55,10 +51,8 @@ import org.dlang.liveimap.settings.decodeAccountSettings
 import org.dlang.liveimap.settings.encode
 
 private const val logTag = "LiveIMAP"
-private const val gcmIvBytes = 12
-private const val gcmTagBits = 128
 
-private val Context.accountSettingsDataStore by preferencesDataStore(name = "account_settings")
+internal val Context.accountSettingsDataStore by preferencesDataStore(name = "account_settings")
 
 suspend fun accountSettingsStoredKeys(context: Context): Set<String> =
     context.accountSettingsDataStore.data.first().asMap().keys.map { it.name }.toSet()
@@ -67,9 +61,6 @@ class AccountStore private constructor(private val context: Context) {
     private val accountCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val accountActor = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cipher = AndroidAccountCipher()
-
-    // Tink-sealed secrets (F20). No EncryptedSharedPreferences read: old secrets are not carried over (David).
-    private val secretPrefs: SecretBox by lazy { SecretBox(context) }
 
     init {
         accountActor.launch {
@@ -140,47 +131,78 @@ class AccountStore private constructor(private val context: Context) {
 
     suspend fun save(settings: AccountSettings) {
         val encoded = settings.encode()
-        onAccount {
-            val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
-            writePreferences()
+        try {
+            onAccount {
+                val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
+                writePreferences()
+            }
+        } catch (gone: AccountGone) {
+            Log.w(logTag, "save dropped, account gone ${gone.accountId}", gone)
+        } catch (missing: NoAccountSelected) {
+            Log.w(logTag, "save dropped, no account selected", missing)
         }
     }
 
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
     suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
-        var next: AccountSettings? = null
-        onAccount {
-            val writePreferences = withContext(Dispatchers.IO) {
-                val updated = edit(loadLocked())
-                next = updated
-                stageSave(updated, updated.encode())
+        var next: AccountSettings = newAccountSettings()
+        try {
+            onAccount {
+                val writePreferences = withContext(Dispatchers.IO) {
+                    val updated = edit(loadLocked())
+                    next = updated
+                    stageSave(updated, updated.encode())
+                }
+                writePreferences()
             }
-            writePreferences()
+        } catch (gone: AccountGone) {
+            Log.w(logTag, "update dropped, account gone ${gone.accountId}", gone)
+        } catch (missing: NoAccountSelected) {
+            Log.w(logTag, "update dropped, no account selected", missing)
         }
-        return next!!
+        return next
     }
 
-    suspend fun password(): String {
+    suspend fun password(): String? {
         return onAccount { withContext(Dispatchers.IO) { passwordLocked() } }
     }
 
     suspend fun setPassword(value: String) {
-        onAccount {
-            val writePreferences = withContext(Dispatchers.IO) { stagePassword(value) }
-            writePreferences()
+        try {
+            onAccount {
+                val accountId = withContext(Dispatchers.IO) {
+                    val writePreferences = stagePassword(value)
+                    writePreferences()
+                    smtpAccountId()
+                }
+                withContext(Dispatchers.IO) { refreshBackup(accountId, value) }
+            }
+        } catch (gone: AccountGone) {
+            Log.w(logTag, "password dropped, account gone ${gone.accountId}", gone)
+        } catch (missing: NoAccountSelected) {
+            Log.w(logTag, "password dropped, no account selected", missing)
         }
     }
 
-    suspend fun smtpPassword(): String {
+    suspend fun smtpPassword(): String? = secretPassword(userSmtpPasswordSlot)
+
+    suspend fun sievePassword(accountId: String): String? {
+        return onAccount { withContext(Dispatchers.IO) { readSecretSlot(accountId, userSievePasswordSlot) } }
+    }
+
+    suspend fun setSievePassword(accountId: String, value: String?) {
+        onAccount {
+            withContext(Dispatchers.IO) { writeSecretSlot(accountId, userSievePasswordSlot, value) }
+            withContext(Dispatchers.IO) { refreshBackup(accountId, null) }
+        }
+    }
+
+    private suspend fun secretPassword(key: String): String? {
         return onAccount {
             withContext(Dispatchers.IO) {
-                val accounts = readAccounts()
-                val chosen = pick(accounts)
+                val chosen = pick(readAccounts())
                 val id = chosen?.userData?.get(userAccountId)
-                if (!id.isNullOrEmpty() && secretPrefs.contains(smtpPasswordKeyFor(id))) {
-                    return@withContext secretPrefs.getString(smtpPasswordKeyFor(id), "") ?: ""
-                }
-                ""
+                if (id.isNullOrEmpty()) "" else readSecretSlot(id, key)
             }
         }
     }
@@ -196,26 +218,33 @@ class AccountStore private constructor(private val context: Context) {
                     ?: return@withContext null
                 val text = storedPreference(accountId) ?: return@withContext null
                 val settings = overlayAccountFields(decodeAccountSettings(text), account.userData)
-                val password = if (account.passwordSlot.isEmpty()) "" else cipher.decrypt(accountId, account.passwordSlot)
-                val smtp = secretPrefs.getString(smtpPasswordKeyFor(accountId), "") ?: ""
+                val slot = account.passwordSlot
+                if (slot.isNullOrEmpty()) return@withContext null
+                val password = try {
+                    cipher.decrypt(accountId, slot)
+                } catch (unreadable: SecretUnreadable) {
+                    return@withContext null
+                }
+                val smtp = readSecretSlot(accountId, userSmtpPasswordSlot)
                 AccountCredentials(settings, password, smtp)
             }
         }
     }
 
     suspend fun setSmtpPassword(value: String) {
-        onAccount {
-            withContext(Dispatchers.IO) {
-                val id = smtpAccountId()
-                val key = smtpPasswordKeyFor(id)
-                val edit = secretPrefs.edit()
-                val saved = if (value.isEmpty()) {
-                    edit.remove(key).commit()
-                } else {
-                    edit.putString(key, value).commit()
+        try {
+            onAccount {
+                val accountId = withContext(Dispatchers.IO) {
+                    val id = smtpAccountId()
+                    writeSecretSlot(id, userSmtpPasswordSlot, value)
+                    id
                 }
-                if (!saved) error("smtp password not saved")
+                withContext(Dispatchers.IO) { refreshBackup(accountId, null) }
             }
+        } catch (gone: AccountGone) {
+            Log.w(logTag, "smtp password dropped, account gone ${gone.accountId}", gone)
+        } catch (missing: NoAccountSelected) {
+            Log.w(logTag, "smtp password dropped, no account selected", missing)
         }
     }
 
@@ -273,83 +302,125 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
-    suspend fun addAccount(): String {
+    suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String {
         return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
-                val settings = newAccountSettings()
                 val accountId = java.util.UUID.randomUUID().toString()
+                val slot = cipher.encrypt(accountId, password)
                 writeAccount(
                     accountVisibleName(settings),
                     accountUserData(accountId, settings, null),
-                    "",
+                    slot,
                     forceInsert = true,
                 )
+                writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
                 writePreference(accountId, settings.encode())
-                // F121: only the drawer chooses the active account; the first account becomes active by default
                 if (accounts.isEmpty()) writeSelectedId(accountId)
+                refreshBackup(accountId, password)
                 accountId
             }
         }
     }
 
+    /** False only when [accountId] is not an account and not a pending delete. [AccountDeleteFailed] is rethrown. */
     suspend fun removeAccount(accountId: String): Boolean {
-        return onAccount {
-            val removed = withContext(Dispatchers.IO) {
+        val known = readAccounts().any { it.userData[userAccountId] == accountId }
+        val stored = storedPreference(accountId) != null
+        val pending = accountId in readPendingDeletes(context)
+        if (!known && !stored && !pending) return false
+        deleteAccount(accountId, systemPath = false)
+        return true
+    }
+
+    suspend fun deleteAccount(accountId: String, systemPath: Boolean = false) {
+        if (accountId.isBlank()) return
+        addPendingDelete(context, accountId)
+        val manager = AccountManager.get(context)
+        val entry = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
+            manager.getUserData(row, userAccountId) == accountId
+        }
+        val accounts = readAccounts()
+        val selected = selectedId()
+        val name = entry?.name ?: accountId
+        try {
+            if (systemPath) {
+                onAccount {
+                    withContext(Dispatchers.IO) {
+                        deleteStepsThroughSix(accountId, accounts, selected, name)
+                        deleteStepEight(accountId)
+                    }
+                }
+                return
+            }
+            onAccount {
+                withContext(Dispatchers.IO) {
+                    deleteStepsThroughSix(accountId, accounts, selected, name)
+                }
+            }
+            if (entry != null && !manager.removeAccountExplicitly(entry)) {
+                throw AccountDeleteFailed(7, IllegalStateException("removeAccountExplicitly false"))
+            }
+            onAccount { withContext(Dispatchers.IO) { deleteStepEight(accountId) } }
+        } catch (failed: AccountDeleteFailed) {
+            notifyAccountDeleteFailed(context, name, failed.step, failed)
+            throw failed
+        }
+    }
+
+    suspend fun sweepPendingDeletes() {
+        for (accountId in readPendingDeletes(context)) {
+            try {
+                val manager = AccountManager.get(context)
+                val entry = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
+                    manager.getUserData(row, userAccountId) == accountId
+                }
                 val accounts = readAccounts()
                 val selected = selectedId()
-                val decision = accountRemoval(accounts, accountId, selected)
-                if (!decision.remove) return@withContext false
-                val manager = AccountManager.get(context)
-                val account = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
-                    manager.getUserData(row, userAccountId) == accountId
-                } ?: return@withContext false
-                val stored = storedPreference(accountId)
-                val settings = if (stored == null) null else decodeAccountSettings(stored)
-                var certificateRemoved = false
-                if (settings != null) {
-                    val path = settings.clientCert
-                    if (path.isNotBlank()) {
-                        val file = File(path)
-                        if (file.exists()) {
-                            if (!file.delete()) throw java.io.IOException(path)
-                            certificateRemoved = true
-                        }
-                        org.dlang.liveimap.engine.ClientCertStore.remove(path)
-                    }
-                    val alias = settings.clientCertAlias
-                    if (alias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias)
-                }
-                if (!manager.removeAccountExplicitly(account)) {
-                    if (certificateRemoved) {
-                        throw IllegalStateException("account is still listed and its certificate is already gone")
-                    }
-                    return@withContext false
-                }
-                JmapPlainHttp.drop(accountId)
-                removeAccountFiles(context.filesDir, accountId, stored)
-                deleteUnsentAccount(context.filesDir, accountId)
-                AndroidAccountCipher().delete(accountId)
-                context.accountSettingsDataStore.edit { prefs ->
-                    prefs.remove(stringPreferencesKey(accountId))
-                }
-                if (decision.selectedId != selected) {
-                    val next = decision.selectedId
-                    if (next.isNullOrEmpty()) {
-                        context.accountSettingsDataStore.edit { prefs ->
-                            prefs.remove(stringPreferencesKey(selectedAccountIdKey))
-                        }
-                    } else {
-                        writeSelectedId(next)
+                onAccount {
+                    withContext(Dispatchers.IO) {
+                        deleteStepsThroughSix(accountId, accounts, selected, entry?.name ?: accountId)
                     }
                 }
-                val saved = secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
-                if (!saved) error("smtp password not removed")
-                dropMailSession(accountId)
-                forgetCompletionCaches()
-                true
+                if (entry != null && !manager.removeAccountExplicitly(entry)) {
+                    throw AccountDeleteFailed(7, IllegalStateException("removeAccountExplicitly false"))
+                }
+                onAccount { withContext(Dispatchers.IO) { deleteStepEight(accountId) } }
+            } catch (error: Exception) {
+                Log.w(logTag, "pending delete $accountId", error)
+                if (error is AccountDeleteFailed) notifyAccountDeleteFailed(context, accountId, error.step, error)
             }
-            removed
+        }
+        if (orphanSweepFile(context).exists()) {
+            onAccount { withContext(Dispatchers.IO) { orphanSweep() } }
+        }
+    }
+
+    /** Recreates the AccountManager entry for a restored settings record. Does not invent a second record. */
+    internal suspend fun restoreAccountEntry(
+        accountId: String,
+        settings: AccountSettings,
+        imapPassword: String?,
+        smtpPassword: String?,
+        sievePassword: String?,
+    ) {
+        onAccount {
+            withContext(Dispatchers.IO) {
+                if (readAccounts().any { it.userData[userAccountId] == accountId }) return@withContext
+                if (accountId in readPendingDeletes(context)) return@withContext
+                val accounts = readAccounts()
+                val slot = if (imapPassword == null) "" else cipher.encrypt(accountId, imapPassword)
+                writeAccount(
+                    accountVisibleName(settings),
+                    accountUserData(accountId, settings, null),
+                    slot,
+                    forceInsert = true,
+                )
+                if (smtpPassword != null) writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
+                if (sievePassword != null) writeSecretSlot(accountId, userSievePasswordSlot, sievePassword)
+                if (storedPreference(accountId) == null) writePreference(accountId, settings.encode())
+                if (accounts.isEmpty()) writeSelectedId(accountId)
+            }
         }
     }
 
@@ -391,9 +462,8 @@ class AccountStore private constructor(private val context: Context) {
         settings: AccountSettings,
         encoded: String,
     ): suspend () -> Unit {
-        val existing = pick(readAccounts())
-        val accountId = existing?.userData?.get(userAccountId)?.takeIf { it.isNotEmpty() }
-            ?: java.util.UUID.randomUUID().toString()
+        val existing = requireWritable(readAccounts())
+        val accountId = existing.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
         // F32/F87: a moved server never inherits the old server's password, pin or client certificate.
         // A stored row that does not decode throws here, before any write.
         val storedText = if (existing == null) null else storedPreference(accountId)
@@ -407,30 +477,52 @@ class AccountStore private constructor(private val context: Context) {
         val name = nameFor(existing, plan.settings, accountId)
         // Every settings-file save rewrites the AccountManager record first: the engine connects from it.
         writeAccount(name, plan.userData, plan.passwordSlot)
-        if (plan.dropSmtpPassword) secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
-        return { writePreference(accountId, plan.text) }
+        if (plan.dropSmtpPassword) writeSecretSlot(accountId, userSmtpPasswordSlot, null)
+        if (plan.dropSievePassword) writeSecretSlot(accountId, userSievePasswordSlot, null)
+        val previousChoice = previous?.passwordStorage?.name
+        return {
+            writePreference(accountId, plan.text)
+            val nextChoice = plan.settings.passwordStorage.name
+            if (previousChoice == org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore.name &&
+                nextChoice != previousChoice
+            ) {
+                PasswordStorage.movedOffGoogleRestore(context, accountId, previousChoice, nextChoice)
+            }
+            refreshBackup(accountId, null)
+        }
     }
 
-    private suspend fun passwordLocked(): String {
+    private suspend fun refreshBackup(accountId: String, imap: String?) {
+        val text = storedPreference(accountId) ?: return
+        val settings = runCatching { decodeAccountSettings(text) }.getOrNull() ?: return
+        if (settings.passwordStorage != org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore) return
+        val imapPlain = imap ?: passwordLocked().orEmpty()
+        val smtp = readSecretSlot(accountId, userSmtpPasswordSlot).orEmpty()
+        val sieve = readSecretSlot(accountId, userSievePasswordSlot).orEmpty()
+        PasswordStorage.refresh(
+            context,
+            accountId,
+            settings.passwordStorage.name,
+            encodeBackupRecord(settings, imapPlain, smtp, sieve),
+        )
+    }
+
+    private suspend fun passwordLocked(): String? {
         val account = pick(readAccounts()) ?: return ""
-        val slot = account.passwordSlot
-        if (slot.isEmpty()) return ""
         val accountId = account.userData[userAccountId] ?: return ""
-        return cipher.decrypt(accountId, slot)
+        val slot = account.passwordSlot
+        if (slot.isNullOrEmpty()) return null
+        return try {
+            cipher.decrypt(accountId, slot)
+        } catch (_: SecretUnreadable) {
+            null
+        }
     }
 
     private suspend fun stagePassword(value: String): suspend () -> Unit {
-        val existing = pick(readAccounts())
-        if (existing == null) {
-            val settings = loadLocked()
-            val accountId = java.util.UUID.randomUUID().toString()
-            val slot = cipher.encrypt(accountId, value)
-            writeAccount(accountVisibleName(settings), accountUserData(accountId, settings, null), slot)
-            val encoded = settings.encode()
-            return { writePreference(accountId, encoded) }
-        }
-        val accountId = existing.userData.getValue(userAccountId)
-        val slot = cipher.encrypt(accountId, value)
+        val existing = requireWritable(readAccounts())
+        val accountId = existing.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
+        val slot = cipher.encrypt(accountId, value, regenerate = true)
         writeAccount(existing.name, existing.userData, slot)
         return {}
     }
@@ -465,7 +557,7 @@ class AccountStore private constructor(private val context: Context) {
                 val value = manager.getUserData(account, key) ?: continue
                 data[key] = value
             }
-            ManagedAccount(account.name, data, manager.getPassword(account) ?: "")
+            ManagedAccount(account.name, data, manager.getPassword(account))
         }
     }
 
@@ -547,7 +639,12 @@ class AccountStore private constructor(private val context: Context) {
         val target = coroutineContext[AccountTarget]?.accountId
             ?: return chooseAccount(accounts, selectedId())
         return accounts.firstOrNull { it.userData[userAccountId] == target }
-            ?: throw IllegalStateException("account $target no longer exists")
+    }
+
+    private suspend fun requireWritable(accounts: List<ManagedAccount>): ManagedAccount {
+        val target = coroutineContext[AccountTarget]?.accountId
+        if (target == null) return chooseAccount(accounts, selectedId()) ?: throw NoAccountSelected()
+        return accounts.firstOrNull { it.userData[userAccountId] == target } ?: throw AccountGone(target)
     }
 
     private suspend fun selectedId(): String? {
@@ -561,17 +658,39 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private suspend fun smtpAccountId(): String {
-        val accounts = readAccounts()
-        val chosenId = pick(accounts)
-            ?.userData
-            ?.get(userAccountId)
-            ?.takeIf { it.isNotEmpty() }
-        if (chosenId != null) return chosenId
-        if (accounts.isNotEmpty()) error("smtp password not saved")
-        val settings = loadLocked()
-        val accountId = java.util.UUID.randomUUID().toString()
-        writeAccount(accountVisibleName(settings), accountUserData(accountId, settings, null), "")
-        return accountId
+        val chosen = requireWritable(readAccounts())
+        return chosen.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
+    }
+
+    private fun findAccount(accountId: String): Account? {
+        val manager = AccountManager.get(context)
+        return manager.getAccountsByType(liveimapAccountType).firstOrNull {
+            manager.getUserData(it, userAccountId) == accountId
+        }
+    }
+
+    private fun writeSecretSlot(accountId: String, key: String, plain: String?) {
+        val manager = AccountManager.get(context)
+        val account = findAccount(accountId) ?: return
+        if (plain == null) {
+            manager.setUserData(account, key, null)
+            return
+        }
+        manager.setUserData(account, key, cipher.encrypt(accountId, plain))
+    }
+
+    private fun readSecretSlot(accountId: String, key: String): String? {
+        val manager = AccountManager.get(context)
+        val account = findAccount(accountId) ?: return null
+        val slot = manager.getUserData(account, key) ?: return null
+        if (slot.isEmpty()) return null
+        return try {
+            cipher.decrypt(accountId, slot)
+        } catch (locked: org.dlang.liveimap.session.MailFailure) {
+            throw locked
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private suspend fun storedPreference(accountId: String): String? {
@@ -584,9 +703,121 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
-    /** Drops one account's SMTP password (system-initiated removal, F29). */
-    internal fun forgetSmtpPassword(accountId: String) {
-        secretPrefs.edit().remove(smtpPasswordKeyFor(accountId)).commit()
+    private suspend fun deleteStepsThroughSix(
+        accountId: String,
+        accounts: List<ManagedAccount>,
+        selected: String?,
+        accountName: String,
+    ) {
+        try {
+            dropMailSession(accountId)
+            JmapPlainHttp.drop(accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(1, error)
+        }
+        val stored = try {
+            storedPreference(accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(2, error)
+        }
+        if (stored == null) return
+        var settings: AccountSettings? = null
+        val decoded = runCatching { decodeAccountSettings(stored) }
+        if (decoded.isSuccess) {
+            settings = decoded.getOrThrow()
+        } else {
+            val error = decoded.exceptionOrNull() ?: IllegalArgumentException("account record")
+            writeOrphanSweep(context)
+            Log.w(logTag, "account record unreadable $accountId", error)
+            notifyAccountRecordUnreadable(context, accountName, error)
+        }
+        try {
+            deleteNamedAccountFiles(context.filesDir, context.cacheDir, accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(3, error)
+        }
+        try {
+            val alias = settings?.clientCertAlias.orEmpty()
+            if (alias.startsWith(KeyChainCerts.LAB_PREFIX)) KeyChainCerts.removeImported(alias)
+            cipher.delete(accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(4, error)
+        }
+        try {
+            BlockStorePasswords.delete(context, accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(5, error)
+        }
+        try {
+            val decision = if (accounts.any { it.userData[userAccountId] == accountId }) {
+                accountRemoval(accounts, accountId, selected)
+            } else {
+                AccountRemoval(remove = true, selectedId = if (selected == accountId) null else selected)
+            }
+            context.accountSettingsDataStore.edit { prefs ->
+                prefs.remove(stringPreferencesKey(accountId))
+                if (decision.selectedId.isNullOrEmpty()) {
+                    if (selected == accountId || decision.remove) {
+                        prefs.remove(stringPreferencesKey(selectedAccountIdKey))
+                    }
+                } else if (decision.selectedId != selected) {
+                    prefs[stringPreferencesKey(selectedAccountIdKey)] = decision.selectedId
+                }
+            }
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(6, error)
+        }
+    }
+
+    private fun deleteStepEight(accountId: String) {
+        try {
+            forgetCompletionCaches()
+            TrafficLog.close(accountId)
+            clearPendingDelete(context, accountId)
+        } catch (error: Exception) {
+            throw AccountDeleteFailed(8, error)
+        }
+    }
+
+    private suspend fun orphanSweep() {
+        val prefs = context.accountSettingsDataStore.data.first()
+        val referenced = HashSet<String>()
+        for ((key, value) in prefs.asMap()) {
+            if (key.name == selectedAccountIdKey) continue
+            val text = value as? String ?: continue
+            try {
+                val alias = decodeAccountSettings(text).clientCertAlias
+                if (alias.startsWith(KeyChainCerts.LAB_PREFIX)) referenced.add(alias.removePrefix(KeyChainCerts.LAB_PREFIX))
+            } catch (error: Exception) {
+                Log.w(logTag, "orphan sweep stopped at ${key.name}", error)
+                return
+            }
+        }
+        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        keyStore.load(null)
+        val uuid = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+        val hourAgo = System.currentTimeMillis() - 60L * 60L * 1000L
+        var keep = false
+        val names = keyStore.aliases().toList()
+        for (alias in names) {
+            if (!uuid.matches(alias) || alias in referenced) continue
+            val created = keyStore.getCreationDate(alias)?.time ?: 0L
+            if (created > hourAgo) {
+                Log.i(logTag, "orphan key younger than one hour $alias")
+                keep = true
+                continue
+            }
+            try {
+                KeyChainCerts.removeImported(KeyChainCerts.LAB_PREFIX + alias)
+            } catch (error: ImportedKeyStillPresent) {
+                Log.w(logTag, "orphan key still present $alias", error)
+                keep = true
+            } catch (error: Exception) {
+                Log.w(logTag, "orphan key $alias", error)
+                keep = true
+            }
+        }
+        if (!keep) orphanSweepFile(context).delete()
     }
 
     companion object {
@@ -602,117 +833,49 @@ class AccountStore private constructor(private val context: Context) {
     }
 }
 
-internal class AndroidAccountCipher : AccountCipher {
-    override fun encrypt(accountId: String, password: String): String {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key(accountId))
-        val iv = cipher.iv
-        if (iv.size != gcmIvBytes) error("password unavailable")
-        val encrypted = cipher.doFinal(password.toByteArray(Charsets.UTF_8))
-        val combined = ByteArray(iv.size + encrypted.size)
-        iv.copyInto(combined)
-        encrypted.copyInto(combined, destinationOffset = iv.size)
-        return Base64.encodeToString(combined, Base64.NO_WRAP)
-    }
+internal fun pendingDeletesFile(context: Context): File = File(context.noBackupFilesDir, "pending-deletes")
 
-    override fun decrypt(accountId: String, passwordSlot: String): String {
-        try {
-            val combined = Base64.decode(passwordSlot, Base64.NO_WRAP)
-            if (combined.size <= gcmIvBytes) error("password unavailable")
-            val iv = combined.copyOfRange(0, gcmIvBytes)
-            val encrypted = combined.copyOfRange(gcmIvBytes, combined.size)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, key(accountId), GCMParameterSpec(gcmTagBits, iv))
-            return cipher.doFinal(encrypted).toString(Charsets.UTF_8)
-        } catch (failed: IllegalStateException) {
-            throw failed
-        } catch (_: Exception) {
-            error("password unavailable")
-        }
-    }
+internal fun orphanSweepFile(context: Context): File = File(context.noBackupFilesDir, "orphan-sweep")
 
-    fun delete(accountId: String) {
-        val keyStore = androidKeyStore()
-        val alias = alias(accountId)
-        if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
-    }
-
-    private fun key(accountId: String): SecretKey {
-        val alias = alias(accountId)
-        val keyStore = androidKeyStore()
-        val existing = keyStore.getKey(alias, null) as? SecretKey
-        if (existing != null) return existing
-        val generator = javax.crypto.KeyGenerator.getInstance(
-            KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore",
-        )
-        val spec = KeyGenParameterSpec.Builder(
-            alias,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .setUserAuthenticationRequired(false)
-            .setRandomizedEncryptionRequired(true)
-            .build()
-        generator.init(spec)
-        return generator.generateKey()
-    }
-
-    private fun alias(accountId: String): String = "liveimap-$accountId"
-
-    private fun androidKeyStore(): KeyStore {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
-        keyStore.load(null)
-        return keyStore
-    }
+internal fun readPendingDeletes(context: Context): List<String> {
+    val file = pendingDeletesFile(context)
+    if (!file.isFile) return emptyList()
+    return file.readLines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 }
 
-internal fun deleteAccountArtifacts(context: Context, account: Account) {
-    val appContext = context.applicationContext
-    val accountId = AccountManager.get(appContext).getUserData(account, userAccountId)
-    if (!accountId.isNullOrEmpty()) {
-        AndroidAccountCipher().delete(accountId)
-        // F29: the same clean-up as the in-app removal: SMTP password, client cert, imported key, image trust.
-        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            dropMailSession(accountId)
-            forgetCompletionCaches()
-            val stored = appContext.accountSettingsDataStore.data.first()[stringPreferencesKey(accountId)]
-            var decodedAlias: String? = null
-            try {
-                if (stored != null) {
-                    val settings = decodeAccountSettings(stored)
-                    decodedAlias = settings.clientCertAlias
-                    val path = settings.clientCert
-                    if (path.isNotBlank()) {
-                        val file = File(path)
-                        if (file.exists() && !file.delete()) throw java.io.IOException(path)
-                    }
-                }
-            } catch (error: IllegalArgumentException) {
-                notifyCertificateLeftBehind(appContext, account.name, "unknown", error)
-            } catch (error: java.io.IOException) {
-                notifyCertificateLeftBehind(appContext, account.name, decodedAlias ?: "unknown", error)
-            }
-            removeAccountFiles(appContext.filesDir, accountId, stored)
-            AccountStore.shared(appContext).forgetSmtpPassword(accountId)
-        }
-        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-            appContext.accountSettingsDataStore.edit { prefs ->
-                prefs.remove(stringPreferencesKey(accountId))
-            }
-        }
-        deleteUnsentAccount(appContext.filesDir, accountId)
-    }
+internal fun addPendingDelete(context: Context, accountId: String) {
+    val current = readPendingDeletes(context)
+    if (accountId in current) return
+    val file = pendingDeletesFile(context)
+    file.parentFile?.mkdirs()
+    file.writeText((current + accountId).joinToString("\n") + "\n")
 }
 
-internal fun certificateLeftBehind(accountName: String, alias: String): String =
-    "$accountName is removed and certificate $alias was not removed"
+internal fun clearPendingDelete(context: Context, accountId: String) {
+    val left = readPendingDeletes(context).filter { it != accountId }
+    val file = pendingDeletesFile(context)
+    if (left.isEmpty()) file.delete() else file.writeText(left.joinToString("\n") + "\n")
+}
 
-private fun notifyCertificateLeftBehind(context: Context, accountName: String, alias: String, error: Exception) {
-    val text = certificateLeftBehind(accountName, alias)
+internal fun writeOrphanSweep(context: Context) {
+    val file = orphanSweepFile(context)
+    file.parentFile?.mkdirs()
+    if (!file.exists()) file.writeText("1\n")
+}
+
+internal fun notifyAccountDeleteFailed(context: Context, accountName: String, step: Int, error: Exception) {
+    val text = context.getString(com.davidlang.liveimap.R.string.account_delete_failed, accountName, step)
     Log.w(logTag, text, error)
+    postAccountNotice(context, accountName, text)
+}
+
+internal fun notifyAccountRecordUnreadable(context: Context, accountName: String, error: Throwable) {
+    val text = context.getString(com.davidlang.liveimap.R.string.account_record_unreadable, accountName)
+    Log.w(logTag, text, error)
+    postAccountNotice(context, accountName, text)
+}
+
+private fun postAccountNotice(context: Context, accountName: String, text: String) {
     try {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         if (manager.getNotificationChannel("liveimap-account") == null) {
@@ -727,7 +890,6 @@ private fun notifyCertificateLeftBehind(context: Context, accountName: String, a
             .build()
         manager.notify(accountName.hashCode(), notification)
     } catch (_: SecurityException) {
-        // The log line above stays. Notification permission is not requested at runtime.
     }
 }
 
@@ -735,22 +897,9 @@ private fun notifyCertificateLeftBehind(context: Context, accountName: String, a
 class AccountCredentials(
     val settings: AccountSettings,
     val password: String,
-    val smtpPassword: String,
+    val smtpPassword: String?,
 ) {
     override fun toString(): String = "AccountCredentials"
-}
-
-/**
- * F29: files and keys one account leaves outside AccountManager and DataStore. Both removal paths (in-app and
- * Settings > Accounts) call this. [stored] is the account's encoded settings, read before they are deleted.
- */
-internal fun removeAccountFiles(filesDir: File, accountId: String, stored: String?) {
-    val settings = stored?.let { runCatching { decodeAccountSettings(it) }.getOrNull() }
-    if (settings != null) {
-        if (settings.clientCert.isNotBlank()) runCatching { org.dlang.liveimap.engine.ClientCertStore.remove(settings.clientCert) }
-        if (settings.clientCertAlias.isNotBlank()) org.dlang.liveimap.engine.KeyChainCerts.removeImported(settings.clientCertAlias)
-    }
-    org.dlang.liveimap.ui.reader.imageTrustFile(filesDir, accountId)?.delete()
 }
 
 

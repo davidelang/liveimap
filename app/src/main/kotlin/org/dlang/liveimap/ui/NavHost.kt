@@ -499,6 +499,26 @@ private fun LiveImapNavHostReady() {
             OpenMessageOrder.clear()
             applyOpenAccount()
             applyRunningLayout()
+            if (resetToNoAccount(accounts)) {
+                val here = navController.currentBackStackEntry
+                val atRoot = here?.destination?.route == "folders" && navController.previousBackStackEntry == null
+                if (!atRoot) {
+                    navController.navigate("folders") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        org.dlang.liveimap.accounts.AccountEvents.removedIds.collect { removedId ->
+            while (true) {
+                val entry = navController.currentBackStack.value.firstOrNull {
+                    it.arguments?.getString("accountId") == removedId
+                } ?: break
+                if (!navController.popBackStack(entry, true)) break
+            }
         }
     }
 
@@ -587,7 +607,7 @@ private fun LiveImapNavHostReady() {
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
-                    onAddAccount = { navController.navigate("settings") },
+                    onAddAccount = { navController.navigate("settings/setup") },
                     onOpenAbout = { navController.navigate("about") },
                 )
             }
@@ -945,6 +965,46 @@ private fun LiveImapNavHostReady() {
                     )
                 }
             }
+            composable("settings/setup") {
+                org.dlang.liveimap.settings.editors.SetupGuide(
+                    onDone = {
+                        navController.navigate("index/${Uri.encode("INBOX")}") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onAdvanced = { settings, password, smtp ->
+                        val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
+                        pending.active = true
+                        pending.settings = settings
+                        pending.password = password
+                        pending.smtpPassword = smtp
+                        pending.onCreated = { _ ->
+                            navController.navigate("index/${Uri.encode("INBOX")}") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                        navController.navigate("settings/account/_")
+                    },
+                )
+            }
+            composable(
+                route = "settings/setup?accountId={accountId}",
+                arguments = listOf(navArgument("accountId") { type = NavType.StringType; defaultValue = "" }),
+            ) { entry ->
+                val setupId = entry.arguments?.getString("accountId").orEmpty()
+                org.dlang.liveimap.settings.editors.SetupGuide(
+                    accountId = setupId,
+                    onDone = { navController.popBackStack() },
+                    onAdvanced = { settings, password, smtp ->
+                        val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
+                        pending.active = true
+                        pending.settings = settings
+                        pending.password = password
+                        pending.smtpPassword = smtp
+                        navController.navigate("settings/account/_")
+                    },
+                )
+            }
             composable("settings") {
                 UpPage(stringResource(R.string.drawer_settings), onUp = { navController.navigateUp() }) {
                     SettingsTree(
@@ -1291,13 +1351,18 @@ private fun LiveImapNavHostReady() {
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
                 navigateFromDrawer {
-                    openFilterEditor(-1, "", "", "", "", store.chosenAccountId().orEmpty(), "")
+                    val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
+                    if (!chosen.isNullOrEmpty()) openFilterEditor(-1, "", "", "", "", chosen, "")
                 }
             },
+            showFilters = drawerAccounts.isNotEmpty(),
             onEditFilters = {
                 navigateFromDrawer {
-                    filterListAccount.value = store.chosenAccountId().orEmpty()
-                    navController.navigate("filters")
+                    val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
+                    if (!chosen.isNullOrEmpty()) {
+                        filterListAccount.value = chosen
+                        navController.navigate("filters")
+                    }
                 }
             },
             onFavorite = { favorite -> openFavorite(favorite) },
@@ -1698,6 +1763,7 @@ private fun ColumnScope.DrawerSheetContent(
     onAccountEditFavorite: (DrawerAccount, FolderFavorite) -> Unit,
     onAddFilter: () -> Unit,
     onEditFilters: () -> Unit,
+    showFilters: Boolean,
     onSettings: () -> Unit,
     onHelp: () -> Unit,
     onAbout: () -> Unit,
@@ -1727,16 +1793,18 @@ private fun ColumnScope.DrawerSheetContent(
                 onClick = { UnsavedEdits.guard { onPostponed(postponedRow) } },
             )
         }
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.filter_add)) },
-            selected = false,
-            onClick = { UnsavedEdits.guard(onAddFilter) },
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.filter_edit_list)) },
-            selected = false,
-            onClick = { UnsavedEdits.guard(onEditFilters) },
-        )
+        if (showFilters) {
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.filter_add)) },
+                selected = false,
+                onClick = { UnsavedEdits.guard(onAddFilter) },
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.filter_edit_list)) },
+                selected = false,
+                onClick = { UnsavedEdits.guard(onEditFilters) },
+            )
+        }
         for (favorite in favorites) {
             val shown = favoriteDrawerLabel(favorite)
             Box(Modifier.fillMaxWidth()) {
@@ -1803,16 +1871,18 @@ private fun ColumnScope.DrawerSheetContent(
                 }
             }
         }
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.filter_add)) },
-            selected = false,
-            onClick = { UnsavedEdits.guard(onAddFilter) },
-        )
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.filter_edit_list)) },
-            selected = false,
-            onClick = { UnsavedEdits.guard(onEditFilters) },
-        )
+        if (showFilters) {
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.filter_add)) },
+                selected = false,
+                onClick = { UnsavedEdits.guard(onAddFilter) },
+            )
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.filter_edit_list)) },
+                selected = false,
+                onClick = { UnsavedEdits.guard(onEditFilters) },
+            )
+        }
     }
     HorizontalDivider()
     NavigationDrawerItem(
@@ -2109,6 +2179,8 @@ private fun AxisSplit(
         StackSplit(leadingDp, fallback, onSpan, onDrag, leading, trailing)
     }
 }
+
+internal fun resetToNoAccount(accounts: List<org.dlang.liveimap.settings.AccountChoice>): Boolean = accounts.isEmpty()
 
 internal fun drawerBlocks(rows: List<DrawerAccount>): List<DrawerAccount> {
     if (rows.size < 2) return emptyList()

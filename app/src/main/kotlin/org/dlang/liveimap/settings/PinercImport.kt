@@ -544,6 +544,10 @@ private fun writePinercLeaf(
         "email" -> if (done.add("identity")) writePinercIdentity(settings, add)
         "text" -> if (key == "user-id") {
             if (done.add("identity")) writePinercIdentity(settings, add)
+        } else if (key == "sieve-server") {
+            if (!settings.sieveSameAsInbound && settings.sieveHost.isNotEmpty() && done.add(key)) {
+                add(key, pinercQuoted(settings.sieveHost))
+            }
         } else if (done.add(key)) {
             add(key, pinercQuoted(settings.getSetting(leaf.setting)))
         }

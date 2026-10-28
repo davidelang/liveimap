@@ -127,7 +127,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
-import org.dlang.liveimap.engine.ClientCertStore
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -170,27 +169,22 @@ internal fun ClientCertField(editor: SettingsEditor) {
         password = ""
         message = null
     }
-    val current = editor.settings.clientCert
     val alias = editor.settings.clientCertAlias
     Text(stringResource(R.string.settings_client_cert))
-    if (current.isBlank() && alias.isNotBlank()) {
-        // Per-account choice 2: an Android KeyChain certificate (key stays in the system keystore).
+    if (alias.isBlank()) {
+        Text(stringResource(R.string.settings_client_cert_none))
+    } else {
         Text(stringResource(R.string.settings_client_cert_keychain_current, alias))
         TextButton(onClick = {
-            org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias)
-            editor.persist(editor.settings.copy(clientCertAlias = ""))
+            val failed = runCatching { org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias) }
+            if (failed.isFailure) {
+                message = failed.exceptionOrNull()?.message ?: failed.exceptionOrNull().toString()
+            } else {
+                editor.persist(editor.settings.copy(clientCertAlias = ""))
+            }
         }) {
             Text(stringResource(R.string.settings_client_cert_remove))
         }
-    } else if (current.isBlank()) {
-        Text(stringResource(R.string.settings_client_cert_none))
-    } else {
-        Text(ClientCertStore.load(current)?.let { runCatching { ClientCertStore.check(it.p12, it.password) }.getOrNull() }
-            ?: stringResource(R.string.settings_client_cert_missing))
-        TextButton(onClick = {
-            ClientCertStore.remove(current)
-            editor.persist(editor.settings.copy(clientCert = ""))
-        }) { Text(stringResource(R.string.settings_client_cert_remove)) }
     }
     TextButton(onClick = { pick.launch(arrayOf("application/x-pkcs12", "application/octet-stream", "*/*")) }) {
         Text(stringResource(R.string.settings_client_cert_import))
@@ -204,9 +198,15 @@ internal fun ClientCertField(editor: SettingsEditor) {
             { chosen ->
                 if (chosen != null) {
                     scope.launch {
-                        val old = editor.settings.clientCert
-                        editor.persist(editor.settings.copy(clientCert = "", clientCertAlias = chosen))
-                        if (old.isNotBlank()) withContext(Dispatchers.IO) { ClientCertStore.remove(old) }
+                        val oldAlias = editor.settings.clientCertAlias
+                        editor.persist(editor.settings.copy(clientCertAlias = chosen))
+                        if (oldAlias.isNotBlank() && oldAlias != chosen && oldAlias.startsWith(org.dlang.liveimap.engine.KeyChainCerts.LAB_PREFIX)) {
+                            val failed = runCatching { org.dlang.liveimap.engine.KeyChainCerts.removeImported(oldAlias) }
+                            if (failed.isFailure) {
+                                org.dlang.liveimap.accounts.writeOrphanSweep(context.applicationContext)
+                                message = failed.exceptionOrNull()?.message ?: failed.exceptionOrNull().toString()
+                            }
+                        }
                     }
                 }
             },
@@ -236,20 +236,25 @@ internal fun ClientCertField(editor: SettingsEditor) {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val bytes = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                        ClientCertStore.check(bytes, typed)
-                        // The key goes into AndroidKeyStore; neither the .p12 nor its password is stored.
+                        org.dlang.liveimap.engine.KeyChainCerts.check(bytes, typed)
                         org.dlang.liveimap.engine.KeyChainCerts.importP12(java.util.UUID.randomUUID().toString(), bytes, typed)
                     }
                 }
-                result.onSuccess { alias ->
-                    val old = editor.settings.clientCert
+                result.onSuccess { newAlias ->
                     val oldAlias = editor.settings.clientCertAlias
-                    editor.persist(editor.settings.copy(clientCert = "", clientCertAlias = alias))
-                    if (old.isNotBlank()) ClientCertStore.remove(old)
-                    if (oldAlias != alias) org.dlang.liveimap.engine.KeyChainCerts.removeImported(oldAlias)
+                    editor.persist(editor.settings.copy(clientCertAlias = newAlias))
+                    if (oldAlias.isNotBlank() && oldAlias != newAlias) {
+                        val failed = withContext(Dispatchers.IO) {
+                            runCatching { org.dlang.liveimap.engine.KeyChainCerts.removeImported(oldAlias) }
+                        }
+                        if (failed.isFailure) {
+                            org.dlang.liveimap.accounts.writeOrphanSweep(context.applicationContext)
+                            message = failed.exceptionOrNull()?.message ?: failed.exceptionOrNull().toString()
+                        }
+                    }
                     pending = null
                     password = ""
-                    message = null
+                    if (message == null) message = null
                 }.onFailure { message = it.message ?: it.toString() }
             }
         }) { Text(stringResource(R.string.settings_client_cert_save)) }

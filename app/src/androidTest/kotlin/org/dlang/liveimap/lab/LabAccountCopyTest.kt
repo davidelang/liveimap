@@ -29,7 +29,7 @@ class LabAccountCopyTest {
                 store.selectAccount(a.id)
                 val s = store.load()
                 if (s.imapHost.contains(arg("labAccountMatch"), ignoreCase = true) || a.name.contains(arg("labAccountMatch"), ignoreCase = true)) {
-                    out = s.encode() to store.password()
+                    out = s.encode() to (store.password() ?: "")
                     break
                 }
             }
@@ -49,16 +49,15 @@ class LabAccountCopyTest {
         val src = decodeAccountSettings(String(Base64.decode(s64, Base64.NO_WRAP)))
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
         val original = store.listAccounts().firstOrNull { it.drawer }?.id
-        store.addAccount()
-        store.load()
-        store.save(
+        createLabAccount(
+            InstrumentationRegistry.getInstrumentation().targetContext,
             src.copy(
                 imapHost = arg("labHost"), displayName = arg("labName"),
                 smtpHost = "", markSeenOnOpen = false, autoExpunge = false, askBeforeExpunge = true,
                 logImapTraffic = false,
             ),
+            String(Base64.decode(p64, Base64.NO_WRAP)),
         )
-        store.setPassword(String(Base64.decode(p64, Base64.NO_WRAP)))
         if (original != null) store.selectAccount(original)
         Unit
     }

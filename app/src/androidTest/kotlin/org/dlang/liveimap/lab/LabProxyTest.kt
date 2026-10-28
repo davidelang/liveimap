@@ -44,7 +44,7 @@ class LabProxyTest {
                     val s = store.load()
                     seen += "${a.name} -> ${s.username}@${s.imapHost}"
                     if (s.imapHost.contains(match, ignoreCase = true) || a.name.contains(match, ignoreCase = true)) {
-                        found = Target(s.imapHost, s.imapPort, s.tlsMode.name, s.username, store.password())
+                        found = Target(s.imapHost, s.imapPort, s.tlsMode.name, s.username, store.password() ?: "")
                         break
                     }
                 }

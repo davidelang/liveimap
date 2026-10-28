@@ -21,15 +21,15 @@ class RetargetCredentialsTest {
         assertEquals("", r.settings.clientCertAlias)
     }
 
-    /** F87: the .p12 client certificate and accept-invalid do not follow the account to a new IMAP host. */
+    /** F87: accept-invalid and the client-certificate alias do not follow the account to a new IMAP host. */
     @Test
-    fun imapHostChangeDropsClientCertFileAndAcceptInvalid() {
-        val trusting = old.copy(clientCert = "cert-uuid.p12", acceptInvalidCert = true)
+    fun imapHostChangeDropsClientCertAliasAndAcceptInvalid() {
+        val trusting = old.copy(acceptInvalidCert = true)
         val moved = retargetCredentials(trusting, trusting.copy(imapHost = "evil.example")).settings
-        assertEquals("", moved.clientCert)
+        assertEquals("", moved.clientCertAlias)
         assertFalse(moved.acceptInvalidCert)
         val same = retargetCredentials(trusting, trusting.copy(displayName = "D")).settings
-        assertEquals("cert-uuid.p12", same.clientCert)
+        assertEquals("me", same.clientCertAlias)
         assertTrue(same.acceptInvalidCert)
     }
 

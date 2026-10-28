@@ -93,7 +93,12 @@ private class LiveImapAuthenticator(private val context: Context) : AbstractAcco
         account: Account?,
     ): Bundle {
         if (account != null && account.type == liveimapAccountType) {
-            deleteAccountArtifacts(context, account)
+            val accountId = AccountManager.get(context).getUserData(account, userAccountId)
+            if (!accountId.isNullOrEmpty()) {
+                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                    AccountStore.shared(context).deleteAccount(accountId, systemPath = true)
+                }
+            }
         }
         return Bundle().apply { putBoolean(AccountManager.KEY_BOOLEAN_RESULT, true) }
     }
@@ -200,15 +205,28 @@ class AccountSetupActivity : ComponentActivity() {
 
 @Composable
 private fun AccountSetupContent() {
-    var contacts by remember { mutableStateOf(false) }
-    BackHandler(enabled = contacts) { contacts = false }
-    if (contacts) {
-        ContactCopyScreen()
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    var advanced by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (!advanced) {
+        org.dlang.liveimap.settings.editors.SetupGuide(
+            onDone = { activity?.finish() },
+            onAdvanced = { settings, password, smtp ->
+                val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
+                pending.active = true
+                pending.settings = settings
+                pending.password = password
+                pending.smtpPassword = smtp
+                pending.onCreated = { activity?.finish() }
+                advanced = true
+            },
+        )
     } else {
-        SettingsTree(
-            onCopyContacts = { contacts = true },
+        org.dlang.liveimap.settings.SettingsTree(
+            onCopyContacts = {},
             onEditBook = {},
             onOpenPanel = { _, _ -> },
+            page = "account",
+            accountId = "_",
         )
     }
 }

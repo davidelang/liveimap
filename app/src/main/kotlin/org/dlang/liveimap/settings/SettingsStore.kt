@@ -39,7 +39,7 @@ fun accountDrawerFolders(encoded: String?): AccountDrawerFolders {
 interface SettingsStore {
     suspend fun load(): AccountSettings
     suspend fun save(settings: AccountSettings)
-    suspend fun password(): String
+    suspend fun password(): String?
     /** F55/F66: change some fields without writing back a stale snapshot of the others. */
     suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
         val next = edit(load())
@@ -47,14 +47,13 @@ interface SettingsStore {
         return next
     }
     suspend fun setPassword(value: String)
-    suspend fun smtpPassword(): String = ""
+    suspend fun smtpPassword(): String? = ""
     suspend fun setSmtpPassword(value: String) {}
     suspend fun listAccounts(): List<AccountChoice> = emptyList()
     suspend fun listDrawerAccounts(): List<DrawerAccount> = emptyList()
     suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
-    /** Creates an account and returns its id; does not make it the active account (F121). */
-    suspend fun addAccount(): String = ""
+    suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String = ""
     suspend fun removeAccount(accountId: String): Boolean = false
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
@@ -78,11 +77,11 @@ class DataStoreSettingsStore(
 
     override suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings = bound { store.update(edit) }
 
-    override suspend fun password(): String = bound { store.password() }
+    override suspend fun password(): String? = bound { store.password() }
 
     override suspend fun setPassword(value: String) = bound { store.setPassword(value) }
 
-    override suspend fun smtpPassword(): String = bound { store.smtpPassword() }
+    override suspend fun smtpPassword(): String? = bound { store.smtpPassword() }
 
     suspend fun accountById(accountId: String): org.dlang.liveimap.accounts.AccountCredentials? = store.accountById(accountId)
 
@@ -104,7 +103,8 @@ class DataStoreSettingsStore(
         store.selectAccount(accountId)
     }
 
-    override suspend fun addAccount(): String = store.addAccount()
+    override suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String =
+        store.createAccount(settings, password, smtpPassword)
 
     override suspend fun removeAccount(accountId: String): Boolean = store.removeAccount(accountId)
 

@@ -86,10 +86,16 @@ internal object IndexLeaveReport {
 fun LiveImapScaffold(content: @Composable () -> Unit) {
     val host = remember { SnackbarHostState() }
     val pending = IndexLeaveReport.text
+    val restored = org.dlang.liveimap.accounts.AccountRestoreReport.text
     LaunchedEffect(pending) {
         val message = pending ?: return@LaunchedEffect
         host.showSnackbar(message)
         IndexLeaveReport.clear(message)
+    }
+    LaunchedEffect(restored) {
+        val message = restored ?: return@LaunchedEffect
+        host.showSnackbar(message)
+        org.dlang.liveimap.accounts.AccountRestoreReport.clear(message)
     }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),

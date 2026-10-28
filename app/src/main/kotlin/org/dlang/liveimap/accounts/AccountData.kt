@@ -6,10 +6,15 @@ import org.dlang.liveimap.settings.encode
 
 internal const val liveimapAccountType: String = "com.davidlang.liveimap"
 internal const val accountSchemaValue: String = "1"
-internal const val smtpPasswordKey: String = "smtpPassword"
 internal const val selectedAccountIdKey: String = "selectedAccountId"
+internal const val userSmtpPasswordSlot: String = "smtpPasswordSlot"
+internal const val userSievePasswordSlot: String = "sievePasswordSlot"
 
-internal fun smtpPasswordKeyFor(accountId: String): String = "$smtpPasswordKey.$accountId"
+class NoAccountSelected : Exception("no account selected")
+
+class AccountGone(val accountId: String) : Exception("account $accountId gone")
+
+class AccountDeleteFailed(val step: Int, cause: Throwable? = null) : Exception("account delete step $step", cause)
 
 internal fun chooseAccount(accounts: List<ManagedAccount>, selectedId: String?): ManagedAccount? {
     if (accounts.isEmpty()) return null
@@ -31,7 +36,7 @@ internal fun accountRemoval(
     selectedId: String?,
 ): AccountRemoval {
     val present = removeId.isNotBlank() && accounts.any { it.userData[userAccountId] == removeId }
-    if (!present || accounts.size < 2) return AccountRemoval(remove = false, selectedId = selectedId)
+    if (!present) return AccountRemoval(remove = false, selectedId = selectedId)
     val next = if (selectedId == removeId) {
         val remaining = accounts.filter { it.userData[userAccountId] != removeId }
         chooseAccount(remaining, null)?.userData?.get(userAccountId)
@@ -66,13 +71,8 @@ internal val accountUserKeys: List<String> = listOf(
 internal data class ManagedAccount(
     val name: String,
     val userData: Map<String, String>,
-    val passwordSlot: String,
+    val passwordSlot: String?,
 )
-
-internal interface AccountCipher {
-    fun encrypt(accountId: String, password: String): String
-    fun decrypt(accountId: String, passwordSlot: String): String
-}
 
 internal fun accountVisibleName(settings: AccountSettings): String {
     if (settings.email.isNotEmpty()) return settings.email
@@ -111,7 +111,12 @@ internal fun overlayAccountFields(base: AccountSettings, userData: Map<String, S
 
 
 /** F32/F87: what saving [next] over [previous] must forget because a server moved. */
-internal data class Retarget(val settings: AccountSettings, val dropImapPassword: Boolean, val dropSmtpPassword: Boolean)
+internal data class Retarget(
+    val settings: AccountSettings,
+    val dropImapPassword: Boolean,
+    val dropSmtpPassword: Boolean,
+    val dropSievePassword: Boolean,
+)
 
 /**
  * F32/F87 (and the F32 addendum): a stored password or certificate pin belongs to the host it was entered for.
@@ -119,17 +124,28 @@ internal data class Retarget(val settings: AccountSettings, val dropImapPassword
  * when the SMTP host changes, the SMTP password is dropped. The user re-enters them for the new server.
  */
 internal fun retargetCredentials(previous: AccountSettings?, next: AccountSettings): Retarget {
-    if (previous == null) return Retarget(next, dropImapPassword = false, dropSmtpPassword = false)
+    if (previous == null) return Retarget(next, dropImapPassword = false, dropSmtpPassword = false, dropSievePassword = false)
     fun moved(a: String, b: String) = a.isNotBlank() && !a.trim().equals(b.trim(), ignoreCase = true)
     val imapMoved = moved(previous.imapHost, next.imapHost)
     val smtpMoved = moved(previous.smtpHost, next.smtpHost)
-    // F87: the imported client certificate and "accept invalid certificate" were chosen for the old host too.
-    val settings = if (imapMoved) {
-        next.copy(certPin = "", sieveCertPin = "", jmapCertPin = "", clientCertAlias = "", clientCert = "", acceptInvalidCert = false)
-    } else {
-        next
+    val sieveMoved = moved(previous.sieveHost, next.sieveHost)
+    var settings = next
+    if (imapMoved) {
+        settings = settings.copy(
+            certPin = "",
+            sieveCertPin = "",
+            jmapCertPin = "",
+            clientCertAlias = "",
+            acceptInvalidCert = false,
+        )
     }
-    return Retarget(settings, dropImapPassword = imapMoved, dropSmtpPassword = smtpMoved || (imapMoved && next.smtpSameAsImap))
+    if (sieveMoved) settings = settings.copy(sieveCertPin = "")
+    return Retarget(
+        settings,
+        dropImapPassword = imapMoved,
+        dropSmtpPassword = smtpMoved || (imapMoved && settings.smtpSameAsImap),
+        dropSievePassword = sieveMoved,
+    )
 }
 
 /** One settings save: the settings-file text and the AccountManager record written with it, always together. */
@@ -139,6 +155,7 @@ internal data class AccountSavePlan(
     val userData: Map<String, String>,
     val passwordSlot: String,
     val dropSmtpPassword: Boolean,
+    val dropSievePassword: Boolean,
 )
 
 internal fun planAccountSave(
@@ -156,5 +173,6 @@ internal fun planAccountSave(
         userData = accountUserData(accountId, saved, null),
         passwordSlot = if (retarget.dropImapPassword) "" else passwordSlot,
         dropSmtpPassword = retarget.dropSmtpPassword,
+        dropSievePassword = retarget.dropSievePassword,
     )
 }

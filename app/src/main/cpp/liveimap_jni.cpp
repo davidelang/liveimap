@@ -121,12 +121,7 @@ int SSL_export_keying_material(ssl_st * ssl, unsigned char * out, size_t olen,
 const void * SSL_get_current_cipher(const ssl_st * ssl);
 const char * SSL_CIPHER_get_name(const void * cipher);
 const char * SSL_get_version(const ssl_st * ssl);
-// Per-account client certificate (PKCS#12 imported into app-private storage).
 struct evp_pkey_st;
-struct pkcs12_st;
-pkcs12_st * d2i_PKCS12(pkcs12_st ** a, const unsigned char ** in, long len);
-int PKCS12_parse(pkcs12_st * p12, const char * pass, evp_pkey_st ** pkey, x509_st ** cert, stack_st ** ca);
-void PKCS12_free(pkcs12_st * p12);
 int SSL_CTX_use_certificate(ssl_ctx_st * ctx, x509_st * x);
 int SSL_CTX_use_PrivateKey(ssl_ctx_st * ctx, evp_pkey_st * pkey);
 int SSL_CTX_check_private_key(const ssl_ctx_st * ctx);
@@ -450,11 +445,7 @@ struct LiveSession {
     bool allowOldTls = false;
     // Advanced: force one IMAP login method. "" = automatic, "IMAP-LOGIN" = the IMAP LOGIN command, else a SASL name.
     std::string authMechanism;
-    // Per-account TLS client certificate: PKCS#12 bytes and password ("" = none). Offered on IMAP and SMTP.
-    std::string clientP12;
-    std::string clientP12Password;
-    std::string clientP12PasswordMask;
-    // Or an Android KeyChain certificate: chain (DER, leaf first) and a global ref to the keystore PrivateKey.
+    // Android KeyChain certificate: chain (DER, leaf first) and a global ref to the keystore PrivateKey.
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
     ~LiveSession() {
@@ -467,9 +458,6 @@ struct LiveSession {
         }
         wipeSecret(password);
         wipeSecret(passwordMask);
-        wipeSecret(clientP12Password);
-        wipeSecret(clientP12PasswordMask);
-        wipeSecret(clientP12);
     }
     std::string smtpHost;
     int smtpPort = 25;
@@ -3515,8 +3503,6 @@ void attachTrafficLogger(mailimap * imap, TrafficFile * traffic) {
 struct TlsCapture {
     std::vector<std::vector<unsigned char>> ders;
     bool allowOldTls = false;
-    const std::string * clientP12 = nullptr;
-    const std::string * clientP12Password = nullptr;
     const std::vector<std::string> * keyChainChain = nullptr;
     jobject keyChainKey = nullptr;
     std::string alert;
@@ -3536,7 +3522,6 @@ bool certificateVerdict(const std::string & text) {
 }
 
 thread_local TlsCapture * tlsCapture = nullptr;
-static const std::string kEmptyP12Password;
 
 const int kSslCtrlSetMinProtoVersion = 123;
 const long kTls12Version = 0x0303;
@@ -4005,9 +3990,6 @@ struct ImapOpenMaterial {
     std::string authMechanism;
     bool allowOldTls = false;
     bool acceptInvalidCert = false;
-    std::string clientP12;
-    std::string clientP12Password;
-    std::string clientP12PasswordMask;
     std::vector<std::string> keyChainChain;
     jobject keyChainKey = nullptr;
     TrafficFile * traffic = nullptr;
@@ -4018,9 +4000,6 @@ struct ImapOpenMaterial {
     ImapOpenMaterial(const ImapOpenMaterial &) = delete;
     ImapOpenMaterial & operator=(const ImapOpenMaterial &) = delete;
     ~ImapOpenMaterial() {
-        wipeSecret(clientP12);
-        wipeSecret(clientP12Password);
-        wipeSecret(clientP12PasswordMask);
         if (keyChainKey != nullptr && env != nullptr) env->DeleteGlobalRef(keyChainKey);
     }
 };
@@ -4056,16 +4035,8 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
     int readSec = 60;
     std::string mechanism;
     bool acceptInvalid = false;
-    std::string p12PasswordClear;
-    SecretWipe p12Wipe{p12PasswordClear};
     if (owned != nullptr) {
         capture.allowOldTls = owned->allowOldTls;
-        capture.clientP12 = &owned->clientP12;
-        if (!owned->clientP12Password.empty()) {
-            p12PasswordClear = owned->clientP12Password;
-            xorMask(p12PasswordClear, owned->clientP12PasswordMask);
-            capture.clientP12Password = &p12PasswordClear;
-        }
         capture.keyChainChain = &owned->keyChainChain;
         capture.keyChainKey = owned->keyChainKey;
         traffic = owned->traffic;
@@ -4075,12 +4046,6 @@ mailimap * openTls(JNIEnv * env, const char * mode, const char * host, int port,
         acceptInvalid = owned->acceptInvalidCert;
     } else if (live != nullptr) {
         capture.allowOldTls = live->allowOldTls;
-        capture.clientP12 = &live->clientP12;
-        if (!live->clientP12Password.empty()) {
-            p12PasswordClear = live->clientP12Password;
-            xorMask(p12PasswordClear, live->clientP12PasswordMask);
-            capture.clientP12Password = &p12PasswordClear;
-        }
         capture.keyChainChain = &live->keyChainChain;
         capture.keyChainKey = live->keyChainKey;
         bindTraffic(&live->imapTraffic, live->trafficDir, "imap", live->trafficRollBytes);
@@ -6356,43 +6321,6 @@ void recordTlsInfo(const ssl_st * s, int where, int ret) {
     }
 }
 
-// Loads a PKCS#12 client certificate (leaf, key, chain) straight into OpenSSL. OpenSSL then signs the
-// CertificateVerify itself, including RSA-PSS for TLS 1.3. (KeyChain-backed keys would need a signing
-// callback instead; see TODO.md.)
-static bool useClientP12(ssl_ctx_st * ctx, const std::string & p12, const std::string & password, std::string * why) {
-    const unsigned char * in = reinterpret_cast<const unsigned char *>(p12.data());
-    pkcs12_st * bundle = d2i_PKCS12(nullptr, &in, static_cast<long>(p12.size()));
-    if (bundle == nullptr) {
-        *why = "client certificate: not a PKCS#12 file";
-        return false;
-    }
-    evp_pkey_st * key = nullptr;
-    x509_st * cert = nullptr;
-    stack_st * chain = nullptr;
-    int ok = PKCS12_parse(bundle, password.c_str(), &key, &cert, &chain);
-    PKCS12_free(bundle);
-    if (ok != 1 || key == nullptr || cert == nullptr) {
-        if (key != nullptr) EVP_PKEY_free(key);
-        if (cert != nullptr) X509_free(cert);
-        if (chain != nullptr) OPENSSL_sk_pop_free(chain, reinterpret_cast<void (*)(void *)>(X509_free));
-        *why = "client certificate: wrong password or no key in the PKCS#12 file";
-        return false;
-    }
-    bool good = SSL_CTX_use_certificate(ctx, cert) == 1 && SSL_CTX_use_PrivateKey(ctx, key) == 1
-        && SSL_CTX_check_private_key(ctx) == 1;
-    if (good && chain != nullptr) {
-        for (int i = 0; i < OPENSSL_sk_num(chain); ++i) {
-            // SSL_CTX_add1_chain_cert (SSL_CTRL_CHAIN_CERT = 89, larg 1 = add a reference).
-            SSL_CTX_ctrl(ctx, 89, 1, OPENSSL_sk_value(chain, i));
-        }
-    }
-    X509_free(cert);
-    EVP_PKEY_free(key);
-    if (chain != nullptr) OPENSSL_sk_pop_free(chain, reinterpret_cast<void (*)(void *)>(X509_free));
-    if (!good) *why = "client certificate: key does not match the certificate";
-    return good;
-}
-
 extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) {
     gClientCertLoaded = false;
     gClientCertError.clear();
@@ -6415,10 +6343,7 @@ extern "C" void prepareTls(struct mailstream_ssl_context * ssl_context, void *) 
     if (gLabMaxTls12.load()) SSL_CTX_ctrl(ctx, 124 /* SSL_CTRL_SET_MAX_PROTO_VERSION */, kTls12Version, nullptr);
     SSL_CTX_set_verify(ctx, kSslVerifyPeer, recordPeerCerts);
     SSL_CTX_set_info_callback(ctx, recordTlsInfo);
-    if (tlsCapture != nullptr && tlsCapture->clientP12 != nullptr && !tlsCapture->clientP12->empty()) {
-        const std::string & p12pw = tlsCapture->clientP12Password != nullptr ? *tlsCapture->clientP12Password : kEmptyP12Password;
-        gClientCertLoaded = useClientP12(ctx, *tlsCapture->clientP12, p12pw, &gClientCertError);
-    } else if (tlsCapture != nullptr && tlsCapture->keyChainKey != nullptr && tlsCapture->keyChainChain != nullptr) {
+    if (tlsCapture != nullptr && tlsCapture->keyChainKey != nullptr && tlsCapture->keyChainChain != nullptr) {
         gClientCertLoaded = useKeyChainKey(ctx, *tlsCapture->keyChainChain, tlsCapture->keyChainKey, &gClientCertError);
     }
 }
@@ -6768,7 +6693,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
-    jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
+    jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
     JChars h(env, host);
     JChars u(env, user);
@@ -6810,21 +6735,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStage(JNIEnv * env, job
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
     }
-    if (clientP12 != nullptr) {
-        jsize n = env->GetArrayLength(clientP12);
-        session->clientP12.resize(static_cast<size_t>(n));
-        if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
-        JChars cpw(env, clientP12Password);
-        if (!cpw.s) {
-            held->selfHold.reset();
-            return newSessionOpen(env, 0, "", "", false, {});
-        }
-        session->clientP12Password = cpw.c();
-        if (!session->clientP12Password.empty()) {
-            session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
-            xorMask(session->clientP12Password, session->clientP12PasswordMask);
-        }
-    }
     if (keyChainKey != nullptr && keyChainChain != nullptr) {
         keyChainInit(env);
         jsize n = env->GetArrayLength(keyChainChain);
@@ -6848,7 +6758,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
     jstring host, jint port, jstring user, jstring password, jstring smtpHost, jint smtpPort, jstring from,
     jboolean pipelineFlag, jstring tlsMode, jstring smtpTlsMode, jstring certPin,
     jboolean allowPlaintext, jboolean acceptInvalidCert, jboolean allowOldTls, jstring authMechanism,
-    jbyteArray clientP12, jstring clientP12Password, jobjectArray keyChainChain, jobject keyChainKey) {
+    jobjectArray keyChainChain, jobject keyChainKey) {
     registerExtensions();
     JChars h(env, host);
     JChars u(env, user);
@@ -6888,21 +6798,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeOpen(JNIEnv * env, jobj
         }
         session->authMechanism = mech.c();
         for (auto & ch : session->authMechanism) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
-    }
-    if (clientP12 != nullptr) {
-        jsize n = env->GetArrayLength(clientP12);
-        session->clientP12.resize(static_cast<size_t>(n));
-        if (n > 0) env->GetByteArrayRegion(clientP12, 0, n, reinterpret_cast<jbyte *>(&session->clientP12[0]));
-        JChars cpw(env, clientP12Password);
-        if (!cpw.s) {
-            held->selfHold.reset();
-            return newSessionOpen(env, 0, "", "", false, {});
-        }
-        session->clientP12Password = cpw.c();
-        if (!session->clientP12Password.empty()) {
-            session->clientP12PasswordMask = randomMask(session->clientP12Password.size());
-            xorMask(session->clientP12Password, session->clientP12PasswordMask);
-        }
     }
     if (keyChainKey != nullptr && keyChainChain != nullptr) {
         keyChainInit(env);
@@ -10003,9 +9898,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchLogin(JNIEnv * env
     owned.authMechanism = session->authMechanism;
     owned.allowOldTls = session->allowOldTls;
     owned.acceptInvalidCert = session->acceptInvalidCert;
-    owned.clientP12 = session->clientP12;
-    owned.clientP12Password = session->clientP12Password;
-    owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
     bindTraffic(&session->watchTraffic, session->trafficDir, "watch", session->trafficRollBytes);
@@ -10120,9 +10012,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     owned.authMechanism = session->authMechanism;
     owned.allowOldTls = session->allowOldTls;
     owned.acceptInvalidCert = session->acceptInvalidCert;
-    owned.clientP12 = session->clientP12;
-    owned.clientP12Password = session->clientP12Password;
-    owned.clientP12PasswordMask = session->clientP12PasswordMask;
     owned.keyChainChain = session->keyChainChain;
     if (session->keyChainKey != nullptr) owned.keyChainKey = env->NewGlobalRef(session->keyChainKey);
     bindTraffic(&session->watchTraffic, session->trafficDir, "watch", session->trafficRollBytes);
@@ -10606,11 +10495,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     const bool acceptInvalidCert = session->acceptInvalidCert;
     const std::string certPin = session->certPin;
     const std::string imapHost = session->host;
-    std::string clientP12 = session->clientP12;
-    std::string clientP12Password = session->clientP12Password;
-    if (!clientP12Password.empty()) xorMask(clientP12Password, session->clientP12PasswordMask);
-    SecretWipe wipeP12{clientP12};
-    SecretWipe wipeP12Password{clientP12Password};
     std::vector<std::string> keyChainChain = session->keyChainChain;
     jobject keyChainKey = session->keyChainKey != nullptr ? env->NewGlobalRef(session->keyChainKey) : nullptr;
     struct KeyRef {
@@ -10631,8 +10515,6 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     std::string where;
     TlsCapture capture;
     capture.allowOldTls = allowOldTls;
-    capture.clientP12 = &clientP12;
-    capture.clientP12Password = &clientP12Password;
     capture.keyChainChain = &keyChainChain;
     capture.keyChainKey = keyChainKey;
     bool secured = false;

@@ -102,7 +102,7 @@ suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes):
 }
 
 /** The real probes: a throwaway connection with the candidate settings (the account's own session is untouched). */
-internal fun testAccountProbes(
+fun testAccountProbes(
     accountId: String,
     candidate: AccountSettings,
     password: String,

@@ -184,6 +184,11 @@ android {
             version = "3.22.1"
         }
     }
+    sourceSets {
+        getByName("arm64") { java.srcDir("src/sideload/kotlin") }
+        getByName("x86_64") { java.srcDir("src/sideload/kotlin") }
+        getByName("armv7") { java.srcDir("src/sideload/kotlin") }
+    }
 }
 
 // The play flavor is for the release bundle only; debug builds stay one APK per ABI.
@@ -260,8 +265,9 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive-layout")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
-    // F20: secrets are sealed with tink-android (security-crypto removed; no legacy read).
-    implementation("com.google.crypto.tink:tink-android:1.15.0")
+    implementation("androidx.credentials:credentials:1.3.0")
+    add("playImplementation", "com.google.android.gms:play-services-auth-blockstore:16.4.0")
+    add("playImplementation", "androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")

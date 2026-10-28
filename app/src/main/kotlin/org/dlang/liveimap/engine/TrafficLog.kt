@@ -78,6 +78,15 @@ object TrafficLog {
         return openWriter(dir, roll)
     }
 
+    /** Stops the Kotlin writer for [accountId]. The traffic files stay. */
+    fun close(accountId: String) {
+        if (accountId.isEmpty()) return
+        val marker = File.separator + "traffic" + File.separator + accountId
+        for (key in actors.keys) {
+            if (key.endsWith(marker)) actors.remove(key)
+        }
+    }
+
     /** Test and caller path that already decided the roll cap. 0 does not roll. */
     internal fun writer(cacheDir: File, accountId: String, rollBytes: Long): TrafficWriter? {
         val dir = trafficLogDir(cacheDir, accountId) ?: return null

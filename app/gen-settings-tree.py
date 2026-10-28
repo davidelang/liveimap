@@ -16,16 +16,17 @@ UI7 = [
 ]
 TOOLBARS = ["indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar", "toolbarRows"]
 SERVER = [
-    "imapHost", "imapPort", "tlsMode", "clientCert", "clientCertAlias", "certPin", "jmapCertPin",
-    "smtpHost", "smtpPort", "smtpTlsMode", "smtpUsername", "sieveHost", "sievePort", "sieveTlsMode",
-    "sieveCertPin", "sieveConnectSeconds", "sieveReadSeconds",
+    "imapHost", "imapPort", "tlsMode", "clientCertAlias", "certPin", "jmapCertPin",
+    "smtpHost", "smtpPort", "smtpTlsMode", "smtpUsername", "sieveSameAsInbound", "sieveHost",
+    "sieveUsername", "sievePort", "sieveTlsMode", "sieveCertPin", "sieveConnectSeconds", "sieveReadSeconds",
+    "passwordStorage",
 ]
 TOOLBAR_GROUPS = {
     "Toolbars", "Index toolbar", "Selection toolbar", "Folder toolbar", "Reader toolbar", "Compose toolbar",
 }
 JMAP_HIDDEN = {
     "imapPort", "tlsMode", "allowPlaintextAuth", "acceptInvalidCert", "allowOldTls",
-    "authMechanism", "clientCert", "clientCertAlias", "certPin",
+    "authMechanism", "clientCertAlias", "certPin",
 }
 SMTP_HIDDEN = {"smtpHost", "smtpPort", "smtpTlsMode", "smtpUsername", "smtpSameAsImap", "smtpNoAuth"}
 PANE_DISABLED = {"customLayout", "folderPane", "foldPosture", "paneArrangement", "folderPosition"}
@@ -722,6 +723,7 @@ ENUM_CLASS = {
     "smtpTlsMode": "TlsMode",
     "smtpNoAuth": "SmtpNoAuth",
     "sieveTlsMode": "TlsMode",
+    "passwordStorage": "PasswordStorageChoice",
     "threadIndexStyle": "ThreadIndexStyle",
     "inboxStart": "StartRule",
     "folderStart": "StartRule",

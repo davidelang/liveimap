@@ -4,6 +4,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.accounts.AccountStore
 import org.dlang.liveimap.accounts.accountSettingsStoredKeys
+import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.editors.openingAccount
 import org.dlang.liveimap.settings.globalSettingsStoredKeys
 import org.dlang.liveimap.settings.readGlobalSettings
@@ -21,8 +22,8 @@ class SettingsScopeLabTest {
         val store = AccountStore.shared(context)
         val created = ArrayList<String>()
         try {
-            val first = store.addAccount()
-            val second = store.addAccount()
+            val first = createLabAccount(context, AccountSettings(), "")
+            val second = createLabAccount(context, AccountSettings(), "")
             created += first
             created += second
             store.selectAccount(first)

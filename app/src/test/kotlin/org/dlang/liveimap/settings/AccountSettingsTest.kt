@@ -35,11 +35,11 @@ import org.junit.Test
 class AccountSettingsTest {
     @Test
     fun clientCertChoicesRoundTrip() {
-        val p12 = AccountSettings(clientCert = "/data/x/client-certs/a b.p12")
-        assertEquals(p12, decodeAccountSettings(p12.encode()))
+        val decoded = decodeAccountSettings("clientCert=/x.p12\n")
+        assertEquals(listOf("clientCert=/x.p12"), decoded.unknownSettings)
         val chain = AccountSettings(clientCertAlias = "LiveIMAP lab client")
         assertEquals(chain, decodeAccountSettings(chain.encode()))
-        assertEquals("", decodeAccountSettings(chain.encode()).clientCert)
+        assertEquals("LiveIMAP lab client", decodeAccountSettings(chain.encode()).clientCertAlias)
     }
 
     @Test
@@ -196,23 +196,28 @@ class AccountSettingsTest {
     }
 
     @Test
-    fun sieveEndpointRoundTrip() {
+    fun sieveHostRoundTrip() {
         val defaults = AccountSettings().encode()
         assertTrue(defaults.contains("sieveHost="))
         assertTrue(defaults.contains("sievePort="))
-        val blank = AccountSettings(imapHost = "imap.example.com", sieveHost = "  ")
-        assertEquals("imap.example.com" to 4190, sieveEndpoint(blank))
+        assertTrue(defaults.contains("sieveSameAsInbound="))
         val set = AccountSettings(
             imapHost = "imap.example.com",
             sieveHost = "sieve.example.com",
             sievePort = 4191,
+            sieveSameAsInbound = false,
+            sieveUsername = "sieve-user",
         )
         val text = set.encode()
         assertTrue(text.contains("sieveHost=sieve.example.com"))
         assertTrue(text.contains("sievePort=4191"))
         val decoded = decodeAccountSettings(text)
         assertEquals(set, decoded)
-        assertEquals("sieve.example.com" to 4191, sieveEndpoint(decoded))
+        val login = sieveTarget(decoded, "inbound", "sieve-secret")
+        assertEquals("sieve.example.com", login.host)
+        assertEquals(4191, login.port)
+        assertEquals("sieve-user", login.username)
+        assertEquals("sieve-secret", login.password)
         assertEquals(text, decoded.encode())
         assertEquals(4190, decodeAccountSettings(defaults.trimEnd() + "\nsievePort=0\n").sievePort)
         assertEquals(4190, decodeAccountSettings(defaults.trimEnd() + "\nsievePort=65536\n").sievePort)

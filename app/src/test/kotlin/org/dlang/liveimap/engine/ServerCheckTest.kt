@@ -80,7 +80,6 @@ class ServerCheckTest {
     @Test
     fun externalWithClientCert() {
         val probe = ServerProbe(post = "IMAP4rev1 LOGINDISABLED AUTH=EXTERNAL")
-        assertEquals(emptyList<String>(), checkServer(base.copy(clientCert = "cert.p12"), probe).conflicts)
         assertEquals(emptyList<String>(), checkServer(base.copy(clientCertAlias = "alias"), probe).conflicts)
     }
 
