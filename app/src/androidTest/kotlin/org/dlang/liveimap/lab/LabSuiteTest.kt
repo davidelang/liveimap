@@ -73,6 +73,7 @@ class LabSuiteTest {
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
         lateinit var session: LibetpanMailSession
+        var sessionLive = false
         var plaintextConfirms = 0
         var failed = 0
         // labSteps (lab.py --steps): run only these, plus open/select which the others need.
@@ -125,6 +126,7 @@ class LabSuiteTest {
             labId,
         )
         session = LibetpanMailSession(ctx, labId)
+        sessionLive = true
         session.setCertConfirmer { false }
         session.setPlaintextConfirmer {
             plaintextConfirms++
@@ -718,7 +720,7 @@ class LabSuiteTest {
                 assertTrue("exists $exists", exists >= 0)
             }
         } finally {
-            if (::session.isInitialized) session.close()
+            if (sessionLive) session.close()
             TrafficRecorder.stop()
             LabTestHooks.clear()
             if (recorded != null) store.selectAccount(recorded)

@@ -51,6 +51,7 @@ class LabSafetyTest {
         val steps = StringBuilder("step\tresult\tdetail\n")
         LabTestHooks.setLabHost(host)
         lateinit var session: LibetpanMailSession
+        var sessionLive = false
         var failed = 0
         suspend fun step(name: String, body: suspend () -> String) {
             TrafficRecorder.event("main", "step", name)
@@ -73,6 +74,7 @@ class LabSafetyTest {
             labId,
         )
         session = LibetpanMailSession(ctx, labId)
+        sessionLive = true
         session.setCertConfirmer { false }
         session.setPlaintextConfirmer { true }
         try {
@@ -128,7 +130,7 @@ class LabSafetyTest {
             step("unselect") { session.unselect(); "" }
             step("leaveFolder") { session.expungeOnLeave(box); "" }
         } finally {
-            if (::session.isInitialized) session.close()
+            if (sessionLive) session.close()
             TrafficRecorder.stop()
             LabTestHooks.clear()
             if (labId.isNotEmpty()) deleteLabAccount(ctx, labId)
