@@ -100,16 +100,21 @@ class TrafficFilesTest {
     }
 
     @Test
-    fun fullChannelWritesOneDropNote() {
+    fun twoThreadsLeaveTwoIntactRecords() {
         val root = dir()
         val w = writer(root)
-        repeat(20_000) { w.record("app", '>', byteArrayOf(1)) }
+        val a = "aaaa".toByteArray()
+        val b = "bbbb".toByteArray()
+        val first = Thread { w.record("app", '>', a) }
+        val second = Thread { w.record("app", '<', b) }
+        first.start()
+        second.start()
+        first.join()
+        second.join()
         w.sync()
-        val notes = TrafficLog.recordsIn(File(File(root, "traffic"), "acct-1"))
-            .filter { it.dir == '!' && String(it.bytes).startsWith("dropped ") }
-        assertEquals(1, notes.size)
-        val n = String(notes[0].bytes).removePrefix("dropped ").toInt()
-        assertTrue(n > 0)
+        val records = TrafficLog.recordsIn(File(File(root, "traffic"), "acct-1"))
+        assertEquals(2, records.size)
+        assertEquals(listOf("aaaa", "bbbb"), records.map { String(it.bytes) }.sorted())
     }
 
     @Test

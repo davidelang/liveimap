@@ -3872,3 +3872,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Each session takes its account id and sets connect, read, idle, wake, result-uid, and traffic limits on the owner thread before the first command.
 - IMAP and SMTP traffic is written in C at the libetpan logger hooks; JMAP and Sieve traffic is written in Kotlin. Only the three private kinds become `<private N bytes>`.
 - Plan: sandbox/plans/session-traffic-20261028-0709-plan.md
+
+## 2026-10-28 - Kotlin traffic record is an append
+
+- Approved plan: sandbox/plans/kotlin-traffic-write-20261028-0923-plan.md
+- record and the lab event append on the caller and return when the append has finished. No channel, writer thread, or held descriptor. The record format, roll cap, and sweep stay.

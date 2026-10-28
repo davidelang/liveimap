@@ -2,8 +2,6 @@ package org.dlang.liveimap.engine
 
 import java.io.File
 import java.util.Base64
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.runBlocking
 
 /**
  * Lab recording. [start] notes the time. [stop] merges this run's events with traffic
@@ -27,9 +25,7 @@ class TrafficRecorder(
     )
 
     private val started = System.currentTimeMillis()
-    private val events = Channel<String>(Channel.UNLIMITED)
     private val lines = ArrayList<Pair<Long, String>>()
-    private val thread: Thread
 
     init {
         file.parentFile?.mkdirs()
@@ -40,27 +36,16 @@ class TrafficRecorder(
                 "\"port\":${h.port},\"tls\":${jq(h.tls)}},\"protocol\":${jq(h.protocol)}," +
                 "\"started\":$started,\"suite\":${jq(h.suite)}}\n",
         )
-        thread = Thread({
-            runBlocking {
-                for (line in events) {
-                    val t = line.substringAfter("\"t\":").substringBefore(',').toLongOrNull() ?: started
-                    synchronized(lines) { lines.add(t to line) }
-                }
-            }
-        }, "traffic-recorder").apply { isDaemon = true; start() }
     }
 
     /** Connection events: connect, tls, starttls, close, error, or a native note. */
     fun event(conn: String, kind: String, detail: String = "") {
         val t = System.currentTimeMillis()
-        events.trySend(
-            "{\"t\":$t,\"conn\":${jq(conn)},\"dir\":\"E\",\"event\":${jq(kind)},\"line\":${jq(detail)}}",
-        )
+        val line = "{\"t\":$t,\"conn\":${jq(conn)},\"dir\":\"E\",\"event\":${jq(kind)},\"line\":${jq(detail)}}"
+        synchronized(lines) { lines.add(t to line) }
     }
 
     fun finish() {
-        events.close()
-        thread.join()
         val merged = ArrayList<Pair<Long, String>>()
         synchronized(lines) { merged.addAll(lines) }
         val dir = trafficDir

@@ -12,12 +12,8 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
@@ -30,7 +26,7 @@ import org.dlang.liveimap.settings.encode
 interface TrafficWriter {
     fun record(conn: String, dir: Char, bytes: ByteArray)
     fun note(conn: String, text: String)
-    /** Waits until records queued so far are on disk. */
+    /** Returns after records issued so far are on disk. It does not queue. */
     fun sync()
 }
 
@@ -242,69 +238,26 @@ internal fun trafficIdOk(id: String): Boolean {
     return true
 }
 
-private class TrafficOut(val stream: FileOutputStream, val osFd: Boolean)
-
-private fun openExclusive(path: File): TrafficOut? {
-    return try {
-        // O_WRONLY: an open with no access mode is O_RDONLY, and the later write fails.
-        val flags = android.system.OsConstants.O_WRONLY or android.system.OsConstants.O_CREAT or
-            android.system.OsConstants.O_EXCL or android.system.OsConstants.O_APPEND or
-            android.system.OsConstants.O_CLOEXEC
-        val fd = android.system.Os.open(path.absolutePath, flags, 384)
-        // FileOutputStream(fd) does not own the descriptor, so close must Os.close it.
-        TrafficOut(FileOutputStream(fd), osFd = true)
-    } catch (error: Throwable) {
-        if (error.javaClass.name == "android.system.ErrnoException") return null
-        if (path.exists()) return null
-        try {
-            TrafficOut(FileOutputStream(path, true), osFd = false)
-        } catch (_: Exception) {
-            null
-        }
-    }
-}
-
 private class AccountTrafficWriter(
     private val dir: File,
     rollBytes: Long,
 ) : TrafficWriter {
     private val rollLimit = AtomicLong(rollBytes)
+    private val gate = Any()
+    private var current: File? = null
 
     fun rollTo(n: Long) {
         rollLimit.set(n)
     }
-    private sealed class Item {
-        class Rec(val conn: String, val dir: Char, val bytes: ByteArray) : Item()
-        class Sync(val latch: CountDownLatch) : Item()
-    }
-
-    private val channel = Channel<Item>(64)
-    private val drops = AtomicInteger()
-    private var open: TrafficOut? = null
-    private var openPath: File? = null
-    private var openBytes = 0L
-
-    init {
-        Thread({
-            runBlocking {
-                for (item in channel) {
-                    try {
-                        val n = drops.getAndSet(0)
-                        if (n > 0) writeRecord("app", '!', "dropped $n".toByteArray(Charsets.US_ASCII))
-                        when (item) {
-                            is Item.Rec -> writeRecord(item.conn, item.dir, item.bytes)
-                            is Item.Sync -> item.latch.countDown()
-                        }
-                    } catch (_: Exception) {
-                        if (item is Item.Sync) item.latch.countDown()
-                    }
-                }
-            }
-        }, "traffic-" + dir.name).apply { isDaemon = true; start() }
-    }
 
     override fun record(conn: String, dir: Char, bytes: ByteArray) {
-        if (!channel.trySend(Item.Rec(conn, dir, bytes)).isSuccess) drops.incrementAndGet()
+        val payload = recordBytes(System.currentTimeMillis(), conn, dir, bytes)
+        synchronized(gate) {
+            try {
+                append(payload)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     override fun note(conn: String, text: String) {
@@ -314,69 +267,30 @@ private class AccountTrafficWriter(
     }
 
     override fun sync() {
-        val latch = CountDownLatch(1)
-        runBlocking { channel.send(Item.Sync(latch)) }
-        latch.await()
+        synchronized(gate) { }
     }
 
-    private fun writeRecord(conn: String, dirCh: Char, bytes: ByteArray) {
-        var file = ensure()
-        if (file == null) return
-        if (!stillLinked(file)) {
-            closeOpen()
-            file = ensure() ?: return
-        }
-        val t = System.currentTimeMillis()
-        val payload = recordBytes(t, conn, dirCh, bytes)
-        file.stream.write(payload)
-        openBytes += payload.size
+    private fun append(payload: ByteArray) {
+        val file = fileFor(payload.size) ?: return
+        file.appendBytes(payload)
+    }
+
+    /** A file that would pass the cap is not appended to. This record starts the next file. */
+    private fun fileFor(add: Int): File? {
         val cap = rollLimit.get()
-        if (cap > 0 && openBytes > cap) closeOpen()
-    }
-
-    private fun ensure(): TrafficOut? {
-        val current = open
-        if (current != null) return current
+        val existing = current
+        if (existing != null && existing.isFile && (cap <= 0L || existing.length() + add <= cap)) {
+            return existing
+        }
         repeat(8) {
             val name = System.currentTimeMillis().toString() + "-app-" +
                 TrafficLogSerial.next().toString().padStart(6, '0') + ".log"
             val path = File(dir, name)
-            val opened = openExclusive(path) ?: return@repeat
-            open = opened
-            openPath = path
-            openBytes = 0
-            return opened
+            if (path.exists()) return@repeat
+            current = path
+            return path
         }
         return null
-    }
-
-    private fun stillLinked(file: TrafficOut): Boolean {
-        val path = openPath
-        return try {
-            val stat = android.system.Os.fstat(file.stream.fd)
-            stat.st_nlink.toLong() != 0L
-        } catch (_: Throwable) {
-            path != null && path.exists()
-        }
-    }
-
-    private fun closeOpen() {
-        val current = open
-        open = null
-        openPath = null
-        openBytes = 0
-        if (current == null) return
-        val fd = if (current.osFd) current.stream.fd else null
-        try {
-            current.stream.close()
-        } catch (_: Exception) {
-        }
-        if (fd != null) {
-            try {
-                android.system.Os.close(fd)
-            } catch (_: Throwable) {
-            }
-        }
     }
 }
 
