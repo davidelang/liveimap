@@ -1224,9 +1224,11 @@ class LibetpanMailSession(
         }
         return keeper.read("thread") {
             val h = requireHandle()
-            remember("THREAD $algorithm ${criteria.orEmpty()}") {
-                nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
+            val order = remember("THREAD $algorithm ${criteria.orEmpty()}") {
+                val flat = nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
+                orderOf(flat.uids, flat.depths)
             }
+            ThreadFlat(order.uids, order.depths)
         }
     }
 

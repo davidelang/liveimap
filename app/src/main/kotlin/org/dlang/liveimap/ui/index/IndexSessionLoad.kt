@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.session.FolderAt
+import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
@@ -741,7 +742,7 @@ internal class IndexLoadHost {
     }
 }
 
-suspend fun IndexModel.openIndexLoad(effectScope: CoroutineScope, host: IndexLoadHost) {
+internal suspend fun IndexModel.openIndexLoad(effectScope: CoroutineScope, host: IndexLoadHost) {
     if (!host.openIndexWindow()) return
     host.runAdvancedSearch()
     host.watchIndexMailbox(effectScope)

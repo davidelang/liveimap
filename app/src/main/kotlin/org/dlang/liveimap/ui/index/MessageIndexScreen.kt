@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1154,11 +1155,10 @@ private fun MessageIndexLoaded(
     }
 
     sync.block = {
-        if (model.refuseExpunge) {
+        if (model.consumeRefuseExpunge()) {
             confirmExpunge = false
             pendingExpungeUids = null
             expandedThreads = emptySet()
-            model.refuseExpunge = false
         }
         rows = model.rows
         fetchNotice = model.notice
@@ -2284,6 +2284,37 @@ private fun MessageIndexLoaded(
             }
             }
             }
+            val progress = searchProgress
+            if (progress != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = progress,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = { cancelSearch.value = true }) {
+                            Text(stringResource(R.string.index_search_cancel))
+                        }
+                    }
+                }
+            }
+            if (newMailUnnumbered || pendingNew > 0) {
+                NewMailPill(
+                    count = pendingNew,
+                    unnumbered = newMailUnnumbered,
+                    newestFirst = view.newestFirst,
+                    onClick = { onNewMailPill() },
+                )
+            }
     }
     }
 
@@ -2638,7 +2669,7 @@ private fun MessageIndexLoaded(
                     )
 
     @Composable
-    fun IndexBulkBar() {
+    fun RowScope.IndexBulkBar() {
                         DebugStatusIcon(debugStatus)
                         val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
                         val seenText = stringResource(
@@ -2932,7 +2963,7 @@ private fun MessageIndexLoaded(
     }
 
     @Composable
-    fun IndexFolderBar() {
+    fun RowScope.IndexFolderBar() {
                         DebugStatusIcon(debugStatus)
                         val barLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.indexBar()
 
@@ -3561,37 +3592,6 @@ private fun MessageIndexLoaded(
                 TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
             }
             IndexMessageList()
-            val progress = searchProgress
-            if (progress != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = progress,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        TextButton(onClick = { cancelSearch.value = true }) {
-                            Text(stringResource(R.string.index_search_cancel))
-                        }
-                    }
-                }
-            }
-            if (newMailUnnumbered || pendingNew > 0) {
-                NewMailPill(
-                    count = pendingNew,
-                    unnumbered = newMailUnnumbered,
-                    newestFirst = view.newestFirst,
-                    onClick = { onNewMailPill() },
-                )
-            }
         }
         }
         IndexUndoSnackbar()

@@ -1105,6 +1105,21 @@ private fun ComposeLoaded(
         sourceUids = seed.uids,
     )
 
+    suspend fun storeAcceptedFlags(uids: List<Long>) {
+        if (seed.uidValidity == 0L) return
+        val flags = smtpAcceptFlags(seed.kind)
+        val box = seed.mailbox
+        if (flags.isEmpty() || box == null || uids.isEmpty()) return
+        try {
+            inBox(box) { s -> s.storeFlags(uids, flags, emptySet()) }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (failure: MailFailure) {
+            // F116: sent, but say the source was not marked (instead of swallowing it)
+            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
+        }
+    }
+
     suspend fun storeUnsentRetryFlags(copy: DeviceCopy) {
         val flags = unsentRetryFlags(copy)
         if (flags.isEmpty()) {
@@ -1118,21 +1133,6 @@ private fun ComposeLoaded(
         } catch (error: CancellationException) {
             throw error
         } catch (failure: MailFailure) {
-            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
-        }
-    }
-
-    suspend fun storeAcceptedFlags(uids: List<Long>) {
-        if (seed.uidValidity == 0L) return
-        val flags = smtpAcceptFlags(seed.kind)
-        val box = seed.mailbox
-        if (flags.isEmpty() || box == null || uids.isEmpty()) return
-        try {
-            inBox(box) { s -> s.storeFlags(uids, flags, emptySet()) }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (failure: MailFailure) {
-            // F116: sent, but say the source was not marked (instead of swallowing it)
             notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
         }
     }

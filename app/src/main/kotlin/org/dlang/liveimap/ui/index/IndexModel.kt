@@ -1133,6 +1133,13 @@ class IndexModel(
     var refuseExpunge: Boolean = false
         private set
 
+    /** The screen drops an open expunge offer once, after a UIDVALIDITY change. */
+    fun consumeRefuseExpunge(): Boolean {
+        if (!refuseExpunge) return false
+        refuseExpunge = false
+        return true
+    }
+
     fun clearMailUndo() {
         mailUndo = null
     }
