@@ -13,6 +13,7 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -192,9 +193,19 @@ object TrafficLog {
         context.startActivity(chooser)
     }
 
+    private val actors = ConcurrentHashMap<String, AccountTrafficWriter>()
+
     private fun openWriter(dir: File, rollBytes: Long): TrafficWriter {
         dir.mkdirs()
-        return AccountTrafficWriter(dir, rollBytes)
+        val writer = actors.compute(dir.absolutePath) { _, current ->
+            if (current != null) {
+                current.rollTo(rollBytes)
+                current
+            } else {
+                AccountTrafficWriter(dir, rollBytes)
+            }
+        }
+        return writer ?: error("traffic actor")
     }
 }
 
@@ -255,8 +266,13 @@ private fun openExclusive(path: File): TrafficOut? {
 
 private class AccountTrafficWriter(
     private val dir: File,
-    private val rollBytes: Long,
+    rollBytes: Long,
 ) : TrafficWriter {
+    private val rollLimit = AtomicLong(rollBytes)
+
+    fun rollTo(n: Long) {
+        rollLimit.set(n)
+    }
     private sealed class Item {
         class Rec(val conn: String, val dir: Char, val bytes: ByteArray) : Item()
         class Sync(val latch: CountDownLatch) : Item()
@@ -314,7 +330,8 @@ private class AccountTrafficWriter(
         val payload = recordBytes(t, conn, dirCh, bytes)
         file.stream.write(payload)
         openBytes += payload.size
-        if (rollBytes > 0 && openBytes > rollBytes) closeOpen()
+        val cap = rollLimit.get()
+        if (cap > 0 && openBytes > cap) closeOpen()
     }
 
     private fun ensure(): TrafficOut? {

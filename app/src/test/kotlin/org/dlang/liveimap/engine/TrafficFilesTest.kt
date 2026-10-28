@@ -14,6 +14,14 @@ class TrafficFilesTest {
     }
 
     @Test
+    fun oneActorPerAccount() {
+        val root = dir()
+        val first = writer(root)
+        val second = writer(root, 99)
+        assertTrue(first === second)
+    }
+
+    @Test
     fun twoRecordsMatchHeaderAndBytes() {
         val root = dir()
         val w = writer(root)
