@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -985,6 +986,26 @@ class PinercImportTest {
         val smtp = submitText.lines().first { it.startsWith("smtp-server=") }
         assertTrue(smtp.contains("/tls/submit"))
         assertFalse(smtp.contains("/user="))
+    }
+
+    @Test
+    fun plainLeafRoundTripsWithoutAKeyBranch() {
+        if (settingsRegistry.isEmpty()) installSettingsTree(settingsTreeText())
+        val leaf = settingsRegistry.values.map { it.leaf }.first { candidate ->
+            candidate.pinercFormat == "text" &&
+                candidate.pinerc != "user-id" &&
+                (candidate.default as? JsonValue.Str)?.value.orEmpty().isNotEmpty()
+        }
+        val key = leaf.pinerc ?: error("plain leaf")
+        val source = listOf(
+            File("src/main/kotlin/org/dlang/liveimap/settings/PinercImport.kt"),
+            File("app/src/main/kotlin/org/dlang/liveimap/settings/PinercImport.kt"),
+        ).first { it.isFile }.readText()
+        assertFalse(source.contains(key))
+        val changed = AccountSettings().withSetting(leaf.setting, SettingValue("||"))
+        val text = encodePinerc(changed)
+        assertTrue(text.contains("$key="))
+        assertEquals("||", pinercPreview(text, AccountSettings(), testPinercPhrases()).next.getSetting(leaf.setting))
     }
 }
 

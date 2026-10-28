@@ -3861,3 +3861,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Account, pinerc and other editor rows open the settings routes. With no account the account section only adds an account.
 - The account constructor, field names, encode lines and decode table are generated from the JSON ids.
+
+## 2026-10-28 - Pinerc import and export follow the settings tree
+
+- Approved plan: sandbox/plans/pinerc-tree-20261028-0418-plan.md
+- Work: walk the tree's pinerc leaves for plain keys in preview and encodePinerc; composite server, folder, role, and feature values stay named functions

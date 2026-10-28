@@ -97,23 +97,32 @@ private class PinercRun(
     var offerAutoExpunge = false
 
     fun run(): PinercPreview {
-        for (step in listOf(
-            ::applyInbox,
-            ::applySmtp,
-            ::applyIdentity,
-            ::applyPersonal,
-            ::applyAlt,
-            ::applySent,
-            ::applyPostponed,
-            ::applyBooks,
-            ::applyIncoming,
-            ::applyHistory,
-            ::applySort,
-            ::applyStartup,
-            ::applyFeatures,
-            ::applyPlain,
-            ::countOmitted,
-        )) step()
+        applyInbox()
+        applySmtp()
+        applyIdentity()
+        val done = HashSet<String>()
+        for (leaf in pinercLeaves()) {
+            when (leaf.pinercFormat) {
+                "remote", "novalidate", "smtp", "email" -> Unit
+                "text" -> if (leaf.pinerc != "user-id") applyText(leaf)
+                "list" -> applyList(leaf)
+                "signature" -> applySignature(leaf)
+                "leadin" -> applyLeadin(leaf)
+                "headers" -> applyHeaders(leaf)
+                "int" -> applyInt(leaf)
+                "mailbox" -> applyMailbox(leaf)
+                "sort" -> applySort(leaf)
+                "threadStyle" -> applyThreadStyle(leaf)
+                "startup" -> applyStartup(leaf)
+                "saveRule" -> applySaveRule(leaf)
+                "folder" -> applyFolder(leaf)
+                "books", "booksExtra" -> if (done.add("books")) applyBooks()
+                "incoming" -> applyIncoming()
+                "roles" -> applyRoles(leaf)
+                "feature" -> if (done.add("feature")) applyFeatures()
+            }
+        }
+        countOmitted()
         return finish()
     }
 
@@ -197,41 +206,89 @@ private class PinercRun(
         }
     }
 
-    private fun applyPersonal() {
-        val personal = entries["personal-name"]?.decoded
-        if (personal != null) next = next.copy(displayName = personal)
+    private fun applyText(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val decoded = entries[key]?.decoded ?: return
+        val defaultText = (leaf.default as? JsonValue.Str)?.value.orEmpty()
+        if (decoded.isEmpty() && defaultText.isNotEmpty()) return
+        next = next.withSetting(leaf.setting, SettingValue(decoded))
     }
 
-    private fun applyAlt() {
-        val alt = entries["alt-addresses"]
-        if (alt != null && alt.raw.isNotEmpty()) {
-            val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
-            next = next.copy(altAddresses = specs)
+    private fun applyList(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val alt = entries[key] ?: return
+        if (alt.raw.isEmpty()) return
+        val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
+        next = next.withSetting(leaf.setting, SettingValue(encodeAltAddresses(specs)))
+    }
+
+    private fun applySignature(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val decoded = entries[key]?.decoded ?: return
+        next = next.withSetting(leaf.setting, SettingValue(pineEscapes(decoded)))
+    }
+
+    private fun applyLeadin(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val decoded = entries[key]?.decoded ?: return
+        if (decoded.isEmpty()) return
+        next = next.withSetting(leaf.setting, SettingValue(pineLeadIn(decoded)))
+    }
+
+    private fun applyHeaders(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val direct = entries[key]
+        val raw = when {
+            direct != null && direct.raw.isNotEmpty() -> direct.raw
+            key == "customized-hdrs" && direct == null -> entries["default-composer-hdrs"]?.raw.orEmpty()
+            else -> ""
+        }
+        if (raw.isEmpty()) return
+        next = next.withSetting(leaf.setting, SettingValue(headerList(splitList(raw))))
+    }
+
+    private fun applyInt(leaf: TreeLeaf) {
+        if (leaf.setting == "addressBookHistory") {
+            applyHistory(leaf)
+            return
+        }
+        val key = leaf.pinerc ?: return
+        val raw = entries[key]?.decoded ?: return
+        val number = raw.trim().toIntOrNull() ?: return
+        val lo = (leaf.min ?: Int.MIN_VALUE.toLong()).toInt()
+        val hi = (leaf.max ?: Int.MAX_VALUE.toLong()).toInt()
+        next = next.withSetting(leaf.setting, SettingValue(number.coerceIn(lo, hi).toString()))
+    }
+
+    private fun applyMailbox(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val decoded = entries[key]?.decoded ?: return
+        if (decoded.isNotEmpty()) next = next.withSetting(leaf.setting, SettingValue(decoded))
+    }
+
+    private fun applyFolder(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val decoded = entries[key]?.decoded ?: return
+        when (val folder = classifyFolder(decoded, allowPlain = true, comparisonHost, collectionRaw)) {
+            FolderKind.Local -> skipped.add(phrases.local)
+            is FolderKind.Mailbox -> next = next.withSetting(leaf.setting, SettingValue(folder.name))
+            is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
+            FolderKind.Empty -> Unit
         }
     }
 
-    private fun applySent() {
-        val sent = entries["default-fcc"]
-        if (sent?.decoded != null) {
-            when (val folder = classifyFolder(sent.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
-                FolderKind.Local -> skipped.add(phrases.local)
-                is FolderKind.Mailbox -> next = next.copy(sentMailbox = folder.name)
-                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-                FolderKind.Empty -> Unit
-            }
-        }
+    private fun applyThreadStyle(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val raw = entries[key]?.decoded ?: return
+        val style = parsePinercThreadStyle(raw) ?: return
+        next = next.withSetting(leaf.setting, SettingValue(style.name))
     }
 
-    private fun applyPostponed() {
-        val postponed = entries["postponed-folder"]
-        if (postponed?.decoded != null) {
-            when (val folder = classifyFolder(postponed.decoded, allowPlain = true, comparisonHost, collectionRaw)) {
-                FolderKind.Local -> skipped.add(phrases.local)
-                is FolderKind.Mailbox -> next = next.copy(postponedMailbox = folder.name)
-                is FolderKind.OtherHost -> skipped.add(phrases.otherHost.format(folder.host))
-                FolderKind.Empty -> Unit
-            }
-        }
+    private fun applySaveRule(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val raw = entries[key]?.decoded ?: return
+        val rule = parsePinercSaveRule(raw) ?: return
+        next = next.withSetting(leaf.setting, SettingValue(rule.name))
     }
 
     private fun applyBooks() {
@@ -293,40 +350,33 @@ private class PinercRun(
         }
     }
 
-    private fun applyHistory() {
-        val history = entries["remote-abook-history"]
-        if (history != null) {
-            val raw = history.decoded?.trim().orEmpty()
-            val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
-            if (number == null) skipped.add(phrases.history)
-            else next = next.copy(addressBookHistory = number)
-        }
+    private fun applyHistory(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        if (key !in entries) return
+        val raw = entries[key]?.decoded?.trim().orEmpty()
+        val number = if (raw.isNotEmpty() && raw.all { it.isDigit() }) raw.toIntOrNull() else null
+        if (number == null) skipped.add(phrases.history)
+        else next = next.withSetting(leaf.setting, SettingValue(number.toString()))
     }
 
-    private fun applySort() {
-        val sort = entries["sort-key"]?.decoded
-        if (sort != null) {
-            val view = parseSort(sort)
-            if (view == null) {
-                skipped.add(phrases.sort)
-            } else {
-                next = next.copy(defaultView = view)
-            }
-        }
+    private fun applySort(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val sort = entries[key]?.decoded ?: return
+        val view = parseSort(sort)
+        if (view == null) skipped.add(phrases.sort)
+        else next = next.withSetting(leaf.setting, SettingValue(encodeView(view)))
     }
 
-    private fun applyStartup() {
+    private fun applyStartup(leaf: TreeLeaf) {
         appliedAlpineDefault = false
-        if ("incoming-startup-rule" in entries) {
-            val raw = entries["incoming-startup-rule"]?.decoded?.trim().orEmpty()
+        val key = leaf.pinerc ?: return
+        if (key in entries) {
+            val raw = entries[key]?.decoded?.trim().orEmpty()
             val mapped = parseStartupRule(raw)
-            if (mapped == null) {
-                skipped.add(phrases.rule)
-            } else {
-                next = next.copy(inboxStart = mapped)
-            }
+            if (mapped == null) skipped.add(phrases.rule)
+            else next = next.withSetting(leaf.setting, SettingValue(mapped.name))
         } else if (current.pinercStartDefault == PinercStartDefault.AlpineDefault) {
-            next = next.copy(inboxStart = StartRule.FirstUnseen)
+            next = next.withSetting(leaf.setting, SettingValue(StartRule.FirstUnseen.name))
             appliedAlpineDefault = true
         }
     }
@@ -362,52 +412,25 @@ private class PinercRun(
         }
     }
 
-    private fun applyPlain() {
-        entries["literal-signature"]?.decoded?.let { next = next.copy(signature = pineEscapes(it)) }
-        entries["reply-indent-string"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(quotePrefix = it) }
-        entries["reply-leadin"]?.decoded?.let { if (it.isNotEmpty()) next = next.copy(replyLeadIn = pineLeadIn(it)) }
-        entries["customized-hdrs"]?.let { v ->
-            if (v.raw.isNotEmpty()) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
-        }
-        entries["default-composer-hdrs"]?.let { v ->
-            if (v.raw.isNotEmpty() && entries["customized-hdrs"] == null) next = next.copy(composerHeaders = headerList(splitList(v.raw)))
-        }
-        entries["viewer-hdrs"]?.let { v ->
-            if (v.raw.isNotEmpty()) next = next.copy(viewerHeaders = headerList(splitList(v.raw)))
-        }
-        entries["patterns-roles"]?.let { v ->
-            if (v.raw.isNotEmpty()) {
-                val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
-                for (item in splitOutsideQuotes(v.raw)) {
-                    if (item.isBlank()) continue
-                    val rule = pineRole(item)
-                    when {
-                        rule == null -> skipped.add(phrases.roleSkipped.format(item.take(40)))
-                        // F106: an empty pattern matches every compose, so it would silently set From/Reply-To/Fcc
-                        rule.conditions.isEmpty -> skipped.add(phrases.roleNoConditions.format(rule.name))
-                        else -> imported.add(rule)
-                    }
-                }
-                if (imported.isNotEmpty()) {
-                    val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
-                    val merged = existing + imported.filter { r -> existing.none { it.name == r.name } }
-                    next = next.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(merged))
-                }
+    private fun applyRoles(leaf: TreeLeaf) {
+        val key = leaf.pinerc ?: return
+        val v = entries[key] ?: return
+        if (v.raw.isEmpty()) return
+        val imported = ArrayList<org.dlang.liveimap.ui.compose.SendingRule>()
+        for (item in splitOutsideQuotes(v.raw)) {
+            if (item.isBlank()) continue
+            val rule = pineRole(item)
+            when {
+                rule == null -> skipped.add(phrases.roleSkipped.format(item.take(40)))
+                // F106: an empty pattern matches every compose, so it would silently set From/Reply-To/Fcc
+                rule.conditions.isEmpty -> skipped.add(phrases.roleNoConditions.format(rule.name))
+                else -> imported.add(rule)
             }
         }
-
-        entries["default-saved-msg-folder"]?.decoded?.let { decoded ->
-            if (decoded.isNotEmpty()) next = next.copy(savedMailbox = decoded)
-        }
-        entries["saved-msg-name-rule"]?.decoded?.let { raw ->
-            parsePinercSaveRule(raw)?.let { next = next.copy(saveNameRule = it) }
-        }
-        entries["threading-index-style"]?.decoded?.let { raw ->
-            parsePinercThreadStyle(raw)?.let { next = next.copy(threadIndexStyle = it) }
-        }
-        entries["composer-wrap-column"]?.decoded?.let { raw ->
-            val column = raw.trim().toIntOrNull()
-            if (column != null) next = next.copy(composerWrapColumn = column.coerceIn(0, 998))
+        if (imported.isNotEmpty()) {
+            val existing = org.dlang.liveimap.ui.compose.decodeRules(next.sendingRules)
+            val merged = existing + imported.filter { r -> existing.none { it.name == r.name } }
+            next = next.copy(sendingRules = org.dlang.liveimap.ui.compose.encodeRules(merged))
         }
     }
 
@@ -429,7 +452,7 @@ private class PinercRun(
                         omitted += 1
                     }
                 }
-                else -> if (name !in appliedNames) omitted += 1
+                else -> if (name !in appliedPinercNames()) omitted += 1
             }
         }
     }
@@ -504,17 +527,65 @@ fun encodePinerc(settings: AccountSettings): String {
         if (value.isEmpty()) return
         lines.add("$name=$value")
     }
+    val done = HashSet<String>()
+    for (leaf in pinercLeaves()) writePinercLeaf(settings, leaf, lines, done, ::add)
+    return lines.joinToString("\n") + "\n"
+}
 
+private fun writePinercLeaf(
+    settings: AccountSettings,
+    leaf: TreeLeaf,
+    lines: ArrayList<String>,
+    done: HashSet<String>,
+    add: (String, String) -> Unit,
+) {
+    val key = leaf.pinerc ?: return
+    when (leaf.pinercFormat) {
+        "email" -> if (done.add("identity")) writePinercIdentity(settings, add)
+        "text" -> if (key == "user-id") {
+            if (done.add("identity")) writePinercIdentity(settings, add)
+        } else if (done.add(key)) {
+            add(key, pinercQuoted(settings.getSetting(leaf.setting)))
+        }
+        "list" -> if (done.add(key)) {
+            val items = decodeAltAddresses(settings.getSetting(leaf.setting))
+            add(key, items.joinToString(", ") { pinercQuoted(it) })
+        }
+        "remote", "novalidate" -> if (done.add("inbox-path")) add("inbox-path", pinercQuoted(pinercInbox(settings)))
+        "smtp" -> if (done.add("smtp-server")) add("smtp-server", pinercQuoted(pinercSmtp(settings)))
+        "folder", "mailbox" -> if (done.add(key)) add(key, pinercQuoted(settings.getSetting(leaf.setting)))
+        "books", "booksExtra" -> if (done.add("books")) writePinercBooks(settings, add)
+        "incoming" -> if (done.add(key)) add(key, pinercIncoming(settings))
+        "signature" -> if (done.add(key)) add(key, pinercQuoted(pineEscape(settings.getSetting(leaf.setting))))
+        "leadin" -> if (done.add(key)) add(key, pinercQuoted(settings.getSetting(leaf.setting)))
+        "headers" -> if (done.add(key)) add(key, settings.getSetting(leaf.setting))
+        "roles" -> if (done.add(key)) {
+            add(key, pinercRoles(org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)))
+        }
+        "sort" -> if (done.add(key)) lines.add("$key=${pinercSort(parseView(settings.getSetting(leaf.setting)))}")
+        "startup" -> if (done.add(key)) {
+            val startup = pinercStartup(StartRule.valueOf(settings.getSetting(leaf.setting)))
+            if (startup != null) lines.add("$key=$startup")
+        }
+        "saveRule" -> if (done.add(key)) {
+            lines.add("$key=${pinercSaveRule(SaveNameRule.valueOf(settings.getSetting(leaf.setting)))}")
+        }
+        "threadStyle" -> if (done.add(key)) {
+            lines.add("$key=${pinercThreadStyle(ThreadIndexStyle.valueOf(settings.getSetting(leaf.setting)))}")
+        }
+        "int" -> if (done.add(key)) writePinercInt(settings, leaf, key, lines, add)
+        "feature" -> if (done.add("feature-list")) lines.add("feature-list=${pinercFeatures(settings)}")
+    }
+}
+
+private fun writePinercIdentity(settings: AccountSettings, add: (String, String) -> Unit) {
     val userId = if ('@' in settings.email) settings.email.substringBefore('@') else settings.username
     val domain = if ('@' in settings.email) settings.email.substringAfter('@') else ""
     add("user-id", pinercQuoted(userId))
     add("user-domain", pinercQuoted(domain))
-    add("personal-name", pinercQuoted(settings.displayName))
-    add("inbox-path", pinercQuoted(pinercInbox(settings)))
-    add("smtp-server", pinercQuoted(pinercSmtp(settings)))
-    add("alt-addresses", settings.altAddresses.joinToString(", ") { pinercQuoted(it) })
-    add("default-fcc", pinercQuoted(settings.sentMailbox))
-    add("postponed-folder", pinercQuoted(settings.postponedMailbox))
+}
+
+private fun writePinercBooks(settings: AccountSettings, add: (String, String) -> Unit) {
     if (settings.addressBookMailbox.isNotEmpty()) {
         val books = listOf(settings.addressBookMailbox) + settings.extraAddressBooks.filter { it != settings.addressBookMailbox }
         add("address-book", books.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
@@ -522,25 +593,38 @@ fun encodePinerc(settings: AccountSettings): String {
     if (settings.globalAddressBooks.isNotEmpty()) {
         add("global-address-book", settings.globalAddressBooks.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
     }
-    add("incoming-folders", pinercIncoming(settings))
-    if (!settings.addressBookNeverTrim) {
-        add("remote-abook-history", settings.addressBookHistory.toString())
+}
+
+private fun writePinercInt(
+    settings: AccountSettings,
+    leaf: TreeLeaf,
+    key: String,
+    lines: ArrayList<String>,
+    add: (String, String) -> Unit,
+) {
+    if (leaf.setting == "addressBookHistory") {
+        if (!settings.addressBookNeverTrim) add(key, settings.getSetting(leaf.setting))
+        return
     }
-    lines.add("sort-key=${pinercSort(settings.defaultView)}")
-    val startup = pinercStartup(settings.inboxStart)
-    if (startup != null) lines.add("incoming-startup-rule=$startup")
-    add("default-saved-msg-folder", pinercQuoted(settings.savedMailbox))
-    add("literal-signature", pinercQuoted(pineEscape(settings.signature)))
-    add("reply-indent-string", pinercQuoted(settings.quotePrefix))
-    add("reply-leadin", pinercQuoted(settings.replyLeadIn))
-    add("customized-hdrs", settings.composerHeaders)
-    add("viewer-hdrs", settings.viewerHeaders)
-    add("patterns-roles", pinercRoles(org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)))
-    lines.add("saved-msg-name-rule=${pinercSaveRule(settings.saveNameRule)}")
-    lines.add("threading-index-style=${pinercThreadStyle(settings.threadIndexStyle)}")
-    lines.add("composer-wrap-column=${settings.composerWrapColumn}")
-    lines.add("feature-list=${pinercFeatures(settings)}")
-    return lines.joinToString("\n") + "\n"
+    lines.add("$key=${settings.getSetting(leaf.setting)}")
+}
+
+private fun pinercLeaves(): List<TreeLeaf> {
+    if (settingsRegistry.isEmpty()) {
+        val file = listOf(
+            java.io.File("src/main/assets/settings-tree.json"),
+            java.io.File("app/src/main/assets/settings-tree.json"),
+        ).firstOrNull { it.isFile }
+        if (file != null) installSettingsTree(file.readText())
+    }
+    return settingsRegistry.values.map { it.leaf }.filter { it.pinerc != null }
+}
+
+private fun appliedPinercNames(): Set<String> {
+    val names = HashSet<String>()
+    for (leaf in pinercLeaves()) leaf.pinerc?.let { names.add(it) }
+    names.add("default-composer-hdrs")
+    return names
 }
 
 suspend fun pinercMailboxListed(session: MailSession, name: String): Boolean {
@@ -688,34 +772,7 @@ internal fun newLeafMailboxes(
     return names
 }
 
-private val appliedNames = setOf(
-    "inbox-path",
-    "smtp-server",
-    "user-id",
-    "user-domain",
-    "personal-name",
-    "alt-addresses",
-    "default-fcc",
-    "postponed-folder",
-    "address-book",
-    "global-address-book",
-    "incoming-folders",
-    "remote-abook-history",
-    "sort-key",
-    "feature-list",
-    "incoming-startup-rule",
-    "literal-signature",
-    "reply-indent-string",
-    "reply-leadin",
-    "customized-hdrs",
-    "default-composer-hdrs",
-    "viewer-hdrs",
-    "patterns-roles",
-    "default-saved-msg-folder",
-    "saved-msg-name-rule",
-    "threading-index-style",
-    "composer-wrap-column",
-)
+
 
 /** Pine's literal-signature escapes: \n newline, \t tab, \\ backslash. */
 internal fun pineEscapes(text: String): String = buildString {
