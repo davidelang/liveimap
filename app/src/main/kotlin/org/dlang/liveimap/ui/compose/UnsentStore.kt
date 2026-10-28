@@ -3,6 +3,7 @@ package org.dlang.liveimap.ui.compose
 import android.content.Context
 import android.util.Log
 import java.io.File
+import org.dlang.liveimap.session.ComposeKind
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -23,6 +24,11 @@ internal class DeviceCopy(
     val subject: String? = null,
     /** The meta threw. The unsent row shows this text and is not dropped. */
     val error: String? = null,
+    /** Reply/forward seed so an Unsent retry sets the same flags as the original send. */
+    val sourceKind: String = "",
+    val sourceMailbox: String = "",
+    val sourceEpoch: Long = 0L,
+    val sourceUids: List<Long> = emptyList(),
 )
 
 /** F50: native prefix on an SMTP failure that happened after the message was handed to the server. */
@@ -31,12 +37,42 @@ internal const val SmtpUncertainPrefix = "smtp-uncertain: "
 /** Meta line after the mailbox. Absent on old copies, so a recipient line is not read as a subject. */
 private const val SubjectMeta = "subject:"
 
+/** Kind, folder, UIDVALIDITY, and UIDs of the message a reply or forward answered. */
+private const val SourceMeta = "source:"
+
 /** F150: the same copy, sent with no Sent copy (the user chose "send without copy" on retry). */
 internal fun DeviceCopy.withoutSentCopy() =
-    DeviceCopy(id, appendOnly, "", recipients, file, modifiedMillis, via, uncertain, subject, error)
+    DeviceCopy(
+        id, appendOnly, "", recipients, file, modifiedMillis, via, uncertain, subject, error,
+        sourceKind, sourceMailbox, sourceEpoch, sourceUids,
+    )
 
 internal fun DeviceCopy.copyWith(appendOnly: Boolean = this.appendOnly, uncertain: Boolean = this.uncertain) =
-    DeviceCopy(id, appendOnly, mailbox, recipients, file, modifiedMillis, via, uncertain, subject, error)
+    DeviceCopy(
+        id, appendOnly, mailbox, recipients, file, modifiedMillis, via, uncertain, subject, error,
+        sourceKind, sourceMailbox, sourceEpoch, sourceUids,
+    )
+
+internal fun DeviceCopy.withMessage(
+    file: File = this.file,
+    appendOnly: Boolean = this.appendOnly,
+    mailbox: String = this.mailbox,
+    uncertain: Boolean = this.uncertain,
+) = DeviceCopy(
+    id, appendOnly, mailbox, recipients, file, modifiedMillis, via, uncertain, subject, error,
+    sourceKind, sourceMailbox, sourceEpoch, sourceUids,
+)
+
+/** Flags a retry should store on the source messages. Empty when the copy has no reply seed. */
+internal fun unsentRetryFlags(copy: DeviceCopy): Set<String> {
+    if (copy.sourceEpoch == 0L || copy.sourceMailbox.isEmpty() || copy.sourceUids.isEmpty()) return emptySet()
+    val kind = try {
+        ComposeKind.valueOf(copy.sourceKind)
+    } catch (_: IllegalArgumentException) {
+        return emptySet()
+    }
+    return smtpAcceptFlags(kind)
+}
 
 internal fun smtpUncertain(text: String): Boolean = text.startsWith(SmtpUncertainPrefix)
 
@@ -174,17 +210,37 @@ private fun copiesIn(dir: File): List<DeviceCopy> {
             } else {
                 null
             }
-            val recipients = if (subject != null) lines.drop(3) else lines.drop(2)
+            val body = if (subject != null) lines.drop(3) else lines.drop(2)
+            var sourceKind = ""
+            var sourceMailbox = ""
+            var sourceEpoch = 0L
+            var sourceUids = emptyList<Long>()
+            val recipients = ArrayList<String>()
+            for (line in body) {
+                if (line.startsWith(SourceMeta)) {
+                    val parts = line.removePrefix(SourceMeta).split('\t')
+                    sourceKind = parts.getOrElse(0) { "" }
+                    sourceMailbox = parts.getOrElse(1) { "" }
+                    sourceEpoch = parts.getOrElse(2) { "0" }.toLongOrNull() ?: 0L
+                    sourceUids = parts.getOrElse(3) { "" }.split(',').mapNotNull { it.toLongOrNull() }
+                    continue
+                }
+                if (line.isNotEmpty()) recipients.add(line)
+            }
             DeviceCopy(
                 id = id,
                 appendOnly = lines[0].substringBefore(' ') == "append-only",
                 uncertain = lines[0].substringBefore(' ') == "uncertain",
                 via = lines[0].substringAfter(" via=", "").trim(),
                 mailbox = lines[1],
-                recipients = recipients.filter { it.isNotEmpty() },
+                recipients = recipients,
                 file = message,
                 modifiedMillis = meta.lastModified(),
                 subject = subject,
+                sourceKind = sourceKind,
+                sourceMailbox = sourceMailbox,
+                sourceEpoch = sourceEpoch,
+                sourceUids = sourceUids,
             )
         } catch (error: CancellationException) {
             throw error
@@ -275,6 +331,17 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boo
             appendLine(copy.mailbox.replace("\n", "").replace("\r", ""))
             append(SubjectMeta)
             appendLine(subject)
+            if (copy.sourceKind.isNotEmpty()) {
+                append(SourceMeta)
+                append(copy.sourceKind.replace("\n", "").replace("\r", "").replace("\t", ""))
+                append('\t')
+                append(copy.sourceMailbox.replace("\n", "").replace("\r", "").replace("\t", ""))
+                append('\t')
+                append(copy.sourceEpoch)
+                append('\t')
+                append(copy.sourceUids.joinToString(","))
+                append('\n')
+            }
             for (recipient in copy.recipients) {
                 appendLine(recipient.replace("\n", "").replace("\r", ""))
             }

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "資料夾工具列"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "閱讀器工具列"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "撰寫工具列"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "無法顯示此版面配置：%1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "編輯版面配置"},
 {"key": "pane_resize", "source": "Resize pane", "text": "調整窗格大小"},
 {"key": "pane_wider", "source": "Wider", "text": "更寬"},
 {"key": "pane_narrower", "source": "Narrower", "text": "更窄"},

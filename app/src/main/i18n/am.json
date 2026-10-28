@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "የአቃፊ የመሳሪያ አሞሌ"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "የአንባቢ መሣሪያ አሞሌ"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "የመሳሪያ አሞሌ ጻፍ"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ይህን አቀማመጥ ማሳየት አይቻልም፦ %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "አቀማመጥን አርትዕ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "መቃን ቀይር"},
 {"key": "pane_wider", "source": "Wider", "text": "ሰፊ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ይበልጥ ጠባብ"},

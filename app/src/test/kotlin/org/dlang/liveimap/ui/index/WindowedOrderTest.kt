@@ -58,12 +58,18 @@ class WindowedOrderTest {
 
     @Test
     fun selectAllWindowUsesKnownUids() {
-        val order = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> emptyList() }
-        order.seed(0, listOf(5L, 6L, 7L, 8L))
+        val windowed = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> emptyList() }
+        windowed.seed(0, listOf(5L, 6L, 7L, 8L))
         val started = System.nanoTime()
+        val known = windowed.known().toLongArray()
+        val order = org.dlang.liveimap.session.MessageOrder(
+            known, ShortArray(0), "", "", 0L,
+            LongArray(0), LongArray(0), ByteArray(0), IntArray(0), IntArray(0),
+        )
         val target = selectAllTarget(true, order)
         val uids = (target as SelectAllTarget.Uids).uids
-        assertEquals(listOf(5L, 6L, 7L, 8L), uids)
+        assertTrue(uids === known)
+        assertEquals(listOf(5L, 6L, 7L, 8L), uids.asList())
         assertEquals(false, 0L in uids)
         assertTrue(System.nanoTime() - started < 1_000_000_000L)
         assertEquals(SelectAllTarget.EntireMailbox, selectAllTarget(false, order))

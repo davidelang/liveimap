@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Toolbar ng folder"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Toolbar ng mambabasa"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Gumawa ng toolbar"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Hindi maipakita ang layout na ito: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "I-edit ang layout"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Baguhin ang laki ng pane"},
 {"key": "pane_wider", "source": "Wider", "text": "Mas malawak"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Mas makitid"},

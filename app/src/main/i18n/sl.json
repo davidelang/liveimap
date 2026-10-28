@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Orodna vrstica mape"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Orodna vrstica Reader"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Orodna vrstica za sestavljanje"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Te postavitve ni mogoče prikazati: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Uredi postavitev"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Spremeni velikost podokna"},
 {"key": "pane_wider", "source": "Wider", "text": "Širše"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Ožje"},

@@ -38,6 +38,9 @@ internal object MimeDecode {
     external fun phrase(value: String, fallback: String = "ISO-8859-1"): Array<String>
 
     @JvmStatic
+    external fun phrases(values: Array<String>, fallback: String): Array<String>
+
+    @JvmStatic
     external fun parameter2231(raw: String, fallback: String): String
 
     @JvmStatic

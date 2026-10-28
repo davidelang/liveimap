@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Панэль інструментаў тэчак"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Панэль інструментаў Reader"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Стварыць панэль інструментаў"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Гэты макет нельга паказаць: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Змяніць макет"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Змяніць памер панэлі"},
 {"key": "pane_wider", "source": "Wider", "text": "Шырэй"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Больш вузкі"},

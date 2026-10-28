@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Bar offer ffolder"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Bar offer darllenydd"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Cyfansoddi bar offer"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Ni ellir dangos y gosodiad hwn: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Golygu'r gosodiad"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Newid maint cwarel"},
 {"key": "pane_wider", "source": "Wider", "text": "Ehangach"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Culach"},

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ෆෝල්ඩර මෙවලම් තීරුව"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "පාඨක මෙවලම් තීරුව"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "මෙවලම් තීරුව රචනා කරන්න"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "මෙම පිරිසැලසුම පෙන්විය නොහැක: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "පිරිසැලසුම සංස්කරණය"},
 {"key": "pane_resize", "source": "Resize pane", "text": "කවුළුව ප්‍රතිප්‍රමාණ කරන්න"},
 {"key": "pane_wider", "source": "Wider", "text": "පුළුල්"},
 {"key": "pane_narrower", "source": "Narrower", "text": "පටුයි"},

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "แถบเครื่องมือโฟลเดอร์"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "แถบเครื่องมือเครื่องอ่าน"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "แถบเครื่องมือเขียน"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ไม่สามารถแสดงเลย์เอาต์นี้: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "แก้ไขเลย์เอาต์"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ปรับขนาดบานหน้าต่าง"},
 {"key": "pane_wider", "source": "Wider", "text": "กว้างขึ้น"},
 {"key": "pane_narrower", "source": "Narrower", "text": "แคบลง"},

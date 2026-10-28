@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Թղթապանակի գործիքագոտին"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Ընթերցողի գործիքագոտին"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Կազմել գործիքագոտին"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Այս դասավորությունը հնարավոր չէ ցուցադրել: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Խմբագրել դասավորությունը"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Չափափոխել պատուհանը"},
 {"key": "pane_wider", "source": "Wider", "text": "Ավելի լայն"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Ավելի նեղ"},

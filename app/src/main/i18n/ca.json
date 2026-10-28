@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Barra d'eines de carpeta"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Barra d'eines del lector"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Barra d'eines de redacció"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Aquesta disposició no es pot mostrar: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Edita la disposició"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Canvia la mida del panell"},
 {"key": "pane_wider", "source": "Wider", "text": "Més ample"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Més estret"},

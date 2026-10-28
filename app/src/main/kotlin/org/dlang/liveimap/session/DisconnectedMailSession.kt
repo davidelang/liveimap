@@ -47,13 +47,13 @@ class DisconnectedMailSession : MailSession {
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String): Unit =
         notConnected()
 
-    override suspend fun searchText(query: String): List<Long> = notConnected()
+    override suspend fun searchText(query: String): LongArray = notConnected()
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = notConnected()
+    override suspend fun searchCriterion(kind: String, argument: String): LongArray = notConnected()
 
     override suspend fun searchCount(kind: String, argument: String): Int = notConnected()
 
-    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MessageRef> =
         notConnected()
 
     override suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
@@ -61,14 +61,14 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun subscribedMailboxes(): List<String> = notConnected()
 
-    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): LongArray =
         notConnected()
 
-    override suspend fun locateUid(uid: Long): List<Long> = notConnected()
+    override suspend fun locateUid(uid: Long): LongArray = notConnected()
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = notConnected()
 
-    override suspend fun thread(key: SortKey): ThreadNode = notConnected()
+    override suspend fun thread(key: SortKey): ThreadFlat = notConnected()
 
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit): Unit =
         notConnected()

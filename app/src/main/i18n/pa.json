@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ਫੋਲਡਰ ਟੂਲਬਾਰ"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "ਰੀਡਰ ਟੂਲਬਾਰ"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ਕੰਪੋਜ਼ ਟੂਲਬਾਰ"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ਇਹ ਲੇਆਉਟ ਨਹੀਂ ਦਿਖਾਇਆ ਜਾ ਸਕਦਾ: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "ਲੇਆਉਟ ਸੋਧੋ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ਪੈਨ ਦਾ ਆਕਾਰ ਬਦਲੋ"},
 {"key": "pane_wider", "source": "Wider", "text": "ਚੌੜਾ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ਸੰਕੁਚਿਤ"},

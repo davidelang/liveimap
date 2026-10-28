@@ -63,7 +63,9 @@ class AttachmentFileProvider : ContentProvider() {
     }
 
     internal companion object {
-        val ATTACHMENT_NAME = Regex("^liveimap-[0-9a-f]{16}-[0-9]+-[A-Za-z0-9._-]+$")
+        val ATTACHMENT_NAME = Regex(
+            "^liveimap-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[0-9a-f]{16}-[0-9]+-[0-9]+-[A-Za-z0-9._-]+$",
+        )
     }
 }
 

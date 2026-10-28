@@ -120,6 +120,7 @@ import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
+import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.setMailCertConfirmer
 import org.dlang.liveimap.session.setMailPlaintextConfirmer
@@ -283,6 +284,8 @@ private fun LiveImapNavHostReady() {
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
     // Custom panel layout (null = Auto); design-decisions.md "Custom panel layout".
     var customTree by remember { mutableStateOf<PaneNode?>(null) }
+    var layoutProblem by remember { mutableStateOf<String?>(null) }
+    var layoutAccountId by remember { mutableStateOf("") }
     val treeDp = remember { mutableStateMapOf<String, Float>() }
     val drawerPaneSlot = remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
     var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
@@ -445,7 +448,23 @@ private fun LiveImapNavHostReady() {
     suspend fun applyRunningLayout() {
         val account = store.load()
         multiPane = account.multiPane
-        customTree = decodePaneLayout(account.customLayout)?.takeIf { paneLayoutProblem(it) == null }
+        val decoded = decodePaneLayout(account.customLayout)
+        val problem = decoded?.let { paneLayoutProblem(it) }
+        customTree = if (problem == null) decoded else null
+        layoutProblem = if (problem == null || decoded == null) {
+            null
+        } else {
+            appContext.getString(
+                R.string.pane_layout_problem,
+                appContext.getString(
+                    when (problem) {
+                        org.dlang.liveimap.settings.PaneLayoutProblem.NoMessageList -> R.string.layout_problem_no_list
+                        org.dlang.liveimap.settings.PaneLayoutProblem.Duplicate -> R.string.layout_problem_duplicate
+                        org.dlang.liveimap.settings.PaneLayoutProblem.MessageNotBesideList -> R.string.layout_problem_message
+                    },
+                ),
+            )
+        }
         treeDp.clear()
         folderPane = account.folderPane
         foldPosture = account.foldPosture
@@ -456,13 +475,15 @@ private fun LiveImapNavHostReady() {
 
     suspend fun applyOpenAccount() {
         val account = store.load()
-        header = if (account.email.isNotBlank()) account.email else account.username
+        val drawers = store.listDrawerAccounts()
+        drawerAccounts = drawers
+        header = drawers.firstOrNull { it.chosen }?.name ?: org.dlang.liveimap.accounts.accountVisibleName(account)
+        layoutAccountId = drawers.firstOrNull { it.chosen }?.id.orEmpty()
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
         textZoom = account.readerTextZoom
         NonAsciiText.active = account.nonAsciiDisplay
         accounts = store.listAccounts()
-        drawerAccounts = store.listDrawerAccounts()
     }
 
     LaunchedEffect(route, drawerState.currentValue) {
@@ -581,6 +602,7 @@ private fun LiveImapNavHostReady() {
                 val useSplit = splitNow.value
                 val useAxis = axisNow.value
                 var paneUid by rememberSaveable { mutableStateOf(-1L) }
+                var paneMailbox by rememberSaveable { mutableStateOf("") }
                 var paneSequence by rememberSaveable { mutableIntStateOf(0) }
                 // F105: the opened row's folder UIDVALIDITY as listed; the reader acts only in that epoch.
                 var paneEpoch by rememberSaveable { mutableStateOf(0L) }
@@ -656,14 +678,15 @@ private fun LiveImapNavHostReady() {
                     entry.savedStateHandle.remove<String>("advancedQuery")
                     entry.savedStateHandle.remove<String>("advancedScope")
                 }
-                fun openMessage(uid: Long, sequence: Int, rowMailbox: String, epoch: Long) {
-                    val target = if (rowMailbox.isEmpty()) mailbox else rowMailbox
+                fun openMessage(ref: MessageRef, sequence: Int) {
+                    val target = ref.mailbox.ifEmpty { mailbox }
                     if (useSplit && target == mailbox) {
-                        paneUid = uid
+                        paneMailbox = target
+                        paneUid = ref.uid
                         paneSequence = sequence
-                        paneEpoch = epoch
+                        paneEpoch = ref.uidValidity
                     } else {
-                        navController.navigate(readerRoute(target, uid, sequence, epoch))
+                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity))
                     }
                 }
                 @Composable
@@ -671,7 +694,7 @@ private fun LiveImapNavHostReady() {
                     key(viewKey) {
                         MessageIndexScreen(
                             mailbox = mailbox,
-                            onOpen = { uid, sequence, rowMailbox, epoch -> openMessage(uid, sequence, rowMailbox, epoch) },
+                            onOpen = { ref, sequence -> openMessage(ref, sequence) },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { failure ->
                                 if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
@@ -729,16 +752,18 @@ private fun LiveImapNavHostReady() {
                         
                     }
                     val readerSide: @Composable () -> Unit = {
-                            key(paneUid) {
+                            key(paneMailbox, paneUid, paneEpoch) {
                                 MessageReaderScreen(
-                                    mailbox = mailbox,
+                                    mailbox = paneMailbox.ifEmpty { mailbox },
                                     uid = paneUid,
                                     sequence = paneSequence,
                                     uidValidity = paneEpoch,
                                     onCompose = { seed -> openCompose(seed) },
-                                    onAdvance = { nextUid, nextSequence ->
-                                        paneUid = nextUid
+                                    onAdvance = { next, nextSequence ->
+                                        paneMailbox = next.mailbox.ifEmpty { paneMailbox.ifEmpty { mailbox } }
+                                        paneUid = next.uid
                                         paneSequence = nextSequence
+                                        paneEpoch = next.uidValidity
                                     },
                                     onBack = { paneUid = -1L },
                                     onFolderViewSaved = { noteFolderView() },
@@ -852,9 +877,14 @@ private fun LiveImapNavHostReady() {
                     sequence = args.getInt("sequence"),
                     uidValidity = args.getLong("epoch"),
                     onCompose = { seed -> openCompose(seed) },
-                    onAdvance = { nextUid, nextSequence ->
+                    onAdvance = { next, nextSequence ->
                         navController.navigate(
-                            readerRoute(mailbox, nextUid, nextSequence, args.getLong("epoch")),
+                            readerRoute(
+                                next.mailbox.ifEmpty { mailbox },
+                                next.uid,
+                                nextSequence,
+                                next.uidValidity,
+                            ),
                         ) {
                             popUpTo(ReaderRoutePattern) { inclusive = true }
                         }
@@ -1462,6 +1492,25 @@ private fun LiveImapNavHostReady() {
     CompositionLocalProvider(LocalScreenAccounts provides screenAccounts) {
     LiveImapScaffold {
         Box(Modifier.fillMaxSize()) {
+        val problem = layoutProblem
+        if (problem != null) {
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(8.dp)
+                    .fillMaxWidth(),
+            ) {
+                Text(problem)
+                TextButton(onClick = {
+                    val id = layoutAccountId
+                    if (id.isNotEmpty()) {
+                        navController.navigate("settings/account/$id/editor/paneLayout")
+                    }
+                }) {
+                    Text(stringResource(R.string.pane_layout_edit))
+                }
+            }
+        }
         val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
         val modalDrawer = mailUsesModalDrawer(
             settingsSplit = false,

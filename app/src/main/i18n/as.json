@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ফোল্ডাৰ সঁজুলিদণ্ডিকা"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "পাঠক সঁজুলিদণ্ডিকা"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "সঁজুলিদণ্ডিকা ৰচনা কৰক"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "এই লেআউট দেখুৱাব নোৱাৰি: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "লেআউট সম্পাদনা কৰক"},
 {"key": "pane_resize", "source": "Resize pane", "text": "পেনৰ আকাৰ সলনি কৰক"},
 {"key": "pane_wider", "source": "Wider", "text": "বহল"},
 {"key": "pane_narrower", "source": "Narrower", "text": "সংকীৰ্ণ"},

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "フォルダーツールバー"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "リーダーツールバー"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "作成ツールバー"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "このレイアウトは表示できません: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "レイアウトを編集"},
 {"key": "pane_resize", "source": "Resize pane", "text": "サイズ変更ペイン"},
 {"key": "pane_wider", "source": "Wider", "text": "より広い"},
 {"key": "pane_narrower", "source": "Narrower", "text": "狭い"},

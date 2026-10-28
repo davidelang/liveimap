@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Pasek narzędzi folderu"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Pasek narzędzi czytnika"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Pasek narzędzi tworzenia"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Nie można wyświetlić tego układu: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Edytuj układ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Zmień rozmiar okienka"},
 {"key": "pane_wider", "source": "Wider", "text": "Szerszy"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Węższy"},

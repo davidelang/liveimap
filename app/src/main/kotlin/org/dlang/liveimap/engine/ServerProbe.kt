@@ -118,7 +118,7 @@ private suspend fun threadLine(session: MailSession, label: String, key: SortKey
     }
 }
 
-private fun countMessages(node: ThreadNode): Int = node.messageCount()
+private fun countMessages(flat: org.dlang.liveimap.session.ThreadFlat): Int = flat.messageCount()
 
 private suspend fun addSearch(session: MailSession, lines: MutableList<String>) {
     val label = if (advertised(session, "ESEARCH")) "ESEARCH" else "UID SEARCH"

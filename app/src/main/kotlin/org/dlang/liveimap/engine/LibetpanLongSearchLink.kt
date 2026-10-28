@@ -52,7 +52,7 @@ class LibetpanLongSearchLink(
         session.prepareLongSearch(timeoutSec)
     }
 
-    override suspend fun search(kind: String, argument: String): List<Long> = session.longSearch(kind, argument)
+    override suspend fun search(kind: String, argument: String): List<Long> = session.longSearch(kind, argument).asList()
 
     override fun progress(): SearchProgress = session.searchProgress()
 

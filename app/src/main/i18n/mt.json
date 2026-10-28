@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Toolbar tal-folder"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Toolbar tal-qarrej"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Ikteb toolbar"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Dan it-tqassim ma jistax jintwera: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Editja t-tqassim"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Id-daqs tal-panew"},
 {"key": "pane_wider", "source": "Wider", "text": "Aktar wiesgħa"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Idjaq"},

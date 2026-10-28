@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "폴더 도구 모음"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "리더 도구 모음"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "작성 도구 모음"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "이 레이아웃을 표시할 수 없습니다: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "레이아웃 편집"},
 {"key": "pane_resize", "source": "Resize pane", "text": "창 크기 조정"},
 {"key": "pane_wider", "source": "Wider", "text": "더 넓어짐"},
 {"key": "pane_narrower", "source": "Narrower", "text": "더 좁게"},

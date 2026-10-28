@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "கோப்புறை கருவிப்பட்டி"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "வாசகர் கருவிப்பட்டி"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "கருவிப்பட்டியை உருவாக்கவும்"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "இந்த தளவமைப்பைக் காட்ட முடியவில்லை: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "தளவமைப்பைத் திருத்து"},
 {"key": "pane_resize", "source": "Resize pane", "text": "பலகத்தின் அளவை மாற்றவும்"},
 {"key": "pane_wider", "source": "Wider", "text": "பரந்த"},
 {"key": "pane_narrower", "source": "Narrower", "text": "குறுகலான"},

@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -157,6 +158,7 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.sameMailbox
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
@@ -429,15 +431,33 @@ private fun relativeUnit(
     return phrase.format(count, unit)
 }
 
-private val customFormatters = mutableMapOf<String, DateTimeFormatter>()
+private class CustomFormatterSlot(val pattern: String, val formatter: DateTimeFormatter)
+
+private val customFormatterSlot = java.util.concurrent.atomic.AtomicReference<CustomFormatterSlot?>(null)
+
+internal fun cachedCustomFormatter(pattern: String): DateTimeFormatter? {
+    if (pattern.isEmpty()) return null
+    val current = customFormatterSlot.get()
+    if (current != null && current.pattern == pattern) return current.formatter
+    val created = try {
+        DateTimeFormatter.ofPattern(pattern)
+    } catch (error: IllegalArgumentException) {
+        return null
+    }
+    customFormatterSlot.set(CustomFormatterSlot(pattern, created))
+    return created
+}
+
+/** One slot: a new pattern replaces the previous formatter. */
+internal fun cachedCustomFormatterCount(): Int = if (customFormatterSlot.get() == null) 0 else 1
+
+@Composable
+private fun rememberIndexFormatter(pattern: String): DateTimeFormatter? =
+    remember(pattern) { cachedCustomFormatter(pattern) }
 
 private fun customIndexDate(whenZoned: ZonedDateTime, pattern: String, badPattern: String): String {
     if (pattern.isEmpty()) return badPattern
-    val formatter = customFormatters[pattern] ?: try {
-        DateTimeFormatter.ofPattern(pattern).also { customFormatters[pattern] = it }
-    } catch (error: IllegalArgumentException) {
-        return badPattern
-    }
+    val formatter = cachedCustomFormatter(pattern) ?: return badPattern
     return try {
         val formatted = formatter.format(whenZoned)
         if (formatted.isEmpty()) badPattern else formatted
@@ -655,17 +675,17 @@ internal class IndexScreenHeld : ViewModel() {
     var boundMailbox: String? = null
     var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<IndexRow>>(emptyList())
-    val selectedState = mutableStateOf<List<Long>>(emptyList())
-    /** F105: multi-selected hits from other folders, by (folder, UID): a bare UID would name this folder's mail. */
-    val selectedHitsState = mutableStateOf<Set<Pair<String, Long>>>(emptySet())
+    val selectedState = mutableStateOf<List<MessageRef>>(emptyList())
+    /** F105: multi-selected hits from other folders. A bare UID would name this folder's mail. */
+    val selectedHitsState = mutableStateOf<Set<MessageRef>>(emptySet())
     val allMailboxState = mutableStateOf(false)
-    var anchorUid: Long? = null
+    var anchorUid: MessageRef? = null
     var anchorOffset: Int = 0
     var windowReady: Boolean = false
     var recordAnchor: Boolean = true
     var headingLeaf: String = ""
     var headingParent: String = ""
-    val expandedThreadsState = mutableStateOf<Set<Long>>(emptySet())
+    val expandedThreadsState = mutableStateOf<Set<MessageRef>>(emptySet())
 
     fun bind(session: MailSession, store: SettingsStore, mailbox: String, accountId: String): IndexModel {
         val current = model
@@ -733,7 +753,7 @@ private fun Context.hostActivity(): Activity? {
 @Composable
 fun MessageIndexScreen(
     mailbox: String,
-    onOpen: (Long, Int, String, Long) -> Unit,
+    onOpen: (MessageRef, Int) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: (String?) -> Unit,
     onCustomize: () -> Unit = {},
@@ -778,7 +798,7 @@ private fun MessageIndexLoaded(
     accountId: String,
     store: SettingsStore,
     mailbox: String,
-    onOpen: (Long, Int, String, Long) -> Unit,
+    onOpen: (MessageRef, Int) -> Unit,
     onCompose: (ComposeSeed) -> Unit,
     onBack: (String?) -> Unit,
     onCustomize: () -> Unit = {},
@@ -823,11 +843,7 @@ private fun MessageIndexLoaded(
     }
     val scope = rememberCoroutineScope()
     // Screen-scope turn for long search. A later search joins the earlier job; this is not the model queue.
-    val longSearchTail = remember {
-        object {
-            var job: Job = Job().also { it.complete() }
-        }
-    }
+    val longSearchTail = remember { LongSearchTail() }
     val modelOps = remember { Channel<suspend () -> Unit>(Channel.UNLIMITED) }
     remember {
         scope.launch {
@@ -923,7 +939,7 @@ private fun MessageIndexLoaded(
     var searchConfirmed by rememberSaveable(mailbox) { mutableStateOf(false) }
     var savingSkip by remember { mutableStateOf(false) }
     var expandedThreads by held.expandedThreadsState
-    model.noteExpanded(expandedThreads)
+    model.noteExpanded(expandedThreads.map { it.uid }.toSet())
     val threadChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
     val fallbackChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
     val sortChoice = remember(mailbox) { Channel<AskAnswer>(Channel.CONFLATED) }
@@ -941,7 +957,7 @@ private fun MessageIndexLoaded(
     var selectionMore by remember { mutableStateOf(false) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var confirmMarkAllRead by remember { mutableStateOf(false) }
-    var pendingExpungeUids by remember { mutableStateOf<List<Long>?>(null) }
+    var pendingExpungeUids by remember { mutableStateOf<List<MessageRef>?>(null) }
     var pendingPermanent by remember { mutableStateOf<PendingDelete?>(null) }
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var folderInfo by remember { mutableStateOf<SelectResult?>(null) }
@@ -952,7 +968,7 @@ private fun MessageIndexLoaded(
     var undoOffer by remember { mutableStateOf<MailUndo?>(null) }
     var undoToken by remember { mutableIntStateOf(0) }
     var snackMode by remember { mutableStateOf("retry") }
-    var flagUid by remember { mutableStateOf<Long?>(null) }
+    var flagUid by remember { mutableStateOf<MessageRef?>(null) }
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     val anchorState = rememberUpdatedState(anchorPage)
     val watchMailboxNow = rememberUpdatedState(watchMailbox)
@@ -1038,9 +1054,19 @@ private fun MessageIndexLoaded(
         undoToken += 1
     }
 
+    fun homeRef(uid: Long) = MessageRef(accountId, mailbox, model.listedEpoch(mailbox), uid)
+
+    fun hitRef(box: String, uid: Long) = MessageRef(accountId, box.ifEmpty { mailbox }, model.listedEpoch(box.ifEmpty { mailbox }), uid)
+
+    fun rowRef(row: IndexRow): MessageRef {
+        val box = row.mailbox.ifEmpty { mailbox }
+        val epoch = if (row.ref.uidValidity != 0L) row.ref.uidValidity else model.listedEpoch(box)
+        return MessageRef(row.ref.accountId.ifEmpty { accountId }, box, epoch, row.uid)
+    }
+
     fun applySelectionFlags(add: Set<String>, remove: Set<String>) {
-        val uids = selected.toList()
-        val hits = selectedHits.toList()
+        val uids = selected.map { it.uid }
+        val hits = selectedHits.map { it.mailbox to it.uid }
         val entire = allMailbox
         selectionMore = false
         enqueueModel {
@@ -1063,7 +1089,7 @@ private fun MessageIndexLoaded(
         for (row in model.rows) {
             if (seen == target) break
             lazyIndex += 1
-            if (row.uid in expandedThreads) {
+            if (expandedThreads.any { it.uid == row.uid }) {
                 for (uid in model.threadHidden[row.uid].orEmpty()) {
                     if (model.threadMembers.containsKey(uid)) lazyIndex += 1
                 }
@@ -1112,7 +1138,7 @@ private fun MessageIndexLoaded(
     fun runExpunge(offer: MailUndo) {
         if (offer.uids.isEmpty()) return
         if (account.askBeforeExpunge) {
-            pendingExpungeUids = offer.uids
+            pendingExpungeUids = offer.source
             confirmExpunge = true
             return
         }
@@ -1128,6 +1154,12 @@ private fun MessageIndexLoaded(
     }
 
     sync.block = {
+        if (model.refuseExpunge) {
+            confirmExpunge = false
+            pendingExpungeUids = null
+            expandedThreads = emptySet()
+            model.refuseExpunge = false
+        }
         rows = model.rows
         fetchNotice = model.notice
         if (connected) {
@@ -1168,7 +1200,7 @@ private fun MessageIndexLoaded(
         when (
             val plan = selectAllSplit(
                 mailbox,
-                model.order,
+                model.selectionOrder(),
                 model.orderMailboxes,
                 filterActive || model.searchActive,
                 model.order is WindowedOrder,
@@ -1176,13 +1208,13 @@ private fun MessageIndexLoaded(
         ) {
             is SelectAllPlan.Folders -> {
                 allMailbox = false
-                selected = plan.homeUids
-                selectedHits = plan.foreign.toSet()
+                selected = plan.homeUids.asList().map { homeRef(it) }
+                selectedHits = plan.foreign.map { (box, uid) -> hitRef(box, uid) }.toSet()
                 multiSelect = true
             }
             is SelectAllPlan.Uids -> {
                 allMailbox = false
-                selected = plan.uids
+                selected = plan.uids.asList().map { homeRef(it) }
                 multiSelect = true
             }
             SelectAllPlan.EntireMailbox -> {
@@ -1199,8 +1231,7 @@ private fun MessageIndexLoaded(
                     mailboxExists = exists
                     folderExists = exists
                     selected = emptyList()
-        selectedHits = emptySet()
-                selectedHits = emptySet()
+                    selectedHits = emptySet()
                     multiSelect = true
                 }
             }
@@ -1265,7 +1296,7 @@ private fun MessageIndexLoaded(
         model.clearMailUndo()
         when (val command = model.performSwipe(uid, binding, rowMailbox, also)) {
             is IndexCommand.Compose -> onCompose(command.seed)
-            is IndexCommand.ShowFlags -> flagUid = command.uid
+            is IndexCommand.ShowFlags -> flagUid = homeRef(command.uid)
             IndexCommand.None -> Unit
         }
         pull()
@@ -1294,29 +1325,29 @@ private fun MessageIndexLoaded(
     }
 
     fun seedExpandedFromStyle() {
-        val next: Set<Long> = if (model.account.threadIndexStyle == ThreadIndexStyle.Collapsed) {
+        val next: Set<MessageRef> = if (model.account.threadIndexStyle == ThreadIndexStyle.Collapsed) {
             emptySet()
         } else {
-            LinkedHashSet(model.order)
+            LinkedHashSet(model.order.map { homeRef(it) })
         }
         expandedThreads = next
-        model.noteExpanded(next)
+        model.noteExpanded(next.map { it.uid }.toSet())
         model.publishMessageOrder()
     }
 
-    fun toggleThread(rootUid: Long) {
+    fun toggleThread(root: MessageRef) {
         enqueueModel {
 
             val current = expandedThreads
-            val opening = rootUid !in current
-            if (opening && !model.cacheThreadMembers(rootUid)) {
+            val opening = root !in current
+            if (opening && !model.cacheThreadMembers(root.uid)) {
                 pull()
                 return@enqueueModel
             }
             val next = LinkedHashSet(current)
-            if (opening) next.add(rootUid) else next.remove(rootUid)
+            if (opening) next.add(root) else next.remove(root)
             expandedThreads = next
-            model.noteExpanded(next)
+            model.noteExpanded(next.map { it.uid }.toSet())
             model.publishMessageOrder()
             pull()
         
@@ -1651,530 +1682,81 @@ private fun MessageIndexLoaded(
     }
 
     LaunchedEffect(session, mailbox, loadToken) {
-        val opening = !held.windowReady
-        val reuse = held.windowReady && held.boundMailbox == mailbox && loadToken == 0
-        var pendingThread: FolderView? = null
-        var pendingFallback: FolderView? = null
-        var pendingSort: FolderView? = null
-        var pendingExists = 0
-        val watchNow = if (reuse) {
-            held.recordAnchor = false
-            connected = true
-            loading = false
-            pull()
-            heading = MailboxTitle(held.headingLeaf, held.headingParent)
-            val uid = held.anchorUid
-            if (uid != null) {
-                val entries = buildIndexEntries(
-                    model.rows,
-                    expandedThreads,
-                    model.threadMembers,
-                    model.threadHidden,
-                    model.threadDepth,
-                )
-                val index = entries.indexOfFirst { entry ->
-                    entry is IndexEntry.Message && entry.row.uid == uid
-                }
-                if (index >= 0) listState.scrollToItem(index, held.anchorOffset)
-            }
-            held.recordAnchor = true
-            true
-        } else run {
-            heading = MailboxTitle(mailbox, "")
-            loading = true
-            banner = null
-            val settings = try {
-                store.load()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                banner = error.message ?: notConnected
-                return@run false
-            }
-            try {
-                store.password()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                banner = error.message ?: notConnected
-                return@run false
-            }
-            val opened = try {
-                session.open(settings)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: MailFailure) {
-                banner = error.text
-                return@run false
-            }
-            when (opened) {
-                is OpenResult.Rejected -> {
-                    banner = opened.capabilities
-                    return@run false
-                }
-                is OpenResult.Failed -> {
-                    banner = opened.text
-                    return@run false
-                }
-                OpenResult.Connected -> Unit
-            }
-            heading = mailboxTitleFor(session, mailbox)
-            held.headingLeaf = heading.leaf
-            held.headingParent = heading.parent
-            val savedView = settings.folderViews[mailbox] ?: settings.defaultView
-            val clientSort = slowerClientSort(settings)
-            val clientThread = slowerClientThread(settings)
-            val savedAdvertised = sortKeyAdvertised(session.featureCaps, savedView.key, clientSort, clientThread)
-            if (!savedAdvertised) {
-                onModelQueue { model.loadUnadvertisedArrival(savedView.newestFirst) }
-            }
-            val clientFallback = savedAdvertised && usesClientFallback(
-                session.featureCaps,
-                savedView.key,
-                clientSort,
-                clientThread,
-            )
-            if (clientFallback) {
-                val selected = try {
-                    session.folderInfo(FolderAt(mailbox))
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    banner = error.text
-                    return@run false
-                }
-                pendingExists = selected.exists
-                if (
-                    mailbox !in settings.fallbackAskSkip &&
-                    !model.allowLargeClientFallback &&
-                    overAskThreshold(selected.exists, settings.askFallback)
-                ) {
-                    pendingFallback = savedView
-                    return@run false
-                }
-            }
-            val threading = savedAdvertised && !clientFallback && (savedView.key == SortKey.ThreadReferences ||
-                savedView.key == SortKey.ThreadOrderedSubject)
-            if (threading) {
-                val selected = try {
-                    session.folderInfo(FolderAt(mailbox))
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    banner = error.text
-                    return@run false
-                }
-                pendingExists = selected.exists
-                if (
-                    mailbox !in settings.threadAskSkip &&
-                    !threadConfirmed &&
-                    overAskThreshold(selected.exists, settings.askThread)
-                ) {
-                    pendingThread = savedView
-                    return@run false
-                }
-            }
-            val serverSort = savedAdvertised && !clientFallback && !threading &&
-                savedView.key != SortKey.Arrival
-            if (serverSort) {
-                val selected = try {
-                    session.folderInfo(FolderAt(mailbox))
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    banner = error.text
-                    return@run false
-                }
-                pendingExists = selected.exists
-                if (
-                    mailbox !in settings.sortAskSkip &&
-                    !sortConfirmed &&
-                    overAskThreshold(selected.exists, settings.askSort)
-                ) {
-                    pendingSort = savedView
-                    return@run false
-                }
-            }
-            onModelQueue {
-                model.loadWindow()
-                if (opening) seedExpandedFromStyle()
-                if (pendingExists <= 0) {
-                    pendingExists = try {
-                        model.shownExists() // F123
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: MailFailure) {
-                        0
-                    }
-                }
-                held.windowReady = true
-                connected = true
-                pull()
-            }
-            true
-        }
-        if (pendingExists > 0) folderExists = pendingExists
-        val fallback = pendingFallback
-        if (fallback != null) {
-            fallbackExists = pendingExists
-            fallbackAskFromConnect = true
-            fallbackAsk = fallback
-            val fallbackAnswer = fallbackChoice.receive()
-
-            onModelQueue {
-                if (fallbackAnswer != AskAnswer.Cancel) {
-                    model.allowLargeClientFallback = true
-                    model.applyView(fallback)
-                } else {
-                    model.allowLargeClientFallback = false
-                    model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                }
-                seedExpandedFromStyle()
-                connected = true
-                pull()
-                held.windowReady = true
-                loading = false
-                if (model.rows.isNotEmpty()) scrollToStart()
-            }
-        } else {
-            val chosen = pendingThread
-            if (chosen != null) {
-                threadExists = pendingExists
-                threadAskFromConnect = true
-                threadAsk = chosen
-                val threadAnswer = threadChoice.receive()
-
-                onModelQueue {
-                    if (threadAnswer != AskAnswer.Cancel) {
-                        model.applyView(chosen)
-                    } else {
-                        model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                    }
-                    seedExpandedFromStyle()
-                    connected = true
-                    pull()
-                    held.windowReady = true
-                    loading = false
-                    if (model.rows.isNotEmpty()) scrollToStart()
-                }
-            } else {
-                val sortPending = pendingSort
-                if (sortPending != null) {
-                    sortExists = pendingExists
-                    sortAskFromConnect = true
-                    sortAsk = sortPending
-                    val sortAnswer = sortChoice.receive()
-
-                    onModelQueue {
-                        if (sortAnswer != AskAnswer.Cancel) {
-                            sortConfirmed = true
-                            model.applyView(sortPending)
-                        } else {
-                            model.applyView(FolderView(SortKey.Arrival, newestFirst = true))
-                        }
-                        seedExpandedFromStyle()
-                        connected = true
-                        pull()
-                        held.windowReady = true
-                        loading = false
-                        if (model.rows.isNotEmpty()) scrollToStart()
-                    }
-                } else if (!watchNow) {
-                    loading = false
-                    return@LaunchedEffect
-                } else {
-                    loading = false
-                    if (!reuse && model.rows.isNotEmpty()) scrollToStart()
-                }
-            }
-        }
-        val pendingAdvanced = advancedQuery
-        val pendingScope = advancedScope
-        if (!pendingAdvanced.isNullOrEmpty() && held.windowReady) {
-            var runAdvanced = true
-            if (
-                advancedHasBody(pendingAdvanced) &&
-                !searchConfirmed &&
-                mailbox !in model.account.searchAskSkip
-            ) {
-                val exists = try {
-                    var found = 0
-                    onModelQueue { found = model.shownExists() }
-                    found
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    postSnack(error.text)
-                    onAdvancedConsumed()
-                    runAdvanced = false
-                    0
-                }
-                if (runAdvanced && overAskThreshold(exists, model.account.askSearch)) {
-                    searchExists = exists
-                    searchAsk = pendingAdvanced
-                    val searchAnswer = searchChoice.receive()
-                    if (searchAnswer == AskAnswer.Cancel) {
-                        onAdvancedConsumed()
-                        runAdvanced = false
-                    } else {
-                        searchConfirmed = true
-                    }
-                }
-            }
-            if (runAdvanced && model.isLongAdvanced(pendingAdvanced, pendingScope)) {
-                // Long search: runs on its own connection without the list gate, so the list stays usable.
-                val text: String = pendingAdvanced
-                val mailboxAtStart = held.boundMailbox
-                val orderAtStart = model.order
-                val orderMailboxesAtStart = model.orderMailboxes
-                onAdvancedConsumed()
-                // On the screen scope, not this effect: the effect restarts when the query is consumed.
-                // A second long search waits until this one returns and its apply op is queued.
-                val previous = longSearchTail.job
-                val searchJob = scope.launch {
-                    previous.join()
-                    val hits = try {
-                        model.runLongSearch(text)
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        postSnack(error.text)
-                        null
-                    }
-                    if (hits != null) {
-                        enqueueModel {
-                            if (
-                                held.boundMailbox == mailboxAtStart &&
-                                model.order == orderAtStart &&
-                                model.orderMailboxes == orderMailboxesAtStart
-                            ) {
-                                // Same mailbox and UID order this search started from: show the results in place.
-                                noteVisibleTop()
-                                model.applyAdvancedHits(text, hits)
-                                pull()
-                                if (model.rows.isNotEmpty()) scrollToStart()
-                            } else {
-                                // The user moved on: offer the results as their own view.
-                                scope.launch {
-                                    val shown = snackbarHostState.showSnackbar(
-                                        message = appContext.getString(R.string.index_long_search_done, hits.size),
-                                        actionLabel = appContext.getString(R.string.index_long_search_show),
-                                        duration = SnackbarDuration.Long,
-                                    )
-                                    if (shown == SnackbarResult.ActionPerformed) showLongSearchHits(text, hits)
-                                }
-                            }
-                        }
-                    }
-                }
-                longSearchTail.job = searchJob
-                runAdvanced = false
-            }
-            if (runAdvanced) {
-                cancelSearch.value = false
-                try {
-                    onModelQueue {
-                        noteVisibleTop()
-                        model.applyAdvanced(
-                            pendingAdvanced,
-                            pendingScope,
-                            cancelled = { cancelSearch.value },
-                        ) { current, total ->
-                            searchProgress = appContext.getString(
-                                R.string.index_search_folder_progress,
-                                current,
-                                total,
-                            )
-                        }
-                        pull()
-                    }
-                } finally {
-                    searchProgress = null
-                }
-                onAdvancedConsumed()
-                if (model.rows.isNotEmpty()) scrollToStart()
-            }
-        }
-        fun deliverMailboxChange(change: MailboxChange) {
-            when (change) {
-                MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
-                // Called on the native IDLE thread: hop to the screen scope first (F25).
-                MailboxChange.WatchLost -> scope.launch { watchRecovery.onWatchLost(scope, session) }
-                else -> enqueueModel {
-                    when (change) {
-                        is MailboxChange.Exists -> folderExists = change.exists
-                        is MailboxChange.Expunge -> folderExists = change.exists
-                        else -> Unit
-                    }
-                    val anchorOffset = listState.firstVisibleItemScrollOffset
-                    val anchorIndex = listState.firstVisibleItemIndex
-                    val anchorEntries = buildIndexEntries(
-                        model.rows,
-                        expandedThreads,
-                        model.threadMembers,
-                        model.threadHidden,
-                        model.threadDepth,
-                        model.anchorPage,
-                    )
-                    val anchorEntry = anchorEntries.getOrNull(anchorIndex)
-
-                    when (change) {
-                        MailboxChange.ShownFlags -> {
-                            val entries = buildIndexEntries(
-                                model.rows,
-                                expandedThreads,
-                                model.threadMembers,
-                                model.threadHidden,
-                                model.threadDepth,
-                                model.anchorPage,
-                            )
-                            val info = listState.layoutInfo.visibleItemsInfo
-                            val shown = if (info.isEmpty()) {
-                                model.rows.map { it.uid }
-                            } else {
-                                val uids = ArrayList<Long>()
-                                for (item in info) {
-                                    val entry = entries.getOrNull(item.index) ?: continue
-                                    if (entry is IndexEntry.Message) uids.add(entry.row.uid)
-                                }
-                                if (uids.isEmpty()) model.rows.map { it.uid } else uids
-                            }
-                            model.applyShownFlags(shown, folderExists)
-                        }
-                        else -> model.applyChange(change)
-                    }
-                    pull()
-                
-                    if (
-                        anchorEntry is IndexEntry.Message &&
-                        (change is MailboxChange.Exists || change is MailboxChange.Expunge)
-                    ) {
-                        val afterEntries = buildIndexEntries(
-                            model.rows,
-                            expandedThreads,
-                            model.threadMembers,
-                            model.threadHidden,
-                            model.threadDepth,
-                            model.anchorPage,
-                        )
-                        val after = afterEntries.indexOfFirst { entry ->
-                            entry is IndexEntry.Message &&
-                                entry.row.uid == anchorEntry.row.uid &&
-                                entry.row.mailbox == anchorEntry.row.mailbox
-                        }
-                        if (after >= 0 && after != anchorIndex) {
-                            listState.requestScrollToItem(after, anchorOffset)
-                        }
-                    }
-                    if (change is MailboxChange.Exists &&
-                        (model.pendingNew > 0 || model.newMailUnnumbered)
-                    ) {
-                        userMovedSincePill.value = false
-                    }
-                }
-            }
-        }
-        try {
-            snapshotFlow { watchMailboxNow.value }.collect { watching ->
-                indexWatch[0]?.cancel()
-                indexWatch[0]?.join()
-                indexWatch[0] = null
-                if (!watching) {
-                    withContext(NonCancellable) {
-                        try {
-                            model.stopWatch()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: MailFailure) {
-                        }
-                    }
-                    return@collect
-                }
-                indexWatch[0] = launch {
-                    try {
-                        val loaded = try {
-                            store.load()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: Exception) {
-                            null
-                        }
-                        val settings = loaded ?: AccountSettings()
-                        val pollSeconds = idleFallbackSeconds(
-                            slowerPoll(settings),
-                            pollIntervalSeconds(settings),
-                            settings.idleFallbackSeconds,
-                        )
-                        suspend fun pollLoop(fixedSeconds: Int) {
-                            while (true) {
-                                delay(fixedSeconds * 1000L)
-                                onModelQueue {
-                                    try {
-                                        val exists = model.pollShownExists()
-                                        deliverMailboxChange(MailboxChange.Exists(exists))
-                                    } catch (error: CancellationException) {
-                                        throw error
-                                    } catch (error: MailFailure) {
-                                        postSnack(error.text)
-                                    }
-                                }
-                            }
-                        }
-                        if (!session.featureCaps.idle) {
-                            pollLoop(pollSeconds)
-                        } else {
-                            try {
-                                model.watch { change ->
-                                    deliverMailboxChange(change)
-                                }
-                            } catch (error: MailFailure) {
-                                if (!idleDroppedByServer(error.text)) throw error
-                                // The server closed the connection on IDLE (a server bug): say so, then poll instead.
-                                postSnack(appContext.getString(R.string.index_idle_dropped, pollSeconds))
-                                pollLoop(pollSeconds)
-                            }
-                            // Keep-alive NOOP on the main connection while the watch IDLEs.
-                            while (true) {
-                                delay(settings.keepAliveMinutes * 60 * 1000L)
-                                try {
-                                    session.noop()
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (_: MailFailure) {
-                                    // A dead connection is reconnected by the next real command; no snackbar here.
-                                }
-                            }
-                        }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: MailFailure) {
-                        postSnack(error.text)
-                    } finally {
-                        withContext(NonCancellable) {
-                            try {
-                                model.stopWatch()
-                            } catch (error: CancellationException) {
-                                throw error
-                            } catch (_: MailFailure) {
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: MailFailure) {
-            postSnack(error.text)
-        } finally {
-            withContext(NonCancellable) {
-                try {
-                    model.stopWatch()
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: MailFailure) {
-                }
-            }
-        }
+        val loadHost = IndexLoadHost()
+        loadHost.appContext = appContext
+        loadHost.held = held
+        loadHost.listState = listState
+        loadHost.longSearchTail = longSearchTail
+        loadHost.model = model
+        loadHost.scope = scope
+        loadHost.session = session
+        loadHost.snackbarHostState = snackbarHostState
+        loadHost.store = store
+        loadHost.cancelSearch = cancelSearch
+        loadHost.indexWatch = indexWatch
+        loadHost.userMovedSincePill = userMovedSincePill
+        loadHost.watchMailboxNow = watchMailboxNow
+        loadHost.watchRecovery = watchRecovery
+        loadHost.fallbackChoice = fallbackChoice
+        loadHost.searchChoice = searchChoice
+        loadHost.sortChoice = sortChoice
+        loadHost.threadChoice = threadChoice
+        loadHost.mailbox = mailbox
+        loadHost.loadToken = loadToken
+        loadHost.notConnected = notConnected
+        loadHost.advancedQuery = advancedQuery
+        loadHost.advancedScope = advancedScope
+        loadHost.expandedThreadsFn = { expandedThreads }
+        loadHost.readBanner = { banner }
+        loadHost.writeBanner = { value: String? -> banner = value }
+        loadHost.readConnected = { connected }
+        loadHost.writeConnected = { value: Boolean -> connected = value }
+        loadHost.readFallbackAsk = { fallbackAsk }
+        loadHost.writeFallbackAsk = { value: FolderView? -> fallbackAsk = value }
+        loadHost.readFallbackAskFromConnect = { fallbackAskFromConnect }
+        loadHost.writeFallbackAskFromConnect = { value: Boolean -> fallbackAskFromConnect = value }
+        loadHost.readFallbackExists = { fallbackExists }
+        loadHost.writeFallbackExists = { value: Int -> fallbackExists = value }
+        loadHost.readFolderExists = { folderExists }
+        loadHost.writeFolderExists = { value: Int -> folderExists = value }
+        loadHost.readHeading = { heading }
+        loadHost.writeHeading = { value: MailboxTitle -> heading = value }
+        loadHost.readLoading = { loading }
+        loadHost.writeLoading = { value: Boolean -> loading = value }
+        loadHost.readSearchAsk = { searchAsk }
+        loadHost.writeSearchAsk = { value: String? -> searchAsk = value }
+        loadHost.readSearchConfirmed = { searchConfirmed }
+        loadHost.writeSearchConfirmed = { value: Boolean -> searchConfirmed = value }
+        loadHost.readSearchExists = { searchExists }
+        loadHost.writeSearchExists = { value: Int -> searchExists = value }
+        loadHost.readSearchProgress = { searchProgress }
+        loadHost.writeSearchProgress = { value: String? -> searchProgress = value }
+        loadHost.readSortAsk = { sortAsk }
+        loadHost.writeSortAsk = { value: FolderView? -> sortAsk = value }
+        loadHost.readSortAskFromConnect = { sortAskFromConnect }
+        loadHost.writeSortAskFromConnect = { value: Boolean -> sortAskFromConnect = value }
+        loadHost.readSortConfirmed = { sortConfirmed }
+        loadHost.writeSortConfirmed = { value: Boolean -> sortConfirmed = value }
+        loadHost.readSortExists = { sortExists }
+        loadHost.writeSortExists = { value: Int -> sortExists = value }
+        loadHost.readThreadAsk = { threadAsk }
+        loadHost.writeThreadAsk = { value: FolderView? -> threadAsk = value }
+        loadHost.readThreadAskFromConnect = { threadAskFromConnect }
+        loadHost.writeThreadAskFromConnect = { value: Boolean -> threadAskFromConnect = value }
+        loadHost.readThreadConfirmed = { threadConfirmed }
+        loadHost.writeThreadConfirmed = { value: Boolean -> threadConfirmed = value }
+        loadHost.readThreadExists = { threadExists }
+        loadHost.writeThreadExists = { value: Int -> threadExists = value }
+        loadHost.pullFn = { pull() }
+        loadHost.postSnackFn = { text -> postSnack(text) }
+        loadHost.noteVisibleTopFn = { noteVisibleTop() }
+        loadHost.onAdvancedConsumedFn = { onAdvancedConsumed() }
+        loadHost.scrollToStartFn = { scrollToStart() }
+        loadHost.seedExpandedFromStyleFn = { seedExpandedFromStyle() }
+        loadHost.showLongSearchHitsFn = { text, hits -> showLongSearchHits(text, hits) }
+        loadHost.enqueueModelFn = { block -> enqueueModel(block) }
+        loadHost.onModelQueueFn = { block -> onModelQueue(block) }
+        model.openIndexLoad(this, loadHost)
     }
 
     val indexEntries = buildIndexEntries(
@@ -2193,7 +1775,7 @@ private fun MessageIndexLoaded(
             if (!held.recordAnchor) return@collect
             val entry = indexEntryState.value.getOrNull(index) ?: return@collect
             if (entry !is IndexEntry.Message) return@collect
-            held.anchorUid = entry.row.uid
+            held.anchorUid = rowRef(entry.row)
             held.anchorOffset = offset
         }
     }
@@ -2339,910 +1921,9 @@ private fun MessageIndexLoaded(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("smoke-index"),
-        topBar = {
-            val selectionOrder = if (multiSelect) model.order else emptyList()
-            val selectionCount = if (multiSelect) selected.size + selectedHits.size else 0
-            val filterComplete = multiSelect && !allMailbox && filterActive && selectionOrder.isNotEmpty() &&
-                selectionCount == selectionOrder.size && selected.toSet() == selectionOrder.toSet()
-            val titleExists = when {
-                !multiSelect -> 0
-                allMailbox -> mailboxExists
-                filterComplete -> selectionOrder.size
-                else -> 0
-            }
-            val selectionLabel = if (multiSelect) {
-                selectionTitle(allMailbox, if (allMailbox) 0 else selectionCount, titleExists)
-            } else {
-                ""
-            }
-            val loadedSelected = when {
-                !multiSelect -> emptyList()
-                allMailbox -> rows
-                else -> rows.filter { it.uid in selected }
-            }
-            val markUnread = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
-                loadedSelected.all { "\\Seen" in it.flags }
-            val clearFlag = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
-                loadedSelected.all { "\\Flagged" in it.flags }
-            val showUndelete = multiSelect && (
-                allMailbox || rows.any { it.uid in selected && "\\Deleted" in it.flags }
-            )
-            TopAppBar(
-                title = {
-                    if (multiSelect) {
-                        Text(
-                            text = selectionLabel,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    } else {
-                        Column {
-                            MailboxTitleLines(heading.leaf, heading.parent)
-                            val sortLine = stringResource(
-                                R.string.settings_sort_line,
-                                sortShortLabel(view.key),
-                                stringResource(
-                                    if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
-                                ),
-                            )
-                            val criteria = if (filterActive) {
-                                filters.joinToString(", ") { filterChipText(it) }
-                            } else {
-                                ""
-                            }
-                            Text(
-                                text = if (filterActive && criteria.isNotEmpty()) "$sortLine · $criteria" else sortLine,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    if (multiSelect) {
-                        IconButton(onClick = { clearSelection() }) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.index_close),
-                            )
-                        }
-                    } else {
-                        HelpIconButton(
-                            label = stringResource(R.string.index_back),
-                            help = stringResource(R.string.help_index_back),
-                            page = "messages.html#back",
-                            onClick = { leaveIndex() },
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.index_back),
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    val trashKnown = knownTrashName.isNotEmpty()
-                    val uidPlusNow = session.featureCaps.uidPlus
-                    val effectivePolicy = effectiveDeletePolicy(
-                        account.deletePolicy,
-                        trashKnown && sameMailbox(mailbox, knownTrashName),
-                        uidPlusNow,
-                        trashKnown,
-                        trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
-                    )
-                    if (multiSelect) {
-                        DebugStatusIcon(debugStatus)
-                        val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
-                        val seenText = stringResource(
-                            if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
-                        )
-                        val flagText = stringResource(
-                            if (clearFlag) R.string.toolbar_unflag else R.string.toolbar_flag,
-                        )
-                        val moveText = stringResource(R.string.index_move)
-                        val toggleSeen = {
-                            if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
-                            else applySelectionFlags(emptySet(), setOf("\\Seen"))
-                        }
-                        val toggleFlag = {
-                            if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
-                            else applySelectionFlags(emptySet(), setOf("\\Flagged"))
-                        }
-                        val moveSelected = {
-                            val uids = selected.toList()
-                            val hits = selectedHits.toList()
-                            val entire = allMailbox
-                            enqueueModel {
-                                var undo: MailUndo? = null
 
-                                model.clearMailUndo()
-                                model.acrossFolders(uids, hits, entire) { u, e, folder ->
-                                    model.moveMessages(u, barMoveMailbox(account), e, folder)
-                                }
-                                pull()
-                                undo = model.mailUndo
-                            
-                                val pending = undo
-                                if (pending != null) publishUndo(pending)
-                            }
-                            Unit
-                        }
-                        val deleteSelected = {
-                            val uids = selected.toList()
-                            val hits = selectedHits.toList()
-                            val entire = allMailbox
-                            enqueueModel {
-                                val trash = readKnownTrash()
-                                val namedTrash = usableTrashName(account.trashMailbox).isNotEmpty()
-                                val policy = effectiveDeletePolicy(
-                                    account.deletePolicy,
-                                    trash.isNotEmpty() && sameMailbox(mailbox, trash),
-                                    session.featureCaps.uidPlus,
-                                    trash.isNotEmpty(),
-                                    trashNamedByUser = namedTrash,
-                                )
-                                val hitInTrash = namedTrash && trash.isNotEmpty() &&
-                                    hits.any { sameMailbox(it.first, trash) } &&
-                                    session.featureCaps.uidPlus
-                                if ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge) {
-                                    pendingPermanent = PendingDelete(
-                                        uids,
-                                        entire,
-                                        fromSwipe = false,
-                                        hits = hits,
-                                        policy = policy,
-                                        permanentOnlyInTrash = true,
-                                    )
-                                } else {
-                                    applyDeletePolicy(policy, uids, entire, trash, hits)
-                                }
-                            }
-                            Unit
-                        }
-                        val selectionIcons = ArrayList<@Composable () -> Unit>(selectionLayout.toolbar.size)
-                        for (action in selectionLayout.toolbar) {
-                            when (action) {
-                                SelectionBarAction.Seen -> selectionIcons.add {
-                                    IconButton(onClick = { toggleSeen() }) {
-                                        Icon(
-                                            imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
-                                            contentDescription = seenText,
-                                        )
-                                    }
-                                }
-                                SelectionBarAction.Flag -> selectionIcons.add {
-                                    IconButton(onClick = { toggleFlag() }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Flag,
-                                            contentDescription = flagText,
-                                        )
-                                    }
-                                }
-                                SelectionBarAction.Move -> selectionIcons.add {
-                                    IconButton(onClick = { moveSelected() }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.DriveFileMove,
-                                            contentDescription = moveText,
-                                        )
-                                    }
-                                }
-                                SelectionBarAction.Delete -> selectionIcons.add {
-                                    IconButton(onClick = { deleteSelected() }) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Delete,
-                                            contentDescription = deletePolicyLabel(effectivePolicy),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        ToolbarIconRows(
-                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
-                            onRows = { count -> iconRows = count },
-                            icons = selectionIcons,
-                        )
-                        Box {
-                            HelpIconButton(
-                                label = stringResource(R.string.index_more),
-                                help = stringResource(R.string.help_index_more),
-                                page = "messages.html#more",
-                                onClick = { selectionMore = true },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(R.string.index_more),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = selectionMore,
-                                onDismissRequest = { selectionMore = false },
-                            ) {
-                                ObscuredTouchFilter()
-                                val selectAll = stringResource(R.string.index_select_all)
-                                HelpDropdownMenuItem(
-                                    label = selectAll,
-                                    help = stringResource(R.string.help_menu_index_select_all),
-                                    page = "messages.html",
-                                    text = { Text(selectAll) },
-                                    onClick = {
-                                        selectionMore = false
-                                        selectAllMessages()
-                                    },
-                                )
-                                for (policy in alternateDeletePolicies(effectivePolicy, uidPlusNow, trashKnown)) {
-                                    val policyLabel = deletePolicyLabel(policy)
-                                    HelpDropdownMenuItem(
-                                        label = policyLabel,
-                                        help = stringResource(R.string.help_menu_delete_policy),
-                                        page = "messages.html",
-                                        text = { Text(policyLabel) },
-                                        onClick = {
-                                            selectionMore = false
-                                            val uids = selected.toList()
-                                            val hits = selectedHits.toList()
-                                            val entire = allMailbox
-                                            enqueueModel {
-                                                val trash = readKnownTrash()
-                                                if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                                                    pendingPermanent = PendingDelete(
-                                                        uids,
-                                                        entire,
-                                                        fromSwipe = false,
-                                                        hits = hits,
-                                                        policy = policy,
-                                                    )
-                                                } else {
-                                                    applyDeletePolicy(policy, uids, entire, trash, hits)
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-                                val markAnswered = stringResource(R.string.index_mark_answered)
-                                HelpDropdownMenuItem(
-                                    label = markAnswered,
-                                    help = stringResource(R.string.help_menu_index_mark_answered),
-                                    page = "messages.html",
-                                    text = { Text(markAnswered) },
-                                    onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
-                                )
-                                val markUnanswered = stringResource(R.string.index_mark_unanswered)
-                                HelpDropdownMenuItem(
-                                    label = markUnanswered,
-                                    help = stringResource(R.string.help_menu_index_mark_unanswered),
-                                    page = "messages.html",
-                                    text = { Text(markUnanswered) },
-                                    onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
-                                )
-                                if (showUndelete) {
-                                    val undelete = stringResource(R.string.index_undelete)
-                                    HelpDropdownMenuItem(
-                                        label = undelete,
-                                        help = stringResource(R.string.help_menu_index_undelete),
-                                        page = "messages.html",
-                                        text = { Text(undelete) },
-                                        onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
-                                    )
-                                }
-                                val bounce = stringResource(R.string.index_bounce)
-                                HelpDropdownMenuItem(
-                                    label = bounce,
-                                    help = stringResource(R.string.help_menu_index_bounce),
-                                    page = "messages.html",
-                                    text = { Text(bounce) },
-                                    enabled = !allMailbox && selectedHits.isEmpty(), // a bounce seed names one folder
-                                    onClick = {
-                                        selectionMore = false
-                                        onCompose(model.bounceSeed(selected))
-                                    },
-                                )
-                                if (!allMailbox && selected.size == 1 && selectedHits.isEmpty()) {
-                                    val oneUid = selected.single()
-                                    val forwardLabel = forwardStyleName(account.forwardAsAttachment)
-                                    HelpDropdownMenuItem(
-                                        label = forwardLabel,
-                                        help = stringResource(R.string.help_menu_forward_style),
-                                        page = "messages.html",
-                                        text = { Text(forwardLabel) },
-                                        onClick = {
-                                            selectionMore = false
-                                            onCompose(
-                                                ComposeSeed(
-                                                    ComposeKind.Forward,
-                                                    mailbox,
-                                                    listOf(oneUid),
-                                                    model.listedEpoch(mailbox),
-                                                    forwardAsAttachment = !account.forwardAsAttachment,
-                                                ),
-                                            )
-                                        },
-                                    )
-                                }
-                                val clearSelectionLabel = stringResource(R.string.index_clear_selection)
-                                HelpDropdownMenuItem(
-                                    label = clearSelectionLabel,
-                                    help = stringResource(R.string.help_menu_index_clear_selection),
-                                    page = "messages.html",
-                                    text = { Text(clearSelectionLabel) },
-                                    onClick = { clearSelection() },
-                                )
-                                for (entry in selectionMenuTail(selectionLayout)) {
-                                    when (entry) {
-                                        SelectionMenuEntry.Divider -> HorizontalDivider()
-                                        is SelectionMenuEntry.Action -> {
-                                            val action = entry.action
-                                            val label = when (action) {
-                                                SelectionBarAction.Seen -> seenText
-                                                SelectionBarAction.Flag -> flagText
-                                                SelectionBarAction.Move -> moveText
-                                                SelectionBarAction.Delete -> deletePolicyLabel(effectivePolicy)
-                                            }
-                                            val help = when (action) {
-                                                SelectionBarAction.Seen -> stringResource(R.string.help_menu_seen)
-                                                SelectionBarAction.Flag -> stringResource(R.string.help_menu_flag)
-                                                SelectionBarAction.Move -> stringResource(R.string.help_menu_move)
-                                                SelectionBarAction.Delete -> stringResource(R.string.help_menu_delete_policy)
-                                            }
-                                            HelpDropdownMenuItem(
-                                                label = label,
-                                                help = help,
-                                                page = "messages.html",
-                                                text = { Text(label) },
-                                                onClick = {
-                                                    selectionMore = false
-                                                    when (action) {
-                                                        SelectionBarAction.Seen -> toggleSeen()
-                                                        SelectionBarAction.Flag -> toggleFlag()
-                                                        SelectionBarAction.Move -> moveSelected()
-                                                        SelectionBarAction.Delete -> deleteSelected()
-                                                    }
-                                                },
-                                            )
-                                        }
-                                        SelectionMenuEntry.Customize -> {
-                                            val title = stringResource(R.string.toolbar_customize)
-                                            HelpDropdownMenuItem(
-                                                label = title,
-                                                help = stringResource(R.string.help_menu_toolbar_customize),
-                                                page = "messages.html",
-                                                text = { Text(title) },
-                                                onClick = {
-                                                    selectionMore = false
-                                                    onCustomizeSelection()
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        DebugStatusIcon(debugStatus)
-                        val barLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.indexBar()
-                        if (!connected) {
-                            if (IndexBarAction.Refresh in barLayout.toolbar) {
-                                HelpIconButton(
-                                    label = stringResource(R.string.index_refresh),
-                                    help = stringResource(R.string.help_index_refresh),
-                                    page = "messages.html#refresh",
-                                    onClick = { refreshIndex() },
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Refresh,
-                                        contentDescription = stringResource(R.string.index_refresh),
-                                    )
-                                }
-                            }
-                            SideEffect { iconRows = 1 }
-                        }
-                        if (connected) {
-                        val indexIcons = ArrayList<@Composable () -> Unit>(barLayout.toolbar.size)
-                        for (action in barLayout.toolbar) {
-                            when (action) {
-                                IndexBarAction.Refresh -> indexIcons.add {
-                                    HelpIconButton(
-                                        label = stringResource(R.string.index_refresh),
-                                        help = stringResource(R.string.help_index_refresh),
-                                        page = "messages.html#refresh",
-                                        onClick = { refreshIndex() },
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Refresh,
-                                            contentDescription = stringResource(R.string.index_refresh),
-                                        )
-                                    }
-                                }
-                                IndexBarAction.Search -> indexIcons.add {
-                                    HelpIconButton(
-                                        label = stringResource(R.string.index_search),
-                                        help = stringResource(R.string.help_index_search),
-                                        page = "messages.html#search",
-                                        onClick = {
-                                            searchFieldOpen = false
-                                            searchVisible = true
-                                        },
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Search,
-                                            contentDescription = stringResource(R.string.index_search),
-                                        )
-                                    }
-                                }
-                                IndexBarAction.Filter -> indexIcons.add {
-                                    Box {
-                                        HelpIconButton(
-                                            label = stringResource(R.string.index_filter),
-                                            help = stringResource(R.string.help_index_filter),
-                                            page = "messages.html#filter",
-                                            onClick = { filterOpen = true },
-                                        ) {
-                                            Icon(
-                                                imageVector = filterImage,
-                                                contentDescription = stringResource(R.string.index_filter),
-                                            )
-                                        }
-                                        IndexFilterMenu(
-                                            expanded = filterOpen,
-                                            filterActive = filterActive,
-                                            canWiden = canWiden,
-                                            onDismiss = { filterOpen = false },
-                                            onShowAll = { runShowAll() },
-                                            onNarrow = { narrowArmed = true },
-                                            onWiden = { runWiden() },
-                                            onNeedsValue = { choice ->
-                                                prompt = choice
-                                                promptText = ""
-                                            },
-                                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        ToolbarIconRows(
-                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
-                            onRows = { count -> iconRows = count },
-                            icons = indexIcons,
-                        )
-                Box {
-                    HelpIconButton(
-                        label = stringResource(R.string.index_sort),
-                        help = stringResource(R.string.help_index_sort),
-                        page = "messages.html#sort",
-                        onClick = { menuOpen = true },
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Sort,
-                            contentDescription = stringResource(R.string.index_sort),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                    ) {
-                        ObscuredTouchFilter()
-                        val fieldKeys = menuKeys.filter { key ->
-                            key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject
-                        }
-                        val threadKeys = menuKeys.filter { key ->
-                            key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject
-                        }
-                        val chooseSort: (SortKey) -> Unit = { key ->
-                            menuOpen = false
-                            enqueueModel {
-                                val next = FolderView(key, view.newestFirst)
-                                if (needsLargeClientAsk(next)) return@enqueueModel
-                                if (needsServerThreadAsk(next)) return@enqueueModel
-                                if (needsServerSortAsk(next)) return@enqueueModel
-                                query = ""
-                                narrowArmed = false
-                                prompt = null
-
-                                noteVisibleTop()
-                                model.applyView(next)
-                                seedExpandedFromStyle()
-                                pull()
-                            
-                                if (model.rows.isNotEmpty()) scrollToStart()
-                            }
-                        }
-                        val chooseDirection: (Boolean) -> Unit = { newestFirst ->
-                            menuOpen = false
-                            val next = view.copy(newestFirst = newestFirst)
-                            enqueueModel {
-                                if (needsLargeClientAsk(next)) return@enqueueModel
-                                if (needsServerSortAsk(next)) return@enqueueModel
-                                query = ""
-                                narrowArmed = false
-                                prompt = null
-
-                                noteVisibleTop()
-                                model.applyView(next)
-                                seedExpandedFromStyle()
-                                pull()
-                            
-                                if (model.rows.isNotEmpty()) scrollToStart()
-                            }
-                        }
-                        DirectionMenuChoice(
-                            label = stringResource(R.string.index_newest),
-                            selected = view.newestFirst,
-                            onClick = { chooseDirection(true) },
-                        )
-                        DirectionMenuChoice(
-                            label = stringResource(R.string.index_oldest),
-                            selected = !view.newestFirst,
-                            onClick = { chooseDirection(false) },
-                        )
-                        fieldKeys.forEach { key ->
-                            SortMenuChoice(
-                                key = key,
-                                selected = key == view.key,
-                                enabled = sortKeyAdvertised(
-                                    session.featureCaps,
-                                    key,
-                                    slowerClientSort(account),
-                                    slowerClientThread(account),
-                                ),
-                                onClick = { chooseSort(key) },
-                            )
-                        }
-                        HorizontalDivider()
-                        threadKeys.forEach { key ->
-                            SortMenuChoice(
-                                key = key,
-                                selected = key == view.key,
-                                enabled = sortKeyAdvertised(
-                                    session.featureCaps,
-                                    key,
-                                    slowerClientSort(account),
-                                    slowerClientThread(account),
-                                ),
-                                onClick = { chooseSort(key) },
-                            )
-                        }
-                        if (account.openAtInIndexMenu) {
-                            val openAtLabel = stringResource(R.string.label_open_at)
-                            HelpDropdownMenuItem(
-                                label = openAtLabel,
-                                help = stringResource(R.string.help_menu_label_open_at),
-                                page = "messages.html",
-                                text = { Text(openAtLabel) },
-                                onClick = {
-                                    menuOpen = false
-                                    openAt = true
-                                },
-                            )
-                        }
-                        HorizontalDivider()
-                        val expungeLabel = stringResource(R.string.index_expunge_menu)
-                        HelpDropdownMenuItem(
-                            label = expungeLabel,
-                            help = stringResource(R.string.help_menu_index_expunge_menu),
-                            page = "messages.html",
-                            text = {
-                                Column {
-                                    Text(expungeLabel)
-                                    if (!uidPlusNow) {
-                                        Text(
-                                            text = stringResource(R.string.settings_reason_uidplus),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
-                            },
-                            enabled = uidPlusNow,
-                            onClick = {
-                                if (!uidPlusNow) return@HelpDropdownMenuItem
-                                menuOpen = false
-                                if (account.askBeforeExpunge) {
-                                    pendingExpungeUids = null
-                                    confirmExpunge = true
-                                } else {
-                                    enqueueModel {
-
-                                        model.expunge()
-                                        pull()
-                                    
-                                    }
-                                }
-                            },
-                        )
-                        val selectAllLabel = stringResource(R.string.index_select_all)
-                        HelpDropdownMenuItem(
-                            label = selectAllLabel,
-                            help = stringResource(R.string.help_menu_index_select_all),
-                            page = "messages.html",
-                            text = { Text(selectAllLabel) },
-                            onClick = {
-                                menuOpen = false
-                                selectAllMessages()
-                            },
-                        )
-                        val folderInfoLabel = stringResource(R.string.index_folder_info)
-                        HelpDropdownMenuItem(
-                            label = folderInfoLabel,
-                            help = stringResource(R.string.help_menu_index_folder_info),
-                            page = "messages.html",
-                            text = { Text(folderInfoLabel) },
-                            onClick = {
-                                menuOpen = false
-                                enqueueModel {
-                                    val info = try {
-                                        model.shownInfo() // F123
-                                    } catch (error: CancellationException) {
-                                        throw error
-                                    } catch (error: MailFailure) {
-                                        postSnack(error.text)
-                                        return@enqueueModel
-                                    }
-                                    folderInfo = info
-                                }
-                            },
-                        )
-                        val jumpLabel = stringResource(R.string.index_jump)
-                        HelpDropdownMenuItem(
-                            label = jumpLabel,
-                            help = stringResource(R.string.help_menu_index_jump),
-                            page = "messages.html",
-                            text = { Text(jumpLabel) },
-                            onClick = {
-                                menuOpen = false
-                                jumpText = ""
-                                jumpOpen = true
-                            },
-                        )
-                        val nextUnread = stringResource(R.string.index_next_unread)
-                        HelpDropdownMenuItem(
-                            label = nextUnread,
-                            help = stringResource(R.string.help_menu_index_next_unread),
-                            page = "messages.html",
-                            text = { Text(nextUnread) },
-                            onClick = {
-                                menuOpen = false
-                                enqueueModel {
-                                    var moved = false
-                                    var snackNone = false
-                                    var askName: String? = null
-                                    try {
-
-                                        val landed = model.nextUnread()
-                                        pull()
-                                        if (landed) {
-                                            moved = true
-                                        } else if (model.notice == null) {
-                                            val name = nextUnseenFolder(
-                                                mailbox,
-                                                folderList.unseenFolderOrder(),
-                                            )
-                                            if (name == null) snackNone = true else askName = name
-                                        }
-                                    
-                                    } catch (error: CancellationException) {
-                                        throw error
-                                    } catch (error: MailFailure) {
-                                        postSnack(error.text)
-                                        return@enqueueModel
-                                    }
-                                    if (moved) scrollToStart()
-                                    else if (snackNone) {
-                                        postSnack(appContext.getString(R.string.index_no_unread))
-                                    } else if (askName != null) {
-                                        nextFolderTarget = askName
-                                    }
-                                }
-                            },
-                        )
-                        val markAllRead = stringResource(R.string.index_mark_all_read)
-                        HelpDropdownMenuItem(
-                            label = markAllRead,
-                            help = stringResource(R.string.help_menu_index_mark_all_read),
-                            page = "messages.html",
-                            text = { Text(markAllRead) },
-                            onClick = {
-                                menuOpen = false
-                                confirmMarkAllRead = true
-                            },
-                        )
-                        for (entry in indexMenuTail(barLayout)) {
-                            when (entry) {
-                                IndexMenuEntry.Divider -> HorizontalDivider()
-                                is IndexMenuEntry.Action -> {
-                                    val title = stringResource(indexBarActionRes(entry.action))
-                                    HelpDropdownMenuItem(
-                                        label = title,
-                                        help = stringResource(
-                                            when (entry.action) {
-                                                IndexBarAction.Refresh -> R.string.help_menu_index_refresh
-                                                IndexBarAction.Search -> R.string.help_menu_index_search
-                                                IndexBarAction.Filter -> R.string.help_menu_index_filter
-                                            },
-                                        ),
-                                        page = "messages.html",
-                                        text = { Text(title) },
-                                        onClick = {
-                                            menuOpen = false
-                                            when (entry.action) {
-                                                IndexBarAction.Refresh -> refreshIndex()
-                                                IndexBarAction.Search -> {
-                                                    searchFieldOpen = false
-                                                    searchVisible = true
-                                                }
-                                                IndexBarAction.Filter -> filterOpen = true
-                                            }
-                                        },
-                                    )
-                                }
-                                IndexMenuEntry.Customize -> {
-                                    val title = stringResource(R.string.toolbar_customize)
-                                    HelpDropdownMenuItem(
-                                        label = title,
-                                        help = stringResource(R.string.help_menu_toolbar_customize),
-                                        page = "messages.html",
-                                        text = { Text(title) },
-                                        onClick = {
-                                            menuOpen = false
-                                            onCustomize()
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    if (IndexBarAction.Filter !in barLayout.toolbar) {
-                        IndexFilterMenu(
-                            expanded = filterOpen,
-                            filterActive = filterActive,
-                            canWiden = canWiden,
-                            onDismiss = { filterOpen = false },
-                            onShowAll = { runShowAll() },
-                            onNarrow = { narrowArmed = true },
-                            onWiden = { runWiden() },
-                            onNeedsValue = { choice ->
-                                prompt = choice
-                                promptText = ""
-                            },
-                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
-                        )
-                    }
-                }
-                    }
-                    }
-                },
-                expandedHeight = toolbarExpandedHeight(iconRows),
-                windowInsets = mailBarInsets(),
-            )
-        },
-        contentWindowInsets = mailScreenInsets(),
-    ) { padding ->
-    Box(Modifier.fillMaxSize().padding(padding)) {
-    Column(Modifier.fillMaxSize()) {
-        ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
-        val progress = longProgress
-        if (progress != null) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                val fraction = progress.fraction
-                if (fraction != null) {
-                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.weight(1f).height(4.dp))
-                    Text(
-                        stringResource(R.string.index_search_progress, progress.done, progress.total),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.weight(1f).height(4.dp))
-                }
-                TextButton(onClick = { model.cancelSearch() }) { Text(stringResource(R.string.index_search_cancel)) }
-            }
-        } else if (loading && banner == null) {
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-            )
-        }
-        val shownBanner = banner
-        if (shownBanner != null) {
-            FailureBanner(message = shownBanner) {
-                banner = null
-                loading = true
-                loadToken += 1
-            }
-        }
-        if (connected) {
-                if (confirmExpunge) {
-                    val uidPlus = session.featureCaps.uidPlus
-                    val trashLine = stringResource(R.string.index_expunge_trash, knownTrashName)
-                    val bodyLine = stringResource(R.string.index_expunge_body)
-                    val othersLine = stringResource(R.string.index_expunge_others)
-                    val body = buildString {
-                        // F90: say plainly when this folder is the (detected or configured) Trash.
-                        if (knownTrashName.isNotEmpty() && sameMailbox(mailbox, knownTrashName)) {
-                            append(trashLine)
-                            append(" ")
-                        }
-                        append(bodyLine)
-                        if (!uidPlus) {
-                            append(" ")
-                            append(othersLine)
-                        }
-                    }
-                    AlertDialog(
-                        onDismissRequest = {
-                            confirmExpunge = false
-                            pendingExpungeUids = null
-                        },
-                        title = { Text(stringResource(R.string.index_expunge_title)) },
-                        text = { Text(body) },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                val specific = pendingExpungeUids
-                                pendingExpungeUids = null
-                                confirmExpunge = false
-                                enqueueModel {
-                                    var ok = false
-
-                                    if (specific != null) model.expungeUids(specific) else model.expunge()
-                                    pull()
-                                    ok = model.notice == null
-                                
-                                    if (specific != null) finishUndoExpunge(ok)
-                                }
-                            }) { Text(stringResource(R.string.index_expunge), color = MaterialTheme.colorScheme.error) }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {
-                                confirmExpunge = false
-                                pendingExpungeUids = null
-                            }) { Text(stringResource(R.string.index_cancel)) }
-                        },
-                    )
-                }
-            if (filterActive || model.searchActive) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        filters.forEachIndexed { index, filter ->
-                            val chipText = filterChipText(filter)
-                            FilterChip(
-                                selected = true,
-                                onClick = {
-                                    enqueueModel {
-
-                                        noteVisibleTop()
-                                        model.dropFiltersFrom(index)
-                                        pull()
-                                    
-                                        if (model.notice == null) narrowArmed = false
-                                        if (model.rows.isNotEmpty()) scrollToStart()
-                                    }
-                                },
-                                label = { Text(chipText) },
-                            )
-                        }
-                    }
-                    Text(
-                        text = indexMatchCountText(model.order.size, folderExists, model.searchActive, model.searchScope),
-                        modifier = Modifier.padding(start = 8.dp),
-                        maxLines = 1,
-                    )
-                }
-            }
-            if (searchVisible) {
+    @Composable
+    fun IndexSearchBar() {
                 // Focus the query field when search opens, so typing (keyboard, voice, handwriting) goes into it
                 // instead of the list's Pine key commands.
                 val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -3418,36 +2099,10 @@ private fun MessageIndexLoaded(
                         }
                     }
                 }
-            }
-            val flagsFor = flagUid
-            if (flagsFor != null) {
-                Text(stringResource(R.string.index_flags), modifier = Modifier.padding(horizontal = 8.dp))
-                indexFlags.forEach { flag ->
-                    Row {
-                        TextButton(
-                            onClick = {
-                                enqueueModel {
+    }
 
-                                    model.changeFlags(listOf(flagsFor), setOf(flag), emptySet())
-                                    pull()
-                                
-                                }
-                            },
-                        ) { Text(stringResource(R.string.index_set_flag, flag)) }
-                        TextButton(
-                            onClick = {
-                                enqueueModel {
-
-                                    model.changeFlags(listOf(flagsFor), emptySet(), setOf(flag))
-                                    pull()
-                                
-                                }
-                            },
-                        ) { Text(stringResource(R.string.index_clear_flag, flag)) }
-                    }
-                }
-                TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
-            }
+    @Composable
+    fun ColumnScope.IndexMessageList() {
             val density = LocalDensity.current
             val sequenceChars = existsColumnChars(folderExists)
             val sequenceStyle = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum")
@@ -3541,8 +2196,8 @@ private fun MessageIndexLoaded(
                                 account = account,
                                 depth = entry.depth,
                                 position = entry.position,
-                                selected = if (foreignRow(row)) (row.mailbox to row.uid) in selectedHits
-                                    else allMailbox || row.uid in selected,
+                                selected = if (foreignRow(row)) rowRef(row) in selectedHits
+                                    else allMailbox || rowRef(row) in selected,
                                 multiSelect = multiSelect,
                                 leftToRight = leftToRight,
                                 sequenceWidth = sequenceWidth,
@@ -3561,38 +2216,39 @@ private fun MessageIndexLoaded(
                                 aheadPhrase = indexAhead,
                                 badPattern = indexBadPattern,
                                 threadCount = threadCount,
-                                threadExpanded = row.uid in expandedThreads,
-                                onToggleThread = { toggleThread(row.uid) },
+                                threadExpanded = expandedThreads.any { it.uid == row.uid },
+                                onToggleThread = { toggleThread(rowRef(row)) },
                                 onClick = {
+                                    val ref = rowRef(row)
                                     if (multiSelect && foreignRow(row)) {
-                                        val hit = row.mailbox to row.uid
-                                        selectedHits = if (hit in selectedHits) selectedHits - hit else selectedHits + hit
+                                        selectedHits = if (ref in selectedHits) selectedHits - ref else selectedHits + ref
                                     } else if (multiSelect) {
                                         if (allMailbox) {
                                             allMailbox = false
-                                            selected = rows.map { it.uid }.filter { it != row.uid }
+                                            selected = rows.map { rowRef(it) }.filter { it.uid != row.uid }
                                         } else {
-                                            selected = if (row.uid in selected) selected - row.uid else selected + row.uid
+                                            selected = if (ref in selected) selected - ref else selected + ref
                                         }
                                     } else {
                                         val seed = model.openSeed(row.uid, row.mailbox, row.flags)
-                                        if (seed != null) onCompose(seed) else onOpen(row.uid, row.sequence, row.mailbox, model.listedEpoch(row.mailbox))
+                                        if (seed != null) onCompose(seed) else onOpen(ref, row.sequence)
                                     }
                                 },
                                 onLongPress = {
-                                    // F105: hits from other folders are selected by (folder, UID) and acted on there.
+                                    // F105: hits from other folders are selected by folder, UIDVALIDITY, and UID.
+                                    val ref = rowRef(row)
                                     multiSelect = true
                                     if (foreignRow(row)) {
-                                        selectedHits = selectedHits + (row.mailbox to row.uid)
-                                    } else if (!allMailbox && row.uid !in selected) {
-                                        selected = selected + row.uid
+                                        selectedHits = selectedHits + ref
+                                    } else if (!allMailbox && ref !in selected) {
+                                        selected = selected + ref
                                     }
                                 },
                                 onSwipe = { binding ->
                                     val also = if (!foreignRow(row) && !entry.member) {
                                         threadSwipeAlso(
                                             false,
-                                            row.uid in expandedThreads,
+                                            expandedThreads.any { it.uid == row.uid },
                                             threadHidden[row.uid].orEmpty(),
                                             binding.action,
                                         )
@@ -3628,40 +2284,11 @@ private fun MessageIndexLoaded(
             }
             }
             }
-            val progress = searchProgress
-            if (progress != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = progress,
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        TextButton(onClick = { cancelSearch.value = true }) {
-                            Text(stringResource(R.string.index_search_cancel))
-                        }
-                    }
-                }
-            }
-            if (newMailUnnumbered || pendingNew > 0) {
-                NewMailPill(
-                    count = pendingNew,
-                    unnumbered = newMailUnnumbered,
-                    newestFirst = view.newestFirst,
-                    onClick = { onNewMailPill() },
-                )
-            }
-        }
-        }
     }
+    }
+
+    @Composable
+    fun BoxScope.IndexUndoSnackbar() {
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -3684,7 +2311,9 @@ private fun MessageIndexLoaded(
             }
         }
     }
-    }
+
+    @Composable
+    fun IndexDialogs() {
     val askedPermanent = pendingPermanent
     if (askedPermanent != null) {
         AlertDialog(
@@ -3962,6 +2591,1013 @@ private fun MessageIndexLoaded(
             onCancel = { resolveSearchAsk(AskAnswer.Cancel) },
         )
     }
+    }
+
+    @Composable
+    fun IndexTopBar() {
+            val selectionOrder = if (multiSelect) {
+                model.selectionOrder().uids.asList().map { homeRef(it) }
+            } else {
+                emptyList()
+            }
+            val selectionCount = if (multiSelect) selected.size + selectedHits.size else 0
+            val filterComplete = multiSelect && !allMailbox && filterActive && selectionOrder.isNotEmpty() &&
+                selectionCount == selectionOrder.size && selected.toSet() == selectionOrder.toSet()
+            val titleExists = when {
+                !multiSelect -> 0
+                allMailbox -> mailboxExists
+                filterComplete -> selectionOrder.size
+                else -> 0
+            }
+            val selectionLabel = if (multiSelect) {
+                selectionTitle(allMailbox, if (allMailbox) 0 else selectionCount, titleExists)
+            } else {
+                ""
+            }
+            val loadedSelected = when {
+                !multiSelect -> emptyList()
+                allMailbox -> rows
+                else -> rows.filter { rowRef(it) in selected }
+            }
+            val markUnread = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
+                loadedSelected.all { "\\Seen" in it.flags }
+            val clearFlag = multiSelect && !allMailbox && loadedSelected.isNotEmpty() &&
+                loadedSelected.all { "\\Flagged" in it.flags }
+            val showUndelete = multiSelect && (
+                allMailbox || rows.any { rowRef(it) in selected && "\\Deleted" in it.flags }
+            )
+
+                    val trashKnown = knownTrashName.isNotEmpty()
+                    val uidPlusNow = session.featureCaps.uidPlus
+                    val effectivePolicy = effectiveDeletePolicy(
+                        account.deletePolicy,
+                        trashKnown && sameMailbox(mailbox, knownTrashName),
+                        uidPlusNow,
+                        trashKnown,
+                        trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
+                    )
+
+    @Composable
+    fun IndexBulkBar() {
+                        DebugStatusIcon(debugStatus)
+                        val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
+                        val seenText = stringResource(
+                            if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
+                        )
+                        val flagText = stringResource(
+                            if (clearFlag) R.string.toolbar_unflag else R.string.toolbar_flag,
+                        )
+                        val moveText = stringResource(R.string.index_move)
+                        val toggleSeen = {
+                            if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Seen"))
+                        }
+                        val toggleFlag = {
+                            if (allMailbox || !clearFlag) applySelectionFlags(setOf("\\Flagged"), emptySet())
+                            else applySelectionFlags(emptySet(), setOf("\\Flagged"))
+                        }
+                        val moveSelected = {
+                            val uids = selected.map { it.uid }
+                            val hits = selectedHits.map { it.mailbox to it.uid }
+                            val entire = allMailbox
+                            enqueueModel {
+                                var undo: MailUndo? = null
+
+                                model.clearMailUndo()
+                                model.acrossFolders(uids, hits, entire) { u, e, folder ->
+                                    model.moveMessages(u, barMoveMailbox(account), e, folder)
+                                }
+                                pull()
+                                undo = model.mailUndo
+                            
+                                val pending = undo
+                                if (pending != null) publishUndo(pending)
+                            }
+                            Unit
+                        }
+                        val deleteSelected = {
+                            val uids = selected.map { it.uid }
+                            val hits = selectedHits.map { it.mailbox to it.uid }
+                            val entire = allMailbox
+                            enqueueModel {
+                                val trash = readKnownTrash()
+                                val namedTrash = usableTrashName(account.trashMailbox).isNotEmpty()
+                                val policy = effectiveDeletePolicy(
+                                    account.deletePolicy,
+                                    trash.isNotEmpty() && sameMailbox(mailbox, trash),
+                                    session.featureCaps.uidPlus,
+                                    trash.isNotEmpty(),
+                                    trashNamedByUser = namedTrash,
+                                )
+                                val hitInTrash = namedTrash && trash.isNotEmpty() &&
+                                    hits.any { sameMailbox(it.first, trash) } &&
+                                    session.featureCaps.uidPlus
+                                if ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge) {
+                                    pendingPermanent = PendingDelete(
+                                        uids,
+                                        entire,
+                                        fromSwipe = false,
+                                        hits = hits,
+                                        policy = policy,
+                                        permanentOnlyInTrash = true,
+                                    )
+                                } else {
+                                    applyDeletePolicy(policy, uids, entire, trash, hits)
+                                }
+                            }
+                            Unit
+                        }
+    @Composable
+    fun IndexSelectionMenu() {
+                                ObscuredTouchFilter()
+                                val selectAll = stringResource(R.string.index_select_all)
+                                HelpDropdownMenuItem(
+                                    label = selectAll,
+                                    help = stringResource(R.string.help_menu_index_select_all),
+                                    page = "messages.html",
+                                    text = { Text(selectAll) },
+                                    onClick = {
+                                        selectionMore = false
+                                        selectAllMessages()
+                                    },
+                                )
+                                for (policy in alternateDeletePolicies(effectivePolicy, uidPlusNow, trashKnown)) {
+                                    val policyLabel = deletePolicyLabel(policy)
+                                    HelpDropdownMenuItem(
+                                        label = policyLabel,
+                                        help = stringResource(R.string.help_menu_delete_policy),
+                                        page = "messages.html",
+                                        text = { Text(policyLabel) },
+                                        onClick = {
+                                            selectionMore = false
+                                            val uids = selected.map { it.uid }
+                                            val hits = selectedHits.map { it.mailbox to it.uid }
+                                            val entire = allMailbox
+                                            enqueueModel {
+                                                val trash = readKnownTrash()
+                                                if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                                                    pendingPermanent = PendingDelete(
+                                                        uids,
+                                                        entire,
+                                                        fromSwipe = false,
+                                                        hits = hits,
+                                                        policy = policy,
+                                                    )
+                                                } else {
+                                                    applyDeletePolicy(policy, uids, entire, trash, hits)
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                                val markAnswered = stringResource(R.string.index_mark_answered)
+                                HelpDropdownMenuItem(
+                                    label = markAnswered,
+                                    help = stringResource(R.string.help_menu_index_mark_answered),
+                                    page = "messages.html",
+                                    text = { Text(markAnswered) },
+                                    onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
+                                )
+                                val markUnanswered = stringResource(R.string.index_mark_unanswered)
+                                HelpDropdownMenuItem(
+                                    label = markUnanswered,
+                                    help = stringResource(R.string.help_menu_index_mark_unanswered),
+                                    page = "messages.html",
+                                    text = { Text(markUnanswered) },
+                                    onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
+                                )
+                                if (showUndelete) {
+                                    val undelete = stringResource(R.string.index_undelete)
+                                    HelpDropdownMenuItem(
+                                        label = undelete,
+                                        help = stringResource(R.string.help_menu_index_undelete),
+                                        page = "messages.html",
+                                        text = { Text(undelete) },
+                                        onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
+                                    )
+                                }
+                                val bounce = stringResource(R.string.index_bounce)
+                                HelpDropdownMenuItem(
+                                    label = bounce,
+                                    help = stringResource(R.string.help_menu_index_bounce),
+                                    page = "messages.html",
+                                    text = { Text(bounce) },
+                                    enabled = !allMailbox && selectedHits.isEmpty(), // a bounce seed names one folder
+                                    onClick = {
+                                        selectionMore = false
+                                        onCompose(model.bounceSeed(selected.map { it.uid }))
+                                    },
+                                )
+                                if (!allMailbox && selected.size == 1 && selectedHits.isEmpty()) {
+                                    val oneUid = selected.single().uid
+                                    val forwardLabel = forwardStyleName(account.forwardAsAttachment)
+                                    HelpDropdownMenuItem(
+                                        label = forwardLabel,
+                                        help = stringResource(R.string.help_menu_forward_style),
+                                        page = "messages.html",
+                                        text = { Text(forwardLabel) },
+                                        onClick = {
+                                            selectionMore = false
+                                            onCompose(
+                                                ComposeSeed(
+                                                    ComposeKind.Forward,
+                                                    mailbox,
+                                                    listOf(oneUid),
+                                                    model.listedEpoch(mailbox),
+                                                    forwardAsAttachment = !account.forwardAsAttachment,
+                                                ),
+                                            )
+                                        },
+                                    )
+                                }
+                                val clearSelectionLabel = stringResource(R.string.index_clear_selection)
+                                HelpDropdownMenuItem(
+                                    label = clearSelectionLabel,
+                                    help = stringResource(R.string.help_menu_index_clear_selection),
+                                    page = "messages.html",
+                                    text = { Text(clearSelectionLabel) },
+                                    onClick = { clearSelection() },
+                                )
+                                for (entry in selectionMenuTail(selectionLayout)) {
+                                    when (entry) {
+                                        SelectionMenuEntry.Divider -> HorizontalDivider()
+                                        is SelectionMenuEntry.Action -> {
+                                            val action = entry.action
+                                            val label = when (action) {
+                                                SelectionBarAction.Seen -> seenText
+                                                SelectionBarAction.Flag -> flagText
+                                                SelectionBarAction.Move -> moveText
+                                                SelectionBarAction.Delete -> deletePolicyLabel(effectivePolicy)
+                                            }
+                                            val help = when (action) {
+                                                SelectionBarAction.Seen -> stringResource(R.string.help_menu_seen)
+                                                SelectionBarAction.Flag -> stringResource(R.string.help_menu_flag)
+                                                SelectionBarAction.Move -> stringResource(R.string.help_menu_move)
+                                                SelectionBarAction.Delete -> stringResource(R.string.help_menu_delete_policy)
+                                            }
+                                            HelpDropdownMenuItem(
+                                                label = label,
+                                                help = help,
+                                                page = "messages.html",
+                                                text = { Text(label) },
+                                                onClick = {
+                                                    selectionMore = false
+                                                    when (action) {
+                                                        SelectionBarAction.Seen -> toggleSeen()
+                                                        SelectionBarAction.Flag -> toggleFlag()
+                                                        SelectionBarAction.Move -> moveSelected()
+                                                        SelectionBarAction.Delete -> deleteSelected()
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        SelectionMenuEntry.Customize -> {
+                                            val title = stringResource(R.string.toolbar_customize)
+                                            HelpDropdownMenuItem(
+                                                label = title,
+                                                help = stringResource(R.string.help_menu_toolbar_customize),
+                                                page = "messages.html",
+                                                text = { Text(title) },
+                                                onClick = {
+                                                    selectionMore = false
+                                                    onCustomizeSelection()
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+    }
+
+                        val selectionIcons = ArrayList<@Composable () -> Unit>(selectionLayout.toolbar.size)
+                        for (action in selectionLayout.toolbar) {
+                            when (action) {
+                                SelectionBarAction.Seen -> selectionIcons.add {
+                                    IconButton(onClick = { toggleSeen() }) {
+                                        Icon(
+                                            imageVector = if (markUnread) Icons.Filled.Email else Icons.Filled.Drafts,
+                                            contentDescription = seenText,
+                                        )
+                                    }
+                                }
+                                SelectionBarAction.Flag -> selectionIcons.add {
+                                    IconButton(onClick = { toggleFlag() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Flag,
+                                            contentDescription = flagText,
+                                        )
+                                    }
+                                }
+                                SelectionBarAction.Move -> selectionIcons.add {
+                                    IconButton(onClick = { moveSelected() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DriveFileMove,
+                                            contentDescription = moveText,
+                                        )
+                                    }
+                                }
+                                SelectionBarAction.Delete -> selectionIcons.add {
+                                    IconButton(onClick = { deleteSelected() }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Delete,
+                                            contentDescription = deletePolicyLabel(effectivePolicy),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        ToolbarIconRows(
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                            onRows = { count -> iconRows = count },
+                            icons = selectionIcons,
+                        )
+                        Box {
+                            HelpIconButton(
+                                label = stringResource(R.string.index_more),
+                                help = stringResource(R.string.help_index_more),
+                                page = "messages.html#more",
+                                onClick = { selectionMore = true },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MoreVert,
+                                    contentDescription = stringResource(R.string.index_more),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = selectionMore,
+                                onDismissRequest = { selectionMore = false },
+                            ) {
+                                IndexSelectionMenu()
+                            }
+                        }
+    }
+
+    @Composable
+    fun IndexFolderBar() {
+                        DebugStatusIcon(debugStatus)
+                        val barLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.indexBar()
+
+    @Composable
+    fun IndexSortMenu() {
+                        ObscuredTouchFilter()
+                        val fieldKeys = menuKeys.filter { key ->
+                            key != SortKey.ThreadReferences && key != SortKey.ThreadOrderedSubject
+                        }
+                        val threadKeys = menuKeys.filter { key ->
+                            key == SortKey.ThreadReferences || key == SortKey.ThreadOrderedSubject
+                        }
+                        val chooseSort: (SortKey) -> Unit = { key ->
+                            menuOpen = false
+                            enqueueModel {
+                                val next = FolderView(key, view.newestFirst)
+                                if (needsLargeClientAsk(next)) return@enqueueModel
+                                if (needsServerThreadAsk(next)) return@enqueueModel
+                                if (needsServerSortAsk(next)) return@enqueueModel
+                                query = ""
+                                narrowArmed = false
+                                prompt = null
+
+                                noteVisibleTop()
+                                model.applyView(next)
+                                seedExpandedFromStyle()
+                                pull()
+                            
+                                if (model.rows.isNotEmpty()) scrollToStart()
+                            }
+                        }
+                        val chooseDirection: (Boolean) -> Unit = { newestFirst ->
+                            menuOpen = false
+                            val next = view.copy(newestFirst = newestFirst)
+                            enqueueModel {
+                                if (needsLargeClientAsk(next)) return@enqueueModel
+                                if (needsServerSortAsk(next)) return@enqueueModel
+                                query = ""
+                                narrowArmed = false
+                                prompt = null
+
+                                noteVisibleTop()
+                                model.applyView(next)
+                                seedExpandedFromStyle()
+                                pull()
+                            
+                                if (model.rows.isNotEmpty()) scrollToStart()
+                            }
+                        }
+                        DirectionMenuChoice(
+                            label = stringResource(R.string.index_newest),
+                            selected = view.newestFirst,
+                            onClick = { chooseDirection(true) },
+                        )
+                        DirectionMenuChoice(
+                            label = stringResource(R.string.index_oldest),
+                            selected = !view.newestFirst,
+                            onClick = { chooseDirection(false) },
+                        )
+                        fieldKeys.forEach { key ->
+                            SortMenuChoice(
+                                key = key,
+                                selected = key == view.key,
+                                enabled = sortKeyAdvertised(
+                                    session.featureCaps,
+                                    key,
+                                    slowerClientSort(account),
+                                    slowerClientThread(account),
+                                ),
+                                onClick = { chooseSort(key) },
+                            )
+                        }
+                        HorizontalDivider()
+                        threadKeys.forEach { key ->
+                            SortMenuChoice(
+                                key = key,
+                                selected = key == view.key,
+                                enabled = sortKeyAdvertised(
+                                    session.featureCaps,
+                                    key,
+                                    slowerClientSort(account),
+                                    slowerClientThread(account),
+                                ),
+                                onClick = { chooseSort(key) },
+                            )
+                        }
+                        if (account.openAtInIndexMenu) {
+                            val openAtLabel = stringResource(R.string.label_open_at)
+                            HelpDropdownMenuItem(
+                                label = openAtLabel,
+                                help = stringResource(R.string.help_menu_label_open_at),
+                                page = "messages.html",
+                                text = { Text(openAtLabel) },
+                                onClick = {
+                                    menuOpen = false
+                                    openAt = true
+                                },
+                            )
+                        }
+                        HorizontalDivider()
+                        val expungeLabel = stringResource(R.string.index_expunge_menu)
+                        HelpDropdownMenuItem(
+                            label = expungeLabel,
+                            help = stringResource(R.string.help_menu_index_expunge_menu),
+                            page = "messages.html",
+                            text = {
+                                Column {
+                                    Text(expungeLabel)
+                                    if (!uidPlusNow) {
+                                        Text(
+                                            text = stringResource(R.string.settings_reason_uidplus),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = uidPlusNow,
+                            onClick = {
+                                if (!uidPlusNow) return@HelpDropdownMenuItem
+                                menuOpen = false
+                                if (account.askBeforeExpunge) {
+                                    pendingExpungeUids = null
+                                    confirmExpunge = true
+                                } else {
+                                    enqueueModel {
+
+                                        model.expunge()
+                                        pull()
+                                    
+                                    }
+                                }
+                            },
+                        )
+                        val selectAllLabel = stringResource(R.string.index_select_all)
+                        HelpDropdownMenuItem(
+                            label = selectAllLabel,
+                            help = stringResource(R.string.help_menu_index_select_all),
+                            page = "messages.html",
+                            text = { Text(selectAllLabel) },
+                            onClick = {
+                                menuOpen = false
+                                selectAllMessages()
+                            },
+                        )
+                        val folderInfoLabel = stringResource(R.string.index_folder_info)
+                        HelpDropdownMenuItem(
+                            label = folderInfoLabel,
+                            help = stringResource(R.string.help_menu_index_folder_info),
+                            page = "messages.html",
+                            text = { Text(folderInfoLabel) },
+                            onClick = {
+                                menuOpen = false
+                                enqueueModel {
+                                    val info = try {
+                                        model.shownInfo() // F123
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: MailFailure) {
+                                        postSnack(error.text)
+                                        return@enqueueModel
+                                    }
+                                    folderInfo = info
+                                }
+                            },
+                        )
+                        val jumpLabel = stringResource(R.string.index_jump)
+                        HelpDropdownMenuItem(
+                            label = jumpLabel,
+                            help = stringResource(R.string.help_menu_index_jump),
+                            page = "messages.html",
+                            text = { Text(jumpLabel) },
+                            onClick = {
+                                menuOpen = false
+                                jumpText = ""
+                                jumpOpen = true
+                            },
+                        )
+                        val nextUnread = stringResource(R.string.index_next_unread)
+                        HelpDropdownMenuItem(
+                            label = nextUnread,
+                            help = stringResource(R.string.help_menu_index_next_unread),
+                            page = "messages.html",
+                            text = { Text(nextUnread) },
+                            onClick = {
+                                menuOpen = false
+                                enqueueModel {
+                                    var moved = false
+                                    var snackNone = false
+                                    var askName: String? = null
+                                    try {
+
+                                        val landed = model.nextUnread()
+                                        pull()
+                                        if (landed) {
+                                            moved = true
+                                        } else if (model.notice == null) {
+                                            val name = nextUnseenFolder(
+                                                mailbox,
+                                                folderList.unseenFolderOrder(),
+                                            )
+                                            if (name == null) snackNone = true else askName = name
+                                        }
+                                    
+                                    } catch (error: CancellationException) {
+                                        throw error
+                                    } catch (error: MailFailure) {
+                                        postSnack(error.text)
+                                        return@enqueueModel
+                                    }
+                                    if (moved) scrollToStart()
+                                    else if (snackNone) {
+                                        postSnack(appContext.getString(R.string.index_no_unread))
+                                    } else if (askName != null) {
+                                        nextFolderTarget = askName
+                                    }
+                                }
+                            },
+                        )
+                        val markAllRead = stringResource(R.string.index_mark_all_read)
+                        HelpDropdownMenuItem(
+                            label = markAllRead,
+                            help = stringResource(R.string.help_menu_index_mark_all_read),
+                            page = "messages.html",
+                            text = { Text(markAllRead) },
+                            onClick = {
+                                menuOpen = false
+                                confirmMarkAllRead = true
+                            },
+                        )
+                        for (entry in indexMenuTail(barLayout)) {
+                            when (entry) {
+                                IndexMenuEntry.Divider -> HorizontalDivider()
+                                is IndexMenuEntry.Action -> {
+                                    val title = stringResource(indexBarActionRes(entry.action))
+                                    HelpDropdownMenuItem(
+                                        label = title,
+                                        help = stringResource(
+                                            when (entry.action) {
+                                                IndexBarAction.Refresh -> R.string.help_menu_index_refresh
+                                                IndexBarAction.Search -> R.string.help_menu_index_search
+                                                IndexBarAction.Filter -> R.string.help_menu_index_filter
+                                            },
+                                        ),
+                                        page = "messages.html",
+                                        text = { Text(title) },
+                                        onClick = {
+                                            menuOpen = false
+                                            when (entry.action) {
+                                                IndexBarAction.Refresh -> refreshIndex()
+                                                IndexBarAction.Search -> {
+                                                    searchFieldOpen = false
+                                                    searchVisible = true
+                                                }
+                                                IndexBarAction.Filter -> filterOpen = true
+                                            }
+                                        },
+                                    )
+                                }
+                                IndexMenuEntry.Customize -> {
+                                    val title = stringResource(R.string.toolbar_customize)
+                                    HelpDropdownMenuItem(
+                                        label = title,
+                                        help = stringResource(R.string.help_menu_toolbar_customize),
+                                        page = "messages.html",
+                                        text = { Text(title) },
+                                        onClick = {
+                                            menuOpen = false
+                                            onCustomize()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+    }
+
+                        if (!connected) {
+                            if (IndexBarAction.Refresh in barLayout.toolbar) {
+                                HelpIconButton(
+                                    label = stringResource(R.string.index_refresh),
+                                    help = stringResource(R.string.help_index_refresh),
+                                    page = "messages.html#refresh",
+                                    onClick = { refreshIndex() },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = stringResource(R.string.index_refresh),
+                                    )
+                                }
+                            }
+                            SideEffect { iconRows = 1 }
+                        }
+                        if (connected) {
+                        val indexIcons = ArrayList<@Composable () -> Unit>(barLayout.toolbar.size)
+                        for (action in barLayout.toolbar) {
+                            when (action) {
+                                IndexBarAction.Refresh -> indexIcons.add {
+                                    HelpIconButton(
+                                        label = stringResource(R.string.index_refresh),
+                                        help = stringResource(R.string.help_index_refresh),
+                                        page = "messages.html#refresh",
+                                        onClick = { refreshIndex() },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Refresh,
+                                            contentDescription = stringResource(R.string.index_refresh),
+                                        )
+                                    }
+                                }
+                                IndexBarAction.Search -> indexIcons.add {
+                                    HelpIconButton(
+                                        label = stringResource(R.string.index_search),
+                                        help = stringResource(R.string.help_index_search),
+                                        page = "messages.html#search",
+                                        onClick = {
+                                            searchFieldOpen = false
+                                            searchVisible = true
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Search,
+                                            contentDescription = stringResource(R.string.index_search),
+                                        )
+                                    }
+                                }
+                                IndexBarAction.Filter -> indexIcons.add {
+                                    Box {
+                                        HelpIconButton(
+                                            label = stringResource(R.string.index_filter),
+                                            help = stringResource(R.string.help_index_filter),
+                                            page = "messages.html#filter",
+                                            onClick = { filterOpen = true },
+                                        ) {
+                                            Icon(
+                                                imageVector = filterImage,
+                                                contentDescription = stringResource(R.string.index_filter),
+                                            )
+                                        }
+                                        IndexFilterMenu(
+                                            expanded = filterOpen,
+                                            filterActive = filterActive,
+                                            canWiden = canWiden,
+                                            onDismiss = { filterOpen = false },
+                                            onShowAll = { runShowAll() },
+                                            onNarrow = { narrowArmed = true },
+                                            onWiden = { runWiden() },
+                                            onNeedsValue = { choice ->
+                                                prompt = choice
+                                                promptText = ""
+                                            },
+                                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        ToolbarIconRows(
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                            onRows = { count -> iconRows = count },
+                            icons = indexIcons,
+                        )
+                Box {
+                    HelpIconButton(
+                        label = stringResource(R.string.index_sort),
+                        help = stringResource(R.string.help_index_sort),
+                        page = "messages.html#sort",
+                        onClick = { menuOpen = true },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Sort,
+                            contentDescription = stringResource(R.string.index_sort),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                    ) {
+                        IndexSortMenu()
+                    }
+                    if (IndexBarAction.Filter !in barLayout.toolbar) {
+                        IndexFilterMenu(
+                            expanded = filterOpen,
+                            filterActive = filterActive,
+                            canWiden = canWiden,
+                            onDismiss = { filterOpen = false },
+                            onShowAll = { runShowAll() },
+                            onNarrow = { narrowArmed = true },
+                            onWiden = { runWiden() },
+                            onNeedsValue = { choice ->
+                                prompt = choice
+                                promptText = ""
+                            },
+                            onCriterion = { kind, label -> runCriterion(kind, "", label) },
+                        )
+                    }
+                }
+                    }
+    }
+
+            TopAppBar(
+                title = {
+                    if (multiSelect) {
+                        Text(
+                            text = selectionLabel,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } else {
+                        Column {
+                            MailboxTitleLines(heading.leaf, heading.parent)
+                            val sortLine = stringResource(
+                                R.string.settings_sort_line,
+                                sortShortLabel(view.key),
+                                stringResource(
+                                    if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
+                                ),
+                            )
+                            val criteria = if (filterActive) {
+                                filters.joinToString(", ") { filterChipText(it) }
+                            } else {
+                                ""
+                            }
+                            Text(
+                                text = if (filterActive && criteria.isNotEmpty()) "$sortLine · $criteria" else sortLine,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
+                navigationIcon = {
+                    if (multiSelect) {
+                        IconButton(onClick = { clearSelection() }) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.index_close),
+                            )
+                        }
+                    } else {
+                        HelpIconButton(
+                            label = stringResource(R.string.index_back),
+                            help = stringResource(R.string.help_index_back),
+                            page = "messages.html#back",
+                            onClick = { leaveIndex() },
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.index_back),
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    if (multiSelect) {
+                        IndexBulkBar()
+                    } else {
+                        IndexFolderBar()
+                    }
+                },
+                expandedHeight = toolbarExpandedHeight(iconRows),
+                windowInsets = mailBarInsets(),
+            )
+    }
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize().testTag("smoke-index"),
+        topBar = {
+            IndexTopBar()
+        },
+        contentWindowInsets = mailScreenInsets(),
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding)) {
+    Column(Modifier.fillMaxSize()) {
+        ConnectionStatusStrip(connectionState, onRetry = { retryConnection() })
+        val progress = longProgress
+        if (progress != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                val fraction = progress.fraction
+                if (fraction != null) {
+                    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.weight(1f).height(4.dp))
+                    Text(
+                        stringResource(R.string.index_search_progress, progress.done, progress.total),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.weight(1f).height(4.dp))
+                }
+                TextButton(onClick = { model.cancelSearch() }) { Text(stringResource(R.string.index_search_cancel)) }
+            }
+        } else if (loading && banner == null) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+            )
+        }
+        val shownBanner = banner
+        if (shownBanner != null) {
+            FailureBanner(message = shownBanner) {
+                banner = null
+                loading = true
+                loadToken += 1
+            }
+        }
+        if (connected) {
+                if (confirmExpunge) {
+                    val uidPlus = session.featureCaps.uidPlus
+                    val trashLine = stringResource(R.string.index_expunge_trash, knownTrashName)
+                    val bodyLine = stringResource(R.string.index_expunge_body)
+                    val othersLine = stringResource(R.string.index_expunge_others)
+                    val body = buildString {
+                        // F90: say plainly when this folder is the (detected or configured) Trash.
+                        if (knownTrashName.isNotEmpty() && sameMailbox(mailbox, knownTrashName)) {
+                            append(trashLine)
+                            append(" ")
+                        }
+                        append(bodyLine)
+                        if (!uidPlus) {
+                            append(" ")
+                            append(othersLine)
+                        }
+                    }
+                    AlertDialog(
+                        onDismissRequest = {
+                            confirmExpunge = false
+                            pendingExpungeUids = null
+                        },
+                        title = { Text(stringResource(R.string.index_expunge_title)) },
+                        text = { Text(body) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val specific = pendingExpungeUids
+                                pendingExpungeUids = null
+                                confirmExpunge = false
+                                enqueueModel {
+                                    var ok = false
+
+                                    if (specific != null) model.expungeUids(specific.map { it.uid }) else model.expunge()
+                                    pull()
+                                    ok = model.notice == null
+                                
+                                    if (specific != null) finishUndoExpunge(ok)
+                                }
+                            }) { Text(stringResource(R.string.index_expunge), color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                confirmExpunge = false
+                                pendingExpungeUids = null
+                            }) { Text(stringResource(R.string.index_cancel)) }
+                        },
+                    )
+                }
+            if (filterActive || model.searchActive) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        filters.forEachIndexed { index, filter ->
+                            val chipText = filterChipText(filter)
+                            FilterChip(
+                                selected = true,
+                                onClick = {
+                                    enqueueModel {
+
+                                        noteVisibleTop()
+                                        model.dropFiltersFrom(index)
+                                        pull()
+                                    
+                                        if (model.notice == null) narrowArmed = false
+                                        if (model.rows.isNotEmpty()) scrollToStart()
+                                    }
+                                },
+                                label = { Text(chipText) },
+                            )
+                        }
+                    }
+                    Text(
+                        text = indexMatchCountText(model.order.size, folderExists, model.searchActive, model.searchScope),
+                        modifier = Modifier.padding(start = 8.dp),
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (searchVisible) {
+                IndexSearchBar()
+            }
+            val flagsFor = flagUid
+            if (flagsFor != null) {
+                Text(stringResource(R.string.index_flags), modifier = Modifier.padding(horizontal = 8.dp))
+                indexFlags.forEach { flag ->
+                    Row {
+                        TextButton(
+                            onClick = {
+                                enqueueModel {
+
+                                    model.changeFlags(listOf(flagsFor.uid), setOf(flag), emptySet())
+                                    pull()
+                                
+                                }
+                            },
+                        ) { Text(stringResource(R.string.index_set_flag, flag)) }
+                        TextButton(
+                            onClick = {
+                                enqueueModel {
+
+                                    model.changeFlags(listOf(flagsFor.uid), emptySet(), setOf(flag))
+                                    pull()
+                                
+                                }
+                            },
+                        ) { Text(stringResource(R.string.index_clear_flag, flag)) }
+                    }
+                }
+                TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
+            }
+            IndexMessageList()
+            val progress = searchProgress
+            if (progress != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = progress,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = { cancelSearch.value = true }) {
+                            Text(stringResource(R.string.index_search_cancel))
+                        }
+                    }
+                }
+            }
+            if (newMailUnnumbered || pendingNew > 0) {
+                NewMailPill(
+                    count = pendingNew,
+                    unnumbered = newMailUnnumbered,
+                    newestFirst = view.newestFirst,
+                    onClick = { onNewMailPill() },
+                )
+            }
+        }
+        }
+        IndexUndoSnackbar()
+    }
+    }
+    IndexDialogs()
 }
 
 @Composable
@@ -3988,7 +3624,7 @@ private fun LargeFolderAskDialog(
     )
 }
 
-private enum class AskAnswer {
+internal enum class AskAnswer {
     Once,
     Always,
     Cancel,
@@ -4220,6 +3856,9 @@ private fun IndexMessageRow(
                                 textDecoration = decoration,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                            rememberIndexFormatter(
+                                if (account.dateFormat == DateFormat.Custom) account.datePattern else "",
                             )
                             Text(
                                 text = formatIndexDate(
@@ -4491,7 +4130,7 @@ private class SwipeBoxHolder {
     var state: SwipeToDismissBoxState? = null
 }
 
-private class WatchBackoff {
+internal class WatchBackoff {
     var onRefresh: () -> Unit = {}
     var job: Job? = null
     var attempt: Int = 0
@@ -4604,33 +4243,31 @@ private fun BoxScope.NewMailPill(
     }
 }
 
-private sealed class IndexEntry {
+internal sealed class IndexEntry {
     abstract val key: String
 
     /** position: the row's 1-based number in the current sort/thread/filter order (0 = not numbered). */
     data class Message(val row: IndexRow, val member: Boolean = false, val depth: Int = 0, val position: Int = 0) :
         IndexEntry() {
-        override val key: String = if (row.mailbox.isEmpty()) {
-            "m${row.uid}"
-        } else {
-            "m${row.mailbox}\u0000${row.uid}"
-        }
+        override val key: String = row.ref.key
     }
 
 }
 
-private fun buildIndexEntries(
+internal fun buildIndexEntries(
     rows: List<IndexRow>,
-    expanded: Set<Long>,
+    expanded: Set<MessageRef>,
     threadMembers: Map<Long, IndexRow>,
     threadHidden: Map<Long, List<Long>>,
     threadDepth: Map<Long, Int>,
     anchorPage: Int = 0,
 ): List<IndexEntry> {
     val entries = ArrayList<IndexEntry>(rows.size)
+    val expandedUids = HashSet<Long>(expanded.size)
+    for (ref in expanded) expandedUids.add(ref.uid)
     for ((index, row) in rows.withIndex()) {
         entries.add(IndexEntry.Message(row, position = rowPosition(anchorPage, index)))
-        if (row.uid !in expanded) continue
+        if (row.uid !in expandedUids) continue
         for (uid in threadHidden[row.uid].orEmpty()) {
             val member = threadMembers[uid] ?: continue
             entries.add(IndexEntry.Message(member, member = true, depth = threadDepth[uid] ?: 1))

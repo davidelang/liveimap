@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Ordnersymbolleiste"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Reader-Symbolleiste"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Symbolleiste „Verfassen“."},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Dieses Layout kann nicht angezeigt werden: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Layout bearbeiten"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Fenstergröße ändern"},
 {"key": "pane_wider", "source": "Wider", "text": "Breiter"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Schmaler"},

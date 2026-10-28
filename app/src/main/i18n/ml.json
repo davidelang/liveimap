@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ഫോൾഡർ ടൂൾബാർ"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "റീഡർ ടൂൾബാർ"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ടൂൾബാർ രചിക്കുക"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ഈ ലേഔട്ട് കാണിക്കാനാവില്ല: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "ലേഔട്ട് തിരുത്തുക"},
 {"key": "pane_resize", "source": "Resize pane", "text": "പാളിയുടെ വലുപ്പം മാറ്റുക"},
 {"key": "pane_wider", "source": "Wider", "text": "വിശാലമായ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ഇടുങ്ങിയത്"},

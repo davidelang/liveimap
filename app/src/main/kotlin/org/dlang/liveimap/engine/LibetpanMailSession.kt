@@ -23,8 +23,8 @@ import org.dlang.liveimap.session.LifecycleCall
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
-import org.dlang.liveimap.session.MailboxUids
 import org.dlang.liveimap.session.MessageOrder
+import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.Namespace
 import org.dlang.liveimap.session.NamespaceKind
@@ -38,12 +38,12 @@ import org.dlang.liveimap.session.SearchProgress
 import org.dlang.liveimap.session.baseSubject
 import org.dlang.liveimap.session.dateHeaderEpoch
 import org.dlang.liveimap.session.firstAddrMailbox
-import org.dlang.liveimap.session.flattenThread
 import org.dlang.liveimap.session.localeKeyBytes
 import org.dlang.liveimap.session.mailboxMarkedTrash
 import org.dlang.liveimap.session.messageOrderThread
 import org.dlang.liveimap.session.packKeyBytes
 import org.dlang.liveimap.session.plainKeyBytes
+import org.dlang.liveimap.ui.compose.decodeHeaderPhrases
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.sameImapIdentity
@@ -57,7 +57,6 @@ import org.dlang.liveimap.settings.SmtpNoAuth
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.moveCommandKind
-import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.ui.index.parseAdvancedQuery
 
 /** CHARSET UTF-8 for non-ASCII search text, except once UTF8=ACCEPT is enabled: RFC 6855 section 3 forbids
@@ -120,13 +119,6 @@ internal class CopyMoveResult(
     @JvmField val copiedUids: LongArray,
     @JvmField val targetEpoch: Long,
 )
-
-/** Builds a mailbox UID list from a primitive array. */
-internal object NativeBoxes {
-    @JvmStatic
-    fun mailboxUids(name: String, uids: LongArray): MailboxUids =
-        MailboxUids(name, uids.asList())
-}
 
 /** Mailbox and callback from the last watch request. [clearPublishedWatch] does not drop this. */
 internal class WatchTarget(
@@ -787,6 +779,7 @@ class LibetpanMailSession(
                 settings?.email.orEmpty(),
                 settings?.altAddresses.orEmpty().joinToString("\n"),
                 settings?.unlabeledCharset ?: "ISO-8859-1",
+                accountId,
             ) ?: throw MailFailure("fetch failed")
             fetched.toList()
         }
@@ -808,7 +801,7 @@ class LibetpanMailSession(
         }
         return indexes.map { index ->
             IndexRow(
-                uid = ids[index],
+                ref = MessageRef(accountId, request.mailbox, selected.uidValidity, ids[index]),
                 sequence = index + 1,
                 flags = emptySet(),
                 internalDateEpoch = 0L,
@@ -932,23 +925,23 @@ class LibetpanMailSession(
         return copiedEpochStore
     }
 
-    override suspend fun takeCopiedUids(): List<Long> {
+    override suspend fun takeCopiedUids(): LongArray {
         if (handle == 0L) throw MailFailure("not connected")
         val ids = copiedUidStore
         copiedUidStore = LongArray(0)
-        return ids.asList()
+        return ids
     }
 
-    override suspend fun searchText(query: String): List<Long> = keeper.read("search") {
+    override suspend fun searchText(query: String): LongArray = keeper.read("search") {
         val h = requireHandle()
         remember("SEARCH $query") {
             val ids = nativeSearchText(h, requireWireText(query), featureCaps.searchKind() == "Esearch", !utf8Names)
                 ?: throw MailFailure("search failed")
             orderOf(ids)
-        }.uids.asList()
+        }.uids
     }
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = keeper.read("search") {
+    override suspend fun searchCriterion(kind: String, argument: String): LongArray = keeper.read("search") {
         val h = requireHandle()
         val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         remember("CRITERION $kind $argument") {
@@ -975,7 +968,7 @@ class LibetpanMailSession(
                 )
             }) ?: throw MailFailure("search failed")
             orderOf(ids)
-        }.uids.asList()
+        }.uids
     }
 
     override suspend fun searchCount(kind: String, argument: String): Int {
@@ -1010,7 +1003,7 @@ class LibetpanMailSession(
         home: String,
         kind: String,
         argument: String,
-    ): List<MailboxUids> = keeper.read("search") {
+    ): List<MessageRef> = keeper.read("search") {
         if (kind != "Advanced") throw MailFailure("search failed")
         if (scopeName == "Subtree" && home.isEmpty()) throw MailFailure("search failed")
         val homeWire = wire(home) // F42: the scope home folder goes out as a quoted string too
@@ -1028,6 +1021,7 @@ class LibetpanMailSession(
             Array(parsed.steps.size) { parsed.steps[it].argument },
             withCharset,
             parsed.fuzzy,
+            accountId,
         ) ?: throw MailFailure("search failed")
         rows.toList()
     }
@@ -1066,35 +1060,33 @@ class LibetpanMailSession(
         rows.toList()
     }
 
-    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> {
-        if (rule == StartRule.Newest) return emptyList()
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): LongArray {
+        if (rule == StartRule.Newest) return LongArray(0)
         return keeper.read("search") {
-            val ids = nativeSearchStart(
+            nativeSearchStart(
                 requireHandle(),
                 rule.name,
                 byUid,
                 edge.name,
                 featureCaps.searchKind() == "Esearch",
             ) ?: throw MailFailure("search failed")
-            ids.asList()
         }
     }
 
-    override suspend fun locateUid(uid: Long): List<Long> = keeper.read("search") {
-        val ids = nativeLocateUid(
+    override suspend fun locateUid(uid: Long): LongArray = keeper.read("search") {
+        nativeLocateUid(
             requireHandle(),
             uid,
             featureCaps.searchKind() == "Esearch",
         ) ?: throw MailFailure("search failed")
-        ids.asList()
     }
 
-    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = sortWith(key, newestFirst, null)
+    override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = sortWith(key, newestFirst, null).asList()
 
     override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long> =
-        sortWith(key, newestFirst, criteria)
+        sortWith(key, newestFirst, criteria).asList()
 
-    private suspend fun sortWith(key: SortKey, newestFirst: Boolean, criteria: String?): List<Long> {
+    private suspend fun sortWith(key: SortKey, newestFirst: Boolean, criteria: String?): LongArray {
         if (key == SortKey.Arrival) {
             throw MailFailure("use an arrival IndexMode")
         }
@@ -1112,7 +1104,7 @@ class LibetpanMailSession(
                 val ids = nativeSort(h, token, newestFirst, command == "Esort", criteria?.let(::requireCriteria))
                     ?: throw MailFailure("sort failed")
                 orderOf(ids)
-            }.uids.asList()
+            }.uids
         }
     }
 
@@ -1176,7 +1168,7 @@ class LibetpanMailSession(
     fun prepareLongSearch(timeoutSec: Int) = nativePrepareLongSearch(requireHandle(), timeoutSec)
 
     /** One search, without the keeper's reconnect-and-retry: a dropped connection is a cancel or a failure. */
-    fun longSearch(kind: String, argument: String): List<Long> {
+    fun longSearch(kind: String, argument: String): LongArray {
         val h = requireHandle()
         val withCharset = searchNeedsCharset(requireSearchArgument(kind, argument), utf8Names)
         val ids = if (kind == "Advanced") {
@@ -1195,7 +1187,7 @@ class LibetpanMailSession(
         } else {
             nativeSearchCriterion(h, kind, argument, featureCaps.searchKind() == "Esearch", withCharset)
         } ?: throw MailFailure("search failed")
-        return ids.asList()
+        return ids
     }
 
     fun searchProgress(): SearchProgress {
@@ -1210,11 +1202,11 @@ class LibetpanMailSession(
         if (h != 0L) nativeAbort(h)
     }
 
-    override suspend fun thread(key: SortKey): ThreadNode = threadWith(key, null)
+    override suspend fun thread(key: SortKey): ThreadFlat = threadWith(key, null)
 
-    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode = threadWith(key, criteria)
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadFlat = threadWith(key, criteria)
 
-    private suspend fun threadWith(key: SortKey, criteria: String?): ThreadNode {
+    private suspend fun threadWith(key: SortKey, criteria: String?): ThreadFlat {
         val algorithm = when (key) {
             SortKey.ThreadReferences -> {
                 if (!featureCaps.threadReferences) {
@@ -1232,12 +1224,9 @@ class LibetpanMailSession(
         }
         return keeper.read("thread") {
             val h = requireHandle()
-            val order = remember("THREAD $algorithm ${criteria.orEmpty()}") {
-                val node = nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
-                val flat = flattenThread(node)
-                orderOf(flat.uids, flat.depths)
+            remember("THREAD $algorithm ${criteria.orEmpty()}") {
+                nativeThread(h, algorithm, criteria?.let(::requireCriteria)) ?: throw MailFailure("thread failed")
             }
-            messageOrderThread(order)
         }
     }
 
@@ -1377,6 +1366,13 @@ class LibetpanMailSession(
         nativeSearchUids(requireHandle()) ?: throw MailFailure("sort failed")
     }
 
+    private class SortColumns(
+        val uids: LongArray,
+        val numbers: LongArray,
+        val blanks: BooleanArray,
+        val texts: Array<String>,
+    )
+
     private suspend fun fetchSortPieces(
         uids: LongArray,
         key: SortKey,
@@ -1384,10 +1380,13 @@ class LibetpanMailSession(
         cancelled: () -> Boolean,
         total: Int,
         doneBase: Int,
-    ): List<SortPiece> {
+    ): SortColumns {
         val code = sortFieldCode(key)
         val chunk = clientSortChunk()
-        val out = ArrayList<SortPiece>()
+        val uidAcc = ArrayList<Long>()
+        val numberAcc = ArrayList<Long>()
+        val blankAcc = ArrayList<Boolean>()
+        val textAcc = ArrayList<String>()
         var at = 0
         while (at < uids.size) {
             if (cancelled()) throw MailFailure("sort cancelled")
@@ -1396,73 +1395,111 @@ class LibetpanMailSession(
             val fetched = keeper.read("client-sort") {
                 nativeFetchSortChunk(requireHandle(), slice, code) ?: throw MailFailure("sort failed")
             }
-            for (i in fetched.uids.indices) out.add(sortPiece(key, fetched, i))
+            for (i in fetched.uids.indices) {
+                uidAcc.add(fetched.uids[i])
+                when (key) {
+                    SortKey.Date -> {
+                        val epoch = dateHeaderEpoch(fetched.texts[i])
+                        numberAcc.add(epoch ?: 0L)
+                        blankAcc.add(epoch == null)
+                        textAcc.add("")
+                    }
+                    SortKey.Size -> {
+                        numberAcc.add(fetched.numbers[i])
+                        blankAcc.add(fetched.blanks[i])
+                        textAcc.add("")
+                    }
+                    SortKey.Subject, SortKey.From, SortKey.To, SortKey.Cc -> {
+                        numberAcc.add(0L)
+                        blankAcc.add(false)
+                        textAcc.add(fetched.texts[i])
+                    }
+                    else -> throw MailFailure("use an arrival IndexMode")
+                }
+            }
             at = end
             onProgress(doneBase + at, total)
         }
-        return out
+        return columnsOf(key, uidAcc, numberAcc, blankAcc, textAcc)
     }
 
-    private fun sortPiece(key: SortKey, row: ClientFetch, i: Int): SortPiece {
-        val uid = row.uids[i]
+    private fun columnsOf(
+        key: SortKey,
+        uidAcc: List<Long>,
+        numberAcc: List<Long>,
+        blankAcc: List<Boolean>,
+        textAcc: List<String>,
+    ): SortColumns {
+        val n = uidAcc.size
         val charset = account?.unlabeledCharset ?: "ISO-8859-1"
-        return when (key) {
-            SortKey.Date -> {
-                val epoch = dateHeaderEpoch(row.texts[i])
-                SortPiece(uid, epoch ?: 0L, epoch == null, "")
+        val raw = textAcc.toTypedArray()
+        val texts = when (key) {
+            SortKey.Subject -> {
+                val decoded = if (n == 0) emptyArray() else decodeHeaderPhrases(raw, charset)
+                Array(decoded.size) { baseSubject(decoded[it]) }
             }
-            SortKey.Size -> SortPiece(uid, row.numbers[i], row.blanks[i], "")
-            SortKey.Subject -> SortPiece(uid, 0L, false, baseSubject(decodeHeaderWords(row.texts[i], charset)))
-            SortKey.From, SortKey.To, SortKey.Cc -> SortPiece(
-                uid,
-                0L,
-                false,
-                firstAddrMailbox(row.texts[i]) { decodeHeaderWords(it, charset) },
-            )
-            else -> throw MailFailure("use an arrival IndexMode")
+            SortKey.From, SortKey.To, SortKey.Cc -> Array(n) {
+                firstAddrMailbox(raw[it]) { decodeHeaderWords(it, charset) }
+            }
+            else -> Array(n) { "" }
         }
+        return SortColumns(
+            LongArray(n) { uidAcc[it] },
+            LongArray(n) { numberAcc[it] },
+            BooleanArray(n) { blankAcc[it] },
+            texts,
+        )
     }
 
     private fun orderFromPieces(
-        pieces: List<SortPiece>,
+        pieces: SortColumns,
         key: SortKey,
         newestFirst: Boolean,
         collation: ClientSortCollation,
     ): MessageOrder {
         val numeric = key == SortKey.Date || key == SortKey.Size
-        val n = pieces.size
+        val n = pieces.uids.size
         if (n == 0) return orderOf(LongArray(0))
-        val uids = LongArray(n) { pieces[it].uid }
-        val numbers = LongArray(n) { if (pieces[it].blank) Long.MIN_VALUE else pieces[it].number }
-        val blanks = BooleanArray(n) { pieces[it].blank }
+        val numbers = LongArray(n) { if (pieces.blanks[it]) Long.MIN_VALUE else pieces.numbers[it] }
         val packed = if (numeric) {
             Triple(ByteArray(0), IntArray(n), IntArray(n))
         } else {
-            textColumns(Array(n) { pieces[it].text }, collation)
+            textColumns(pieces.texts, collation)
         }
-        val ordered = nativeSortClient(uids, numbers, blanks, packed.first, packed.second, packed.third, numeric, newestFirst)
-            ?: throw MailFailure("sort failed")
-        val at = HashMap<Long, Int>(n * 2)
-        for (i in pieces.indices) at[pieces[i].uid] = i
-        val perm = IntArray(ordered.size) { at.getValue(ordered[it]) }
+        val perm = nativeSortClient(
+            pieces.uids,
+            numbers,
+            pieces.blanks,
+            packed.first,
+            packed.second,
+            packed.third,
+            numeric,
+            newestFirst,
+        ) ?: throw MailFailure("sort failed")
         return messageOrderFromPerm(pieces, perm, key, if (numeric) null else packed)
     }
 
     private fun messageOrderFromPerm(
-        pieces: List<SortPiece>,
+        pieces: SortColumns,
         perm: IntArray,
         key: SortKey,
         packed: Triple<ByteArray, IntArray, IntArray>?,
     ): MessageOrder {
         val n = perm.size
-        val uids = LongArray(n) { pieces[perm[it]].uid }
+        val uids = LongArray(n) { pieces.uids[perm[it]] }
         val dateEpoch = if (key == SortKey.Date) {
-            LongArray(n) { val p = pieces[perm[it]]; if (p.blank) Long.MIN_VALUE else p.number }
+            LongArray(n) {
+                val i = perm[it]
+                if (pieces.blanks[i]) Long.MIN_VALUE else pieces.numbers[i]
+            }
         } else {
             LongArray(0)
         }
         val sizes = if (key == SortKey.Size) {
-            LongArray(n) { val p = pieces[perm[it]]; if (p.blank) Long.MIN_VALUE else p.number }
+            LongArray(n) {
+                val i = perm[it]
+                if (pieces.blanks[i]) Long.MIN_VALUE else pieces.numbers[i]
+            }
         } else {
             LongArray(0)
         }
@@ -1483,12 +1520,12 @@ class LibetpanMailSession(
 
     private fun insertPieces(
         order: MessageOrder,
-        pieces: List<SortPiece>,
+        pieces: SortColumns,
         key: SortKey,
         newestFirst: Boolean,
         collation: ClientSortCollation,
     ): MessageOrder {
-        if (pieces.isEmpty()) return order
+        if (pieces.uids.isEmpty()) return order
         val fresh = orderFromPieces(pieces, key, newestFirst, collation)
         return mergeSortedOrders(order, fresh, key, newestFirst)
     }
@@ -1761,7 +1798,8 @@ class LibetpanMailSession(
     private fun threadOrder(key: SortKey, headers: ClientHeaders): MessageOrder {
         val flat = if (key == SortKey.ThreadOrderedSubject) {
             val charset = account?.unlabeledCharset ?: "ISO-8859-1"
-            val subjects = Array(headers.uids.size) { baseSubject(decodeHeaderWords(headers.subject[it], charset)) }
+            val decoded = if (headers.subject.isEmpty()) emptyArray() else decodeHeaderPhrases(headers.subject, charset)
+            val subjects = Array(decoded.size) { baseSubject(decoded[it]) }
             val epochs = LongArray(headers.uids.size) { dateHeaderEpoch(headers.date[it]) ?: Long.MIN_VALUE }
             nativeThreadSubject(headers.uids, subjects, epochs) ?: throw MailFailure("thread failed")
         } else {
@@ -1795,8 +1833,6 @@ class LibetpanMailSession(
             Array(n) { pick(it, a.date, b.date) },
         )
     }
-
-    private data class SortPiece(val uid: Long, val number: Long, val blank: Boolean, val text: String)
 
     /**
      * Extra IDLE: the watch connection is the only login (connect, log in, EXAMINE, IDLE). The command
@@ -2424,6 +2460,7 @@ class LibetpanMailSession(
         accountEmail: String,
         altAddresses: String,
         unlabeledCharset: String,
+        accountId: String,
     ): Array<IndexRow>?
 
     private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?
@@ -2491,7 +2528,8 @@ class LibetpanMailSession(
         arguments: Array<String>,
         withCharset: Boolean,
         fuzzy: Boolean,
-    ): Array<MailboxUids>?
+        accountId: String,
+    ): Array<MessageRef>?
 
     private external fun nativeSearchScopeCount(
         handle: Long,
@@ -2543,6 +2581,25 @@ class LibetpanMailSession(
     private external fun nativeSearchUids(handle: Long): LongArray?
     private external fun nativeFetchSortChunk(handle: Long, uids: LongArray, field: Int): ClientFetch?
     private external fun nativeFetchThreadChunk(handle: Long, uids: LongArray): ClientHeaders?
+    internal fun clientSortOrderForTest(
+        uids: LongArray,
+        numbers: LongArray,
+        blanks: BooleanArray,
+        newestFirst: Boolean,
+    ): LongArray {
+        val perm = nativeSortClient(
+            uids,
+            numbers,
+            blanks,
+            ByteArray(0),
+            IntArray(uids.size),
+            IntArray(uids.size),
+            true,
+            newestFirst,
+        ) ?: throw MailFailure("sort failed")
+        return LongArray(perm.size) { uids[perm[it]] }
+    }
+
     private external fun nativeSortClient(
         uids: LongArray,
         numbers: LongArray,
@@ -2552,7 +2609,7 @@ class LibetpanMailSession(
         keyLen: IntArray,
         numeric: Boolean,
         newestFirst: Boolean,
-    ): LongArray?
+    ): IntArray?
     private external fun nativeInsertAt(
         uids: LongArray,
         numbers: LongArray,
@@ -2574,7 +2631,7 @@ class LibetpanMailSession(
         references: Array<String>,
         inReplyTo: Array<String>,
     ): ThreadFlat?
-    private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadNode?
+    private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadFlat?
     private external fun nativeWatchLogin(handle: Long): String?
     private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
     private external fun nativeStopWatch(handle: Long): Long

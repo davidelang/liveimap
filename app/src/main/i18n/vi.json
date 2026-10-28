@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Thanh công cụ thư mục"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Thanh công cụ đọc"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Thanh công cụ soạn thảo"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Không thể hiện bố cục này: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Sửa bố cục"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Thay đổi kích thước ngăn"},
 {"key": "pane_wider", "source": "Wider", "text": "rộng hơn"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Thu hẹp hơn"},

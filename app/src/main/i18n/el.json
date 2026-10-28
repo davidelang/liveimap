@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Γραμμή εργαλείων φακέλου"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Γραμμή εργαλείων ανάγνωσης"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Γραμμή εργαλείων σύνθεσης"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Αυτή η διάταξη δεν μπορεί να εμφανιστεί: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Επεξεργασία διάταξης"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Αλλαγή μεγέθους παραθύρου"},
 {"key": "pane_wider", "source": "Wider", "text": "Πιο ευρύ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Πιο στενό"},

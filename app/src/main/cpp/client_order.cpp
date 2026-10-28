@@ -42,7 +42,7 @@ std::string trimCopy(const std::string & s) {
 }  // namespace
 
 int co_order(const int64_t * uids, const int64_t * number, const uint8_t * blank, const uint8_t * bytes,
-    const int32_t * off, const int32_t * len, int n, int numeric, int newestFirst, int64_t * out) {
+    const int32_t * off, const int32_t * len, int n, int numeric, int newestFirst, int32_t * out) {
     std::vector<int> filled;
     std::vector<int> blanks;
     filled.reserve(static_cast<size_t>(n));
@@ -64,8 +64,8 @@ int co_order(const int64_t * uids, const int64_t * number, const uint8_t * blank
     if (newestFirst) std::reverse(filled.begin(), filled.end());
     std::sort(blanks.begin(), blanks.end(), [&](int a, int b) { return uids[a] < uids[b]; });
     int k = 0;
-    for (int i : filled) out[k++] = uids[i];
-    for (int i : blanks) out[k++] = uids[i];
+    for (int i : filled) out[k++] = i;
+    for (int i : blanks) out[k++] = i;
     return k;
 }
 
@@ -362,9 +362,11 @@ extern "C" int liveimap_client_order_parse(const uint8_t * data, size_t size) {
         mids[n] = held[n].c_str();
         ++n;
     }
+    int32_t perm[32];
     int64_t ordered[32];
     if (n > 0) {
-        co_order(uids, numbers, blanks, bytes, off, len, n, data[0] & 2 ? 1 : 0, data[0] & 4 ? 1 : 0, ordered);
+        int wrote = co_order(uids, numbers, blanks, bytes, off, len, n, data[0] & 2 ? 1 : 0, data[0] & 4 ? 1 : 0, perm);
+        for (int i = 0; i < wrote; ++i) ordered[i] = uids[perm[i]];
         uint8_t dateBlank[32];
         for (int i = 0; i < n; ++i) dateBlank[i] = blanks[i];
         co_thread_subject(uids, subjects, numbers, dateBlank, n);

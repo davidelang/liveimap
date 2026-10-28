@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ଫୋଲ୍ଡର୍ ଟୁଲ୍ ବାର୍ |"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "ରିଡର୍ ଟୁଲ୍ ବାର୍ |"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ଟୁଲ୍ ବାର୍ ରଚନା କରନ୍ତୁ |"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ଏହି ଲେଆଉଟ୍ ଦେଖାଯାଇପାରିବ ନାହିଁ: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "ଲେଆଉଟ୍ ସମ୍ପାଦନ କରନ୍ତୁ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ପେନ୍ ଆକାର ପରିବର୍ତ୍ତନ କରନ୍ତୁ |"},
 {"key": "pane_wider", "source": "Wider", "text": "ବିସ୍ତୃତ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ସଂକୀର୍ଣ୍ଣ |"},

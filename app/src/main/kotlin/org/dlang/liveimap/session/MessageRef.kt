@@ -22,16 +22,16 @@ data class MessageRef(
 suspend fun <T> MailSession.onRefs(
     accountId: String,
     refs: List<MessageRef>,
-    block: suspend (s: MailSession, mailbox: String, uids: List<Long>) -> T,
+    block: suspend (s: MailSession, mailbox: String, refs: List<MessageRef>) -> T,
 ): List<T> {
     if (refs.isEmpty()) return emptyList()
     if (refs.any { it.accountId != accountId }) throw MailFailure("message belongs to another account")
     if (refs.any { it.uidValidity == 0L }) throw MailFailure("message reference is incomplete; reload the list")
-    val groups = LinkedHashMap<Pair<String, Long>, MutableList<Long>>()
-    for (r in refs) groups.getOrPut(r.mailbox to r.uidValidity) { ArrayList() }.add(r.uid)
+    val groups = LinkedHashMap<Pair<String, Long>, MutableList<MessageRef>>()
+    for (r in refs) groups.getOrPut(r.mailbox to r.uidValidity) { ArrayList() }.add(r)
     val out = ArrayList<T>(groups.size)
-    for ((folder, uids) in groups) {
-        out += inFolder(FolderAt(folder.first, folder.second)) { _, s -> block(s, folder.first, uids) }
+    for ((folder, group) in groups) {
+        out += inFolder(FolderAt(folder.first, folder.second)) { _, s -> block(s, folder.first, group) }
     }
     return out
 }

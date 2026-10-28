@@ -99,6 +99,29 @@ class UnsentStoreTest {
     }
 
     @Test
+    fun replyRetryFromUnsentSetsAnswered() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val copy = DeviceCopy(
+                "r",
+                false,
+                "Sent",
+                listOf("a@b"),
+                src(root, "r"),
+                sourceKind = "Reply",
+                sourceMailbox = "INBOX",
+                sourceEpoch = 9L,
+                sourceUids = listOf(5L),
+            )
+            assertTrue(writeCopy(root, copy, "acct-1"))
+            val read = readCopies(root, "acct-1").single()
+            assertTrue("\\Answered" in unsentRetryFlags(read))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun uncertainCopyRoundTripsAtomicallyAndWriteFailureIsReported() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {

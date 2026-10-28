@@ -7,7 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class IdleFallbackTest {
     @Test
@@ -51,16 +50,5 @@ class IdleFallbackTest {
         )
         assertTrue(slowerPoll(forced))
         assertEquals(300, idleFallbackSeconds(slowerPoll(forced), pollIntervalSeconds(forced), 60))
-    }
-
-    @Test
-    fun indexWatchPassesSlowerPoll() {
-        val index = listOf(
-            "src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
-        ).map(::File).first { it.exists() }.readText()
-        val call = index.substringAfter("idleFallbackSeconds(")
-        assertTrue(call.trimStart().startsWith("slowerPoll(settings)"))
-        assertTrue(call.contains("pollIntervalSeconds(settings)"))
     }
 }

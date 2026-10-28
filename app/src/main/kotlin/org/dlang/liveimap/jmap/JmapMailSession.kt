@@ -26,6 +26,8 @@ import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
+import org.dlang.liveimap.session.MessageRef
+import org.dlang.liveimap.session.ThreadFlat
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
@@ -418,9 +420,9 @@ class JmapMailSession(
         return select(path).exists
     }
 
-    override suspend fun searchText(query: String): List<Long> = searchFilter("""{"text":${q(query)}}""")
+    override suspend fun searchText(query: String): LongArray = searchFilter("""{"text":${q(query)}}""")
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> {
+    override suspend fun searchCriterion(kind: String, argument: String): LongArray {
         val filter = when (kind.uppercase()) {
             "TEXT", "ADVANCED" -> """{"text":${q(argument)}}"""
             "FROM" -> """{"from":${q(argument)}}"""
@@ -452,11 +454,11 @@ class JmapMailSession(
     }
 
     /** Threads by JMAP threadId: one node per thread, oldest message as its head, the rest as its replies. */
-    override suspend fun thread(key: SortKey): ThreadNode = onSession {
+    override suspend fun thread(key: SortKey): ThreadFlat = onSession {
         val (path, table) = selectedTable()
         val mailboxId = idOfLocked(path)
         val hits = pagedHits(table, mailboxId, """{"inMailbox":${q(mailboxId)}}""", """[{"property":"receivedAt","isAscending":true}]""", threads = true)
-        threadNodes(hits)
+        threadFlat(hits)
     }
 
     override suspend fun fetchStructure(uid: Long): MimePart = onSession {
@@ -887,11 +889,14 @@ class JmapMailSession(
         return path to uids.getOrPut(idOfLocked(path)) { Uids() }
     }
 
-    private suspend fun searchFilter(filter: String): List<Long> = onSession {
+    private suspend fun searchFilter(filter: String): LongArray = onSession {
         val (path, table) = selectedTable()
         val mailboxId = idOfLocked(path)
         val inMailbox = """{"operator":"AND","conditions":[{"inMailbox":${q(mailboxId)}},$filter]}"""
-        pagedHits(table, mailboxId, inMailbox, sortJson = null, threads = false).map { it.uid }.sorted()
+        val ids = pagedHits(table, mailboxId, inMailbox, sortJson = null, threads = false).map { it.uid }
+        val out = ids.toLongArray()
+        out.sort()
+        out
     }
 
     private class Hit(val id: String, val uid: Long, val threadId: String)
@@ -968,12 +973,26 @@ class JmapMailSession(
         return hits
     }
 
-    private fun threadNodes(hits: List<Hit>): ThreadNode {
+    private fun threadFlat(hits: List<Hit>): ThreadFlat {
         val groups = LinkedHashMap<String, MutableList<Long>>()
         for (hit in hits) groups.getOrPut(hit.threadId.ifEmpty { "solo:${hit.id}" }) { ArrayList() } += hit.uid
-        return ThreadNode(null, groups.values.map { uidsInThread ->
-            ThreadNode(uidsInThread.first(), uidsInThread.drop(1).map { ThreadNode(it, emptyList()) })
-        })
+        var count = 0
+        for (uidsInThread in groups.values) if (uidsInThread.isNotEmpty()) count += uidsInThread.size
+        val uids = LongArray(count)
+        val depths = ShortArray(count)
+        var at = 0
+        for (uidsInThread in groups.values) {
+            if (uidsInThread.isEmpty()) continue
+            uids[at] = uidsInThread.first()
+            depths[at] = 0
+            at++
+            for (uid in uidsInThread.drop(1)) {
+                uids[at] = uid
+                depths[at] = 1
+                at++
+            }
+        }
+        return ThreadFlat(uids, depths)
     }
 
     private suspend fun setEmails(updates: Map<String, Map<String, Any?>>) {
@@ -1015,7 +1034,7 @@ class JmapMailSession(
             val f = (item as? Json.Obj)?.fields ?: return@mapIndexedNotNull null
             val id = (f["id"] as? Json.Str)?.text ?: return@mapIndexedNotNull null
             IndexRow(
-                uid = table.uid(id, receivedAtEpoch(f["receivedAt"])),
+                ref = MessageRef(accountKey, mailbox, epoch.coerceAtLeast(1L), table.uid(id, receivedAtEpoch(f["receivedAt"]))),
                 sequence = index + 1,
                 flags = flagsOf(f["keywords"]),
                 internalDateEpoch = epochSeconds((f["receivedAt"] as? Json.Str)?.text.orEmpty()),
@@ -1026,7 +1045,6 @@ class JmapMailSession(
                 preview = (f["preview"] as? Json.Str)?.text,
                 hasAttachment = (f["hasAttachment"] as? Json.Bool)?.value == true,
                 recipients = addressText(f["to"]),
-                mailbox = mailbox,
             )
         }
     }

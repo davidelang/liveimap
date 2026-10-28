@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Barra de ferramentas de pastas"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Barra de ferramentas do leitor"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Barra de ferramentas de composição"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Não é possível mostrar este esquema: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Editar esquema"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Redimensionar painel"},
 {"key": "pane_wider", "source": "Wider", "text": "Mais amplo"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Mais estreito"},

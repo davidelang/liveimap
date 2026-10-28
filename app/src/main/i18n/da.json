@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Mappeværktøjslinje"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Læser værktøjslinje"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Skriv værktøjslinje"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Dette layout kan ikke vises: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Rediger layout"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Tilpas rudestørrelse"},
 {"key": "pane_wider", "source": "Wider", "text": "Bredere"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Smallere"},

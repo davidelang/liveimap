@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Папка куралдар панели"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Окуучу куралдар тилкеси"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Куралдар тилкесин түзүү"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Бул жайгашууну көрсөтүү мүмкүн эмес: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Жайгашууну түзөтүү"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Өлчөмүн өзгөртүү панели"},
 {"key": "pane_wider", "source": "Wider", "text": "Кененирээк"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Тарыраак"},

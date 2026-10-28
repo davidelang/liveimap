@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ఫోల్డర్ టూల్‌బార్"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "రీడర్ టూల్ బార్"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "కంపోజ్ టూల్‌బార్"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ఈ లేఅవుట్‌ను చూపించలేము: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "లేఅవుట్‌ను సవరించండి"},
 {"key": "pane_resize", "source": "Resize pane", "text": "పేన్ పరిమాణాన్ని మార్చండి"},
 {"key": "pane_wider", "source": "Wider", "text": "విశాలమైనది"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ఇరుకైనది"},

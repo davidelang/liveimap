@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Pẹpẹ irinṣẹ folda"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Opa irinṣẹ oluka"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Kọ ọpa irinṣẹ"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "A kò lè fi ìtòlẹ́sẹẹ́ yìí hàn: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Ṣàtúnṣe ìtòlẹ́sẹẹ́"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Ṣe iwọn PAN"},
 {"key": "pane_wider", "source": "Wider", "text": "O gbooro sii"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Din"},

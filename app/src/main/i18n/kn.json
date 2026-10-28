@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ಫೋಲ್ಡರ್ ಟೂಲ್‌ಬಾರ್"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "ರೀಡರ್ ಟೂಲ್‌ಬಾರ್"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ಟೂಲ್‌ಬಾರ್ ಅನ್ನು ರಚಿಸಿ"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ಈ ವಿನ್ಯಾಸವನ್ನು ತೋರಿಸಲು ಸಾಧ್ಯವಿಲ್ಲ: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "ವಿನ್ಯಾಸವನ್ನು ಸಂಪಾದಿಸಿ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ಫಲಕವನ್ನು ಮರುಗಾತ್ರಗೊಳಿಸಿ"},
 {"key": "pane_wider", "source": "Wider", "text": "ವಿಶಾಲ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ಕಿರಿದಾದ"},

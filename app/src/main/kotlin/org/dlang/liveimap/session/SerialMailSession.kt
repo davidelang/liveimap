@@ -228,19 +228,19 @@ class SerialMailSession(
 
     override suspend fun selectedExists(): Int = unscoped("selectedExists")
 
-    override suspend fun takeCopiedUids(): List<Long> = unscoped("takeCopiedUids")
+    override suspend fun takeCopiedUids(): LongArray = unscoped("takeCopiedUids")
     override suspend fun copiedEpoch(): Long = unscoped("copiedEpoch")
 
-    override suspend fun searchText(query: String): List<Long> =
+    override suspend fun searchText(query: String): LongArray =
         unscoped("searchText")
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> =
+    override suspend fun searchCriterion(kind: String, argument: String): LongArray =
         unscoped("searchCriterion")
 
     override suspend fun searchCount(kind: String, argument: String): Int =
         unscoped("searchCount")
 
-    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MessageRef> =
         onLane { inner.searchScope(scopeName, home, kind, argument) }
 
     override suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
@@ -249,10 +249,10 @@ class SerialMailSession(
     override suspend fun subscribedMailboxes(): List<String> =
         onLane { inner.subscribedMailboxes() }
 
-    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): LongArray =
         unscoped("searchStart")
 
-    override suspend fun locateUid(uid: Long): List<Long> = unscoped("locateUid")
+    override suspend fun locateUid(uid: Long): LongArray = unscoped("locateUid")
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> =
         unscoped("sort")
@@ -263,7 +263,7 @@ class SerialMailSession(
     override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? =
         unscoped("searchWindow")
 
-    override suspend fun thread(key: SortKey): ThreadNode =
+    override suspend fun thread(key: SortKey): ThreadFlat =
         unscoped("thread")
 
     override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? =
@@ -277,7 +277,7 @@ class SerialMailSession(
         criteria: String,
     ): UidWindow? = unscoped("sortWindowMatching")
 
-    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? =
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadFlat? =
         unscoped("threadMatching")
 
     override suspend fun clientOrder(

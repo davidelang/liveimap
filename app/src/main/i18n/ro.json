@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Bara de instrumente pentru foldere"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Bara de instrumente Reader"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Bara de instrumente Compune"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Acest aspect nu poate fi afișat: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Editați aspectul"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Redimensionați panoul"},
 {"key": "pane_wider", "source": "Wider", "text": "Mai lat"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Mai îngust"},

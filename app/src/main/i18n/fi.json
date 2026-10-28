@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Kansion työkalupalkki"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Lukijan työkalupalkki"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Kirjoita työkalupalkki"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Tätä asettelua ei voi näyttää: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Muokkaa asettelua"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Muuta ruudun kokoa"},
 {"key": "pane_wider", "source": "Wider", "text": "Leveämpi"},
 {"key": "pane_narrower", "source": "Narrower", "text": "kapeampi"},

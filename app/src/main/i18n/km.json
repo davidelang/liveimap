@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "របារឧបករណ៍ថត"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "របារឧបករណ៍អ្នកអាន"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "តែងរបារឧបករណ៍"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "មិនអាចបង្ហាញប្លង់នេះបានទេ: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "កែប្លង់"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ប្តូរទំហំផ្ទាំង"},
 {"key": "pane_wider", "source": "Wider", "text": "កាន់តែទូលំទូលាយ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "តូចចង្អៀត"},

@@ -87,25 +87,25 @@ interface MailSession {
         throw MailFailure("not supported")
     }
     suspend fun selectedExists(): Int = 0
-    suspend fun takeCopiedUids(): List<Long> = emptyList()
+    suspend fun takeCopiedUids(): LongArray = LongArray(0)
     /** UIDVALIDITY of the folder the last COPY/MOVE copied into (from COPYUID); 0 when unknown. */
     suspend fun copiedEpoch(): Long = 0L
-    suspend fun searchText(query: String): List<Long>
-    suspend fun searchCriterion(kind: String, argument: String): List<Long>
+    suspend fun searchText(query: String): LongArray
+    suspend fun searchCriterion(kind: String, argument: String): LongArray
     suspend fun searchCount(kind: String, argument: String): Int =
         searchCriterion(kind, argument).size
 
-    suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> =
+    suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MessageRef> =
         throw MailFailure("search failed")
 
     suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int =
         throw MailFailure("search failed")
 
     suspend fun subscribedMailboxes(): List<String> = emptyList()
-    suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> =
+    suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): LongArray =
         throw MailFailure("searchStart")
 
-    suspend fun locateUid(uid: Long): List<Long> = throw MailFailure("locateUid")
+    suspend fun locateUid(uid: Long): LongArray = throw MailFailure("locateUid")
     suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long>
 
     /**
@@ -119,7 +119,7 @@ interface MailSession {
      * plus the total, via ESEARCH PARTIAL. Null when unsupported; fall back to [searchCriterion].
      */
     suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? = null
-    suspend fun thread(key: SortKey): ThreadNode
+    suspend fun thread(key: SortKey): ThreadFlat
 
     /**
      * SORT / ESORT PARTIAL / THREAD over only the messages matching [criteria] (a filter chain as
@@ -131,7 +131,7 @@ interface MailSession {
     suspend fun sortWindowMatching(key: SortKey, newestFirst: Boolean, first: Int, last: Int, criteria: String): UidWindow? =
         null
 
-    suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? = null
+    suspend fun threadMatching(key: SortKey, criteria: String): ThreadFlat? = null
     suspend fun clientOrder(
         key: SortKey,
         newestFirst: Boolean,

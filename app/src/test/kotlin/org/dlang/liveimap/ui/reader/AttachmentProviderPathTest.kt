@@ -8,7 +8,7 @@ import org.junit.Test
 
 /** F40: AttachmentFileProvider path handling (not only the name pattern). */
 class AttachmentProviderPathTest {
-    private val ok = "liveimap-0123456789abcdef-7-report.pdf"
+    private val ok = "liveimap-01234567-89ab-cdef-0123-456789abcdef-0123456789abcdef-7-9-report.pdf"
 
     @Test fun ownNameResolvesInsideTheCache() {
         val dir = Files.createTempDirectory("cache").toFile()
@@ -19,6 +19,7 @@ class AttachmentProviderPathTest {
         val dir = Files.createTempDirectory("cache").toFile()
         for (name in listOf(
             null, "", "notes.log", "../$ok", "sub/$ok",
+            "liveimap-0123456789abcdef-7-report.pdf",
             "liveimap-0123456789abcdef-7-a/../../x", "liveimap-0123456789ABCDEF-7-x", "liveimap-0123456789abcdef-x-y",
             "$ok\u0000", "liveimap-0123456789abcdef-7-a b",
         )) {

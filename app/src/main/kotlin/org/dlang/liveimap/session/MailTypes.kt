@@ -75,11 +75,6 @@ enum class SearchEdge {
     Max,
 }
 
-data class MailboxUids(
-    val mailbox: String,
-    val uids: List<Long>,
-)
-
 enum class IndexMode {
     ArrivalNewest,
     ArrivalOldest,
@@ -104,7 +99,7 @@ data class IndexRequest(
 )
 
 data class IndexRow(
-    val uid: Long,
+    val ref: MessageRef,
     val sequence: Int,
     val flags: Set<String>,
     val internalDateEpoch: Long,
@@ -116,10 +111,12 @@ data class IndexRow(
     val toMe: Boolean = false,
     val hasAttachment: Boolean = false,
     val recipients: String = "",
-    val mailbox: String = "",
     val headerNote: String = "",
     val previewFailed: Boolean = false,
-)
+) {
+    val uid: Long get() = ref.uid
+    val mailbox: String get() = ref.mailbox
+}
 
 /** MIME parts nested deeper than this are listed as one openable "nested part" entry instead of being walked. */
 const val MaxMimeDepth = 64

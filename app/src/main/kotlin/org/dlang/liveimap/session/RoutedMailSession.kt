@@ -153,25 +153,25 @@ class RoutedMailSession(
 
     override suspend fun selectedExists(): Int = current().selectedExists()
 
-    override suspend fun takeCopiedUids(): List<Long> = current().takeCopiedUids()
+    override suspend fun takeCopiedUids(): LongArray = current().takeCopiedUids()
 
     override suspend fun copiedEpoch(): Long = current().copiedEpoch()
 
-    override suspend fun searchText(query: String): List<Long> = current().searchText(query)
+    override suspend fun searchText(query: String): LongArray = current().searchText(query)
 
-    override suspend fun searchCriterion(kind: String, argument: String): List<Long> = current().searchCriterion(kind, argument)
+    override suspend fun searchCriterion(kind: String, argument: String): LongArray = current().searchCriterion(kind, argument)
 
     override suspend fun searchCount(kind: String, argument: String): Int = current().searchCount(kind, argument)
 
-    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MailboxUids> = current().searchScope(scopeName, home, kind, argument)
+    override suspend fun searchScope(scopeName: String, home: String, kind: String, argument: String): List<MessageRef> = current().searchScope(scopeName, home, kind, argument)
 
     override suspend fun searchScopeCount(scopeName: String, home: String, kind: String, argument: String): Int = current().searchScopeCount(scopeName, home, kind, argument)
 
     override suspend fun subscribedMailboxes(): List<String> = current().subscribedMailboxes()
 
-    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): List<Long> = current().searchStart(rule, byUid, edge)
+    override suspend fun searchStart(rule: StartRule, byUid: Boolean, edge: SearchEdge): LongArray = current().searchStart(rule, byUid, edge)
 
-    override suspend fun locateUid(uid: Long): List<Long> = current().locateUid(uid)
+    override suspend fun locateUid(uid: Long): LongArray = current().locateUid(uid)
 
     override suspend fun sort(key: SortKey, newestFirst: Boolean): List<Long> = current().sort(key, newestFirst)
 
@@ -179,13 +179,13 @@ class RoutedMailSession(
 
     override suspend fun searchWindow(kind: String, argument: String, first: Int, last: Int): UidWindow? = current().searchWindow(kind, argument, first, last)
 
-    override suspend fun thread(key: SortKey): ThreadNode = current().thread(key)
+    override suspend fun thread(key: SortKey): ThreadFlat = current().thread(key)
 
     override suspend fun sortMatching(key: SortKey, newestFirst: Boolean, criteria: String): List<Long>? = current().sortMatching(key, newestFirst, criteria)
 
     override suspend fun sortWindowMatching(key: SortKey, newestFirst: Boolean, first: Int, last: Int, criteria: String): UidWindow? = current().sortWindowMatching(key, newestFirst, first, last, criteria)
 
-    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadNode? = current().threadMatching(key, criteria)
+    override suspend fun threadMatching(key: SortKey, criteria: String): ThreadFlat? = current().threadMatching(key, criteria)
 
     override suspend fun clientOrder(key: SortKey, newestFirst: Boolean, onProgress: (done: Int, total: Int) -> Unit, cancelled: () -> Boolean): List<Long> = current().clientOrder(key, newestFirst, onProgress, cancelled)
 

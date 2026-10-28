@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ဖိုင်တွဲ ကိရိယာဘား"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "စာဖတ်သူ ကိရိယာဘား"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ကိရိယာဘားကိုရေးပါ။"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ဤအပြင်အဆင်ကို ပြသ၍မရပါ: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "အပြင်အဆင်ကို တည်းဖြတ်ရန်"},
 {"key": "pane_resize", "source": "Resize pane", "text": "အကွက်ကို အရွယ်အစားပြောင်းပါ။"},
 {"key": "pane_wider", "source": "Wider", "text": "ပိုကျယ်တယ်။"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ပိုကျဉ်းတယ်။"},

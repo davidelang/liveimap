@@ -54,6 +54,28 @@ class ClientHeaders(
 class ThreadFlat(
     val uids: LongArray,
     val depths: ShortArray,
+) {
+    fun messageCount(): Int {
+        var n = 0
+        for (uid in uids) if (uid >= 0L) n++
+        return n
+    }
+}
+
+/** [flat] as a [ThreadNode] tree. The synthetic root has a null uid. */
+fun threadNodeOf(flat: ThreadFlat): ThreadNode = messageOrderThread(
+    MessageOrder(
+        flat.uids,
+        flat.depths,
+        "",
+        "",
+        0L,
+        LongArray(0),
+        LongArray(0),
+        ByteArray(0),
+        IntArray(0),
+        IntArray(0),
+    ),
 )
 
 /** Preorder arrays back into a [ThreadNode]. The synthetic root has a null uid and is not stored. */
@@ -74,21 +96,6 @@ fun messageOrderThread(order: MessageOrder): ThreadNode {
         stack.addLast(depth to children)
     }
     return ThreadNode(null, rootChildren)
-}
-
-/** [node] as preorder arrays. A null uid is stored as -1 so the tree round-trips. */
-fun flattenThread(node: ThreadNode): ThreadFlat {
-    val uids = ArrayList<Long>()
-    val depths = ArrayList<Int>()
-    val stack = ArrayDeque<Pair<ThreadNode, Int>>()
-    for (i in node.children.indices.reversed()) stack.addLast(node.children[i] to 0)
-    while (stack.isNotEmpty()) {
-        val (n, depth) = stack.removeLast()
-        uids.add(n.uid ?: -1L)
-        depths.add(depth)
-        for (i in n.children.indices.reversed()) stack.addLast(n.children[i] to depth + 1)
-    }
-    return ThreadFlat(uids.toLongArray(), ShortArray(depths.size) { depths[it].toShort() })
 }
 
 /** Plain text key: Unicode lowercase of the whole string, not only A–Z. */
@@ -117,13 +124,14 @@ fun packKeyBytes(parts: Array<ByteArray>): Triple<ByteArray, IntArray, IntArray>
     return Triple(bytes, off, len)
 }
 
+private val subjectSpace = Regex("""\s+""")
 private val blob = Regex("""^\[[^\[\]]*]\s*""")
 private val refwd = Regex("""^(re|fwd?)\s*(\[[^\[\]]*]\s*)?:\s*""", RegexOption.IGNORE_CASE)
 private val trailer = Regex("""\s*\(fwd\)\s*$""", RegexOption.IGNORE_CASE)
 
 /** RFC 5256 base subject on decoded text, folded with [Locale.ROOT]. Plain client order uses these bytes. */
 fun baseSubject(decoded: String): String {
-    var s = decoded.replace(Regex("""\s+"""), " ").trim()
+    var s = decoded.replace(subjectSpace, " ").trim()
     while (true) {
         val before = s
         while (true) {
@@ -208,6 +216,8 @@ fun firstAddrMailbox(header: String, decode: (String) -> String = { it }): Strin
     return decode(local.trim()).trim().lowercase(Locale.ROOT)
 }
 
+private val dateComment = Regex("""\([^)]*\)""")
+private val dateSpace = Regex("""\s+""")
 private val dateShape = Regex(
     """^(?:[A-Za-z]+\s*,\s*)?(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([+-]\d{4}|[A-Za-z]{1,5})?""",
 )
@@ -223,7 +233,7 @@ private val obsZones = mapOf(
  * Obsolete zones, 2-digit years and 3-digit years match the previous Plain cases.
  */
 fun dateHeaderEpoch(header: String): Long? {
-    val text = header.replace(Regex("""\([^)]*\)"""), " ").replace(Regex("""\s+"""), " ").trim()
+    val text = header.replace(dateComment, " ").replace(dateSpace, " ").trim()
     if (text.isEmpty()) return null
     val m = dateShape.find(text) ?: return null
     val (d, mon, y, hh, mm) = m.destructured

@@ -38,7 +38,7 @@ private fun FolderAt.forUids(): FolderAt {
 }
 
 /** Result of a copy or move, read in the same call as the command (COPYUID is per connection, not per folder). */
-data class CopyOutcome(val copiedUids: List<Long>, val targetEpoch: Long)
+data class CopyOutcome(val copiedUids: LongArray, val targetEpoch: Long)
 
 /** Copy (or move, with [delete]) [uids] of [folder] to [target], all in one lowest-layer call. */
 suspend fun MailSession.copyFrom(folder: FolderAt, uids: List<Long>, target: String, delete: Boolean): CopyOutcome =
@@ -112,7 +112,7 @@ class FolderView(internal val base: MailSession, val folder: FolderAt) : MailSes
         run { it.searchScopeCount(scopeName, home, kind, argument) }
     override suspend fun expungeOnLeave(mailbox: String) = base.expungeOnLeave(mailbox)
     // Connection-level COPYUID state is only meaningful inside the call that copied; use [copyFrom].
-    override suspend fun takeCopiedUids(): List<Long> = throw MailFailure("use copyFrom")
+    override suspend fun takeCopiedUids(): LongArray = throw MailFailure("use copyFrom")
     override suspend fun copiedEpoch(): Long = throw MailFailure("use copyFrom")
 }
 

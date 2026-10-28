@@ -271,7 +271,7 @@ class LabSuiteTest {
                         session.select(sub)
                         val before = session.selectedExists()
                         // Start clean: an earlier run may have left Sub all \Deleted (nothing is ever expunged).
-                        session.storeFlags(session.searchCriterion("All", ""), emptySet(), setOf("\\Deleted"))
+                        session.storeFlags(session.searchCriterion("All", "").asList(), emptySet(), setOf("\\Deleted"))
                         val first = session.searchCriterion("NotDeleted", "").min()
                         session.storeFlags(listOf(first), setOf("\\Deleted"), emptySet())
                         val report = StringBuilder()
@@ -287,7 +287,7 @@ class LabSuiteTest {
                             var batches = 0
                             val out = org.dlang.liveimap.ui.index.moveInChunks(
                                 all, org.dlang.liveimap.engine.LabTestHooks.moveChunk()!!, { false }, { _, _ -> batches++ },
-                            ) { part -> session.copyThenDelete(part, trash); session.takeCopiedUids() }
+                            ) { part -> session.copyThenDelete(part, trash); session.takeCopiedUids().asList() }
                             check(out.failure == null) { "batch failed: ${out.failure?.text}" }
                             check(out.moved == all) { "moved ${out.moved.size} of ${all.size}" }
                             session.select(sub)

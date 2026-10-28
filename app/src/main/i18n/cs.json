@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Panel nástrojů složky"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Panel nástrojů čtečky"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Panel nástrojů pro psaní"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Toto rozložení nelze zobrazit: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Upravit rozložení"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Změnit velikost podokna"},
 {"key": "pane_wider", "source": "Wider", "text": "Širší"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Užší"},

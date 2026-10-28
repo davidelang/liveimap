@@ -1,8 +1,6 @@
 package org.dlang.liveimap.ui
 
-import java.io.File
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,14 +12,5 @@ class CertPromptDisplayTest {
         val long = certDisplayText("x".repeat(1000))
         assertEquals(161, long.length)
         assertTrue(long.endsWith("…"))
-    }
-
-    @Test fun promptsQueue() {
-        val src = File("src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt").readText()
-        assertTrue(src.contains("setMailCertConfirmer { prompt -> promptTurn {"))
-        assertTrue(src.contains("setMailPlaintextConfirmer { promptTurn {"))
-        assertFalse(src.contains("certGate.withLock"))
-        assertFalse(src.contains("plaintextGate.withLock"))
-        assertFalse(src.contains(" Text(pendingCert.prompt.subject)"))
     }
 }

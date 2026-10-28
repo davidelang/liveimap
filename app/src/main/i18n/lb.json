@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Dossier Toolbar"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Lieser Toolbar"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Komponéieren Toolbar"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Dëse Layout kann net gewise ginn: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Layout änneren"},
 {"key": "pane_resize", "source": "Resize pane", "text": "D'Gréisst änneren"},
 {"key": "pane_wider", "source": "Wider", "text": "Méi breet"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Méi schmuel"},

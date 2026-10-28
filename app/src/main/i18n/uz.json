@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Jild asboblar paneli"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Reader asboblar paneli"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Asboblar panelini yaratish"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Bu tartibni ko‘rsatib bo‘lmaydi: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Tartibni tahrirlash"},
 {"key": "pane_resize", "source": "Resize pane", "text": "O‘lchamini o‘zgartirish paneli"},
 {"key": "pane_wider", "source": "Wider", "text": "Kengroq"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Torroq"},

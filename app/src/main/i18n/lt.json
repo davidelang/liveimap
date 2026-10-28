@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Aplanko įrankių juosta"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Skaitytojo įrankių juosta"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Sukūrimo įrankių juosta"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Šio išdėstymo parodyti negalima: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Redaguoti išdėstymą"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Keisti srities dydį"},
 {"key": "pane_wider", "source": "Wider", "text": "Platesnis"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Siauresnis"},

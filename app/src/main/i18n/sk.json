@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Panel s nástrojmi priečinka"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Panel nástrojov čítačky"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Panel nástrojov na vytvorenie správy"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Toto rozloženie nemožno zobraziť: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Upraviť rozloženie"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Zmeniť veľkosť panela"},
 {"key": "pane_wider", "source": "Wider", "text": "Širšie"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Užšie"},

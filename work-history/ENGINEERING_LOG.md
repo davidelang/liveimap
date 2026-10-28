@@ -3877,3 +3877,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/kotlin-traffic-write-20261028-0923-plan.md
 - record and the lab event append on the caller and return when the append has finished. No channel, writer thread, or held descriptor. The record format, roll cap, and sweep stay.
+
+## 2026-10-28 - message identity execution start
+
+- Approved plan: sandbox/plans/message-identity-20261028-1154-plan.md
+- Work: MessageRef across search, flat IMAP thread, array orders, split index and folder row, attachment names, account binding
+- First action per standard-plan-compliance-block.md; commits stay on master

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Панели асбобҳои папка"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Панели асбобҳои хонанда"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Навори асбобҳоро эҷод кунед"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Ин тарҳро нишон додан мумкин нест: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Таҳрири тарҳ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Панели андозаи тағирёбанда"},
 {"key": "pane_wider", "source": "Wider", "text": "васеътар"},
 {"key": "pane_narrower", "source": "Narrower", "text": "тангтар"},

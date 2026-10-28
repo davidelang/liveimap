@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Kausta tööriistariba"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Lugeja tööriistariba"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Koostamise tööriistariba"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Seda paigutust ei saa kuvada: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Muuda paigutust"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Paani suuruse muutmine"},
 {"key": "pane_wider", "source": "Wider", "text": "Laiem"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Kitsam"},

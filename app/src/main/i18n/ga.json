@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Barra uirlisí fillteáin"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Barra uirlisí léitheoirí"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Cum barra uirlisí"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Ní féidir an leagan amach seo a thaispeáint: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Cuir an leagan amach in eagar"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Pána Athraigh méid"},
 {"key": "pane_wider", "source": "Wider", "text": "Níos leithne"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Níos cúinge"},

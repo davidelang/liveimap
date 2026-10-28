@@ -32,6 +32,7 @@ import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.MessageOrder
+import org.dlang.liveimap.session.threadNodeOf
 import org.dlang.liveimap.session.ThreadNode
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.InstalledGlobals
@@ -523,25 +524,24 @@ fun alternateDeletePolicies(
     }
 
 sealed class SelectAllTarget {
-    data class Uids(val uids: List<Long>) : SelectAllTarget()
+    data class Uids(val uids: LongArray) : SelectAllTarget()
     data object EntireMailbox : SelectAllTarget()
 }
 
-fun selectAllTarget(filterActive: Boolean, order: List<Long>): SelectAllTarget {
+fun selectAllTarget(filterActive: Boolean, order: MessageOrder): SelectAllTarget {
     if (!filterActive) return SelectAllTarget.EntireMailbox
-    if (order is WindowedOrder) return SelectAllTarget.Uids(order.known())
-    return SelectAllTarget.Uids(order)
+    return SelectAllTarget.Uids(order.uids)
 }
 
 sealed class SelectAllPlan {
-    data class Folders(val homeUids: List<Long>, val foreign: List<Pair<String, Long>>) : SelectAllPlan()
-    data class Uids(val uids: List<Long>) : SelectAllPlan()
+    data class Folders(val homeUids: LongArray, val foreign: List<Pair<String, Long>>) : SelectAllPlan()
+    data class Uids(val uids: LongArray) : SelectAllPlan()
     data object EntireMailbox : SelectAllPlan()
 }
 
 fun selectAllSplit(
     home: String,
-    order: List<Long>,
+    order: MessageOrder,
     orderMailboxes: List<String>,
     filterActive: Boolean,
     windowed: Boolean,
@@ -549,11 +549,13 @@ fun selectAllSplit(
     if (!windowed && blocksFolderSelection(orderMailboxes, home)) {
         val own = ArrayList<Long>()
         val hits = LinkedHashSet<Pair<String, Long>>()
-        for ((i, uid) in order.withIndex()) {
+        val ids = order.uids
+        for (i in ids.indices) {
+            val uid = ids[i]
             val box = orderMailboxes.getOrNull(i).orEmpty()
-            if (box.isEmpty() || box == home) own += uid else hits += box to uid
+            if (box.isEmpty() || sameMailbox(box, home)) own += uid else hits += box to uid
         }
-        return SelectAllPlan.Folders(own, hits.toList())
+        return SelectAllPlan.Folders(own.toLongArray(), hits.toList())
     }
     if (!filterActive) return SelectAllPlan.EntireMailbox
     return when (val target = selectAllTarget(true, order)) {
@@ -561,6 +563,20 @@ fun selectAllSplit(
         SelectAllTarget.EntireMailbox -> SelectAllPlan.EntireMailbox
     }
 }
+
+private fun messageOrderUids(uids: LongArray, mailbox: String = "", accountId: String = "", uidValidity: Long = 0L) =
+    MessageOrder(
+        uids,
+        ShortArray(0),
+        mailbox,
+        accountId,
+        uidValidity,
+        LongArray(0),
+        LongArray(0),
+        ByteArray(0),
+        IntArray(0),
+        IntArray(0),
+    )
 
 data class MailUndo(
     val delete: Boolean,
@@ -575,15 +591,12 @@ data class MailUndo(
     val destUids: List<Long> get() = dest.map { it.uid }
 }
 
-/** The account scope of a [MessageRef] made for [settings]. */
-fun refAccountKey(settings: AccountSettings): String = "${settings.username}@${settings.imapHost}"
-
 /**
  * F105: a reader action's undo, as refs: the message in [folder] (UIDVALIDITY [epoch]) and its copy in [target]
  * ([targetEpoch] from COPYUID). Undo refuses when the copy is unknown (F102).
  */
 fun refUndo(
-    settings: AccountSettings,
+    accountId: String,
     folder: String,
     epoch: Long,
     uid: Long,
@@ -592,13 +605,12 @@ fun refUndo(
     targetEpoch: Long = 0L,
     usedMove: Boolean = false,
 ): MailUndo {
-    val key = refAccountKey(settings)
     return MailUndo(
         delete = target.isEmpty(),
         targetMailbox = target,
         usedMove = usedMove,
-        source = listOf(MessageRef(key, folder, epoch, uid)),
-        dest = if (targetEpoch > 0) dest.map { MessageRef(key, target, targetEpoch, it) } else emptyList(),
+        source = listOf(MessageRef(accountId, folder, epoch, uid)),
+        dest = if (targetEpoch > 0) dest.map { MessageRef(accountId, target, targetEpoch, it) } else emptyList(),
     )
 }
 
@@ -783,58 +795,74 @@ internal object OpenMessageOrder {
         val accountId: String,
         val uidValidity: Long,
         val mailbox: String,
-        val uids: List<Long>,
-        val sequences: Map<Long, Int>,
-        val deleted: Set<Long>,
+        val uids: LongArray,
+        val sequences: LongArray,
+        val sequenceAt: IntArray,
+        val deleted: LongArray,
     )
 
-    private val emptySnapshot = Snapshot("", 0L, "", emptyList(), emptyMap(), emptySet())
-    private var snapshot = emptySnapshot
+    private val emptySnapshot = Snapshot("", 0L, "", LongArray(0), LongArray(0), IntArray(0), LongArray(0))
+    private val snapshot = java.util.concurrent.atomic.AtomicReference(emptySnapshot)
 
-    val mailbox: String get() = snapshot.mailbox
+    val mailbox: String get() = snapshot.get().mailbox
 
     /** F93: the order belongs to one account and one UIDVALIDITY epoch, not just a mailbox name. */
-    val accountId: String get() = snapshot.accountId
-    val uidValidity: Long get() = snapshot.uidValidity
-    val uids: List<Long> get() = snapshot.uids
+    val accountId: String get() = snapshot.get().accountId
+    val uidValidity: Long get() = snapshot.get().uidValidity
+    val uids: List<Long> get() = snapshot.get().uids.asList()
 
-    fun matches(accountId: String, mailbox: String, uidValidity: Long): Boolean =
-        snapshot.mailbox == mailbox && snapshot.accountId == accountId && accountId.isNotEmpty() &&
-            snapshot.uidValidity != 0L && snapshot.uidValidity == uidValidity
+    fun matches(accountId: String, mailbox: String, uidValidity: Long): Boolean {
+        val held = snapshot.get()
+        return held.mailbox == mailbox && held.accountId == accountId && accountId.isNotEmpty() &&
+            held.uidValidity != 0L && held.uidValidity == uidValidity
+    }
 
-    fun publish(accountId: String, uidValidity: Long, mailbox: String, uids: List<Long>, rows: List<IndexRow>) {
+    fun publish(accountId: String, uidValidity: Long, mailbox: String, uids: LongArray, rows: List<IndexRow>) {
+        if (uidValidity == 0L) throw MailFailure("message reference is incomplete; reload the list")
         val fromRows = HashMap<Long, Int>(rows.size)
-        val deleted = HashSet<Long>()
+        val deleted = ArrayList<Long>()
         for (row in rows) {
             fromRows[row.uid] = row.sequence
             if ("\\Deleted" in row.flags) deleted.add(row.uid)
         }
-        // Rows are the held page. A neighbor still in the order needs a sequence or the reader throws.
-        val ordered = ArrayList<Long>(uids.size)
-        val sequences = HashMap<Long, Int>(uids.size)
+        val ordered = LongArray(uids.size)
+        val sequences = LongArray(uids.size)
+        val sequenceAt = IntArray(uids.size)
         for (index in uids.indices) {
             val uid = uids[index]
-            ordered.add(uid)
+            ordered[index] = uid
+            sequences[index] = uid
             val known = fromRows[uid]
-            if (known != null) sequences[uid] = known
-            else if (uid !in sequences) sequences[uid] = index + 1
+            sequenceAt[index] = known ?: (index + 1)
         }
-        snapshot = Snapshot(
-            accountId,
-            uidValidity,
-            mailbox,
-            ordered,
-            sequences,
-            deleted,
+        deleted.sort()
+        snapshot.set(
+            Snapshot(
+                accountId,
+                uidValidity,
+                mailbox,
+                ordered,
+                sequences,
+                sequenceAt,
+                deleted.toLongArray(),
+            ),
         )
     }
 
-    fun sequence(uid: Long): Int = snapshot.sequences[uid] ?: throw MailFailure("anchor $uid")
+    fun sequence(uid: Long): Int {
+        val held = snapshot.get()
+        val index = held.sequences.indexOf(uid)
+        if (index < 0) throw MailFailure("anchor $uid")
+        return held.sequenceAt[index]
+    }
 
-    fun followingAfterDelete(current: Long): Long? = followingUndeleted(snapshot.uids, snapshot.deleted, current)
+    fun followingAfterDelete(current: Long): Long? {
+        val held = snapshot.get()
+        return followingUndeleted(held.uids.asList(), held.deleted.toSet(), current)
+    }
 
     fun clear() {
-        snapshot = emptySnapshot
+        snapshot.set(emptySnapshot)
     }
 }
 
@@ -844,15 +872,32 @@ class IndexModel(
     private val mailbox: String,
 ) {
     private var heldRows: List<IndexRow> = emptyList()
-    private var orderBacking: List<Long> = emptyList()
+    private var storedOrder: MessageOrder = messageOrderUids(LongArray(0))
+    private var orderView: List<Long> = emptyList()
     private var orderUids: LongArray = LongArray(0)
+    private var windowedOrder: WindowedOrder? = null
 
     var order: List<Long>
-        get() = orderBacking
+        get() = orderView
         private set(value) {
-            orderBacking = value
-            orderUids = if (value is WindowedOrder) LongArray(0) else LongArray(value.size) { value[it] }
+            if (value is WindowedOrder) {
+                windowedOrder = value
+                orderView = value
+                orderUids = LongArray(0)
+            } else {
+                windowedOrder = null
+                orderUids = LongArray(value.size) { value[it] }
+                orderView = orderUids.asList()
+                storedOrder = messageOrderUids(orderUids, mailbox, orderAccountId, epochs[mailbox] ?: 0L)
+            }
         }
+
+    /** The order select-all walks. A windowed order contributes only the loaded UIDs. */
+    fun selectionOrder(): MessageOrder {
+        val windowed = windowedOrder
+        if (windowed != null) return messageOrderUids(windowed.known().toLongArray(), mailbox, orderAccountId, epochs[mailbox] ?: 0L)
+        return storedOrder
+    }
     var orderMailboxes: List<String> = emptyList()
         private set
     private var loadedWindow = false
@@ -1063,7 +1108,7 @@ class IndexModel(
         val byUid = LinkedHashMap<Long, IndexRow>()
         for (row in threadMembers.values) byUid[row.uid] = row
         for (row in heldRows) byUid[row.uid] = row
-        OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, messageOrder(openExpanded), byUid.values.toList())
+        publishOpen(messageOrder(openExpanded), byUid.values.toList())
     }
 
     var account: AccountSettings = AccountSettings()
@@ -1084,6 +1129,8 @@ class IndexModel(
         get() = heldRows
 
     var mailUndo: MailUndo? = null
+    /** A UIDVALIDITY change drops an open expunge offer; the screen clears it and this flag. */
+    var refuseExpunge: Boolean = false
         private set
 
     fun clearMailUndo() {
@@ -1401,7 +1448,7 @@ class IndexModel(
             threadPlan
         } else {
             try {
-                collapsedThreads(home().thread(SortKey.ThreadReferences), newestFirst = false)
+                collapsedThreads(threadNodeOf(home().thread(SortKey.ThreadReferences)), newestFirst = false)
             } catch (failure: MailFailure) {
                 notice = failure.text
                 return heldRows
@@ -1578,8 +1625,12 @@ class IndexModel(
             }
             MailboxChange.UidValidityReset -> {
                 epochs.remove(mailbox)
+                filterUids = null
+                appliedFilters.clear()
+                openExpanded = emptySet()
                 allMailboxCeiling = 0L
                 mailUndo = null
+                refuseExpunge = true
                 replaceWindow { fetchCurrent() }
             }
             MailboxChange.ShownFlags -> Unit
@@ -1628,7 +1679,7 @@ class IndexModel(
         get() = (store as? org.dlang.liveimap.settings.DataStoreSettingsStore)?.boundAccountId.orEmpty()
 
     /** Account scope for this model's refs (one model, one account). */
-    private val accountKey: String get() = refAccountKey(account)
+    private val accountKey: String get() = orderAccountId
 
     private fun epochOf(folder: String): Long = epochs[folder] ?: 0L
 
@@ -1653,6 +1704,13 @@ class IndexModel(
     /** A folder's UIDVALIDITY as seen when its rows were listed (search paths; tests). */
     internal fun noteFolderEpoch(folder: String, epoch: Long) {
         epochs[folder] = epoch
+    }
+
+    private fun publishOpen(uids: List<Long>, rows: List<IndexRow>) {
+        val epoch = epochs[mailbox] ?: 0L
+        if (epoch == 0L) return
+        val ids = LongArray(uids.size) { uids[it] }
+        OpenMessageOrder.publish(orderAccountId, epoch, mailbox, ids, rows)
     }
 
     private fun refsFor(uids: List<Long>, folder: String = mailbox): List<MessageRef> {
@@ -1821,7 +1879,7 @@ class IndexModel(
                 val copied = session.copyFrom(actAt(folder), part, moveMailbox, delete = true)
                 val epoch = copied.targetEpoch
                 targetEpoch = if (targetEpoch == -1L || targetEpoch == epoch) epoch else 0L
-                copied.copiedUids
+                copied.copiedUids.asList()
             }
             if (big) onSearchProgress?.invoke(null)
             val moved = outcome.moved
@@ -1861,7 +1919,7 @@ class IndexModel(
             if (moved.isNotEmpty() && mailUndo == null && outcome.failure == null) {
                 notice = "Moved; undo is not available (the server did not report the new message IDs)"
             }
-            OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
+            publishOpen(publishableOrder(order), heldRows)
         } catch (failure: MailFailure) {
             notice = failure.text
             mailUndo = null
@@ -1904,7 +1962,7 @@ class IndexModel(
             }
             mailUndo = null
             if (done.isNotEmpty()) {
-                OpenMessageOrder.publish(orderAccountId, epochs[mailbox] ?: 0L, mailbox, publishableOrder(order), heldRows)
+                publishOpen(publishableOrder(order), heldRows)
             }
         } catch (failure: MailFailure) {
             notice = failure.text
@@ -1926,8 +1984,8 @@ class IndexModel(
         }
         try {
             if (u.delete) {
-                session.onRefs(accountKey, u.source) { s, _, uids ->
-                    for (part in uids.chunked(moveChunkSize())) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
+                session.onRefs(accountKey, u.source) { s, _, refs ->
+                    for (part in refs.map { it.uid }.chunked(moveChunkSize())) s.storeFlags(part, emptySet(), setOf("\\Deleted"))
                 }
                 val byFolder = LinkedHashMap<String, MutableSet<Long>>()
                 for (ref in u.source) byFolder.getOrPut(ref.mailbox) { LinkedHashSet() }.add(ref.uid)
@@ -1955,11 +2013,11 @@ class IndexModel(
                     session.copyFrom(FolderAt(key.first, key.second), moved, key.third, delete = true)
                 }
             } else {
-                session.onRefs(accountKey, u.source) { s, _, uids ->
-                    s.storeFlags(uids, emptySet(), setOf("\\Deleted"))
+                session.onRefs(accountKey, u.source) { s, _, refs ->
+                    s.storeFlags(refs.map { it.uid }, emptySet(), setOf("\\Deleted"))
                 }
-                session.onRefs(accountKey, u.dest) { s, _, uids ->
-                    s.storeFlags(uids, setOf("\\Deleted"), emptySet())
+                session.onRefs(accountKey, u.dest) { s, _, refs ->
+                    s.storeFlags(refs.map { it.uid }, setOf("\\Deleted"), emptySet())
                 }
             }
             notice = null
@@ -2576,13 +2634,17 @@ class IndexModel(
         val uids = if (!session.featureCaps.sort && slowerClientSort(account)) {
             requireClientFallbackRoom()
             // Chunked client sort: progress and Cancel through the same bar as long searches and big moves.
+            // A newer sort bumps [sortGeneration] so this walk stops and does not publish.
+            val generation = sortGeneration.incrementAndGet()
             moveStop = false
             try {
-                restrict(
+                val sorted = restrict(
                     home().clientOrder(key, newestFirst, { done, total ->
                         onSearchProgress?.invoke(SearchProgress(done.toLong(), total.toLong(), done.toLong()))
-                    }, { moveStop }),
+                    }, { moveStop || sortGeneration.get() != generation }),
                 )
+                if (moveStop || sortGeneration.get() != generation) throw MailFailure("sort cancelled")
+                sorted
             } finally {
                 onSearchProgress?.invoke(null)
             }
@@ -2614,7 +2676,12 @@ class IndexModel(
         }
         val criteria = chainCriteria()
         val matched = if (node == null && criteria != null) home().threadMatching(key, criteria) else null
-        val collapsed = collapsedThreads(node ?: matched ?: home().thread(key), newestFirst)
+        val tree = when {
+            node != null -> node
+            matched != null -> threadNodeOf(matched)
+            else -> threadNodeOf(home().thread(key))
+        }
+        val collapsed = collapsedThreads(tree, newestFirst)
         // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
         val kept = if (matched != null) collapsed else restrictThreads(collapsed)
         threading = true
@@ -2721,13 +2788,13 @@ class IndexModel(
      * Body and text searches run on a separate connection ([longSearchLinks]) with INPROGRESS progress; Cancel
      * drops it and a late result is discarded. No retry. Without a link factory (tests) they use the main session.
      */
-    private suspend fun searchMaybeLong(kind: String, argument: String): List<Long> {
-        presetHits?.let { return it }
+    private suspend fun searchMaybeLong(kind: String, argument: String): LongArray {
+        presetHits?.let { return it.toLongArray() }
         // David's connection limit: with no room for a search connection, search on the main one.
         if (longSearchLinks == null || !isLongSearch(kind, argument) || !connectionLimits(account).searchConnection) {
             return home().searchCriterion(kind, argument)
         }
-        return runLongSearch(argument)
+        return runLongSearch(argument).toLongArray()
     }
 
     /** True when [text] in [scope] would run as a long search on a side connection. */
@@ -2776,6 +2843,7 @@ class IndexModel(
     }
 
     @Volatile private var moveStop = false
+    private val sortGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** Search hits as windows (ESEARCH PARTIAL), in display order; null when unsupported or small. */
     private suspend fun windowedSearch(kind: String, query: String, newestFirst: Boolean): WindowedOrder? {
@@ -2827,8 +2895,8 @@ class IndexModel(
             }
             return out
         }
-        val array = if (uids === orderBacking) orderUids else LongArray(end - from) { uids[from + it] }
-        val base = if (uids === orderBacking) from else 0
+        val array = if (uids === orderView && windowedOrder == null) orderUids else LongArray(end - from) { uids[from + it] }
+        val base = if (uids === orderView && windowedOrder == null) from else 0
         for (i in 0 until (end - from)) out.add(array[base + i])
         return out
     }
@@ -2882,11 +2950,16 @@ class IndexModel(
             val groups = session.searchScope(activeScope.name, mailbox, "Advanced", text)
             val hits = ArrayList<Long>()
             val hitBoxes = ArrayList<String>()
-            for (group in groups) {
-                val ordered = if (view.newestFirst) group.uids.sortedDescending() else group.uids.sorted()
+            val byBox = LinkedHashMap<String, ArrayList<MessageRef>>()
+            for (ref in groups) byBox.getOrPut(ref.mailbox) { ArrayList() }.add(ref)
+            for ((box, refs) in byBox) {
+                val epoch = refs.first().uidValidity
+                if (epoch > 0L) epochs[box] = epoch
+                val ordered = refs.map { it.uid }.toLongArray()
+                if (view.newestFirst) ordered.sortDescending() else ordered.sort()
                 for (uid in ordered) {
                     hits.add(uid)
-                    hitBoxes.add(group.mailbox)
+                    hitBoxes.add(box)
                 }
             }
             order = hits
@@ -2924,7 +2997,8 @@ class IndexModel(
                 } catch (_: MailFailure) {
                     continue
                 }
-                val ordered = if (view.newestFirst) found.sortedDescending() else found.sorted()
+                val ordered = found.copyOf()
+                if (view.newestFirst) ordered.sortDescending() else ordered.sort()
                 for (uid in ordered) {
                     hits.add(uid)
                     hitBoxes.add(box)
@@ -2961,7 +3035,7 @@ class IndexModel(
                 failed.add("$box: ${failure.text}")
                 emptyList()
             }
-            for (row in fetched) loaded.add(row.copy(mailbox = box))
+            for (row in fetched) loaded.add(row.copy(ref = row.ref.copy(mailbox = box, accountId = orderAccountId.ifEmpty { row.ref.accountId })))
         }
         if (failed.isNotEmpty()) pageFailures = failed.joinToString("; ")
         return loaded

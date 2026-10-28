@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Ibha yamathuluzi yefolda"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Ibha yamathuluzi yokufunda"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Dala ibha yamathuluzi"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Lesi sakhiwo asikwazi ukuboniswa: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Hlela isakhiwo"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Shintsha usayizi wefasitelana"},
 {"key": "pane_wider", "source": "Wider", "text": "Okubanzi"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Kancane"},

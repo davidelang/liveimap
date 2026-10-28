@@ -714,6 +714,9 @@ private fun ComposeLoaded(
      * against the UIDVALIDITY they came from (the seed's, or the first one seen here).
      */
     suspend fun <T> inBox(box: String, block: suspend (MailSession) -> T): T {
+        if (seed.uidValidity == 0L && seed.mailbox != null && box == seed.mailbox && seed.uids.isNotEmpty()) {
+            throw MailFailure("message reference is incomplete; reload the list")
+        }
         val known = boxEpochs[box] ?: if (box == seed.mailbox && seed.uidValidity != 0L) seed.uidValidity else 0L
         return session.inFolder(FolderAt(box, known)) { sel, s ->
             boxEpochs[box] = sel.uidValidity
@@ -1080,6 +1083,45 @@ private fun ComposeLoaded(
         return BuiltMail(envelopeRecipients(message.to, message.cc, message.bcc))
     }
 
+    fun seededCopy(
+        id: String,
+        appendOnly: Boolean,
+        mailbox: String,
+        recipients: List<String>,
+        file: File,
+        via: String = "",
+        uncertain: Boolean = false,
+    ) = DeviceCopy(
+        id,
+        appendOnly,
+        mailbox,
+        recipients,
+        file,
+        via = via,
+        uncertain = uncertain,
+        sourceKind = seed.kind.name,
+        sourceMailbox = seed.mailbox.orEmpty(),
+        sourceEpoch = seed.uidValidity,
+        sourceUids = seed.uids,
+    )
+
+    suspend fun storeUnsentRetryFlags(copy: DeviceCopy) {
+        val flags = unsentRetryFlags(copy)
+        if (flags.isEmpty()) {
+            storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+            return
+        }
+        try {
+            session.inFolder(FolderAt(copy.sourceMailbox, copy.sourceEpoch)) { _, s ->
+                s.storeFlags(copy.sourceUids, flags, emptySet())
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (failure: MailFailure) {
+            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
+        }
+    }
+
     suspend fun storeAcceptedFlags(uids: List<Long>) {
         if (seed.uidValidity == 0L) return
         val flags = smtpAcceptFlags(seed.kind)
@@ -1236,14 +1278,14 @@ private fun ComposeLoaded(
                     status = notSentNotice
                     return false
                 }
-                storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
+                storeUnsentRetryFlags(copy)
                 if (copy.mailbox.isNotEmpty()) {
                     try {
                         outbound(copy.via).appendFile(copy.mailbox, accepted)
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val saved = DeviceCopy(copy.id, true, copy.mailbox, copy.recipients, accepted, via = copy.via)
+                        val saved = copy.withMessage(file = accepted, appendOnly = true)
                         failAttachment(writeCopy(appContext, saved, accountId), saved.id, true)
                         if (held?.id == copy.id) held = saved
                         notice = error.text
@@ -1731,7 +1773,7 @@ private fun ComposeLoaded(
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Exception) {
-                            val copy = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via)
+                            val copy = seededCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via)
                             failAttachment(writeCopy(appContext, copy, accountId), copy.id, false)
                             held = copy
                             notice = error.message ?: notConnected
@@ -1740,7 +1782,7 @@ private fun ComposeLoaded(
                         }
                         // F50/David's JMAP rule: the device copy exists before the upload/submission starts, marked
                         // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
-                        val sending = DeviceCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageFile, via = via)
+                        val sending = seededCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageFile, via = via)
                         val bytes = try {
                             withContext(Dispatchers.IO) { messageFile.readBytes() }
                         } catch (error: CancellationException) {
@@ -1797,7 +1839,7 @@ private fun ComposeLoaded(
                     }
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
-                    val sending = DeviceCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via, uncertain = true)
+                    val sending = seededCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via, uncertain = true)
                     val copySaved = writeCopy(appContext, sending, accountId)
                     if (!copySaved) {
                         failAttachment(false, sending.id, false)
@@ -1827,7 +1869,7 @@ private fun ComposeLoaded(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: MailFailure) {
-                        val copy = DeviceCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
+                        val copy = seededCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
                         failAttachment(writeCopy(appContext, copy, accountId), copy.id, true)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
@@ -2132,7 +2174,7 @@ private fun ComposeLoaded(
                                 val file = copyRfc822(id)
                                 file.parentFile?.mkdirs()
                                 withContext(Dispatchers.IO) { file.writeBytes(bounced) }
-                                val sending = DeviceCopy(id, false, savedMailbox, recipients, file, uncertain = true)
+                                val sending = seededCopy(id, false, savedMailbox, recipients, file, uncertain = true)
                                 if (!writeCopy(appContext, sending, accountId)) {
                                     notice = appContext.getString(R.string.compose_copy_not_saved)
                                     status = notSentNotice
@@ -2163,7 +2205,7 @@ private fun ComposeLoaded(
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (error: MailFailure) {
-                                    val copy = DeviceCopy(id, true, account.sentMailbox, recipients, accepted)
+                                    val copy = seededCopy(id, true, account.sentMailbox, recipients, accepted)
                                     writeCopy(appContext, copy, accountId)
                                     held = copy
                                     notice = error.text
@@ -2199,7 +2241,7 @@ private fun ComposeLoaded(
                                 val file = copyRfc822(id)
                                 file.parentFile?.mkdirs()
                                 withContext(Dispatchers.IO) { file.writeBytes(bounced) }
-                                val bouncing = DeviceCopy(id, false, savedMailbox, recipients, file)
+                                val bouncing = seededCopy(id, false, savedMailbox, recipients, file)
                                 val bytes = try {
                                     withContext(Dispatchers.IO) { file.readBytes() }
                                 } catch (error: CancellationException) {

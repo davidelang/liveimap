@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Bar alat folder"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Bar alat pembaca"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Karang bar alat"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Reka letak ini tidak dapat ditunjukkan: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Edit reka letak"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Ubah saiz anak tetingkap"},
 {"key": "pane_wider", "source": "Wider", "text": "Lebih luas"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Lebih sempit"},

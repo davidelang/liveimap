@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Upau wa vidhibiti wa folda"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Upau wa vidhibiti wa msomaji"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Upau wa vidhibiti"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Mpangilio huu hauwezi kuonyeshwa: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Hariri mpangilio"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Badilisha ukubwa wa kidirisha"},
 {"key": "pane_wider", "source": "Wider", "text": "Kwa upana zaidi"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Nyembamba zaidi"},

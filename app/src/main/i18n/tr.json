@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Klasör araç çubuğu"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Okuyucu araç çubuğu"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Araç çubuğu oluştur"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Bu düzen gösterilemiyor: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Düzeni düzenle"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Bölmeyi yeniden boyutlandır"},
 {"key": "pane_wider", "source": "Wider", "text": "Daha geniş"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Daha dar"},

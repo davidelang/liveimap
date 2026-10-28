@@ -1243,44 +1243,15 @@ private fun FolderListRow(
                     .padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
             )
         }
-        DropdownMenu(
+        FolderRowMenu(
             expanded = rowMenu,
-            onDismissRequest = { rowMenu = false },
-        ) {
-            ObscuredTouchFilter()
-            HelpDropdownMenuItem(
-                label = favoriteText,
-                help = stringResource(R.string.help_menu_favorite),
-                page = "folders.html",
-                text = { Text(favoriteText) },
-                onClick = {
-                    rowMenu = false
-                    onStar()
-                },
-            )
-            val alwaysExpand = stringResource(R.string.folders_always_expand)
-            HelpDropdownMenuItem(
-                label = alwaysExpand,
-                help = stringResource(R.string.help_menu_folders_always_expand),
-                page = "folders.html",
-                text = { Text(alwaysExpand) },
-                onClick = {
-                    rowMenu = false
-                    onAlwaysExpand()
-                },
-            )
-            val dontAlwaysExpand = stringResource(R.string.folders_dont_always_expand)
-            HelpDropdownMenuItem(
-                label = dontAlwaysExpand,
-                help = stringResource(R.string.help_menu_folders_dont_always_expand),
-                page = "folders.html",
-                text = { Text(dontAlwaysExpand) },
-                onClick = {
-                    rowMenu = false
-                    onDontAlwaysExpand()
-                },
-            )
-        }
+            onDismiss = { rowMenu = false },
+            favoriteText = favoriteText,
+            onStar = onStar,
+            onAlwaysExpand = onAlwaysExpand,
+            onDontAlwaysExpand = onDontAlwaysExpand,
+        )
+        FolderRowDialogs()
         IconButton(onClick = onStar) {
             Icon(
                 imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
@@ -1314,6 +1285,56 @@ private fun FolderListRow(
         )
     }
 }
+
+@Composable
+private fun FolderRowMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    favoriteText: String,
+    onStar: () -> Unit,
+    onAlwaysExpand: () -> Unit,
+    onDontAlwaysExpand: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        ObscuredTouchFilter()
+        HelpDropdownMenuItem(
+            label = favoriteText,
+            help = stringResource(R.string.help_menu_favorite),
+            page = "folders.html",
+            text = { Text(favoriteText) },
+            onClick = {
+                onDismiss()
+                onStar()
+            },
+        )
+        val alwaysExpand = stringResource(R.string.folders_always_expand)
+        HelpDropdownMenuItem(
+            label = alwaysExpand,
+            help = stringResource(R.string.help_menu_folders_always_expand),
+            page = "folders.html",
+            text = { Text(alwaysExpand) },
+            onClick = {
+                onDismiss()
+                onAlwaysExpand()
+            },
+        )
+        val dontAlwaysExpand = stringResource(R.string.folders_dont_always_expand)
+        HelpDropdownMenuItem(
+            label = dontAlwaysExpand,
+            help = stringResource(R.string.help_menu_folders_dont_always_expand),
+            page = "folders.html",
+            text = { Text(dontAlwaysExpand) },
+            onClick = {
+                onDismiss()
+                onDontAlwaysExpand()
+            },
+        )
+    }
+}
+
+/** Folder rows have no dialog of their own; the menu above is the only overlay. */
+@Composable
+private fun FolderRowDialogs() = Unit
 
 /**
  * Fresh install: the normal folder top bar (drawer button, and a More menu with everything that works without an

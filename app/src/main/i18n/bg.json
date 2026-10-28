@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Лента с инструменти за папки"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Лента с инструменти за четец"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Лента с инструменти за създаване"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Това оформление не може да бъде показано: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Редактиране на оформлението"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Прозорец за преоразмеряване"},
 {"key": "pane_wider", "source": "Wider", "text": "По-широк"},
 {"key": "pane_narrower", "source": "Narrower", "text": "По-тесен"},

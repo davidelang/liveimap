@@ -827,6 +827,11 @@ private fun splitHeaderBody(bytes: ByteArray): Pair<ByteArray, ByteArray> {
 internal fun decodeHeaderWords(value: String, fallback: String = "ISO-8859-1"): String =
     MimeDecode.phrase(value, fallback)[1]
 
+internal fun decodeHeaderPhrases(values: Array<String>, fallback: String = "ISO-8859-1"): Array<String> {
+    if (values.isEmpty()) return emptyArray()
+    return MimeDecode.phrases(values, fallback)
+}
+
 internal class MimeDecodeException(message: String) : MailFailure(message)
 
 internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray =

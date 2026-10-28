@@ -48,8 +48,8 @@ extern "C" int liveimap_parse(const uint8_t * data, size_t size, int greeting, s
         last = mailimap_parse_response(s, &resp);
         if (resp != nullptr) mailimap_response_free(resp);
         // The app's consumers of what the extensions left behind.
-        clist * es = takeEsearch(s);
-        if (es != nullptr) mailimap_search_result_free(es);
+        std::vector<uint32_t> es = takeEsearch(s);
+        (void)es;
         live_thread_free(detachThread(s));
         freeScopeHits(takeScopeHits(s));
         if (last != MAILIMAP_NO_ERROR) break;

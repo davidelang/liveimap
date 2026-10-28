@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Mappverktygsfält"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Reader verktygsfält"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Verktygsfältet Skriv"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Den här layouten kan inte visas: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Redigera layout"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Ändra storlek på rutan"},
 {"key": "pane_wider", "source": "Wider", "text": "Bredare"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Smalare"},

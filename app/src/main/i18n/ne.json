@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "फोल्डर उपकरणपट्टी"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "पाठक उपकरणपट्टी"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "कम्पोज उपकरणपट्टी"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "यो लेआउट देखाउन सकिँदैन: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "लेआउट सम्पादन गर्नुहोस्"},
 {"key": "pane_resize", "source": "Resize pane", "text": "फलक रिसाइज गर्नुहोस्"},
 {"key": "pane_wider", "source": "Wider", "text": "फराकिलो"},
 {"key": "pane_narrower", "source": "Narrower", "text": "साँघुरो"},

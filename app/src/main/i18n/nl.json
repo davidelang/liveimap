@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Mapwerkbalk"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Werkbalk Lezer"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Werkbalk Opstellen"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Deze indeling kan niet worden getoond: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Indeling bewerken"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Deelvenster Formaat wijzigen"},
 {"key": "pane_wider", "source": "Wider", "text": "Breder"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Smaller"},

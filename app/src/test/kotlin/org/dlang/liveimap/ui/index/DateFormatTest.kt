@@ -114,6 +114,11 @@ class DateFormatTest {
             "bad date pattern",
             formatIndexDate(marchFifteen, DateFormat.Custom, "'", sameDayLater, utc),
         )
+        val patterns = listOf("yyyy", "MM", "dd", "HH", "EEE")
+        for (pattern in patterns) {
+            formatIndexDate(marchFifteen, DateFormat.Custom, pattern, sameDayLater, utc)
+        }
+        assertEquals(1, cachedCustomFormatterCount())
     }
 
     private fun formatIndexDate(

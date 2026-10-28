@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "ແຖບເຄື່ອງມືໂຟນເດີ"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "ແຖບເຄື່ອງມືຜູ້ອ່ານ"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "ຂຽນແຖບເຄື່ອງມື"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "ບໍ່ສາມາດສະແດງແຜນຜັງນີ້ໄດ້: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "ແກ້ໄຂແຜນຜັງ"},
 {"key": "pane_resize", "source": "Resize pane", "text": "ປັບຂະໜາດແຖບ"},
 {"key": "pane_wider", "source": "Wider", "text": "ກວ້າງກວ່າ"},
 {"key": "pane_narrower", "source": "Narrower", "text": "ແຄບກວ່າ"},

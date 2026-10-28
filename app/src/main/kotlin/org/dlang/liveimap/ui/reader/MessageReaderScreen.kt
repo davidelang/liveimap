@@ -397,7 +397,7 @@ fun MessageReaderScreen(
     sequence: Int,
     uidValidity: Long = 0L,
     onCompose: (ComposeSeed) -> Unit,
-    onAdvance: (Long, Int) -> Unit,
+    onAdvance: (MessageRef, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
@@ -438,7 +438,7 @@ private fun MessageReaderLoaded(
     sequence: Int,
     uidValidity: Long = 0L,
     onCompose: (ComposeSeed) -> Unit,
-    onAdvance: (Long, Int) -> Unit,
+    onAdvance: (MessageRef, Int) -> Unit,
     onBack: () -> Unit,
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
@@ -509,15 +509,15 @@ private fun MessageReaderLoaded(
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var structure by held.structureState
     var selectedView by held.selectedViewState
-    var textLayout by remember(uid) { mutableStateOf(TextLayout.Text) }
+    var textLayout by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(TextLayout.Text) }
     // RFC 3676 parameters of the plain part shown (format=flowed, DelSp=yes)
-    var plainFlowed by remember(uid) { mutableStateOf(false) }
-    var plainDelSp by remember(uid) { mutableStateOf(false) }
+    var plainFlowed by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
+    var plainDelSp by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
     var rawTruncated by remember { mutableStateOf(false) }
-    var allHeadersOpen by remember(uid) { mutableStateOf(false) }
-    var allHeaderText by remember(uid) { mutableStateOf<String?>(null) }
-    var viewerExtra by remember(uid) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var allHeadersTruncated by remember(uid) { mutableStateOf(false) }
+    var allHeadersOpen by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
+    var allHeaderText by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf<String?>(null) }
+    var viewerExtra by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var allHeadersTruncated by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
     var decodeHeaderView by remember { mutableStateOf(false) }
     var renderedHtml by held.renderedHtmlState
     var bodyText by held.bodyTextState
@@ -633,13 +633,13 @@ private fun MessageReaderLoaded(
     }
 
     // Per-open cache token: the same UID and section in another folder or account never shares a file (F06).
-    val cacheToken = remember(uid) { readerCacheToken() }
+    val cacheToken = remember(accountId, mailbox, uid, uidValidity) { readerCacheToken() }
     val saveDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         val row = saveTarget.row
         val messageUid = saveTarget.uid
         saveTarget.row = null
         if (uri == null || row == null) return@rememberLauncherForActivityResult
-        val file = File(appContext.cacheDir, attachmentCacheName(cacheToken, messageUid, row.section))
+        val file = File(appContext.cacheDir, attachmentCacheName(accountId, cacheToken, readerEpoch, messageUid, row.section))
         try {
             val output = context.contentResolver.openOutputStream(uri)
             if (output == null) {
@@ -654,9 +654,9 @@ private fun MessageReaderLoaded(
         }
     }
 
-    DisposableEffect(uid) {
+    DisposableEffect(accountId, mailbox, uid, uidValidity) {
         onDispose {
-            deleteReaderAttachmentCache(appContext.cacheDir, cacheToken)
+            deleteReaderAttachmentCache(appContext.cacheDir, accountId, cacheToken)
         }
     }
 
@@ -1164,7 +1164,7 @@ private fun MessageReaderLoaded(
                 val current = attachments.firstOrNull { it.section == row.section } ?: return@launch
                 if (current.done || current.busy) return@launch
                 markAttachment(current.section, current.fetched, done = false, busy = true)
-                val dest = File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, current.section))
+                val dest = File(appContext.cacheDir, attachmentCacheName(accountId, cacheToken, readerEpoch, uid, current.section))
                 val tmp = File(dest.parentFile, dest.name + ".part")
                 val handle = MimeDecode.xferOpen(current.encoding)
                 try {
@@ -1235,7 +1235,7 @@ private fun MessageReaderLoaded(
     // downloads the part nor sets \Seen) and compare it with the claimed type and the extension.
     fun checkTypeThen(row: AttachmentRow, action: AttachmentAction, proceed: () -> Unit) {
         scope.launch {
-            val cached = File(appContext.cacheDir, attachmentCacheName(cacheToken, uid, row.section))
+            val cached = File(appContext.cacheDir, attachmentCacheName(accountId, cacheToken, readerEpoch, uid, row.section))
             var tail = ByteArray(0)
             val head = try {
                 if (cached.isFile && cached.length() > 0) {
@@ -1264,7 +1264,7 @@ private fun MessageReaderLoaded(
     }
 
     fun openAttachmentAs(row: AttachmentRow, mime: String) {
-        val uri = attachmentUri(attachmentCacheName(cacheToken, uid, row.section))
+        val uri = attachmentUri(attachmentCacheName(accountId, cacheToken, readerEpoch, uid, row.section))
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1278,7 +1278,7 @@ private fun MessageReaderLoaded(
     }
 
     fun shareAttachmentAs(row: AttachmentRow, mime: String) {
-        val uri = attachmentUri(attachmentCacheName(cacheToken, uid, row.section))
+        val uri = attachmentUri(attachmentCacheName(accountId, cacheToken, readerEpoch, uid, row.section))
         val send = Intent(Intent.ACTION_SEND).apply {
             type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -1523,7 +1523,7 @@ private fun MessageReaderLoaded(
     }
 
     fun openNextOrIndex(target: Pair<Long, Int>?) {
-        if (target == null) onBack() else onAdvance(target.first, target.second)
+        if (target == null) onBack() else onAdvance(MessageRef(accountId, mailbox, readerEpoch, target.first), target.second)
     }
 
     fun showActionUndo(undo: MailUndo, next: Pair<Long, Int>?) {
@@ -1634,7 +1634,7 @@ private fun MessageReaderLoaded(
                         s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                         e
                     }
-                    showActionUndo(refUndo(account, mailbox, epoch, uid), target)
+                    showActionUndo(refUndo(accountId, mailbox, epoch, uid), target)
                 }
                 DeletePolicy.MoveToTrash -> {
                     val trash = session.knownTrash()
@@ -1646,7 +1646,7 @@ private fun MessageReaderLoaded(
                         Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
-                    showActionUndo(refUndo(account, mailbox, epoch, uid, trash, dest, targetEpoch, usedMove), target)
+                    showActionUndo(refUndo(accountId, mailbox, epoch, uid, trash, dest.asList(), targetEpoch, usedMove), target)
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) return
@@ -1726,7 +1726,7 @@ private fun MessageReaderLoaded(
                 } catch (_: MailFailure) {
                     return
                 }
-                onAdvance(next, nextSequence)
+                onAdvance(MessageRef(accountId, mailbox, readerEpoch, next), nextSequence)
             }
             SwipeAction.Previous -> {
                 if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
@@ -1736,7 +1736,7 @@ private fun MessageReaderLoaded(
                 } catch (_: MailFailure) {
                     return
                 }
-                onAdvance(previous, previousSequence)
+                onAdvance(MessageRef(accountId, mailbox, readerEpoch, previous), previousSequence)
             }
             SwipeAction.Reply ->
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
@@ -1771,7 +1771,7 @@ private fun MessageReaderLoaded(
                     }
                     val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                     showActionUndo(
-                        refUndo(account, mailbox, epoch, uid, spamMailbox, dest, targetEpoch, usedMove),
+                        refUndo(accountId, mailbox, epoch, uid, spamMailbox, dest.asList(), targetEpoch, usedMove),
                         target,
                     )
                 } catch (error: CancellationException) {
@@ -2887,7 +2887,7 @@ private fun MessageReaderLoaded(
                                 }
                                 val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
                                 showActionUndo(
-                                    refUndo(account, mailbox, epoch, uid, picked, dest, targetEpoch, usedMove),
+                                    refUndo(accountId, mailbox, epoch, uid, picked, dest.asList(), targetEpoch, usedMove),
                                     target,
                                 )
                             } catch (error: CancellationException) {
@@ -3374,9 +3374,24 @@ internal fun readerCacheToken(): String {
     return bytes.joinToString("") { "%02x".format(it) }
 }
 
-internal fun attachmentCacheName(token: String, uid: Long, section: String): String {
+private val attachmentAccountId = Regex("^[0-9a-f-]{36}$")
+
+internal fun attachmentPrefixFor(accountId: String): String {
+    if (!attachmentAccountId.matches(accountId)) {
+        throw IllegalArgumentException("account id")
+    }
+    return "liveimap-$accountId-"
+}
+
+internal fun attachmentCacheName(
+    accountId: String,
+    token: String,
+    uidValidity: Long,
+    uid: Long,
+    section: String,
+): String {
     val safe = section.replace(Regex("[^A-Za-z0-9._-]"), "_")
-    return "liveimap-$token-$uid-$safe"
+    return attachmentPrefixFor(accountId) + "$token-$uidValidity-$uid-$safe"
 }
 
 private fun attachmentUri(name: String): Uri = Uri.parse("content://com.davidlang.liveimap.attachments/$name")
@@ -3399,8 +3414,8 @@ internal fun deleteStaleAttachments(dir: File) {
     }
 }
 
-private fun deleteReaderAttachmentCache(dir: File, token: String) {
-    val prefix = "liveimap-$token-"
+private fun deleteReaderAttachmentCache(dir: File, accountId: String, token: String) {
+    val prefix = attachmentPrefixFor(accountId) + "$token-"
     val files = dir.listFiles() ?: return
     for (file in files) {
         if (file.isFile && file.name.startsWith(prefix)) file.delete()

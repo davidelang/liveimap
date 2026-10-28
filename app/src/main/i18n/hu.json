@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Mappa eszköztár"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Olvasó eszköztár"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Írás eszköztár"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Ez az elrendezés nem jeleníthető meg: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Elrendezés szerkesztése"},
 {"key": "pane_resize", "source": "Resize pane", "text": "A panel átméretezése"},
 {"key": "pane_wider", "source": "Wider", "text": "Szélesebb"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Szűkebb"},

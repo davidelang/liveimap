@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Ogwe ngwaọrụ nchekwa"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Ogwe ihe na-agụ ihe"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Dee ogwe ngwaọrụ"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Enweghị ike igosi nhazi a: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Dezie nhazi"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Hazie pane"},
 {"key": "pane_wider", "source": "Wider", "text": "Ka mbara"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Dị warara"},

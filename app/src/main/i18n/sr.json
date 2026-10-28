@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Трака са алаткама фолдера"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Трака са алаткама читача"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Трака са алаткама за писање"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Овај распоред није могуће приказати: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Уреди распоред"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Промена величине окна"},
 {"key": "pane_wider", "source": "Wider", "text": "Шире"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Ужи"},

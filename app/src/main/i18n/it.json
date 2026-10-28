@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Barra degli strumenti della cartella"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Barra degli strumenti del lettore"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Barra degli strumenti Componi"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Questo layout non può essere mostrato: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Modifica layout"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Riquadro Ridimensiona"},
 {"key": "pane_wider", "source": "Wider", "text": "Più ampio"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Più stretto"},

@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Barra de ferramentas do cartafol"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Barra de ferramentas do lector"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Barra de ferramentas de composición"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Este deseño non se pode mostrar: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Editar o deseño"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Cambiar o tamaño do panel"},
 {"key": "pane_wider", "source": "Wider", "text": "Máis ancho"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Máis estreito"},

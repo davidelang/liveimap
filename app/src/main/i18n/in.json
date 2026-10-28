@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Bilah alat folder"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Bilah alat pembaca"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Bilah alat Tulis"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Tata letak ini tidak dapat ditampilkan: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Edit tata letak"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Ubah ukuran panel"},
 {"key": "pane_wider", "source": "Wider", "text": "Lebih luas"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Lebih sempit"},

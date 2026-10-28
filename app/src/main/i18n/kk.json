@@ -551,6 +551,8 @@
 {"key": "settings_panel_folders", "source": "Folder toolbar", "text": "Қалта құралдар тақтасы"},
 {"key": "settings_panel_reader", "source": "Reader toolbar", "text": "Оқырман құралдар тақтасы"},
 {"key": "settings_panel_compose", "source": "Compose toolbar", "text": "Құралдар тақтасын құрастыру"},
+{"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Бұл орналасуды көрсету мүмкін емес: %1$s"},
+{"key": "pane_layout_edit", "source": "Edit layout", "text": "Орналасуды өңдеу"},
 {"key": "pane_resize", "source": "Resize pane", "text": "Өлшемді өзгерту тақтасы"},
 {"key": "pane_wider", "source": "Wider", "text": "Кеңірек"},
 {"key": "pane_narrower", "source": "Narrower", "text": "Тарырақ"},
