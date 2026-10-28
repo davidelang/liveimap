@@ -185,9 +185,9 @@ android {
         }
     }
     sourceSets {
-        getByName("arm64") { java.srcDir("src/sideload/kotlin") }
-        getByName("x86_64") { java.srcDir("src/sideload/kotlin") }
-        getByName("armv7") { java.srcDir("src/sideload/kotlin") }
+        getByName("arm64").kotlin.directories.add("src/sideload/kotlin")
+        getByName("x86_64").kotlin.directories.add("src/sideload/kotlin")
+        getByName("armv7").kotlin.directories.add("src/sideload/kotlin")
     }
 }
 

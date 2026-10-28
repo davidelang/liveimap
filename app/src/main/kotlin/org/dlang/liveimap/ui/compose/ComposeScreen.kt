@@ -1327,6 +1327,7 @@ private fun ComposeLoaded(
                 }
                 var leftOver: String? = null
                 try {
+                    if (password == null) throw MailFailure("password missing")
                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
@@ -1793,6 +1794,7 @@ private fun ComposeLoaded(
                         }
                         var leftOver: String? = null
                         try {
+                            if (password == null) throw MailFailure("password missing")
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
@@ -2251,6 +2253,7 @@ private fun ComposeLoaded(
                                     return@launchLocked false
                                 }
                                 try {
+                                    if (password == null) throw MailFailure("password missing")
                                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                                     keepCopyUntilSubmitted(
                                         bouncing,

@@ -2100,7 +2100,7 @@ class LibetpanMailSession(
         if (acct.smtpNoAuth == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         // A staged session has no IMAP handle and does not dial imapHost.
-        val staged = stageSmtp(acct, imapPassword)
+        val staged = stageSmtp(acct, resolvedImap)
         if (staged.handle == 0L) throw MailFailure(staged.error)
         try {
             val code = nativeSmtp(staged.handle, null, emptyArray(), smtpUser, smtpPassword, 0, "")
