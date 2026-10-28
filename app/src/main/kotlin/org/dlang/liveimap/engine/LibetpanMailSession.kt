@@ -331,7 +331,7 @@ class LibetpanMailSession(
         }
         refusedSecurityKey = null
         val password = if (credentials != null) {
-            credentials!!.password
+            credentials!!.password ?: return OpenResult.Failed("password missing")
         } else {
             try {
                 runBlocking { ownStore().password() } ?: return OpenResult.Failed("password missing")
@@ -451,7 +451,7 @@ class LibetpanMailSession(
     }
 
     private fun sessionPassword(): String {
-        credentials?.let { return it.password }
+        credentials?.let { return it.password ?: throw MailFailure("password missing") }
         return runBlocking { ownStore().password() } ?: throw MailFailure("password missing")
     }
 
@@ -460,7 +460,7 @@ class LibetpanMailSession(
         val password = if (knownPassword != null) {
             knownPassword
         } else if (credentials != null) {
-            credentials!!.password
+            credentials!!.password ?: return OpenResult.Failed("password missing")
         } else {
             try {
                 runBlocking { ownStore().password() } ?: return OpenResult.Failed("password missing")

@@ -209,7 +209,8 @@ class AccountStore private constructor(private val context: Context) {
 
     /**
      * Settings and passwords of one account by id, without selecting it: used when a sending rule routes a
-     * message through another account's servers. Null when there is no such account (multi-account store only).
+     * message through another account's servers. Null when there is no such account. A missing or unreadable
+     * IMAP secret is a null password, which a send reports as password missing.
      */
     suspend fun accountById(accountId: String): AccountCredentials? {
         return onAccount {
@@ -219,11 +220,14 @@ class AccountStore private constructor(private val context: Context) {
                 val text = storedPreference(accountId) ?: return@withContext null
                 val settings = overlayAccountFields(decodeAccountSettings(text), account.userData)
                 val slot = account.passwordSlot
-                if (slot.isNullOrEmpty()) return@withContext null
-                val password = try {
-                    cipher.decrypt(accountId, slot)
-                } catch (unreadable: SecretUnreadable) {
-                    return@withContext null
+                val password = if (slot.isNullOrEmpty()) {
+                    null
+                } else {
+                    try {
+                        cipher.decrypt(accountId, slot)
+                    } catch (_: SecretUnreadable) {
+                        null
+                    }
                 }
                 val smtp = readSecretSlot(accountId, userSmtpPasswordSlot)
                 AccountCredentials(settings, password, smtp)
@@ -496,7 +500,7 @@ class AccountStore private constructor(private val context: Context) {
         val text = storedPreference(accountId) ?: return
         val settings = runCatching { decodeAccountSettings(text) }.getOrNull() ?: return
         if (settings.passwordStorage != org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore) return
-        val imapPlain = imap ?: passwordLocked().orEmpty()
+        val imapPlain = imap ?: imapPasswordFor(accountId) ?: return
         val smtp = readSecretSlot(accountId, userSmtpPasswordSlot).orEmpty()
         val sieve = readSecretSlot(accountId, userSievePasswordSlot).orEmpty()
         PasswordStorage.refresh(
@@ -505,6 +509,18 @@ class AccountStore private constructor(private val context: Context) {
             settings.passwordStorage.name,
             encodeBackupRecord(settings, imapPlain, smtp, sieve),
         )
+    }
+
+    /** IMAP secret of [accountId]. Null when that account is absent. */
+    private fun imapPasswordFor(accountId: String): String? {
+        val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId } ?: return null
+        val slot = account.passwordSlot
+        if (slot.isNullOrEmpty()) return ""
+        return try {
+            cipher.decrypt(accountId, slot)
+        } catch (_: SecretUnreadable) {
+            ""
+        }
     }
 
     private suspend fun passwordLocked(): String? {
@@ -896,7 +912,7 @@ private fun postAccountNotice(context: Context, accountName: String, text: Strin
 /** One account's settings and secrets, for sending through it (see AccountStore.accountById). */
 class AccountCredentials(
     val settings: AccountSettings,
-    val password: String,
+    val password: String?,
     val smtpPassword: String?,
 ) {
     override fun toString(): String = "AccountCredentials"
