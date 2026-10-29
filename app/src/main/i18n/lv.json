@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Tīmekļa vietne"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontaktpersonas nevarēja nolasīt."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Nepieciešama kontaktpersonu atļauja."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobilais"},
 {"key": "copy_home", "source": "Home", "text": "Sākums"},
 {"key": "copy_work", "source": "Work", "text": "Darbs"},

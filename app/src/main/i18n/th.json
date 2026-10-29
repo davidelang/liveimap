@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "เว็บไซต์"},
 {"key": "copy_im", "source": "IM", "text": "ฉัน"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "ไม่สามารถอ่านผู้ติดต่อได้"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "จำเป็นต้องได้รับสิทธิ์ในการเข้าถึงรายชื่อติดต่อ"},
 {"key": "copy_mobile", "source": "Mobile", "text": "มือถือ"},
 {"key": "copy_home", "source": "Home", "text": "บ้าน"},
 {"key": "copy_work", "source": "Work", "text": "งาน"},

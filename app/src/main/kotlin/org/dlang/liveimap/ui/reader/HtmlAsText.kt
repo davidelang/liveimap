@@ -5,6 +5,8 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
+private val extraHtmlBreaks = Regex("\n{3,}")
+
 private val lineBreaks = setOf(
     "p",
     "div",
@@ -131,7 +133,7 @@ private fun appendRaw(state: HtmlRender, text: String) {
 
 private fun finishHtmlText(state: HtmlRender): String {
     val normalized = state.out.toString().replace("\r\n", "\n").replace('\r', '\n')
-    val collapsed = Regex("\n{3,}").replace(normalized, "\n\n").trim('\n')
+    val collapsed = extraHtmlBreaks.replace(normalized, "\n\n").trim('\n')
     if (state.links.isEmpty()) return collapsed
     val block = state.links.mapIndexed { index, href -> "[${index + 1}] $href" }.joinToString("\n")
     if (collapsed.isEmpty()) return block

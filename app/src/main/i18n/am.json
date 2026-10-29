@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "ድህረገፅ"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "እውቂያዎች ሊነበቡ አልቻሉም።"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "የእውቂያዎች ፍቃድ ያስፈልጋል።"},
 {"key": "copy_mobile", "source": "Mobile", "text": "ሞባይል"},
 {"key": "copy_home", "source": "Home", "text": "ቤት"},
 {"key": "copy_work", "source": "Work", "text": "ስራ"},

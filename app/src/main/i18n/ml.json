@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "വെബ്സൈറ്റ്"},
 {"key": "copy_im", "source": "IM", "text": "ഐ.എം"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "കോൺടാക്റ്റുകൾ വായിക്കാൻ കഴിഞ്ഞില്ല."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "കോൺടാക്റ്റുകൾക്കുള്ള അനുമതി ആവശ്യമാണ്."},
 {"key": "copy_mobile", "source": "Mobile", "text": "മൊബൈൽ"},
 {"key": "copy_home", "source": "Home", "text": "വീട്"},
 {"key": "copy_work", "source": "Work", "text": "ജോലി"},

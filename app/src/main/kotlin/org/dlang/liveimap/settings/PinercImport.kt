@@ -820,7 +820,7 @@ internal fun pineRole(entry: String): org.dlang.liveimap.ui.compose.SendingRule?
             sb.append(entry[i]); i++
         }
         val out = LinkedHashMap<String, String>()
-        for (part in Regex("/(?=[A-Z]+=)").split(sb.toString())) {
+        for (part in roleField.split(sb.toString())) {
             val eq = part.indexOf('=')
             if (eq > 0) out[part.substring(0, eq)] = part.substring(eq + 1)
         }
@@ -835,7 +835,7 @@ internal fun pineRole(entry: String): org.dlang.liveimap.ui.compose.SendingRule?
     fun list(v: String?) = v.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
     val folder = if (pattern["FLDTYPE"] == "SPEC") list(pattern["FOLDER"]).firstOrNull().orEmpty() else ""
     val from = action["FROM"].orEmpty()
-    val fromAddress = Regex("<([^>]+)>").find(from)?.groupValues?.get(1) ?: from.trim().ifEmpty { null }
+    val fromAddress = angleAddress.find(from)?.groupValues?.get(1) ?: from.trim().ifEmpty { null }
     val fromName = if ('<' in from) from.substringBefore('<').trim().trim('"').ifEmpty { null } else null
     return org.dlang.liveimap.ui.compose.SendingRule(
         name = name,
@@ -855,6 +855,8 @@ internal fun pineRole(entry: String): org.dlang.liveimap.ui.compose.SendingRule?
     )
 }
 
+private val roleField = Regex("/(?=[A-Z]+=)")
+private val angleAddress = Regex("<([^>]+)>")
 private val variableName = Regex("[A-Za-z0-9][A-Za-z0-9_-]*")
 
 private data class PinercValue(val decoded: String?, val raw: String)

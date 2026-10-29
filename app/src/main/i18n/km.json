@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "គេហទំព័រ"},
 {"key": "copy_im", "source": "IM", "text": "អ៊ីម"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "ទំនាក់ទំនងមិនអាចអានបានទេ។"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "ត្រូវការការអនុញ្ញាតទំនាក់ទំនង។"},
 {"key": "copy_mobile", "source": "Mobile", "text": "ទូរស័ព្ទចល័ត"},
 {"key": "copy_home", "source": "Home", "text": "ផ្ទះ"},
 {"key": "copy_work", "source": "Work", "text": "ការងារ"},

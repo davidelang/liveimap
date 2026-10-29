@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "වෙබ් අඩවිය"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "සම්බන්ධතා කියවිය නොහැකි විය."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "සම්බන්ධතා අවසරය අවශ්‍යයි."},
 {"key": "copy_mobile", "source": "Mobile", "text": "ජංගම"},
 {"key": "copy_home", "source": "Home", "text": "නිවස"},
 {"key": "copy_work", "source": "Work", "text": "වැඩ කරන්න"},

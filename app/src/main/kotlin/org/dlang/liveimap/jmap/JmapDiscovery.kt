@@ -84,6 +84,8 @@ private fun parsePort(text: String): Int {
     return port
 }
 
+private val jmapOriginPattern = Regex("^(https?://[^/?#]+)", RegexOption.IGNORE_CASE)
+
 fun discoverJmap(status: Int, body: String, finalUrl: String, accountKey: String = ""): JmapOffer {
     if (finalUrl.isBlank()) return JmapOffer.None
     val scheme = try {
@@ -100,7 +102,7 @@ fun discoverJmap(status: Int, body: String, finalUrl: String, accountKey: String
     }
     if (!session.offersMail()) return JmapOffer.None
     // Cyrus sends path-only session URLs ("/jmap/"); they are relative to the session resource.
-    val origin = Regex("^(https?://[^/?#]+)", RegexOption.IGNORE_CASE).find(finalUrl)?.groupValues?.get(1) ?: return JmapOffer.None
+    val origin = jmapOriginPattern.find(finalUrl)?.groupValues?.get(1) ?: return JmapOffer.None
     fun abs(u: String) = if (u.startsWith("/") && !u.startsWith("//")) origin + u else u
     session = session.copy(apiUrl = abs(session.apiUrl), downloadUrl = abs(session.downloadUrl),
         uploadUrl = abs(session.uploadUrl), eventSourceUrl = abs(session.eventSourceUrl))

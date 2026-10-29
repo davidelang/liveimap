@@ -703,6 +703,7 @@ Your version: %2$s</string>
     <string name="copy_website">Website</string>
     <string name="copy_im">IM</string>
     <string name="copy_unreadable">Contacts could not be read.</string>
+    <string name="contacts_permission_needed">Contacts permission is needed.</string>
     <string name="copy_mobile">Mobile</string>
     <string name="copy_home">Home</string>
     <string name="copy_work">Work</string>

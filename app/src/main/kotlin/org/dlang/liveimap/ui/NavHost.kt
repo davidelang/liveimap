@@ -198,6 +198,8 @@ private class PromptTurns {
  * F76: certificate fields are chosen by whoever presents the certificate. Show them on one line, without
  * control or bidi characters, and cut long values so they cannot push the fingerprint off the dialog.
  */
+private val repeatedSpaces = Regex(" {2,}")
+
 internal fun certDisplayText(text: String, limit: Int = 160): String {
     val cleaned = buildString {
         for (c in text) {
@@ -209,7 +211,7 @@ internal fun certDisplayText(text: String, limit: Int = 160): String {
                 else -> append(c)
             }
         }
-    }.trim().replace(Regex(" {2,}"), " ")
+    }.trim().replace(repeatedSpaces, " ")
     return if (cleaned.length <= limit) cleaned else cleaned.take(limit) + "…"
 }
 

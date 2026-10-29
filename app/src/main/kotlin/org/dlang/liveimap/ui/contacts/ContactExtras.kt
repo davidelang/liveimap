@@ -25,6 +25,8 @@ data class ExtraParse(
 )
 
 private const val ExtraEscaped = "%\t\r\n =[]"
+private val trailingSpaceBeforeNewline = Regex("[ \t]+\n")
+private val extraBlankLines = Regex("\n{3,}")
 
 fun extraEscape(value: String): String = buildString {
     for (ch in value) {
@@ -89,7 +91,7 @@ fun parseExtraBlock(text: String): ExtraParse {
         rest = rest.substring(end + ExtraClose.length)
     }
     user.append(rest)
-    val cleaned = user.toString().replace(Regex("[ \t]+\n"), "\n").replace(Regex("\n{3,}"), "\n\n").trim()
+    val cleaned = user.toString().replace(trailingSpaceBeforeNewline, "\n").replace(extraBlankLines, "\n\n").trim()
     return ExtraParse(cleaned, entries, foreign)
 }
 

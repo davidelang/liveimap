@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Site Web"},
 {"key": "copy_im", "source": "IM", "text": "JE SUIS"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Les contacts n'ont pas pu être lus."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "La permission des contacts est nécessaire."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Portable"},
 {"key": "copy_home", "source": "Home", "text": "Maison"},
 {"key": "copy_work", "source": "Work", "text": "Travail"},

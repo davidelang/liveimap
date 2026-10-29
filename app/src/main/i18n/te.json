@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "వెబ్సైట్"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "పరిచయాలను చదవడం సాధ్యం కాలేదు."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "పరిచయాల అనుమతి అవసరం."},
 {"key": "copy_mobile", "source": "Mobile", "text": "మొబైల్"},
 {"key": "copy_home", "source": "Home", "text": "హోమ్"},
 {"key": "copy_work", "source": "Work", "text": "పని"},

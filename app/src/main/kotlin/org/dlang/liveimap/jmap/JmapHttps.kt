@@ -60,9 +60,11 @@ inline fun <T> jmapNet(block: () -> T): T = try {
     throw JmapFailure("jmap network error: ${error.message ?: error.javaClass.simpleName}")
 }
 
+private val jmapUrlHostPattern = Regex("^https?://(\\[[^\\]]+\\]|[^/:?#{}]+)", RegexOption.IGNORE_CASE)
+
 /** The host of an https URL or URL template (templates may hold {accountId} etc., which URI() rejects). */
 fun jmapUrlHost(url: String): String? =
-    Regex("^https?://(\\[[^\\]]+\\]|[^/:?#{}]+)", RegexOption.IGNORE_CASE).find(url.trim())?.groupValues?.get(1)?.lowercase()
+    jmapUrlHostPattern.find(url.trim())?.groupValues?.get(1)?.lowercase()
 
 class JmapHttpsFetch(
     private val pin: String,

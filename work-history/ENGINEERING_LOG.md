@@ -3917,3 +3917,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - Delete failure after a confirmed send
 
 - A local delete that fails after the server accepts a message, or after postpone appends the draft, shows error_delete_failed and leaves that send or postpone done.
+
+## 2026-10-29 - Contacts permission and one contact query
+
+- Address completion matches before it expands a distribution list, and builds each source's nickname index once per completion. A missing contacts permission is contacts_permission_needed, not an empty book. Copying contacts reads RawContacts once. Constant regexes on the hot path are built once.

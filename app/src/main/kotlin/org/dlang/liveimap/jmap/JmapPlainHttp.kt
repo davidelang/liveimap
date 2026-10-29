@@ -30,19 +30,26 @@ object JmapPlainHttp {
 
     internal fun clear() = origins.clear()
 
+    private val httpOriginPattern = Regex(
+        "^http://(\\[[^\\]]+\\]|[^/:?#{}]+)(?::(\\d{1,5}))?(?:[/?#{]|$)",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** "http://host:port" (port 80 when absent), lowercase; null unless the URL is http. */
     fun originOf(url: String): String? {
-        val m = Regex("^http://(\\[[^\\]]+\\]|[^/:?#{}]+)(?::(\\d{1,5}))?(?:[/?#{]|$)", RegexOption.IGNORE_CASE).find(url.trim())
+        val m = httpOriginPattern.find(url.trim())
             ?: return null
         val port = m.groupValues[2].ifEmpty { "80" }.toInt()
         return "http://" + m.groupValues[1].lowercase() + ":" + port
     }
 }
 
+private val urlSchemePattern = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://")
+
 /** https always; http only for an origin this account configured. A blank key allows https and refuses http. */
 fun jmapUrlAllowed(accountKey: String, url: String): Boolean {
     val scheme = try { URI(url.substringBefore('{')).scheme } catch (_: Exception) { null }
-        ?: Regex("^([a-zA-Z][a-zA-Z0-9+.-]*)://").find(url.trim())?.groupValues?.get(1)
+        ?: urlSchemePattern.find(url.trim())?.groupValues?.get(1)
     if (scheme.equals("https", ignoreCase = true)) return true
     return scheme.equals("http", ignoreCase = true) && JmapPlainHttp.allowed(accountKey, url)
 }

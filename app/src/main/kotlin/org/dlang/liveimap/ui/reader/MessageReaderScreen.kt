@@ -3488,6 +3488,7 @@ internal fun readerCacheToken(): String {
 }
 
 private val attachmentAccountId = Regex("^[0-9a-f-]{36}$")
+private val attachmentSectionChars = Regex("[^A-Za-z0-9._-]")
 
 internal fun attachmentPrefixFor(accountId: String): String {
     if (!attachmentAccountId.matches(accountId)) {
@@ -3503,7 +3504,7 @@ internal fun attachmentCacheName(
     uid: Long,
     section: String,
 ): String {
-    val safe = section.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    val safe = section.replace(attachmentSectionChars, "_")
     return attachmentPrefixFor(accountId) + "$token-$uidValidity-$uid-$safe"
 }
 

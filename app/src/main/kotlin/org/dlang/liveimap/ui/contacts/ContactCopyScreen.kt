@@ -255,11 +255,19 @@ private fun ContactCopyLoaded(
             is ConnectedAccount.Failed -> notice = opened.notice
             is ConnectedAccount.Ready -> {
                 account = opened.settings
+                val permissionNeeded = context.getString(R.string.contacts_permission_needed)
                 val sets = if (!hasReadContacts(context)) {
+                    notice = permissionNeeded
                     emptyList()
                 } else {
                     try {
-                        androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
+                        when (val loaded = androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)) {
+                            AndroidContacts.PermissionNeeded -> {
+                                notice = permissionNeeded
+                                emptyList()
+                            }
+                            is AndroidContacts.Ready -> loaded.value
+                        }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
@@ -572,6 +580,7 @@ private class BuiltContact(val rawId: Long) {
     var familyName: String = ""
     var starred: Boolean = false
     var ringtone: String = ""
+    var contactId: Long = 0L
     var linked: Boolean = false
     val nicknames = ArrayList<String>()
     val emails = ArrayList<String>()
@@ -625,6 +634,10 @@ private fun loadAndroidContacts(
     try {
         return readAndroidContacts(resolver, accountType, accountName, context)
     } catch (_: SecurityException) {
+        throw IllegalStateException(context.getString(R.string.contacts_permission_needed))
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
         throw IllegalStateException(context.getString(R.string.copy_unreadable))
     }
 }
@@ -662,6 +675,7 @@ private fun readAndroidContacts(
             val contactId = if (contactIndex < 0 || cursor.isNull(contactIndex)) 0L else cursor.getLong(contactIndex)
             contactCounts[contactId] = (contactCounts[contactId] ?: 0) + 1
             val built = BuiltContact(id)
+            built.contactId = contactId
             built.displayName = cursorString(cursor, displayIndex)
             built.starred = starredIndex >= 0 && !cursor.isNull(starredIndex) && cursor.getInt(starredIndex) != 0
             built.ringtone = cursorString(cursor, ringIndex)
@@ -763,30 +777,12 @@ private fun readAndroidContacts(
             }
         }
     }
+    for (built in raws.values) {
+        built.linked = built.contactId != 0L && (contactCounts[built.contactId] ?: 0) > 1
+    }
     val people = raws.values.map { it.freeze() }
-    val linkedIds = HashMap<Long, Long>()
-    resolver.query(
-        ContactsContract.RawContacts.CONTENT_URI,
-        arrayOf(ContactsContract.RawContacts._ID, ContactsContract.RawContacts.CONTACT_ID),
-        "${ContactsContract.RawContacts.DELETED}=0 AND ${accountClause.selection}",
-        accountClause.args,
-        null,
-    )?.use { cursor ->
-        val idIndex = cursor.getColumnIndex(ContactsContract.RawContacts._ID)
-        val contactIndex = cursor.getColumnIndex(ContactsContract.RawContacts.CONTACT_ID)
-        while (cursor.moveToNext()) {
-            if (idIndex < 0 || cursor.isNull(idIndex)) continue
-            val contactId = if (contactIndex < 0 || cursor.isNull(contactIndex)) 0L else cursor.getLong(contactIndex)
-            linkedIds[cursor.getLong(idIndex)] = contactId
-        }
-    }
-    val withLinks = people.map { contact ->
-        val contactId = linkedIds[contact.rawId] ?: 0L
-        val linked = contactId != 0L && (contactCounts[contactId] ?: 0) > 1
-        if (linked) contact.copy(linked = true) else contact
-    }
-    val emailByRawId = HashMap<Long, String>(withLinks.size)
-    for (contact in withLinks) {
+    val emailByRawId = HashMap<Long, String>(people.size)
+    for (contact in people) {
         val email = contact.emails.firstOrNull().orEmpty()
         if (email.isNotEmpty()) emailByRawId[contact.rawId] = email
     }
@@ -824,7 +820,7 @@ private fun readAndroidContacts(
             )
         }
     }
-    return withLinks + groups
+    return people + groups
 }
 
 private data class AccountClause(val selection: String, val args: Array<String>?)

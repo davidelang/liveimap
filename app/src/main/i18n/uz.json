@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Veb-sayt"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontaktlarni o‘qib bo‘lmadi."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kontaktlar ruxsati kerak."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobil"},
 {"key": "copy_home", "source": "Home", "text": "Uy"},
 {"key": "copy_work", "source": "Work", "text": "Ish"},

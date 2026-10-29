@@ -113,6 +113,7 @@ import org.dlang.liveimap.ui.contacts.AddressSuggestion
 import org.dlang.liveimap.ui.contacts.AlpineEntry
 import org.dlang.liveimap.ui.contacts.CompletionSource
 import org.dlang.liveimap.ui.contacts.addressMarkedPlaintext
+import org.dlang.liveimap.ui.contacts.AndroidContacts
 import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
 import org.dlang.liveimap.ui.contacts.androidEntriesOnce
 import org.dlang.liveimap.ui.contacts.completeAddress
@@ -839,19 +840,35 @@ private fun ComposeForm(
             }
         }
         val wantAndroid = ids.any { it.startsWith("android|") }
-        if (!wantAndroid || !hasReadContacts(appContext)) {
+        if (!wantAndroid) {
+            return completionSourcesInOrder(ids, pine, emptyMap(), emptyMap())
+        }
+        val permissionNeeded = appContext.getString(R.string.contacts_permission_needed)
+        if (!hasReadContacts(appContext)) {
+            notice = permissionNeeded
             return completionSourcesInOrder(ids, pine, emptyMap(), emptyMap())
         }
         val entries = try {
-            androidEntriesOnce(appContext.contentResolver)
+            when (val loaded = androidEntriesOnce(appContext.contentResolver)) {
+                AndroidContacts.PermissionNeeded -> {
+                    notice = permissionNeeded
+                    emptyMap()
+                }
+                is AndroidContacts.Ready -> loaded.value
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             emptyMap()
         }
         val labels = try {
-            androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
-                .associate { it.id to it.label }
+            when (val loaded = androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)) {
+                AndroidContacts.PermissionNeeded -> {
+                    notice = permissionNeeded
+                    emptyMap()
+                }
+                is AndroidContacts.Ready -> loaded.value.associate { it.id to it.label }
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {

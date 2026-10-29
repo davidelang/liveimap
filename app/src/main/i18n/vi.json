@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Trang web"},
 {"key": "copy_im", "source": "IM", "text": "TÔI"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Không thể đọc được danh bạ."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Cần quyền truy cập danh bạ."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Điện thoại di động"},
 {"key": "copy_home", "source": "Home", "text": "Trang chủ"},
 {"key": "copy_work", "source": "Work", "text": "Công việc"},

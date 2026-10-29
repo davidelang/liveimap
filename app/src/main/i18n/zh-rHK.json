@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "網站"},
 {"key": "copy_im", "source": "IM", "text": "我是"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "無法讀取聯絡人資訊。"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "需要聯絡人權限。"},
 {"key": "copy_mobile", "source": "Mobile", "text": "移動的"},
 {"key": "copy_home", "source": "Home", "text": "家"},
 {"key": "copy_work", "source": "Work", "text": "工作"},

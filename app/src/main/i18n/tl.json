@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Website"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Hindi mabasa ang mga contact."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kailangan ang pahintulot sa mga contact."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobile"},
 {"key": "copy_home", "source": "Home", "text": "Bahay"},
 {"key": "copy_work", "source": "Work", "text": "Trabaho"},

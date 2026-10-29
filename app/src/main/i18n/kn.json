@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "ವೆಬ್‌ಸೈಟ್"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "ಸಂಪರ್ಕಗಳನ್ನು ಓದಲಾಗಲಿಲ್ಲ."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "ಸಂಪರ್ಕಗಳ ಅನುಮತಿ ಅಗತ್ಯವಿದೆ."},
 {"key": "copy_mobile", "source": "Mobile", "text": "ಮೊಬೈಲ್"},
 {"key": "copy_home", "source": "Home", "text": "ಮುಖಪುಟ"},
 {"key": "copy_work", "source": "Work", "text": "ಕೆಲಸ"},

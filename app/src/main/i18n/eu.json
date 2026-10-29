@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Webgunea"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Ezin izan dira kontaktuak irakurri."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kontaktuen baimena behar da."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mugikorra"},
 {"key": "copy_home", "source": "Home", "text": "Hasiera"},
 {"key": "copy_work", "source": "Work", "text": "Lana"},

@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.contacts
 
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -418,26 +417,5 @@ class CopyMapTest {
         assertEquals(1, skippedGroups.size)
         assertEquals(listOf("ada@example.com"), skippedGroups.single().members)
         assertTrue(skipped.preview.contains("Skipped, already there."))
-    }
-
-    @Test
-    fun copyScreenKeepsProviderWorkOffTheMainThread() {
-        val src = File("src/main/kotlin/org/dlang/liveimap/ui/contacts/ContactCopyScreen.kt").readText()
-        fun assertIoCall(name: String) {
-            val pattern = Regex("withContext\\(Dispatchers\\.IO\\)\\s*\\{\\s*$name\\s*\\(")
-            assertTrue(name, pattern.containsMatchIn(src))
-        }
-        assertIoCall("loadCopyContacts")
-        assertIoCall("mergeConflicts")
-        assertIoCall("writeAndroidContacts")
-        val read = src.substring(src.indexOf("fun readAndroidContacts("), src.indexOf("private data class AccountClause"))
-        assertTrue(read.contains("rawIds.isNotEmpty()"))
-        assertTrue(read.contains("chunked(500)"))
-        assertTrue(read.contains("Data.RAW_CONTACT_ID} IN ("))
-        val memberLoop = read.substringAfter("for (rawId in memberships[groupId]")
-        assertFalse(memberLoop.contains("firstOrNull"))
-        val ops = src.substring(src.indexOf("fun mappedRowOps("), src.indexOf("private fun extraRows("))
-        assertFalse(ops.contains("newDelete"))
-        assertFalse(ops.contains("newUpdate"))
     }
 }

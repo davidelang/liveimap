@@ -329,11 +329,13 @@ fun groupArgument(q: AdvancedQuery): String =
 fun filterChipText(filter: AppliedFilter): String =
     if (filter.argument.isEmpty() || filter.kind == "Uid") filter.label else "${filter.label} ${filter.argument}"
 
+private val threadSubjectPrefix = Regex("^(?i)(re|fwd?|aw|sv|wg)(\\[\\d+])?:\\s*")
+
 /** "Show this thread" chip: the thread's subject (without Re:/Fwd: prefixes), or just the label. */
 fun threadChipLabel(label: String, subject: String?): String {
     var s = subject?.trim().orEmpty()
     while (true) {
-        val m = Regex("^(?i)(re|fwd?|aw|sv|wg)(\\[\\d+])?:\\s*").find(s) ?: break
+        val m = threadSubjectPrefix.find(s) ?: break
         s = s.substring(m.range.last + 1)
     }
     return if (s.isEmpty()) label else "$label: $s"

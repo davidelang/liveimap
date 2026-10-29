@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Вебсайт"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Тамосҳоро хонда натавонистанд."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Иҷозати тамос лозим аст."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Мобилӣ"},
 {"key": "copy_home", "source": "Home", "text": "Хона"},
 {"key": "copy_work", "source": "Work", "text": "Кор"},

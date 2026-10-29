@@ -23,6 +23,8 @@ object NonAsciiText {
     /** Display mode of the open account, set by the nav host. */
     var active by mutableStateOf(NonAsciiDisplay.HighlightSuspicious)
 
+    private val idnDomain = Regex("@([^\\s<>()\\[\\],;\"]+)")
+
     private val lookalikes: Set<Int> = (
         "аАвВеЕһНіІјЈкКмМоОрРсСѕЅтТхХуУԁԛԝӏӀ" + // Cyrillic
             "ΑΒΕΖΗΙΚΜΝΟΡΤΥΧαικνορτυχ" + // Greek
@@ -90,7 +92,7 @@ object NonAsciiText {
     /** Domain part of an address containing an IDN (punycode or non-ASCII); whole domain range. */
     fun idnDomainRanges(text: String): List<IntRange> {
         val out = mutableListOf<IntRange>()
-        Regex("@([^\\s<>()\\[\\],;\"]+)").findAll(text).forEach { m ->
+        idnDomain.findAll(text).forEach { m ->
             val d = m.groups[1]!!
             if (d.value.any { it.code > 0x7F } || d.value.split('.').any { it.startsWith("xn--", true) }) out += d.range
         }

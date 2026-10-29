@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "웹사이트"},
 {"key": "copy_im", "source": "IM", "text": "나는"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "연락처를 읽을 수 없습니다."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "연락처 권한이 필요합니다."},
 {"key": "copy_mobile", "source": "Mobile", "text": "이동하는"},
 {"key": "copy_home", "source": "Home", "text": "집"},
 {"key": "copy_work", "source": "Work", "text": "일하다"},

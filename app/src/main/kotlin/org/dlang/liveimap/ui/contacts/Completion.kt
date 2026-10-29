@@ -39,56 +39,90 @@ data class AddressSuggestion(
     val members: List<SelectedAddress>,
 )
 
+/** Tests count one nickname index per source per [completeAddress] call, not one per entry. */
+internal var completionNicknameIndexes: Int = 0
+
+internal fun resetCompletionNicknameIndexes() {
+    completionNicknameIndexes = 0
+}
+
 fun completeAddress(typed: String, sources: List<CompletionSource>): List<AddressSuggestion> {
     val needle = typed.trim()
     if (needle.isEmpty()) return emptyList()
     val exact = ArrayList<AddressSuggestion>()
     val contains = ArrayList<AddressSuggestion>()
     for (source in sources) {
+        var index: Map<String, AlpineEntry>? = null
+        fun sourceIndex(): Map<String, AlpineEntry> {
+            index?.let { return it }
+            val built = nicknameIndex(source.entries)
+            index = built
+            return built
+        }
         for (entry in source.entries) {
-            val suggestion = suggestionFor(source.label, entry, source.entries)
-            if (entry.nickname.equals(needle, ignoreCase = true)) {
-                exact.add(suggestion)
-                continue
-            }
-            if (
+            val exactNick = entry.nickname.equals(needle, ignoreCase = true)
+            val loose = !exactNick && (
                 entry.displayName.contains(needle, ignoreCase = true) ||
                 entry.email.contains(needle, ignoreCase = true)
-            ) {
-                contains.add(suggestion)
+            )
+            if (!exactNick && !loose) continue
+            val suggestion = if (isDistributionAddress(entry.email)) {
+                suggestionForDistribution(source.label, entry, sourceIndex())
+            } else {
+                plainSuggestion(source.label, entry)
             }
+            if (exactNick) exact.add(suggestion) else contains.add(suggestion)
         }
     }
     exact.addAll(contains)
     return exact
 }
 
-private fun suggestionFor(label: String, entry: CompletionEntry, all: List<CompletionEntry>): AddressSuggestion {
-    val distribution = isDistributionAddress(entry.email)
-    val members = if (distribution) {
-        pickedAddresses(
-            AlpineEntry(
-                nickname = entry.nickname,
-                fullname = entry.displayName,
-                address = entry.email.trim(),
-                fcc = "",
-                comments = "",
-            ),
-            // F189: nicknames in the list resolve against the same source's entries.
-            all.map { AlpineEntry(it.nickname, it.displayName, it.email.trim(), "", "") },
-        )
-    } else {
-        emptyList()
+private fun nicknameIndex(entries: List<CompletionEntry>): Map<String, AlpineEntry> {
+    completionNicknameIndexes++
+    val index = HashMap<String, AlpineEntry>(entries.size)
+    for (entry in entries) {
+        val key = entry.nickname.lowercase()
+        if (key.isEmpty() || key in index) continue
+        index[key] = AlpineEntry(entry.nickname, entry.displayName, entry.email.trim(), "", "")
     }
+    return index
+}
+
+private fun suggestionForDistribution(
+    label: String,
+    entry: CompletionEntry,
+    index: Map<String, AlpineEntry>,
+): AddressSuggestion {
+    val members = pickedAddresses(
+        AlpineEntry(
+            nickname = entry.nickname,
+            fullname = entry.displayName,
+            address = entry.email.trim(),
+            fcc = "",
+            comments = "",
+        ),
+        // F189: nicknames in the list resolve against the same source's entries.
+        index,
+    )
     return AddressSuggestion(
         sourceLabel = label,
         nickname = entry.nickname,
         displayName = entry.displayName,
         email = entry.email,
-        distribution = distribution,
+        distribution = true,
         members = members,
     )
 }
+
+private fun plainSuggestion(label: String, entry: CompletionEntry): AddressSuggestion = AddressSuggestion(
+    sourceLabel = label,
+    nickname = entry.nickname,
+    displayName = entry.displayName,
+    email = entry.email,
+    distribution = false,
+    members = emptyList(),
+)
 
 private fun isDistributionAddress(address: String): Boolean {
     val trimmed = address.trim()
@@ -212,29 +246,48 @@ private val AndroidCacheMs: Long
 fun hasReadContacts(context: Context): Boolean =
     context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
-fun androidContactSetsOnce(resolver: ContentResolver, packageManager: PackageManager): List<AndroidContactSet> {
-    androidContacts.get().sets?.let { return it }
+/** A loaded book, including an empty one, or a missing READ_CONTACTS permission. Permission is not cached. */
+sealed class AndroidContacts<out T> {
+    data class Ready<T>(val value: T) : AndroidContacts<T>()
+    data object PermissionNeeded : AndroidContacts<Nothing>()
+}
+
+fun androidContactSetsOnce(
+    resolver: ContentResolver,
+    packageManager: PackageManager,
+): AndroidContacts<List<AndroidContactSet>> =
+    loadAndroidContactSets { queryAndroidContactSets(resolver, packageManager) }
+
+internal fun loadAndroidContactSets(load: () -> List<AndroidContactSet>): AndroidContacts<List<AndroidContactSet>> {
+    androidContacts.get().sets?.let { return AndroidContacts.Ready(it) }
     val loaded = try {
-        queryAndroidContactSets(resolver, packageManager)
+        load()
     } catch (_: SecurityException) {
-        return emptyList()
+        return AndroidContacts.PermissionNeeded
     }
     val published = androidContacts.updateAndGet { current ->
         if (current.sets != null) current else current.copy(sets = loaded)
     }
-    return published.sets ?: loaded
+    return AndroidContacts.Ready(published.sets ?: loaded)
 }
 
-fun androidEntriesOnce(resolver: ContentResolver): Map<String, List<CompletionEntry>> {
+fun androidEntriesOnce(resolver: ContentResolver): AndroidContacts<Map<String, List<CompletionEntry>>> =
+    loadAndroidEntries { queryAndroidEntries(resolver) }
+
+internal fun loadAndroidEntries(
+    load: () -> Map<String, List<CompletionEntry>>,
+): AndroidContacts<Map<String, List<CompletionEntry>>> {
     val seen = androidContacts.get()
     val now = System.currentTimeMillis()
     // F62: contacts added later show up after a few minutes (or at once after forgetCompletionCaches).
-    if (seen.entries != null && now - seen.androidLoadedAt < AndroidCacheMs) return seen.entries
+    if (seen.entries != null && now - seen.androidLoadedAt < AndroidCacheMs) {
+        return AndroidContacts.Ready(seen.entries)
+    }
     val sampled = System.currentTimeMillis()
     val loaded = try {
-        queryAndroidEntries(resolver)
+        load()
     } catch (_: SecurityException) {
-        return emptyMap()
+        return AndroidContacts.PermissionNeeded
     }
     val afterQuery = System.currentTimeMillis()
     val published = androidContacts.updateAndGet { current ->
@@ -243,7 +296,7 @@ fun androidEntriesOnce(resolver: ContentResolver): Map<String, List<CompletionEn
             afterQuery - current.androidLoadedAt < AndroidCacheMs
         if (newerInside) current else current.copy(entries = loaded, androidLoadedAt = sampled)
     }
-    return published.entries ?: loaded
+    return AndroidContacts.Ready(published.entries ?: loaded)
 }
 
 private fun owningAppLabel(packageManager: PackageManager, accountType: String): String? {

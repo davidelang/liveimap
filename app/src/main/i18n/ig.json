@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Weebụsaịtị"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Enweghị ike ịgụ kọntaktị kọntaktị."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "A chọrọ ikike kọntaktị."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobile"},
 {"key": "copy_home", "source": "Home", "text": "Ụlọ"},
 {"key": "copy_work", "source": "Work", "text": "Ọrụ"},

@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Webサイト"},
 {"key": "copy_im", "source": "IM", "text": "私は"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "連絡先を読み取れませんでした。"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "連絡先の許可が必要です。"},
 {"key": "copy_mobile", "source": "Mobile", "text": "携帯"},
 {"key": "copy_home", "source": "Home", "text": "家"},
 {"key": "copy_work", "source": "Work", "text": "仕事"},

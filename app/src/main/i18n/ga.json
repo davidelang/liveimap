@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Suíomh Gréasáin"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Níorbh fhéidir teagmhálaithe a léamh."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Tá cead teagmhálaithe ag teastáil."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Soghluaiste"},
 {"key": "copy_home", "source": "Home", "text": "Baile"},
 {"key": "copy_work", "source": "Work", "text": "Obair"},

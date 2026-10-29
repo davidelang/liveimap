@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Aaye ayelujara"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Awọn olubasọrọ ko le ka."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "A nilo igbanilaaye awọn olubasọrọ."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Alagbeka"},
 {"key": "copy_home", "source": "Home", "text": "Ile"},
 {"key": "copy_work", "source": "Work", "text": "Ṣiṣẹ"},

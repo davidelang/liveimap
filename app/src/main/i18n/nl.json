@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Website"},
 {"key": "copy_im", "source": "IM", "text": "IK BEN"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Contacten konden niet worden gelezen."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Toestemming voor contacten is nodig."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobiel"},
 {"key": "copy_home", "source": "Home", "text": "Thuis"},
 {"key": "copy_work", "source": "Work", "text": "Werk"},

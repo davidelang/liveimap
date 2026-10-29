@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Вэб-сайт"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Немагчыма прачытаць кантакты."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Патрэбны дазвол на кантакты."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Мабільны"},
 {"key": "copy_home", "source": "Home", "text": "дадому"},
 {"key": "copy_work", "source": "Work", "text": "праца"},

@@ -143,6 +143,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.watchedFolderText
 import org.dlang.liveimap.session.watchedFoldersFromText
 import org.dlang.liveimap.ui.contacts.AndroidContactSet
+import org.dlang.liveimap.ui.contacts.AndroidContacts
 import org.dlang.liveimap.ui.contacts.androidContactSetsOnce
 import org.dlang.liveimap.ui.contacts.hasReadContacts
 import org.dlang.liveimap.ui.contacts.moveCompletionSource
@@ -193,6 +194,7 @@ internal fun AddressCompletionRows(editor: SettingsEditor) {
     val appContext = context.applicationContext
     var granted by remember { mutableStateOf(hasReadContacts(context)) }
     var denied by rememberSaveable { mutableStateOf(false) }
+    var needsPermission by remember { mutableStateOf(false) }
     var sets by remember { mutableStateOf<List<AndroidContactSet>>(emptyList()) }
     val requestContacts = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -203,14 +205,29 @@ internal fun AddressCompletionRows(editor: SettingsEditor) {
     LaunchedEffect(granted) {
         if (!granted) {
             sets = emptyList()
+            needsPermission = false
             return@LaunchedEffect
         }
-        sets = try {
+        val loaded = try {
             androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            emptyList()
+            null
+        }
+        when (loaded) {
+            null -> {
+                needsPermission = false
+                sets = emptyList()
+            }
+            AndroidContacts.PermissionNeeded -> {
+                needsPermission = true
+                sets = emptyList()
+            }
+            is AndroidContacts.Ready -> {
+                needsPermission = false
+                sets = loaded.value
+            }
         }
     }
     val pineLabel = stringResource(R.string.settings_pine)
@@ -248,6 +265,7 @@ internal fun AddressCompletionRows(editor: SettingsEditor) {
             }) { Text(stringResource(R.string.drawer_move_down)) }
         }
     }
+    if (needsPermission) Text(stringResource(R.string.contacts_permission_needed))
     if (granted) return
     BoolField(stringResource(R.string.settings_show_android), false) { on ->
         if (on) requestContacts.launch(android.Manifest.permission.READ_CONTACTS)

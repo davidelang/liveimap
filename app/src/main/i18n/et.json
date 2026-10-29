@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Veebisait"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontakte ei saanud lugeda."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kontaktide luba on vajalik."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobiilne"},
 {"key": "copy_home", "source": "Home", "text": "Kodu"},
 {"key": "copy_work", "source": "Work", "text": "Töö"},

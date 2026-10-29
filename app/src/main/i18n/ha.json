@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Yanar Gizo"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "An kasa karanta lambobin sadarwa."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Ana buƙatar izinin adireshi."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Wayar hannu"},
 {"key": "copy_home", "source": "Home", "text": "Gida"},
 {"key": "copy_work", "source": "Work", "text": "Aiki"},

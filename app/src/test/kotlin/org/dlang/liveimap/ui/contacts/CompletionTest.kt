@@ -73,6 +73,32 @@ class CompletionTest {
     }
 
     @Test
+    fun distributionListExpandsOnlyAfterAMatch() {
+        resetCompletionNicknameIndexes()
+        val ada = CompletionEntry("ada", "Ada Lovelace", "ada@example.com")
+        val team = CompletionEntry("team", "Team", "(ada, grace@example.com)")
+        val crew = CompletionEntry("crew", "Crew", "(ada)")
+        val sources = listOf(CompletionSource("Pine", listOf(team, crew, ada)))
+        assertTrue(completeAddress("zzz", sources).isEmpty())
+        assertEquals(0, completionNicknameIndexes)
+        val one = completeAddress("team", sources)
+        assertEquals(listOf("team"), one.map { it.nickname })
+        assertTrue(one.single().distribution)
+        assertEquals(listOf("ada@example.com", "grace@example.com"), one.single().members.map { it.email })
+        assertEquals(1, completionNicknameIndexes)
+        val both = completeAddress("crew", sources)
+        assertEquals(listOf("crew"), both.map { it.nickname })
+        assertEquals(listOf("ada@example.com"), both.single().members.map { it.email })
+        assertEquals(2, completionNicknameIndexes)
+        val matched = completeAddress("e", sources)
+        assertEquals(listOf("team", "crew", "ada"), matched.map { it.nickname })
+        assertEquals(listOf("ada@example.com", "grace@example.com"), matched[0].members.map { it.email })
+        assertEquals(listOf("ada@example.com"), matched[1].members.map { it.email })
+        assertFalse(matched[2].distribution)
+        assertEquals(3, completionNicknameIndexes)
+    }
+
+    @Test
     fun missingCompletionSourcesKeyDecodesToPineOnly() {
         val encoded = AccountSettings().encode()
         assertFalse(encoded.contains("completionSources="))

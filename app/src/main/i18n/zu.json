@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Iwebhusayithi"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Oxhumana nabo abakwazanga ukufundwa."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kudingeka imvume yoxhumana nabo."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Iselula"},
 {"key": "copy_home", "source": "Home", "text": "Ikhaya"},
 {"key": "copy_work", "source": "Work", "text": "Sebenza"},

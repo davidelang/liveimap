@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Site-ul web"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Contactele nu au putut fi citite."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Este necesară permisiunea Contactelor."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobil"},
 {"key": "copy_home", "source": "Home", "text": "Acasă"},
 {"key": "copy_work", "source": "Work", "text": "Lucru"},

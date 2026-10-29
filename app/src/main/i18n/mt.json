@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Websajt"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Il-kuntatti ma setgħux jinqraw."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Il-permess tal-kuntatti huwa meħtieġ."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobbli"},
 {"key": "copy_home", "source": "Home", "text": "Dar"},
 {"key": "copy_work", "source": "Work", "text": "Xogħol"},

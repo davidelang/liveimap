@@ -313,11 +313,17 @@ private fun headerAndSeparator(bytes: ByteArray): SplitMessage? {
  * against [book] (recursively, like CopyMap.expandPieces); an unknown nickname is dropped, never sent as a bare
  * local name. Each member keeps its own name ("Bo" <bo@x>, or the nickname entry's full name), not the list's.
  */
-fun pickedAddresses(entry: AlpineEntry, book: List<AlpineEntry> = emptyList()): List<SelectedAddress> {
+fun pickedAddresses(entry: AlpineEntry, book: List<AlpineEntry> = emptyList()): List<SelectedAddress> =
+    expandPicked(entry) { email -> book.firstOrNull { it.nickname.equals(email, ignoreCase = true) } }
+
+internal fun pickedAddresses(entry: AlpineEntry, index: Map<String, AlpineEntry>): List<SelectedAddress> =
+    expandPicked(entry) { email -> index[email.lowercase()] }
+
+private fun expandPicked(entry: AlpineEntry, lookup: (String) -> AlpineEntry?): List<SelectedAddress> {
     val address = entry.address.trim()
     if (isDistributionList(address)) {
         val out = ArrayList<SelectedAddress>()
-        expandListMembers(address, book, hashSetOf(entry.nickname.lowercase()), out)
+        expandListMembers(address, lookup, hashSetOf(entry.nickname.lowercase()), out)
         return out
     }
     val email = emailOf(address)
@@ -351,7 +357,12 @@ private fun emailsOf(entry: AlpineEntry): List<String> {
     return listOf(direct)
 }
 
-private fun expandListMembers(list: String, book: List<AlpineEntry>, seen: MutableSet<String>, out: MutableList<SelectedAddress>) {
+private fun expandListMembers(
+    list: String,
+    lookup: (String) -> AlpineEntry?,
+    seen: MutableSet<String>,
+    out: MutableList<SelectedAddress>,
+) {
     for (piece in splitAddresses(list.substring(1, list.length - 1))) {
         val email = emailOf(piece)
         if (email.isEmpty()) continue
@@ -360,10 +371,10 @@ private fun expandListMembers(list: String, book: List<AlpineEntry>, seen: Mutab
             continue
         }
         if (!seen.add(email.lowercase())) continue
-        val target = book.firstOrNull { it.nickname.equals(email, ignoreCase = true) } ?: continue
+        val target = lookup(email) ?: continue
         val inner = target.address.trim()
         if (isDistributionList(inner)) {
-            expandListMembers(inner, book, seen, out)
+            expandListMembers(inner, lookup, seen, out)
         } else {
             val spec = emailOf(inner)
             if ('@' in spec && out.none { it.email.equals(spec, ignoreCase = true) }) {

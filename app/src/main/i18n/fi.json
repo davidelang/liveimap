@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Verkkosivusto"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Yhteystietoja ei voitu lukea."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Yhteystietojen käyttöoikeus tarvitaan."},
 {"key": "copy_mobile", "source": "Mobile", "text": "mobiili"},
 {"key": "copy_home", "source": "Home", "text": "Kotiin"},
 {"key": "copy_work", "source": "Work", "text": "Työ"},

@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "საიტი"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "კონტაქტების წაკითხვა ვერ მოხერხდა."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "საჭიროა კონტაქტების ნებართვა."},
 {"key": "copy_mobile", "source": "Mobile", "text": "მობილური"},
 {"key": "copy_home", "source": "Home", "text": "მთავარი"},
 {"key": "copy_work", "source": "Work", "text": "მუშაობა"},

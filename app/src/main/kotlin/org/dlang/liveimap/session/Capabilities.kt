@@ -83,7 +83,14 @@ class Capabilities private constructor(
 
     companion object {
         fun parse(line: String): Capabilities {
-            val tokens = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
+            val tokens = ArrayList<String>()
+            var i = 0
+            while (i < line.length) {
+                while (i < line.length && line[i].isWhitespace()) i++
+                val start = i
+                while (i < line.length && !line[i].isWhitespace()) i++
+                if (start < i) tokens.add(line.substring(start, i))
+            }
             val have = tokens.map { it.uppercase() }.toSet()
             fun has(name: String) = name.uppercase() in have
             return Capabilities(

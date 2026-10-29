@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Вебсите"},
 {"key": "copy_im", "source": "IM", "text": "ИМ"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Није могуће прочитати контакте."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Потребна је дозвола за контакте."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Мобилни"},
 {"key": "copy_home", "source": "Home", "text": "Хоме"},
 {"key": "copy_work", "source": "Work", "text": "Рад"},

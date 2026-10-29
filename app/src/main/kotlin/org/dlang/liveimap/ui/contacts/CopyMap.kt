@@ -364,6 +364,8 @@ private fun previewPineFields(
     if (fields.plaintext) preview.add("Plaintext restored.")
 }
 
+private val collapsedWhitespace = Regex("\\s+")
+
 private fun androidContact(
     contact: CopyContact,
     emails: List<String>,
@@ -404,7 +406,7 @@ private fun androidContact(
     val restored = restoreExtras(contact, block.entries)
     if (restored.fcc.isNotEmpty() && fcc.isEmpty()) fcc = restored.fcc
     if (restored.plaintext) plain = true
-    val body = block.text.replace("[plaintext]", "").replace(Regex("\\s+"), " ").trim()
+    val body = block.text.replace("[plaintext]", "").replace(collapsedWhitespace, " ").trim()
     val r = restored.contact
     fun restoredNote(present: Boolean, name: String) { if (present) preview.add("$name restored.") }
     restoredNote(r.phones.size > contact.phones.size, "Phone")

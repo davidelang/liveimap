@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "laman web"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kenalan tidak dapat dibaca."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kebenaran kenalan diperlukan."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mudah alih"},
 {"key": "copy_home", "source": "Home", "text": "Rumah"},
 {"key": "copy_work", "source": "Work", "text": "Kerja"},

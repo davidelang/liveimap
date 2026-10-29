@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Web sitesi"},
 {"key": "copy_im", "source": "IM", "text": "BEN"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kişiler okunamadı."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Kişiler izni gerekli."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobil"},
 {"key": "copy_home", "source": "Home", "text": "Ev"},
 {"key": "copy_work", "source": "Work", "text": "İş"},

@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Δικτυακός τόπος"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Δεν ήταν δυνατή η ανάγνωση των επαφών."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Απαιτείται άδεια επαφών."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Κινητός"},
 {"key": "copy_home", "source": "Home", "text": "Σπίτι"},
 {"key": "copy_work", "source": "Work", "text": "Εργασία"},

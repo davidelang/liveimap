@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Situs web"},
 {"key": "copy_im", "source": "IM", "text": "AKU"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontak tidak dapat dibaca."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Izin kontak diperlukan."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Seluler"},
 {"key": "copy_home", "source": "Home", "text": "Rumah"},
 {"key": "copy_work", "source": "Work", "text": "Bekerja"},

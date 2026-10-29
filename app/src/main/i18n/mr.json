@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "वेबसाइट"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "संपर्क वाचता आले नाहीत."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "संपर्क परवानगी आवश्यक आहे."},
 {"key": "copy_mobile", "source": "Mobile", "text": "मोबाईल"},
 {"key": "copy_home", "source": "Home", "text": "घर"},
 {"key": "copy_work", "source": "Work", "text": "काम"},

@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "Hjemmeside"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontakter kunne ikke læses."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Der kræves tilladelse til kontaktpersoner."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobil"},
 {"key": "copy_home", "source": "Home", "text": "Hjem"},
 {"key": "copy_work", "source": "Work", "text": "Arbejde"},

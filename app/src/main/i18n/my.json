@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "ဝဘ်ဆိုဒ်"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "အဆက်အသွယ်များကို ဖတ်၍မရပါ။"},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "အဆက်အသွယ်များ ခွင့်ပြုချက် လိုအပ်သည်။"},
 {"key": "copy_mobile", "source": "Mobile", "text": "မိုဘိုင်း"},
 {"key": "copy_home", "source": "Home", "text": "အိမ်"},
 {"key": "copy_work", "source": "Work", "text": "အလုပ်"},

@@ -662,6 +662,7 @@
 {"key": "copy_website", "source": "Website", "text": "webové stránky"},
 {"key": "copy_im", "source": "IM", "text": "IM"},
 {"key": "copy_unreadable", "source": "Contacts could not be read.", "text": "Kontakty nelze přečíst."},
+{"key": "contacts_permission_needed", "source": "Contacts permission is needed.", "text": "Je potřeba oprávnění ke kontaktům."},
 {"key": "copy_mobile", "source": "Mobile", "text": "Mobilní"},
 {"key": "copy_home", "source": "Home", "text": "Domov"},
 {"key": "copy_work", "source": "Work", "text": "Práce"},
