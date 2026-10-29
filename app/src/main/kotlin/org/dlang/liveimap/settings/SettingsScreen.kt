@@ -1813,7 +1813,14 @@ internal fun row_smtpNoAuth(key: String, walk: SettingsWalk) {
         stringResource(SettingsTreeGenerated.regTitle(key)),
         SmtpNoAuth.entries,
         settings.smtpNoAuth,
-        { it.name },
+        { choice ->
+            stringResource(
+                when (choice) {
+                    SmtpNoAuth.On -> R.string.setting_smtpNoAuth_on
+                    SmtpNoAuth.Off -> R.string.setting_smtpNoAuth_off
+                },
+            )
+        },
     ) { choice ->
         editor.persist(editor.settings.copy(smtpNoAuth = choice))
     }

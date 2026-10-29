@@ -436,7 +436,7 @@
     <string name="settings_smtp_username">SMTP username</string>
     <string name="settings_smtp_username_hint">Blank uses the IMAP username.</string>
     <string name="settings_smtp_password">SMTP password</string>
-    <string name="settings_smtp_password_hint">Blank sends without SMTP AUTH. The IMAP password is used only when \"Same as IMAP password\" is ticked.</string>
+    <string name="settings_smtp_password_hint">Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP password\" is ticked.</string>
     <string name="settings_smtp_same_as_imap">Same as IMAP password</string>
     <string name="settings_email_submission">JMAP EmailSubmission</string>
     <string name="settings_email_submission_note">Off uses SMTP.</string>
@@ -1154,7 +1154,9 @@ Your version: %2$s</string>
     <string name="setting_sieveConnectSeconds_title">Sieve connect timeout</string>
     <string name="setting_sieveReadSeconds_title">Sieve read timeout</string>
     <string name="setting_smtpNoAuth_Auto">Automatic</string>
-    <string name="setting_smtpNoAuth_title">SMTP authentication</string>
+    <string name="setting_smtpNoAuth_off">SMTP login is required</string>
+    <string name="setting_smtpNoAuth_on">No SMTP login</string>
+    <string name="setting_smtpNoAuth_title">On sends with no SMTP login</string>
     <string name="setting_smtpTlsMode_title">SMTP TLS</string>
     <string name="setting_sortAskSkip_title">Do not ask again for this sort</string>
     <string name="setting_swipeThresholdPercent_title">Swipe threshold</string>

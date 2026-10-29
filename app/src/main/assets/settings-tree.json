@@ -630,8 +630,8 @@
                     "Off"
                   ],
                   "choiceTitles": {
-                    "On": "settings_compression_on",
-                    "Off": "settings_compression_off"
+                    "On": "setting_smtpNoAuth_on",
+                    "Off": "setting_smtpNoAuth_off"
                   },
                   "visibleWhen": {
                     "setting": "emailSubmission",
