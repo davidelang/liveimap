@@ -3929,3 +3929,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - Settings tree allows a trailing comma
 
 - A comma after the last value of a list or object in settings-tree.json is the same tree without it, in the app parser and in both generator loads. The checked-in tree is unchanged.
+
+## 2026-10-29 - IDLE notes through nativeWatchTake
+
+- Watch notes are a lock-free stack plus an eventfd. A coroutine blocks in nativeWatchTake. Native code no longer calls Kotlin to deliver them, and the classes C still names are @Keep.
