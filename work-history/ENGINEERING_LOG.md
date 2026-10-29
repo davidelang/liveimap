@@ -3946,3 +3946,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/settings-publish-20261029-1446-plan.md
 - One generated Settings snapshot; page drafts until Save; no account is not a filled snapshot; traffic stream stays open (S1–S6; S7 untouched)
+
+## 2026-10-29 - Account settings summary does not ask for string 0
+
+- Sort-key and swipe-action names are generated resources. A summary name the table does not know is shown as text.

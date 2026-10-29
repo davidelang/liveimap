@@ -43,11 +43,18 @@ fun renderSummary(
 fun summaryText(piece: SummaryPiece): String = when (piece) {
     is SummaryPiece.Literal -> piece.text
     is SummaryPiece.Number -> piece.value.toString()
-    is SummaryPiece.Plural -> pluralStringResource(SettingsTreeGenerated.resource(piece.name), piece.count, piece.count)
+    is SummaryPiece.Plural -> {
+        val id = SettingsTreeGenerated.resource(piece.name)
+        if (id == 0) piece.count.toString() else pluralStringResource(id, piece.count, piece.count)
+    }
     is SummaryPiece.Text -> {
         val id = SettingsTreeGenerated.resource(piece.name)
-        val args = piece.args.map { summaryArgText(it) }
-        if (args.isEmpty()) stringResource(id) else stringResource(id, *args.toTypedArray())
+        if (id == 0) {
+            piece.name
+        } else {
+            val args = piece.args.map { summaryArgText(it) }
+            if (args.isEmpty()) stringResource(id) else stringResource(id, *args.toTypedArray())
+        }
     }
 }
 

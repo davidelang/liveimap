@@ -142,6 +142,27 @@ def emit(doc, kt_root, tree_bytes):
     plural_names.add("settings_account_count")
     add_res("sending_rule_numbered")
     add_res("address_book_row")
+    for name in (
+        "label_arrival",
+        "label_date",
+        "label_from",
+        "compose_subject",
+        "compose_to",
+        "compose_cc",
+        "label_size",
+        "label_thread",
+        "label_ordered_subject",
+        "drawer_delete",
+        "label_move",
+        "compose_reply",
+        "compose_reply_all",
+        "label_set_flag",
+        "label_clear_flag",
+        "label_flag_screen",
+        "reader_next",
+        "reader_previous",
+    ):
+        add_res(name)
     resource_names = sorted(set(resource_names))
     def res_expr(name):
         kind = "plurals" if name in plural_names else "string"
