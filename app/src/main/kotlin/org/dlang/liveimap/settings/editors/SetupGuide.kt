@@ -66,8 +66,10 @@ fun SetupGuide(
     var smtpSame by remember { mutableStateOf(true) }
     var report by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var loadedAccount by remember { mutableStateOf<AccountSettings?>(null) }
     val existing = accountId?.takeIf { it.isNotEmpty() }
     androidx.compose.runtime.LaunchedEffect(existing) {
+        loadedAccount = null
         val id = existing ?: return@LaunchedEffect
         val bound = DataStoreSettingsStore(context, id)
         val loaded = bound.load()
@@ -79,6 +81,7 @@ fun SetupGuide(
         smtpPort = loaded.smtpPort.toString()
         smtpSame = loaded.smtpSameAsImap
         password = bound.password().orEmpty()
+        loadedAccount = loaded
     }
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text(stringResource(R.string.setup_title))
@@ -137,8 +140,16 @@ fun SetupGuide(
             }) { Text(if (step < 2) stringResource(R.string.setup_next) else stringResource(R.string.setup_test)) }
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
+                val loaded = loadedAccount
                 scope.launch {
-                    val saved = finishSetup(context, existing, settings, password, if (smtpSame) password else "")
+                    val saved = finishSetup(
+                        context,
+                        existing,
+                        settings,
+                        password,
+                        if (smtpSame) password else "",
+                        loaded,
+                    )
                     if (saved) onDone() else report = context.getString(R.string.setup_failed)
                 }
             }) { Text(stringResource(R.string.setup_finish)) }
@@ -171,26 +182,55 @@ private fun draftSettings(
     )
 }
 
+/** An existing account's Finish waits until that account's record has loaded. A new account does not. */
+internal fun existingSetupReady(existing: String?, loaded: AccountSettings?): Boolean {
+    if (existing == null) return true
+    return loaded != null
+}
+
+/** Wizard fields written onto the loaded record. Every other field stays. */
+internal fun wizardOntoLoaded(loaded: AccountSettings, draft: AccountSettings): AccountSettings {
+    return loaded.copy(
+        email = draft.email,
+        username = draft.username,
+        jmapFolders = draft.jmapFolders,
+        imapHost = draft.imapHost,
+        imapPort = draft.imapPort,
+        smtpHost = draft.smtpHost,
+        smtpPort = draft.smtpPort,
+        smtpSameAsImap = draft.smtpSameAsImap,
+    )
+}
+
 private suspend fun finishSetup(
     context: Context,
     existing: String?,
     settings: AccountSettings,
     password: String,
     smtpPassword: String,
+    loaded: AccountSettings?,
 ): Boolean {
+    // A Finish before the load writes nothing: no record and neither password.
+    if (!existingSetupReady(existing, loaded)) return false
     return try {
         val store = AccountStore.shared(context)
+        val written = if (existing == null) {
+            settings
+        } else {
+            val base = loaded ?: return false
+            wizardOntoLoaded(base, settings)
+        }
         val id = if (existing == null) {
-            store.createAccount(settings, password, smtpPassword)
+            store.createAccount(written, password, smtpPassword)
         } else {
             val bound = DataStoreSettingsStore(context, existing)
-            bound.save(settings)
+            bound.save(written)
             bound.setPassword(password)
             bound.setSmtpPassword(smtpPassword)
             existing
         }
-        if (settings.passwordStorage == org.dlang.liveimap.settings.PasswordStorageChoice.passwordManager) {
-            context.findActivity()?.let { PasswordStorage.savePassword(it, settings.username, password) }
+        if (written.passwordStorage == org.dlang.liveimap.settings.PasswordStorageChoice.passwordManager) {
+            context.findActivity()?.let { PasswordStorage.savePassword(it, written.username, password) }
         }
         id.isNotEmpty()
     } catch (_: Exception) {

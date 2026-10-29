@@ -221,6 +221,14 @@ private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
     FolderBarAction.ResetDefault -> R.string.folders_reset_default
 }
 
+/** A saved id that is not in [accountIds] is dropped. A saved id that is still an account is kept. */
+internal fun folderScreenAccountId(saved: String?, accountIds: Set<String>, chosen: String?): String? {
+    if (saved != null && saved in accountIds) return saved
+    if (saved == null) return chosen
+    if (chosen != null && chosen in accountIds) return chosen
+    return null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
@@ -242,7 +250,8 @@ fun FolderListScreen(
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var accountChecked by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (accountId == null) accountId = store.chosenAccountId()
+        val listed = store.listAccounts().map { it.id }.toSet()
+        accountId = folderScreenAccountId(accountId, listed, store.chosenAccountId())
         accountChecked = true
     }
     val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)

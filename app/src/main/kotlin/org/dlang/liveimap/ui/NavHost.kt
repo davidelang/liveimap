@@ -499,13 +499,10 @@ private fun LiveImapNavHostReady() {
             OpenMessageOrder.clear()
             applyOpenAccount()
             applyRunningLayout()
+            // The folder root is replaced even when it is already showing, so its saved account id does not survive.
             if (resetToNoAccount(accounts)) {
-                val here = navController.currentBackStackEntry
-                val atRoot = here?.destination?.route == "folders" && navController.previousBackStackEntry == null
-                if (!atRoot) {
-                    navController.navigate("folders") {
-                        popUpTo(0) { inclusive = true }
-                    }
+                navController.navigate("folders") {
+                    popUpTo(0) { inclusive = true }
                 }
             }
         }
@@ -518,6 +515,13 @@ private fun LiveImapNavHostReady() {
                     it.arguments?.getString("accountId") == removedId
                 } ?: break
                 if (!navController.popBackStack(entry, true)) break
+            }
+            // The selected-id clear is not "no accounts". Decide from the list after the entry is gone.
+            applyOpenAccount()
+            if (resetToNoAccount(accounts)) {
+                navController.navigate("folders") {
+                    popUpTo(0) { inclusive = true }
+                }
             }
         }
     }

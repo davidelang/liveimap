@@ -3893,3 +3893,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/account-delete-20261028-1417-plan.md
 - Clean restart at builds 2f85bcb. Passwords in AccountManager slots, deleteAccount, guided setup, Sieve same-as-inbound, keystore-only client certificates.
+
+## 2026-10-28 - Last account shows no account
+
+- Deleting the last account replaces the folder root with NoAccountYet after the AccountManager entry is gone. Setup finish writes the wizard fields onto the loaded record, and writes nothing before that load. Plan: sandbox/plans/last-account-setup-20261028-1714-plan.md
