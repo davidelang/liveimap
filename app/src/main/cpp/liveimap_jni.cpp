@@ -10225,15 +10225,19 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchTake(JNIEnv * env,
         if (raw->watchGeneration.load() != want) {
             WatchNote * head = stealNotes(raw);
             WatchNote * mine = nullptr;
+            // other stays newest-first. relinkTail links that chain at the tail.
             WatchNote * other = nullptr;
+            WatchNote * otherTail = nullptr;
             while (head != nullptr) {
                 WatchNote * nxt = head->next;
                 if (head->generation == want) {
                     head->next = mine;
                     mine = head;
                 } else {
-                    head->next = other;
-                    other = head;
+                    head->next = nullptr;
+                    if (otherTail == nullptr) other = head;
+                    else otherTail->next = head;
+                    otherTail = head;
                 }
                 head = nxt;
             }

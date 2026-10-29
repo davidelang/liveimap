@@ -3937,3 +3937,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - A late watch does not install
 
 - A watch whose generation is no longer current does not start a take or clear stoppingWatch. A take delivers only the generation it captured.
+
+## 2026-10-29 - A stale take keeps note order
+
+- Notes left for the next generation stay newest-first on the stack, so the new take still delivers them oldest first.
