@@ -10191,6 +10191,16 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     });
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchIsCurrent(JNIEnv *, jobject, jlong handle, jlong generation) {
+    auto * raw = reinterpret_cast<LiveSession *>(handle);
+    std::shared_ptr<LiveSession> kept = retainSession(raw);
+    if (!kept) return JNI_FALSE;
+    const bool ok = raw->watchGeneration.load() == static_cast<uint64_t>(generation);
+    releaseUsers(raw);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchTake(JNIEnv * env, jobject, jlong handle, jlong generation) {
     auto * raw = reinterpret_cast<LiveSession *>(handle);

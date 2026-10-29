@@ -3933,3 +3933,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - IDLE notes through nativeWatchTake
 
 - Watch notes are a lock-free stack plus an eventfd. A coroutine blocks in nativeWatchTake. Native code no longer calls Kotlin to deliver them, and the classes C still names are @Keep.
+
+## 2026-10-29 - A late watch does not install
+
+- A watch whose generation is no longer current does not start a take or clear stoppingWatch. A take delivers only the generation it captured.

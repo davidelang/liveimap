@@ -131,6 +131,7 @@ internal class CopyMoveResult(
 internal class WatchTarget(
     val mailbox: String,
     val onChange: (MailboxChange) -> Unit,
+    val generation: Long = 0,
 )
 
 /**
@@ -213,6 +214,12 @@ class LibetpanMailSession(
 
     @Volatile
     private var stoppingWatch = false
+
+    /** Close holds this from stop through free so a late watch cannot take a freed session. */
+    @Volatile
+    private var closingWatch = false
+
+    private val watchGate = Any()
 
     @Volatile
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
@@ -598,17 +605,26 @@ class LibetpanMailSession(
     }
 
     private fun closeLiveSession() {
-        stoppingWatch = true
-        val h = handle
-        if (h != 0L) {
-            try {
-                nativeStopWatch(h)
-            } catch (_: Exception) {
+        // F101: suspend/reconnect is not a user leave, so no CLOSE (it would expunge behind a pending Undo).
+        val job = synchronized(watchGate) {
+            stoppingWatch = true
+            closingWatch = true
+            val h = handle
+            if (h != 0L) {
+                try {
+                    nativeStopWatch(h)
+                } catch (_: Exception) {
+                }
             }
-            // F101: suspend/reconnect is not a user leave, so no CLOSE (it would expunge behind a pending Undo).
+            watchJob.get()
         }
-        joinWatchTake()
-        closeSockets()
+        joinWatchTake(job)
+        synchronized(watchGate) {
+            closeSockets()
+            activeWatch.set(null)
+            requestedWatch = null
+            closingWatch = false
+        }
         trashListed = false
         listedTrash = ""
     }
@@ -1861,8 +1877,7 @@ class LibetpanMailSession(
                         keeper.markWatchLost()
                         return
                     }
-                    activeWatch.set(WatchTarget(mailbox, onChange))
-                    replaceWatchTake(started)
+                    if (!installWatch(mailbox, onChange, started)) return
                     noteTraffic("Idling")
                 } catch (failure: Throwable) {
                     close()
@@ -1884,53 +1899,76 @@ class LibetpanMailSession(
         val started = nativeWatch(requireHandle(), wire(mailbox))
         if (started == 0L) {
             keeper.markWatchLost()
-            val cur = activeWatch.get()
-            if (cur != null && cur.onChange === onChange && cur.mailbox == mailbox) activeWatch.compareAndSet(cur, null)
+            clearWatchOffer(mailbox, onChange)
             return
         }
-        activeWatch.set(WatchTarget(mailbox, onChange))
-        replaceWatchTake(started)
+        if (!installWatch(mailbox, onChange, started)) return
         noteTraffic("Idling")
     }
 
     override suspend fun stopWatch() {
-        stoppingWatch = true
-        val h = handle
-        if (h != 0L) nativeStopWatch(h)
-        activeWatch.set(null)
-        requestedWatch = null
-        joinWatchTake()
+        val job = synchronized(watchGate) {
+            stoppingWatch = true
+            val h = handle
+            if (h != 0L) nativeStopWatch(h)
+            activeWatch.set(null)
+            requestedWatch = null
+            watchJob.get()
+        }
+        joinWatchTake(job)
     }
 
-    private fun replaceWatchTake(generation: Long) {
-        val previous = watchJob.get()
-        if (previous != null && Thread.currentThread() != watchThread.get()) {
-            runBlocking { previous.join() }
-        }
-        stoppingWatch = false
-        val job = watchScope.launch {
-            watchThread.set(Thread.currentThread())
-            try {
-                val h = handle
-                while (!stoppingWatch && h != 0L) {
-                    val bytes = nativeWatchTake(h, generation) ?: break
-                    for (note in decodeWatchNotes(bytes)) deliverWatchNote(note)
+    /**
+     * Installs only while [generation] is still the session's generation.
+     * A lost race leaves stoppingWatch and the installed take alone.
+     */
+    private fun installWatch(mailbox: String, onChange: (MailboxChange) -> Unit, generation: Long): Boolean {
+        val previous = synchronized(watchGate) {
+            if (closingWatch) return false
+            val h = handle
+            if (h == 0L || !nativeWatchIsCurrent(h, generation)) return false
+            stoppingWatch = false
+            activeWatch.set(WatchTarget(mailbox, onChange, generation))
+            val previous = watchJob.get()
+            val job = watchScope.launch {
+                watchThread.set(Thread.currentThread())
+                try {
+                    while (!stoppingWatch && h != 0L && nativeWatchIsCurrent(h, generation)) {
+                        val bytes = nativeWatchTake(h, generation) ?: break
+                        for (note in decodeWatchNotes(bytes)) {
+                            if (stoppingWatch) break
+                            deliverWatchNote(note, generation)
+                        }
+                    }
+                } finally {
+                    watchThread.compareAndSet(Thread.currentThread(), null)
                 }
-            } finally {
-                watchThread.compareAndSet(Thread.currentThread(), null)
             }
+            watchJob.set(job)
+            previous
         }
-        watchJob.set(job)
+        joinWatchTake(previous)
+        return true
     }
 
-    private fun joinWatchTake() {
-        val job = watchJob.get() ?: return
+    private fun joinWatchTake(job: Job?) {
+        if (job == null) return
         if (Thread.currentThread() == watchThread.get()) return
         runBlocking { job.join() }
     }
 
-    private fun deliverWatchNote(note: DecodedWatchNote) {
+    /** Drops a published offer that is no longer the current generation. */
+    private fun clearWatchOffer(mailbox: String, onChange: (MailboxChange) -> Unit) {
+        val cur = activeWatch.get() ?: return
+        if (cur.onChange !== onChange || cur.mailbox != mailbox) return
+        val h = handle
+        if (h != 0L && nativeWatchIsCurrent(h, cur.generation)) return
+        activeWatch.compareAndSet(cur, null)
+    }
+
+    private fun deliverWatchNote(note: DecodedWatchNote, generation: Long) {
         val target = activeWatch.get() ?: return
+        if (target.generation != generation) return
         val change = if (note.kind == 4) {
             keeper.markWatchLost()
             MailboxChange.WatchLost
@@ -2210,6 +2248,7 @@ class LibetpanMailSession(
         override fun rewatch() {
             if (account == null) throw MailFailure("no account")
             var started: WatchTarget? = null
+            var installed = false
             val running = runRewatch(
                 activeWatch.get(),
                 requestedWatch,
@@ -2217,22 +2256,16 @@ class LibetpanMailSession(
                     requestedWatch = WatchTarget(target.mailbox, target.onChange)
                     started = target
                     val gen = nativeWatch(requireHandle(), wire(target.mailbox))
-                    if (gen != 0L) {
-                        activeWatch.set(WatchTarget(target.mailbox, target.onChange))
-                        replaceWatchTake(gen)
-                    }
+                    if (gen != 0L) installed = installWatch(target.mailbox, target.onChange, gen)
                     gen
                 },
                 markLost = { keeper.markWatchLost() },
                 clearOffer = {
-                    val cur = activeWatch.get()
-                    val offer = started
-                    if (cur != null && offer != null && cur.onChange === offer.onChange && cur.mailbox == offer.mailbox) {
-                        activeWatch.compareAndSet(cur, null)
-                    }
+                    val offer = started ?: return@runRewatch
+                    clearWatchOffer(offer.mailbox, offer.onChange)
                 },
             )
-            if (!running) return
+            if (!running || !installed) return
             noteTraffic("Idling")
         }
 
@@ -2636,6 +2669,7 @@ class LibetpanMailSession(
     // One blocking take. Null ends the loop (stop or the session closed, and the queue had nothing for this generation).
     // Bytes are the big-endian notes decodeWatchNotes reads, oldest first.
     private external fun nativeWatchTake(handle: Long, generation: Long): ByteArray?
+    private external fun nativeWatchIsCurrent(handle: Long, generation: Long): Boolean
     private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(
         handle: Long,
