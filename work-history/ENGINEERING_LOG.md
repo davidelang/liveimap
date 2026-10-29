@@ -3909,3 +3909,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-28 - Staging destroy notice and live text size
 
 - A JMAP send whose staging copy stays raises MailFailure naming that copy and still returns the submission id. The notice is error_jmap_staging_left. appTextZoom and the reader follow a later settings write.
+
+## 2026-10-28 - Staging leftover stays visible
+
+- A successful send that leaves the staging copy still returns. The notice error_jmap_staging_left is toasted when compose closes, and a session send shows the same string.

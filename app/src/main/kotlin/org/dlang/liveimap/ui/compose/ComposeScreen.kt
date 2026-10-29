@@ -1515,6 +1515,22 @@ private fun ComposeForm(
         }
     }
 
+    /** Compose closes on success, which would hide the status. These notes must outlive the screen. */
+    fun toastHiddenSuccess() {
+        if (!deliveryDone) return
+        if (dsnRefused) {
+            android.widget.Toast.makeText(
+                appContext,
+                appContext.getString(R.string.compose_dsn_unsupported),
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+        val left = notice
+        if (!left.isNullOrEmpty()) {
+            android.widget.Toast.makeText(appContext, left, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun launchLocked(block: suspend () -> Boolean) {
         if (busy || !connected) return
         busy = true
@@ -1538,14 +1554,7 @@ private fun ComposeForm(
             }
             if (leave) {
                 if (deliveryDone) releasePickedHold()
-                // Compose closes on success, which would hide the status; this note must outlive the screen.
-                if (deliveryDone && dsnRefused) {
-                    android.widget.Toast.makeText(
-                        appContext,
-                        appContext.getString(R.string.compose_dsn_unsupported),
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+                toastHiddenSuccess()
                 onDone()
             }
         }
@@ -1814,7 +1823,10 @@ private fun ComposeForm(
         }
         // Source loads replace forwardRows; put back picked rows whose bytes are still held.
         if (leave && deliveryDone) releasePickedHold() else appendHeldPickedRows()
-        if (leave) onDone()
+        if (leave) {
+            toastHiddenSuccess()
+            onDone()
+        }
     }
     LaunchedEffect(seed, unsentId, retryOnOpen) {
         openComposer()

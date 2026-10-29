@@ -17,6 +17,8 @@ import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.davidlang.liveimap.R
+import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
 import org.dlang.liveimap.engine.TrafficWriter
@@ -605,6 +607,15 @@ class JmapMailSession(
                 PeerTrust::check,
                 saved.sentMailbox,
                 draftsName = saved.postponedMailbox,
+                onNotice = { copyId ->
+                    val app = LiveImapApplication.context
+                    if (app != null) {
+                        val text = app.getString(R.string.error_jmap_staging_left, copyId)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            android.widget.Toast.makeText(app, text, android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
                 policy = policy,
                 accountKey = accountKey,
             )
