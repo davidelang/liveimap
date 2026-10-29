@@ -124,6 +124,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
@@ -528,7 +529,7 @@ internal class SettingsEditor(
     }
 
     fun commitPage() {
-        ui.launch { commitPageAwait() }
+        runBlocking { commitPageAwait() }
     }
 
     suspend fun commitPageAwait() {
@@ -711,6 +712,17 @@ internal fun LoadCheckDialog() {
         AlertDialog(
             onDismissRequest = { SettingsHub.clearNotice() },
             title = { Text(stringResource(R.string.settings_default_cleared)) },
+            confirmButton = {
+                TextButton(onClick = { SettingsHub.clearNotice() }) {
+                    Text(stringResource(R.string.settings_ok))
+                }
+            },
+        )
+    } else if (!notice.isNullOrEmpty()) {
+        AlertDialog(
+            onDismissRequest = { SettingsHub.clearNotice() },
+            title = { Text(stringResource(R.string.settings_load_check_title)) },
+            text = { Text(notice ?: "") },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
                     Text(stringResource(R.string.settings_ok))

@@ -190,6 +190,8 @@ class AccountStore private constructor(private val context: Context) {
             scope != null && scope != org.dlang.liveimap.settings.SettingScope.Ui
         }.toSet()
         var published = draft
+        var writtenId: String? = null
+        var previousText: String? = null
         if (accountKeys.isNotEmpty()) {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) {
@@ -198,16 +200,32 @@ class AccountStore private constructor(private val context: Context) {
                         current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
                     }
                     published = current
+                    val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+                        ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                        ?: throw NoAccountSelected()
+                    writtenId = id
+                    previousText = storedPreference(id)
                     stageSave(current, current.encode())
                 }
                 writePreferences()
-                val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
-                    ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
-                if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
+                if (uiKeys.isEmpty()) {
+                    org.dlang.liveimap.settings.SettingsHub.replaceAccount(writtenId ?: return@onAccount, published)
+                }
             }
         }
         if (uiKeys.isNotEmpty()) {
-            org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
+            try {
+                org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
+            } catch (error: Throwable) {
+                val id = writtenId
+                val previous = previousText
+                if (id != null && previous != null) {
+                    onAccount { withContext(Dispatchers.IO) { writePreference(id, previous) } }
+                }
+                throw error
+            }
+            val id = writtenId
+            if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
         }
         return published
     }

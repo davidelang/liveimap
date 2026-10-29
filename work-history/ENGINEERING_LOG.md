@@ -3950,3 +3950,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - Account settings summary does not ask for string 0
 
 - Sort-key and swipe-action names are generated resources. A summary name the table does not know is shown as text.
+
+## 2026-10-29 - load check keeps rules, saves, and the warning
+
+- Inbound-rule lines stay one key. A failed UI save restores the account blob and does not publish. A repair warning is shown on its own. An account value is not copied onto an account that omitted the key. Logging off does not open a traffic file. Save waits until the write finishes.

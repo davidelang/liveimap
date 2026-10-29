@@ -297,11 +297,15 @@ class LibetpanMailSession(
     }
 
     private fun accountWriter(acct: Settings?): TrafficWriter {
-        val roll = if (acct != null && acct.logImapTraffic && acct.trafficLogMaxMb > 0) {
-            acct.trafficLogMaxMb.toLong() * 1024L * 1024L
-        } else {
-            0L
+        if (acct == null || !acct.logImapTraffic) {
+            val held = trafficWriter
+            if (held != null && trafficWriterRoll == -1L) return held
+            val writer = TrafficLog.writer(context.cacheDir, accountId)
+            trafficWriter = writer
+            trafficWriterRoll = -1L
+            return writer
         }
+        val roll = if (acct.trafficLogMaxMb > 0) acct.trafficLogMaxMb.toLong() * 1024L * 1024L else 0L
         val held = trafficWriter
         if (held != null && trafficWriterRoll == roll) return held
         val writer = TrafficLog.writer(context.cacheDir, accountId, roll)

@@ -111,11 +111,10 @@ object SettingsHub {
                 applyMove(move.key, value, ui, accounts)
             }
         }
-        val warning = questions?.warning.orEmpty()
         questionState.value = null
         pendingUi = null
         pendingAccounts = null
-        finish(context, ui, accounts, warning)
+        finish(context, ui, accounts, "")
     }
 
     suspend fun saveUiKeys(context: Context, draft: Settings, keys: Set<String>) {
@@ -211,14 +210,14 @@ object SettingsHub {
     }
 }
 
-private data class Proposal(
+internal data class Proposal(
     val ui: LinkedHashMap<String, String>,
     val accounts: LinkedHashMap<String, LinkedHashMap<String, String>>,
     val questions: LoadQuestions,
     val warning: String,
 )
 
-private fun propose(
+internal fun propose(
     uiSource: Map<String, String>,
     accountSource: Map<String, Map<String, String>>,
     names: Map<String, String>,
@@ -265,14 +264,14 @@ private fun propose(
                     moves.add(questionFor(key, inAccounts, names))
                 }
             }
-        } else if (accounts.isNotEmpty() && (inUi != null || accounts.keys.any { id -> key !in accounts.getValue(id) })) {
+        } else if (accounts.isNotEmpty() && inUi != null) {
             val found = ArrayList<Pair<String, String>>()
-            if (inUi != null) found.add("ui" to inUi)
+            found.add("ui" to inUi)
             found.addAll(inAccounts)
             val distinct = found.map { it.second }.distinct()
             if (distinct.size == 1) {
                 val value = distinct[0]
-                for (id in accounts.keys) if (key !in accounts.getValue(id)) accounts.getValue(id)[key] = value
+                for (id in accounts.keys) accounts.getValue(id)[key] = value
                 ui.remove(key)
             } else if (distinct.size > 1) {
                 moves.add(questionFor(key, found, names))
@@ -291,7 +290,7 @@ private fun questionFor(key: String, found: List<Pair<String, String>>, names: M
     return MoveQuestion(key, options)
 }
 
-private fun applyMove(
+internal fun applyMove(
     key: String,
     value: String,
     ui: MutableMap<String, String>,
@@ -302,18 +301,31 @@ private fun applyMove(
         ui[key] = value
         for (map in accounts.values) map.remove(key)
     } else {
-        for (map in accounts.values) map[key] = value
+        val fromUi = ui[key]
         ui.remove(key)
+        if (fromUi != null && value == fromUi) {
+            for (map in accounts.values) map[key] = value
+        }
     }
 }
 
-private fun linesOf(text: String): LinkedHashMap<String, String> {
+internal fun linesOf(text: String): LinkedHashMap<String, String> {
     val map = LinkedHashMap<String, String>()
+    var openKey: String? = null
     for (line in text.lines()) {
         if (line.isEmpty()) continue
+        if (openKey == "inboundRules" && '\t' in line) {
+            map[openKey] = map.getValue(openKey) + "\n" + line
+            continue
+        }
         val eq = line.indexOf('=')
-        if (eq <= 0) continue
-        map[line.substring(0, eq)] = line.substring(eq + 1)
+        if (eq <= 0) {
+            openKey = null
+            continue
+        }
+        val key = line.substring(0, eq)
+        map[key] = line.substring(eq + 1)
+        openKey = key
     }
     return map
 }
