@@ -74,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1327,7 +1328,8 @@ internal fun NumberRow(key: String, walk: SettingsWalk) {
         "askThread" -> row_askThread(walk)
         "askSearch" -> row_askSearch(walk)
         "askFallback" -> row_askFallback(walk)
-        "readerTextZoom" -> row_readerTextZoom(walk)
+        "appTextZoom" -> row_appTextZoom(walk)
+        "bodyFetchChunk" -> row_bodyFetchChunk(walk)
         "composerWrapColumn" -> row_composerWrapColumn(walk)
         "addressBookHistory" -> row_addressBookHistory(walk)
         "pollSeconds" -> row_pollSeconds(key, walk)
@@ -2406,15 +2408,36 @@ internal fun row_readerTextLayout(walk: SettingsWalk) {
 }
 
 @Composable
-internal fun row_readerTextZoom(walk: SettingsWalk) {
+internal fun row_appTextZoom(walk: SettingsWalk) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var current by remember { mutableIntStateOf(100) }
+    LaunchedEffect(Unit) {
+        current = clampTextZoom(ui_appTextZoom(readGlobalRecord(context)).toIntOrNull() ?: 100)
+    }
+    NumberLeaf(
+        stringResource(R.string.setting_appTextZoom_title),
+        current,
+        walk.editor.ready,
+        { it in 50..300 },
+    ) { number ->
+        val clamped = clampTextZoom(number)
+        current = clamped
+        scope.launch { setUi_appTextZoom(context, clamped.toString()) }
+    }
+}
+
+@Composable
+internal fun row_bodyFetchChunk(walk: SettingsWalk) {
     val editor = walk.editor
-    val settings = editor.settings
-    ChoiceField(
-        stringResource(R.string.settings_text_size),
-        ReaderTextZooms,
-        settings.readerTextZoom.takeIf { it in ReaderTextZooms } ?: 100,
-        { "$it%" },
-    ) { editor.persist(editor.settings.copy(readerTextZoom = it)) }
+    NumberLeaf(
+        stringResource(R.string.setting_bodyFetchChunk_title),
+        editor.settings.bodyFetchChunk,
+        editor.ready,
+        { it in 1024..1048576 },
+    ) { number ->
+        editor.persist(editor.settings.copy(bodyFetchChunk = number.coerceIn(1024, 1048576)))
+    }
 }
 
 @Composable
@@ -2816,7 +2839,7 @@ internal fun row_customLayout(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
-    PaneLayoutEditor(settings.customLayout, settings.readerTextZoom, persist = panesOn) { text ->
+    PaneLayoutEditor(settings.customLayout, persist = panesOn) { text ->
         if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
     }
 }

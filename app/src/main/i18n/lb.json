@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Eegent Kolonn"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Iwwert der Lëscht"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatesch (no Écran Gréisst)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Message Text Gréisst"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Original Faarwen"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Däischter Thema Faarwen"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Ëmmer weisen Biller vun %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "D’Ariichtung konnt net gespäichert ginn"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Erweidert"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Dëse Kont nach eng Kéier ariichten"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d Kont", "other": "%1$d Konten"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d Kont", "other": "%1$d Konten"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Dës Datei huet keen Numm"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Onbekannten Zeechensatz; gewisen als %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s konnt net geläscht ginn"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "D'temporär Kopie %1$s konnt net ewechgeholl ginn"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Kierperblock"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Textgréisst"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Bildvertrauen konnt net geluede ginn"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Bildvertrauen konnt net gespäichert ginn"}
 ]

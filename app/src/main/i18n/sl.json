@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Lastna rubrika"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Nad seznamom"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Samodejno (glede na velikost zaslona)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Velikost besedila sporočila"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originalne barve"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Barve temne teme"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Vedno prikaži slike iz %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Nastavitve ni bilo mogoče shraniti"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Napredno"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Znova nastavi ta račun"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d račun", "two": "%1$d računa", "few": "%1$d računi", "other": "%1$d računov"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d račun", "two": "%1$d računa", "few": "%1$d računi", "other": "%1$d računov"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Ta datoteka nima imena"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Neznan nabor znakov; prikazano kot %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Ni bilo mogoče izbrisati %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Začasne kopije %1$s ni bilo mogoče odstraniti"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blok vsebine"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Velikost besedila"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Zaupanja slik ni bilo mogoče naložiti"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Zaupanja slik ni bilo mogoče shraniti"}
 ]

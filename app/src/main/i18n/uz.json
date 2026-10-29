@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "O'z ustuni"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Ro'yxatning tepasida"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Avtomatik (ekran o'lchami bo'yicha)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Xabar matni hajmi"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Asl ranglar"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "To'q rangli mavzular"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s dan har doim tasvirlarni ko'rsatish"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Sozlash saqlanmadi"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Kengaytirilgan"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Bu hisobni qayta sozlash"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hisob", "other": "%1$d hisob"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hisob", "other": "%1$d hisob"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Bu faylning nomi yo‘q"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Noma’lum kodlash; %1$s sifatida ko‘rsatildi."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s o‘chirilmadi"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Vaqtinchalik nusxa %1$s olib tashlanmadi"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Matn bo‘lagi"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Matn o‘lchami"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Rasm ishonchi yuklanmadi"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Rasm ishonchi saqlanmadi"}
 ]

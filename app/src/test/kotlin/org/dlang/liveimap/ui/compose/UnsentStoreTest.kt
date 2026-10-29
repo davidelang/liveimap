@@ -202,6 +202,28 @@ class UnsentStoreTest {
     }
 
     @Test
+    fun deleteOnAReadOnlyDirectoryRaises() {
+        val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
+        try {
+            val copy = DeviceCopy("ro", false, "Sent", emptyList(), src(root, "ro"))
+            assertTrue(writeCopy(root, copy, "acct-1"))
+            val dir = unsentAccountDir(root, "acct-1")
+            assertTrue(dir.setWritable(false))
+            var threw = false
+            try {
+                deleteCopy(root, "ro", "acct-1")
+            } catch (error: java.io.IOException) {
+                threw = true
+            }
+            assertTrue(threw)
+            dir.setWritable(true)
+        } finally {
+            unsentAccountDir(root, "acct-1").setWritable(true)
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun listDoesNotNeedABodyAndABadMetaIsVisible() {
         val root = File(System.getProperty("java.io.tmpdir"), "liveimap-unsent-" + System.nanoTime())
         try {

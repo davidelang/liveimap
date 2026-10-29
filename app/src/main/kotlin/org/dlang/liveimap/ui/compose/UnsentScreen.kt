@@ -39,6 +39,7 @@ fun UnsentScreen(
     // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var copies by remember { mutableStateOf<List<DeviceCopy>>(emptyList()) }
+    var charset by remember { mutableStateOf("") }
     var discardId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         if (accountId == null) accountId = store.chosenAccountId()
@@ -48,6 +49,15 @@ fun UnsentScreen(
 
     LaunchedEffect(id) {
         copies = readCopies(appContext, id)
+        charset = if (id.isEmpty()) {
+            ""
+        } else {
+            try {
+                store.forAccount(id).load().unlabeledCharset
+            } catch (_: Exception) {
+                ""
+            }
+        }
     }
 
     Column(
@@ -57,7 +67,7 @@ fun UnsentScreen(
             .padding(8.dp),
     ) {
         for (copy in copies) {
-            Text(unsentRowLabel(copy, stringResource(R.string.unsent_no_subject)))
+            Text(unsentRowLabel(copy, stringResource(R.string.unsent_no_subject), charset))
             Text(copy.recipients.joinToString(", "))
             Text(
                 if (copy.appendOnly) {
@@ -110,7 +120,7 @@ private fun shortDateTime(millis: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(millis))
 
 /** Meta subject when the line is present. Otherwise header lines only, through the blank line. */
-private fun unsentRowLabel(copy: DeviceCopy, missingSubject: String): String {
+private fun unsentRowLabel(copy: DeviceCopy, missingSubject: String, charset: String): String {
     copy.error?.let { return it }
     copy.subject?.let { return it.ifEmpty { missingSubject } }
     val headers = try {
@@ -118,5 +128,5 @@ private fun unsentRowLabel(copy: DeviceCopy, missingSubject: String): String {
     } catch (_: Exception) {
         return missingSubject
     }
-    return unsentSubject(headers, missingSubject)
+    return unsentSubject(headers, missingSubject, charset)
 }

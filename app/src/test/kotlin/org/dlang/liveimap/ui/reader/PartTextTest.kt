@@ -13,7 +13,7 @@ class PartTextTest {
         assertEquals("é", decodeNamed("ISO-8859-1", "é"))
         assertEquals("é", decodeNamed("windows-1252", "é"))
         assertEquals("é", decodeNamed("GB18030", "é"))
-        assertEquals("€", decodePart(byteArrayOf(0x80.toByte()), "windows-1252", "").text)
+        assertEquals("€", decodePart(byteArrayOf(0x80.toByte()), "windows-1252", "", "ISO-8859-1").text)
         assertEquals("あ", decodeNamed("Shift_JIS", "あ"))
         assertEquals("あ", decodeNamed("ISO-2022-JP", "あ"))
         assertEquals("Ж", decodeNamed("KOI8-R", "Ж"))
@@ -21,7 +21,7 @@ class PartTextTest {
 
     @Test
     fun quotedPrintableIso88591() {
-        val decoded = decodePart("=E9".toByteArray(Charsets.US_ASCII), "ISO-8859-1", "quoted-printable")
+        val decoded = decodePart("=E9".toByteArray(Charsets.US_ASCII), "ISO-8859-1", "quoted-printable", "ISO-8859-1")
         assertEquals("é", decoded.text)
         assertFalse(decoded.unknownCharset)
     }
@@ -29,32 +29,35 @@ class PartTextTest {
     @Test
     fun unknownCharsetIsIso88591() {
         val bytes = byteArrayOf(0xE9.toByte())
-        val named = decodePart(bytes, "no-such-charset", "")
+        val named = decodePart(bytes, "no-such-charset", "", "ISO-8859-1")
         assertEquals("é", named.text)
         assertTrue(named.unknownCharset)
-        val empty = decodePart(bytes, "", "")
+        val empty = decodePart(bytes, "", "", "ISO-8859-1")
         assertEquals("é", empty.text)
         assertTrue(empty.unknownCharset)
-        assertEquals(unknownCharsetNote, "Unknown charset; shown as ISO-8859-1.")
-        assertFalse(decodePart(bytes, "ISO-8859-1", "").unknownCharset)
+        assertEquals("ISO-8859-1", empty.charsetUsed)
+        val win = decodePart(byteArrayOf(0x80.toByte()), "no-such-charset", "", "windows-1252")
+        assertTrue(win.unknownCharset)
+        assertEquals("windows-1252", win.charsetUsed)
+        assertFalse(decodePart(bytes, "ISO-8859-1", "", "ISO-8859-1").unknownCharset)
     }
 
     @Test
     fun splitChunksFinish() {
-        val base64 = WireTextDecoder("ISO-8859-1", "base64")
+        val base64 = WireTextDecoder("ISO-8859-1", "base64", "ISO-8859-1")
         val base64Text = base64.take("6Q".toByteArray(Charsets.US_ASCII)) +
             base64.take("==".toByteArray(Charsets.US_ASCII)) +
             base64.finish()
         assertEquals("é", base64Text)
 
-        val quoted = WireTextDecoder("ISO-8859-1", "quoted-printable")
+        val quoted = WireTextDecoder("ISO-8859-1", "quoted-printable", "ISO-8859-1")
         val quotedText = quoted.take("=".toByteArray(Charsets.US_ASCII)) +
             quoted.take("E9".toByteArray(Charsets.US_ASCII)) +
             quoted.finish()
         assertEquals("é", quotedText)
 
         val shift = "あ".toByteArray(Charset.forName("Shift_JIS"))
-        val stream = WireTextDecoder("Shift_JIS", "")
+        val stream = WireTextDecoder("Shift_JIS", "", "ISO-8859-1")
         val streamed = stream.take(byteArrayOf(shift[0])) +
             stream.take(byteArrayOf(shift[1])) +
             stream.finish()
@@ -68,7 +71,7 @@ class PartTextTest {
         for (extra in 1..3) {
             val cut = encoded.take(encoded.length - 4 + extra)
             assertEquals(extra, cut.length % 4)
-            val text = WireTextDecoder("utf-8", "base64").take(cut.toByteArray(Charsets.US_ASCII))
+            val text = WireTextDecoder("utf-8", "base64", "ISO-8859-1").take(cut.toByteArray(Charsets.US_ASCII))
             assertTrue(text.contains("hello"))
         }
     }
@@ -76,7 +79,10 @@ class PartTextTest {
     @Test
     fun unfinishedCharsetBytes() {
         assertDecoded("GB18030", raw(0x95, 0x32, 0x82, 0x36), "𠀀")
+        assertDecoded("GB18030", raw(0x81, 0x30, 0x81, 0x30), "\u0080")
         assertDecoded("EUC-JP", raw(0x8F, 0xB0, 0xA1), "丂")
+        val invalid = decodePart(raw(0xFF), "GB18030", "", "ISO-8859-1")
+        assertTrue(invalid.unknown)
         assertDecoded("ISO-2022-JP-2", raw(0x1B, 0x24, 0x28, 0x44, 0x22, 0x42, 0x1B, 0x28, 0x42), "¡")
         assertDecoded("windows-874", raw(0xA1), "ก")
         assertDecoded("UTF-16", raw(0xFE, 0xFF, 0x00, 0x41), "A")
@@ -90,14 +96,14 @@ class PartTextTest {
     private fun raw(vararg bytes: Int): ByteArray = ByteArray(bytes.size) { bytes[it].toByte() }
 
     private fun assertDecoded(charset: String, bytes: ByteArray, text: String) {
-        val decoded = decodePart(bytes, charset, "")
+        val decoded = decodePart(bytes, charset, "", "ISO-8859-1")
         assertEquals(text, decoded.text)
         assertFalse(decoded.unknownCharset)
     }
 
     private fun decodeNamed(charset: String, text: String): String {
         val bytes = text.toByteArray(Charset.forName(charset))
-        val decoded = decodePart(bytes, charset, "")
+        val decoded = decodePart(bytes, charset, "", "ISO-8859-1")
         assertFalse(decoded.unknownCharset)
         return decoded.text
     }

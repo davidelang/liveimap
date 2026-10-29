@@ -18,9 +18,9 @@ class TextZoomTest {
     @Test
     fun settingRoundTripsAndDefaultIsNotWritten() {
         assertFalse(AccountSettings().encode().contains("readerTextZoom"))
-        val s = AccountSettings(readerTextZoom = 130)
-        assertEquals(130, decodeAccountSettings(s.encode()).readerTextZoom)
-        val hostile = AccountSettings().encode() + "readerTextZoom=99999\n"
-        assertEquals(MaxTextZoom, decodeAccountSettings(hostile).readerTextZoom)
+        val hostile = AccountSettings().encode() + "readerTextZoom=130\n"
+        val decoded = decodeAccountSettings(hostile)
+        assertFalse(decoded.encode().contains("readerTextZoom"))
+        assertEquals(AccountSettings().encode(), decoded.encode())
     }
 }

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "คอลัมน์ของตัวเอง"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "อยู่เหนือรายการ"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "อัตโนมัติ (ตามขนาดหน้าจอ)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ขนาดข้อความข้อความ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "สีเดิม"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ธีมสีเข้ม"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "แสดงภาพจาก %1$s เสมอ"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "บันทึกการตั้งค่าไม่ได้"},
 {"key": "setup_advanced", "source": "Advanced", "text": "ขั้นสูง"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ตั้งค่าบัญชีนี้อีกครั้ง"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d บัญชี"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d บัญชี"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ไฟล์นี้ไม่มีชื่อ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "ชุดอักขระไม่รู้จัก แสดงเป็น %1$s"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "ลบ %1$s ไม่ได้"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ไม่สามารถเอาสำเนาชั่วคราว %1$s ออกได้"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ขนาดดึงเนื้อความ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ขนาดตัวอักษร"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "โหลดความเชื่อถือรูปภาพไม่ได้"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "บันทึกความเชื่อถือรูปภาพไม่ได้"}
 ]

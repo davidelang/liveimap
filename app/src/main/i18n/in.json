@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Kolom sendiri"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Di atas daftar"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Otomatis (berdasarkan ukuran layar)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Ukuran teks pesan"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Warna asli"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Warna tema gelap"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Selalu tampilkan gambar dari %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Penyiapan tidak dapat disimpan"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Lanjutan"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Siapkan akun ini lagi"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d akun"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d akun"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Berkas ini tidak bernama"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Set karakter tidak dikenal; ditampilkan sebagai %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Tidak dapat menghapus %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Salinan sementara %1$s tidak dapat dihapus"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Potongan isi"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Ukuran teks"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Kepercayaan gambar tidak dapat dimuat"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Kepercayaan gambar tidak dapat disimpan"}
 ]

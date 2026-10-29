@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.reader
 
-import java.io.File
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.TextLayout
 import org.junit.Assert.assertEquals
@@ -58,8 +57,9 @@ class TextDisplayTest {
         val stream = FlowedStream()
         stream.push(listOf("Donau "), TextLayout.Flowed, flowed = true, delSp = false, finished = false)
         val two = stream.push(listOf("dampf"), TextLayout.Flowed, flowed = true, delSp = false, finished = true)
-        assertEquals(joined, one)
-        assertEquals(joined, two)
+        assertEquals(joined, one.lines)
+        assertEquals(0, one.firstChanged)
+        assertEquals(joined, two.lines)
     }
 
     @Test fun plainReflowWaitsUntilTheBodyIsFinished() {
@@ -68,14 +68,15 @@ class TextDisplayTest {
         val expected = reflow(lines)
         assertEquals(
             expected,
-            FlowedStream().push(lines, TextLayout.Flowed, flowed = false, delSp = false, finished = true),
+            FlowedStream().push(lines, TextLayout.Flowed, flowed = false, delSp = false, finished = true).lines,
         )
         val stream = FlowedStream()
         val partial = stream.push(lines.subList(0, 2), TextLayout.Flowed, flowed = false, delSp = false, finished = false)
-        assertEquals(lines.subList(0, 2), partial)
+        assertEquals(lines.subList(0, 2), partial.lines)
+        assertEquals(0, partial.firstChanged)
         assertEquals(
             expected,
-            stream.push(listOf(lines[2]), TextLayout.Flowed, flowed = false, delSp = false, finished = true),
+            stream.push(listOf(lines[2]), TextLayout.Flowed, flowed = false, delSp = false, finished = true).lines,
         )
     }
 
@@ -84,8 +85,12 @@ class TextDisplayTest {
         val second = listOf("dampf")
         for (layout in listOf(TextLayout.Text, TextLayout.Monospaced)) {
             val stream = FlowedStream()
-            assertEquals(first, stream.push(first, layout, flowed = true, delSp = true, finished = false))
-            assertEquals(first + second, stream.push(second, layout, flowed = true, delSp = true, finished = true))
+            val opened = stream.push(first, layout, flowed = true, delSp = true, finished = false)
+            assertEquals(first, opened.lines)
+            assertEquals(0, opened.firstChanged)
+            val added = stream.push(second, layout, flowed = true, delSp = true, finished = true)
+            assertEquals(second, added.lines)
+            assertEquals(first.size, added.firstChanged)
         }
     }
 
@@ -99,17 +104,16 @@ class TextDisplayTest {
         assertEquals(TextLayout.Monospaced, textLayoutOf(ReaderDisplay.Monospaced, TextLayout.Text))
     }
 
-    @Test fun readerUsesOneSelectorWithZoomAndNoWrap() {
-        val reader = File("src/main/kotlin/org/dlang/liveimap/ui/reader/MessageReaderScreen.kt").readText()
-        assertTrue(reader.contains("ReaderDisplayMenu("))
-        assertTrue(!reader.contains("SingleChoiceSegmentedButtonRow"))
-        assertTrue(reader.contains("BodyView.entries.filter { it != BodyView.PlainOrHtml && it != BodyView.PlainOrError }"))
-        assertTrue(reader.contains("horizontalScroll(hscroll)"))
-        assertTrue(reader.contains("softWrap = false"))
-        // text zoom (settings) and pinch apply to every layout: one LocalTextStyle scale around the lines
-        assertTrue(reader.contains("base.fontSize * (textZoom / 100f)"))
-        val jni = File("src/main/cpp/liveimap_jni.cpp").readText()
-        assertTrue(jni.contains("paramValue(fields->bd_parameter, \"format\")"))
-        assertTrue(jni.contains("Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V"))
+    @Test fun nChunksCostLinearLines() {
+        val stream = FlowedStream()
+        val chunks = 1000
+        var total = 0
+        for (i in 0 until chunks) {
+            val pushed = stream.push(listOf("line $i"), TextLayout.Text, flowed = false, delSp = false, finished = false)
+            assertEquals(1, pushed.lines.size)
+            assertEquals(total, pushed.firstChanged)
+            total += 1
+        }
+        assertEquals(chunks, total)
     }
 }

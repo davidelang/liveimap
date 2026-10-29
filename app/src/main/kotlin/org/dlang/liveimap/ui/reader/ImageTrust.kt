@@ -11,8 +11,9 @@ import org.dlang.liveimap.ui.compose.addrSpec
 data class ImageTrust(val senders: Set<String> = emptySet(), val lists: Set<String> = emptySet())
 
 const val MaxTrustEntries = 5000
-const val MaxImageTrustBytes = 2_000_000
 private const val MaxKeyLength = 255
+
+data class ImageTrustResult(val trust: ImageTrust = ImageTrust(), val error: String? = null)
 
 /** Lower-cased addr-spec of a From value, or "" when it has none. */
 fun trustSenderKey(from: String): String {
@@ -74,21 +75,31 @@ internal fun imageTrustFile(filesDir: File, accountId: String): File? {
     return File(File(filesDir, "image-trust"), "$id.txt")
 }
 
-fun loadImageTrust(filesDir: File, accountId: String, limit: Long = MaxImageTrustBytes.toLong()): ImageTrust {
-    val f = imageTrustFile(filesDir, accountId) ?: return ImageTrust()
-    if (!f.exists()) return ImageTrust()
-    if (!f.isFile || f.length() >= limit) throw java.io.IOException("maxImageTrustBytes")
-    return decodeImageTrust(f.readText())
+fun loadImageTrust(filesDir: File, accountId: String, limit: Long): ImageTrustResult {
+    val f = imageTrustFile(filesDir, accountId) ?: return ImageTrustResult()
+    if (!f.exists()) return ImageTrustResult()
+    if (!f.isFile || f.length() >= limit) return ImageTrustResult(error = "maxImageTrustBytes")
+    return try {
+        ImageTrustResult(decodeImageTrust(f.readText()))
+    } catch (error: java.io.IOException) {
+        ImageTrustResult(error = error.message ?: "maxImageTrustBytes")
+    }
 }
 
-fun saveImageTrust(filesDir: File, accountId: String, trust: ImageTrust): Boolean {
-    val f = imageTrustFile(filesDir, accountId) ?: return false
+fun saveImageTrust(filesDir: File, accountId: String, trust: ImageTrust, limit: Long): ImageTrustResult {
+    val f = imageTrustFile(filesDir, accountId) ?: return ImageTrustResult(error = "maxImageTrustBytes")
+    val text = encodeImageTrust(trust)
+    if (text.toByteArray(Charsets.UTF_8).size.toLong() >= limit) return ImageTrustResult(error = "maxImageTrustBytes")
     return try {
         f.parentFile?.mkdirs()
         val tmp = File(f.parentFile, f.name + ".tmp")
-        tmp.writeText(encodeImageTrust(trust))
-        tmp.renameTo(f)
-    } catch (_: java.io.IOException) {
-        false
+        tmp.writeText(text)
+        if (!tmp.renameTo(f)) {
+            java.nio.file.Files.delete(tmp.toPath())
+            return ImageTrustResult(error = "maxImageTrustBytes")
+        }
+        ImageTrustResult(trust)
+    } catch (error: java.io.IOException) {
+        ImageTrustResult(error = error.message ?: "maxImageTrustBytes")
     }
 }

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Vlastní sloupec"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Nad seznamem"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automaticky (podle velikosti obrazovky)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Velikost textu zprávy"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originální barvy"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tmavé barvy motivu"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Vždy zobrazovat obrázky z %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Nastavení se nepodařilo uložit"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Pokročilé"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Nastavit tento účet znovu"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtů"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtů"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Tento soubor nemá název"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Neznámá znaková sada; zobrazeno jako %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nelze smazat %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Dočasnou kopii %1$s se nepodařilo odstranit"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blok těla"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Velikost textu"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Důvěru obrázků se nepodařilo načíst"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Důvěru obrázků se nepodařilo uložit"}
 ]

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Kendi sütunu"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Listenin üstünde"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Otomatik (ekran boyutuna göre)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Mesaj metni boyutu"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Orijinal renkler"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Koyu tema renkleri"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Her zaman %1$s'teki resimleri göster"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Kurulum kaydedilemedi"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Gelişmiş"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Bu hesabı yeniden kur"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hesap", "other": "%1$d hesap"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hesap", "other": "%1$d hesap"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Bu dosyanın adı yok"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Bilinmeyen karakter kümesi; %1$s olarak gösterildi."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s silinemedi"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Geçici kopya %1$s kaldırılamadı"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Gövde parçası"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Yazı boyutu"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Görüntü güveni yüklenemedi"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Görüntü güveni kaydedilemedi"}
 ]

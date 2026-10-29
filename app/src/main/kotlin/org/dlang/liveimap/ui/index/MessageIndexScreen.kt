@@ -4016,7 +4016,7 @@ private fun IndexMessageRow(
                 val lines = previewLines(
                     account,
                     org.dlang.liveimap.settings.planLayout(
-                        config.screenWidthDp, config.screenHeightDp, config.fontScale * account.readerTextZoom / 100f,
+                        config.screenWidthDp, config.screenHeightDp, androidx.compose.ui.platform.LocalDensity.current.fontScale,
                     ).preview,
                 )
                 val preview = if (row.previewFailed) null else row.preview

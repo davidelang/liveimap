@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "තමන්ගේම තීරුව"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ලැයිස්තුවට ඉහළින්"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ස්වයංක්‍රීය (තිර ප්‍රමාණය අනුව)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "පණිවිඩ පෙළ ප්‍රමාණය"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "මුල් වර්ණ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "අඳුරු තේමා වර්ණ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "සෑම විටම %1$s වෙතින් පින්තූර පෙන්වන්න"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "සැකසුම සුරැකිය නොහැකි විය"},
 {"key": "setup_advanced", "source": "Advanced", "text": "උසස්"},
 {"key": "setup_help", "source": "Set up this account again", "text": "මෙම ගිණුම නැවත සකසන්න"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ගිණුම", "other": "%1$d ගිණුම්"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ගිණුම", "other": "%1$d ගිණුම්"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "මෙම ගොනුවට නමක් නැත"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "නොදන්නා අක්ෂර කට්ටලය; %1$s ලෙස පෙන්වයි."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s මකා දැමිය නොහැකි විය"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "තාවකාලික පිටපත %1$s ඉවත් කළ නොහැකි විය"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "අන්තර්ගත කැබැල්ල"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "පෙළ ප්‍රමාණය"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "රූප විශ්වාසය පූරණය නොවීය"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "රූප විශ්වාසය සුරැකිය නොහැකි විය"}
 ]

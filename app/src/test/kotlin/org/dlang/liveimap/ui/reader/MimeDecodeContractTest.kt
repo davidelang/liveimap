@@ -20,9 +20,9 @@ class MimeDecodeContractTest {
     @Test
     fun strayEqualsQuestionKeepsTheWholeSubject() {
         val raw = "Quiz: 2+2=? answer inside"
-        val row = MimeDecode.phrase(raw)
+        val row = MimeDecode.phrase(raw, "ISO-8859-1")
         assertEquals(raw, row[1])
-        assertEquals(raw, decodeHeaderWords(raw))
+        assertEquals(raw, decodeHeaderWords(raw, "ISO-8859-1"))
         assertNotEquals("ok", row[0])
         assertTrue(row[2].isNotEmpty())
     }
@@ -30,7 +30,7 @@ class MimeDecodeContractTest {
     @Test
     fun brokenEncodedWordKeepsItsTail() {
         val raw = "=?utf-8?Q?hello world?="
-        val row = MimeDecode.phrase(raw)
+        val row = MimeDecode.phrase(raw, "ISO-8859-1")
         assertEquals(raw, row[1])
         assertTrue(row[1].endsWith("world?="))
         assertNotEquals("ok", row[0])
@@ -41,7 +41,7 @@ class MimeDecodeContractTest {
     fun mailimfFailureThrows() {
         val bad = "Subject: hi\r\nNot a header\r\n".toByteArray(Charsets.US_ASCII)
         try {
-            MimeDecode.headers(bad)
+            MimeDecode.headers(bad, "ISO-8859-1")
             fail("a mailimf failure must throw")
         } catch (error: MimeDecodeException) {
             assertTrue(error.message?.isNotEmpty() == true)
@@ -51,7 +51,7 @@ class MimeDecodeContractTest {
     @Test
     fun subjectComesFromTheOneParse() {
         val raw = "Subject: =?utf-8?Q?Hello_World?=\r\nFrom: =?utf-8?Q?A?= <a@b.c>\r\n".toByteArray(Charsets.US_ASCII)
-        val rows = MimeDecode.headers(raw)
+        val rows = MimeDecode.headers(raw, "ISO-8859-1")
         assertEquals("Subject", rows[0])
         assertEquals("Hello World", rows[1])
         assertEquals("From", rows[3])
@@ -62,13 +62,13 @@ class MimeDecodeContractTest {
     fun badBase64ThrowsInTheReader() {
         val bytes = "!!!!".toByteArray(Charsets.US_ASCII)
         try {
-            val decoded = decodePart(bytes, "utf-8", "base64")
+            val decoded = decodePart(bytes, "utf-8", "base64", "ISO-8859-1")
             fail("decodePart returned body text: ${decoded.text}")
         } catch (error: MimeDecodeException) {
             assertTrue(error.message?.isNotEmpty() == true)
             assertFalse(error.message == "")
         }
-        val decoder = WireTextDecoder("utf-8", "base64")
+        val decoder = WireTextDecoder("utf-8", "base64", "ISO-8859-1")
         try {
             decoder.take(bytes)
             val tail = decoder.finish()
@@ -100,7 +100,7 @@ class MimeDecodeContractTest {
                 "--b--\r\n"
             ).toByteArray(Charsets.US_ASCII)
         try {
-            val loaded = loadEditor(raw)
+            val loaded = loadEditor(raw, "ISO-8859-1")
             fail("loadEditor built an attachment part: ${loaded.attachments.size} body=${loaded.body}")
         } catch (error: MimeDecodeException) {
             assertTrue(error.message?.isNotEmpty() == true)
@@ -113,7 +113,7 @@ class MimeDecodeContractTest {
                 "!!!!\r\n"
             ).toByteArray(Charsets.US_ASCII)
         try {
-            val loaded = loadEditor(body)
+            val loaded = loadEditor(body, "ISO-8859-1")
             assertFalse(loaded.body.contains("could not decode this part"))
             fail("loadEditor returned body text: ${loaded.body}")
         } catch (error: MimeDecodeException) {
@@ -124,8 +124,8 @@ class MimeDecodeContractTest {
     @Test
     fun failedPreviewIsNotTheErrorSentence() {
         val row = MimeDecode.text("!!!!".toByteArray(Charsets.US_ASCII), "utf-8", "ISO-8859-1", "base64")
-        assertEquals("error", row[0])
-        val sentence = row[1]
+        assertFalse(row.ok)
+        val sentence = row.text
         assertTrue(sentence.isNotEmpty())
         val shown = indexSubjectText(AnnotatedString("Quiz"), "could not decode this header", true).text
         assertTrue(shown.contains("could not decode this header"))
@@ -154,9 +154,9 @@ class MimeDecodeContractTest {
                 "References: <a@b> <c@d>\r\n" +
                 "Subject: hi\r\n"
             ).toByteArray(Charsets.US_ASCII)
-        val parsed = parseRfc822(raw)
-        assertEquals(listOf("\"Last, First\" <c@d.e>"), addresses(parsed, "From"))
-        assertEquals(listOf("\"Last, First\" <c@d.e>", "d@e.f"), addresses(parsed, "To"))
+        val parsed = parseRfc822(raw, "ISO-8859-1")
+        assertEquals(listOf("\"Last, First\" <c@d.e>"), addresses(parsed, "From", "ISO-8859-1"))
+        assertEquals(listOf("\"Last, First\" <c@d.e>", "d@e.f"), addresses(parsed, "To", "ISO-8859-1"))
         assertEquals("<id@host>", headerValues(parsed, "Message-ID").first())
         assertEquals("<a@b> <c@d>", headerValues(parsed, "In-Reply-To").first())
         assertEquals("<a@b> <c@d>", headerValues(parsed, "References").first())

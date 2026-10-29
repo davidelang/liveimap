@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "নিজস্ব কলাম"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "তালিকার উপরে"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "স্বয়ংক্রিয় (স্ক্রিন আকার অনুসারে)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "বার্তা পাঠ্য আকার"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "আসল রং"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "গাঢ় থিম রং"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "সবসময় %1$s থেকে ছবি দেখান"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "সেটআপ সংরক্ষণ করা যায়নি"},
 {"key": "setup_advanced", "source": "Advanced", "text": "উন্নত"},
 {"key": "setup_help", "source": "Set up this account again", "text": "এই অ্যাকাউন্ট আবার সেট আপ করুন"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটি অ্যাকাউন্ট", "other": "%1$dটি অ্যাকাউন্ট"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটি অ্যাকাউন্ট", "other": "%1$dটি অ্যাকাউন্ট"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "এই ফাইলের কোনো নাম নেই"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "অজানা অক্ষরসেট; %1$s হিসেবে দেখানো হয়েছে।"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s মুছে ফেলা যায়নি"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "অস্থায়ী অনুলিপি %1$s সরানো যায়নি"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "বডি আনার অংশ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "লেখার আকার"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ছবির বিশ্বাস লোড হয়নি"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ছবির বিশ্বাস সেভ হয়নি"}
 ]

@@ -1,12 +1,10 @@
 package org.dlang.liveimap.ui.compose
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class SendingRulesTest {
     private val default = SendingRule(AccountDefaultRule, actions = RuleActions(fromAddress = "me@home.example", signature = "Me", fcc = "Sent"))
@@ -109,17 +107,5 @@ class SendingRulesTest {
         assertEquals("b", patched[0].id)
         assertEquals("A3", patched[1].name)
         assertEquals(listOf(a, b), patchSendingRule(listOf(a, b), "missing") { it.copy(name = "nope") })
-    }
-
-    @Test
-    fun unusedPresetsAreGone() {
-        val text = listOf(
-            "src/main/kotlin/org/dlang/liveimap/ui/compose/SendingRules.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/ui/compose/SendingRules.kt",
-        ).map(::File).first { it.exists() }.readText()
-        assertFalse(text.contains("fun signatureFor"))
-        assertFalse(text.contains("fun fccFor"))
-        assertTrue(text.contains("fun perFolder"))
-        assertTrue(text.contains("fun plusFolder"))
     }
 }

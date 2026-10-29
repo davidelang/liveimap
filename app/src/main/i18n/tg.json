@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Сутуни худ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Дар болои рӯйхат"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автоматӣ (аз рӯи андозаи экран)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Андозаи матни паём"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Рангҳои аслӣ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Рангҳои мавзӯи торик"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Ҳамеша тасвирҳоро аз %1$s нишон диҳед"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Танзим захира нашуд"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Пешрафта"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Ин ҳисобро боз танзим кунед"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ҳисоб"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ҳисоб"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Ин файл ном надорад"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Маҷмӯи номаълуми аломатҳо; ҳамчун %1$s нишон дода шуд."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ҳазф нашуд"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Нусхаи муваққатӣ %1$s ҳазф нашуд"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Қисми матн"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Андозаи матн"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Эътимоди тасвир бор нашуд"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Эътимоди тасвир захира нашуд"}
 ]

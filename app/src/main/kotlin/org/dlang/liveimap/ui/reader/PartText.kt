@@ -1,11 +1,21 @@
 package org.dlang.liveimap.ui.reader
 
-const val unknownCharsetNote = "Unknown charset; shown as ISO-8859-1."
+import java.util.concurrent.atomic.AtomicBoolean
+
+/** One decode from [MimeDecode.text] or [MimeDecode.streamTake]. */
+class MimeTextResult(
+    val ok: Boolean,
+    val text: String,
+    val charsetUsed: String,
+    val unknownCharset: Boolean,
+    val unknown: Boolean,
+)
 
 data class DecodedPart(
     val text: String,
     val unknownCharset: Boolean,
-    val note: String? = null,
+    val charsetUsed: String,
+    val unknown: Boolean = false,
 )
 
 internal object MimeDecode {
@@ -14,13 +24,13 @@ internal object MimeDecode {
     }
 
     @JvmStatic
-    external fun text(bytes: ByteArray, declared: String, fallback: String, encoding: String): Array<String>
+    external fun text(bytes: ByteArray, declared: String, fallback: String, encoding: String): MimeTextResult
 
     @JvmStatic
     external fun streamOpen(declared: String, fallback: String, encoding: String): Long
 
     @JvmStatic
-    external fun streamTake(handle: Long, chunk: ByteArray, finalChunk: Boolean): Array<String>
+    external fun streamTake(handle: Long, chunk: ByteArray, finalChunk: Boolean): MimeTextResult
 
     @JvmStatic
     external fun streamClose(handle: Long)
@@ -35,7 +45,7 @@ internal object MimeDecode {
     external fun xferClose(handle: Long)
 
     @JvmStatic
-    external fun phrase(value: String, fallback: String = "ISO-8859-1"): Array<String>
+    external fun phrase(value: String, fallback: String): Array<String>
 
     @JvmStatic
     external fun phrases(values: Array<String>, fallback: String): Array<String>
@@ -44,50 +54,49 @@ internal object MimeDecode {
     external fun parameter2231(raw: String, fallback: String): String
 
     @JvmStatic
-    external fun headers(bytes: ByteArray, fallback: String = "ISO-8859-1"): Array<String>
+    external fun headers(bytes: ByteArray, fallback: String): Array<String>
+
+    /** Child parts of a multipart message, each the part's own headers and body. Parsed by libetpan. */
+    @JvmStatic
+    external fun multipartParts(bytes: ByteArray): Array<ByteArray>
 }
 
-fun decodePart(bytes: ByteArray, charset: String, encoding: String, fallback: String = "ISO-8859-1"): DecodedPart {
+fun decodePart(bytes: ByteArray, charset: String, encoding: String, fallback: String): DecodedPart {
     val row = MimeDecode.text(bytes, charset, fallback, encoding)
-    if (row[0] != "ok") {
-        throw org.dlang.liveimap.ui.compose.MimeDecodeException(row[2].ifEmpty { row[1] })
+    if (!row.ok) {
+        throw org.dlang.liveimap.ui.compose.MimeDecodeException(row.text.ifEmpty { "could not decode this part" })
     }
-    val note = row[2].ifEmpty { null }
-    return DecodedPart(row[1], note?.contains("shown as") == true, note)
+    return DecodedPart(row.text, row.unknownCharset, row.charsetUsed, row.unknown)
 }
 
-class WireTextDecoder(charsetName: String, encoding: String, fallback: String = "ISO-8859-1") {
+class WireTextDecoder(charsetName: String, encoding: String, fallback: String) : AutoCloseable {
     private val handle = MimeDecode.streamOpen(charsetName, fallback, encoding)
     var unknownCharset: Boolean = false
         private set
-    var note: String? = null
+    var charsetUsed: String = ""
         private set
-    private var closed = false
+    var unknown: Boolean = false
+        private set
+    private val closed = AtomicBoolean(false)
 
     fun take(chunk: ByteArray): String = pull(chunk, end = false)
 
     fun finish(): String = pull(ByteArray(0), end = true)
 
-    fun close() {
-        if (closed) return
-        closed = true
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         MimeDecode.streamClose(handle)
-    }
-
-    protected fun finalize() {
-        close()
     }
 
     private fun pull(chunk: ByteArray, end: Boolean): String {
         val row = MimeDecode.streamTake(handle, chunk, end)
-        if (row[2] != "ok") {
-            throw org.dlang.liveimap.ui.compose.MimeDecodeException(row[0].ifEmpty { "could not decode this part" })
+        if (!row.ok) {
+            throw org.dlang.liveimap.ui.compose.MimeDecodeException(row.text.ifEmpty { "could not decode this part" })
         }
-        if (row[1].isNotEmpty()) {
-            note = row[1]
-            unknownCharset = row[1].contains("shown as")
-        }
+        if (row.charsetUsed.isNotEmpty()) charsetUsed = row.charsetUsed
+        if (row.unknownCharset) unknownCharset = true
+        if (row.unknown) unknown = true
         if (end) close()
-        return row[0]
+        return row.text
     }
 }

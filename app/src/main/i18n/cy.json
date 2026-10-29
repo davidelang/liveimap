@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Colofn ei hun"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Uwchben y rhestr"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Awtomatig (yn ôl maint y sgrin)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Maint testun y neges"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Lliwiau gwreiddiol"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Lliwiau thema tywyll"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Dangoswch ddelweddau o %1$s bob amser"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Nid oedd modd cadw’r gosodiad"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Uwch"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Gosod y cyfrif hwn eto"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d cyfrif", "one": "%1$d cyfrif", "two": "%1$d gyfrif", "few": "%1$d chyfrif", "many": "%1$d chyfrif", "other": "%1$d cyfrif"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"zero": "%1$d cyfrif", "one": "%1$d cyfrif", "two": "%1$d gyfrif", "few": "%1$d chyfrif", "many": "%1$d chyfrif", "other": "%1$d cyfrif"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Nid oes enw ar y ffeil hon"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Set nodau anhysbys; dangosir fel %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Methu dileu %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Methu tynnu'r copi dros dro %1$s"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Talp corff"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Maint testun"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Methu llwytho ymddiriedaeth delweddau"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Methu cadw ymddiriedaeth delweddau"}
 ]

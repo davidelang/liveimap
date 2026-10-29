@@ -1,7 +1,9 @@
 package org.dlang.liveimap.jmap
 
+import java.io.File
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
+import org.dlang.liveimap.session.MailFailure
 
 fun jmapEmailSubmissionRequest(
     accountId: String,
@@ -171,57 +173,125 @@ fun jmapDeliver(
     val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy, accountKey)
     if (imported.status != 200) throw JmapFailure("jmap api status ${imported.status}")
     val emailId = jmapImportedEmailId(imported.body)
-    fun destroyCopy(): Boolean = try {
-        jmapStagingDestroyed(jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust, policy, accountKey).body, emailId) == true
-    } catch (_: JmapFailure) {
-        false
+    return sendImported(
+        session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
+        destroyEmail, identityId, policy, accountKey, accountId, authorization,
+    )
+}
+
+fun jmapDeliver(
+    session: JmapSession,
+    file: File,
+    mailboxId: String,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    upload: (String, File, String, String) -> JmapHttpExchange,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    destroyEmail: Boolean = false,
+    identityId: String = "",
+    onNotice: (String) -> Unit = {},
+    policy: TlsPolicy = TlsPolicy(),
+    accountKey: String = "",
+): String {
+    if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    if (mailboxId.isBlank()) throw JmapFailure("jmap mailbox id is empty")
+    if (mailFrom.isBlank()) throw JmapFailure("jmap submission from is empty")
+    if (rcptTo.isEmpty() || rcptTo.any { it.isBlank() }) {
+        throw JmapFailure("jmap submission recipient is empty")
+    }
+    val blobId = jmapUpload(session, file, username, password, pin, upload, trust, policy, accountKey)
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    val request = jmapEmailImportRequest(accountId, blobId, mailboxId, if (destroyEmail) JMAP_STAGING_KEYWORDS else emptyList())
+    val authorization = jmapBasicAuthorization(username, password)
+    val imported = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy, accountKey)
+    if (imported.status != 200) throw JmapFailure("jmap api status ${imported.status}")
+    val emailId = jmapImportedEmailId(imported.body)
+    return sendImported(
+        session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
+        destroyEmail, identityId, policy, accountKey, accountId, authorization,
+    )
+}
+
+/** One send: submit, settle a lost answer, and remove the imported copy. A failed destroy names that copy. */
+private fun sendImported(
+    session: JmapSession,
+    emailId: String,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String,
+    destroyEmail: Boolean,
+    identityId: String,
+    policy: TlsPolicy,
+    accountKey: String,
+    accountId: String,
+    authorization: String,
+): String {
+    fun removeCopy() {
+        val gone = try {
+            jmapStagingDestroyed(
+                jmapCall(
+                    session.apiUrl,
+                    jmapDestroyRequest(accountId, emailId),
+                    authorization,
+                    pin,
+                    post,
+                    trust,
+                    policy,
+                    accountKey,
+                ).body,
+                emailId,
+            ) == true
+        } catch (_: JmapFailure) {
+            false
+        }
+        if (!gone) throw MailFailure("The staging copy $emailId could not be removed")
     }
     return try {
         val submitted = jmapSubmitAnswer(
-            session,
-            emailId,
-            mailFrom,
-            rcptTo,
-            username,
-            password,
-            pin,
-            post,
-            trust,
-            destroyEmail,
-            identityId,
-            policy,
-            accountKey,
+            session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
+            destroyEmail, identityId, policy, accountKey,
         )
-        // F147a: a staging copy the server did not destroy is removed now, or the user is told it is left over.
-        if (destroyEmail && jmapStagingDestroyed(submitted.second, emailId) != true && !destroyCopy()) {
-            onNotice(JMAP_STAGING_LEFT)
-        }
+        if (destroyEmail && jmapStagingDestroyed(submitted.second, emailId) != true) removeCopy()
         submitted.first
     } catch (maybe: JmapMaybeSent) {
-        // F146: settle it from the server before anything is deleted or reported.
         val known = try {
-            jmapSubmissionQueryIds(jmapCall(session.apiUrl, jmapSubmissionQueryRequest(accountId, emailId), authorization, pin, post, trust, policy, accountKey).body)
+            jmapSubmissionQueryIds(
+                jmapCall(
+                    session.apiUrl,
+                    jmapSubmissionQueryRequest(accountId, emailId),
+                    authorization,
+                    pin,
+                    post,
+                    trust,
+                    policy,
+                    accountKey,
+                ).body,
+            )
         } catch (_: JmapFailure) {
             null
         }
         when {
             known == null -> throw maybe
             known.isNotEmpty() -> {
-                if (destroyEmail && !destroyCopy()) onNotice(JMAP_STAGING_LEFT)
+                if (destroyEmail) removeCopy()
                 known.first()
             }
             else -> {
-                destroyCopy()
+                removeCopy()
                 throw JmapFailure("jmap submission was not created")
             }
         }
     } catch (failure: JmapFailure) {
-        // F63: the copy in Sent was imported for a send that did not happen; remove it (best effort) so it
-        // does not look sent and a retry does not leave a duplicate.
-        try {
-            jmapCall(session.apiUrl, jmapDestroyRequest(accountId, emailId), authorization, pin, post, trust, policy, accountKey)
-        } catch (_: JmapFailure) {
-        }
+        removeCopy()
         throw failure
     }
 }
@@ -280,6 +350,54 @@ fun jmapSend(
         accountKey = accountKey,
     )
     return submissionId
+}
+
+fun jmapSend(
+    offer: JmapOffer,
+    file: File,
+    mailFrom: String,
+    rcptTo: List<String>,
+    username: String,
+    password: String,
+    pin: String,
+    upload: (String, File, String, String) -> JmapHttpExchange,
+    post: (String, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    sentName: String = "",
+    saveCopy: Boolean = true,
+    draftsName: String = "",
+    onNotice: (String) -> Unit = {},
+    policy: TlsPolicy = TlsPolicy(),
+    accountKey: String = "",
+): String {
+    val session = when (offer) {
+        JmapOffer.None -> throw JmapFailure("jmap submission is not offered")
+        is JmapOffer.Mail -> offer.session
+    }
+    if (!session.offersSubmission()) throw JmapFailure("jmap submission is not offered")
+    val header = org.dlang.liveimap.ui.compose.headerThroughBlankLine(file)
+    val author = org.dlang.liveimap.ui.compose.headerFromAddress(header).ifBlank { mailFrom.trim() }
+    val identityId = jmapIdentityFor(session, author, username, password, pin, post, trust, policy, accountKey)
+    val sentId = if (saveCopy) jmapFindSentMailbox(session, username, password, pin, post, trust, sentName, policy, accountKey) else null
+    val mailboxId = sentId ?: jmapStagingMailbox(session, draftsName, username, password, pin, post, trust, policy, accountKey)
+    return jmapDeliver(
+        session,
+        file,
+        mailboxId,
+        author,
+        rcptTo,
+        username,
+        password,
+        pin,
+        upload,
+        post,
+        trust,
+        destroyEmail = sentId == null,
+        identityId = identityId,
+        onNotice = onNotice,
+        policy = policy,
+        accountKey = accountKey,
+    )
 }
 
 /** Thrown when no Identity has exactly the From address; David's rule: never guess an identity. */

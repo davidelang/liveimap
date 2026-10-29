@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Սեփական սյունակ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Ցուցակի վերևում"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Ավտոմատ (ըստ էկրանի չափի)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Հաղորդագրության տեքստի չափը"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Օրիգինալ գույներ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Մուգ թեմայի գույներ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Միշտ ցուցադրեք պատկերներ %1$s-ից"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Կարգավորումը չհաջողվեց պահել"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Ընդլայնված"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Կրկին կարգավորել այս հաշիվը"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d հաշիվ", "other": "%1$d հաշիվ"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d հաշիվ", "other": "%1$d հաշիվ"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Այս ֆայլը անուն չունի"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Անհայտ նիշերի հավաքածու. ցուցադրվում է որպես %1$s։"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Չհաջողվեց ջնջել %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Ժամանակավոր պատճենը %1$s չհաջողվեց հեռացնել"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Մարմնի հատված"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Տեքստի չափ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Պատկերների վստահությունը չբեռնվեց"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Պատկերների վստահությունը չպահվեց"}
 ]

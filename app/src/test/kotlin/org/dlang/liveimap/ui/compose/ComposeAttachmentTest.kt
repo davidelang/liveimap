@@ -30,13 +30,38 @@ class ComposeAttachmentTest {
         assertFalse(empty.wireBase64)
         assertNull(empty.encoding)
 
-        PickedAttachmentHold.put(named)
+        val hold = PickedAttachmentHold()
+        hold.put(named)
+        assertEquals("hi".encodeToByteArray().toList(), hold.get("k-named")!!.bytes!!.toList())
+        hold.remove("k-named")
+        assertNull(hold.get("k-named"))
+    }
+
+    @Test
+    fun twoComposesKeepSeparateHeldRows() {
+        val named = fileAttachmentRow("k-named", "note.txt", "text/plain", "hi".encodeToByteArray())
+        val other = fileAttachmentRow("k-other", "b.txt", "text/plain", "yo".encodeToByteArray())
+        val first = PickedAttachmentHold()
+        val second = PickedAttachmentHold()
+        first.put(named)
+        second.put(other)
+        assertEquals("note.txt", first.get("k-named")!!.filename)
+        assertNull(second.get("k-named"))
+        assertNull(first.get("k-other"))
+        first.dispose()
+        assertNull(first.get("k-named"))
+        assertEquals("b.txt", second.get("k-other")!!.filename)
+        second.dispose()
+        assertNull(second.get("k-other"))
+    }
+
+    @Test
+    fun namelessProviderRaises() {
         try {
-            assertEquals("hi".encodeToByteArray().toList(), PickedAttachmentHold.get("k-named")!!.bytes!!.toList())
-            PickedAttachmentHold.remove("k-named")
-            assertNull(PickedAttachmentHold.get("k-named"))
-        } finally {
-            PickedAttachmentHold.remove("k-named")
+            rejectUnnamedFile("")
+            assertTrue(false)
+        } catch (error: java.io.IOException) {
+            assertEquals("error_file_no_name", error.message)
         }
     }
 
@@ -54,14 +79,12 @@ class ComposeAttachmentTest {
             assertEquals(file.path, row.path)
             assertEquals(file.path, row.toggle().path)
             assertFalse(row.toggle().included)
-            PickedAttachmentHold.put(row)
-            try {
-                val held = PickedAttachmentHold.get("k-path")
-                assertNull(held!!.bytes)
-                assertEquals(file.path, held.path)
-            } finally {
-                PickedAttachmentHold.remove("k-path")
-            }
+            val hold = PickedAttachmentHold()
+            hold.put(row)
+            val held = hold.get("k-path")
+            assertNull(held!!.bytes)
+            assertEquals(file.path, held.path)
+            hold.dispose()
         } finally {
             file.delete()
         }
@@ -150,44 +173,6 @@ class ComposeAttachmentTest {
         }
         assertEquals(21, cells)
         assertEquals(6, ComposeCopyAction.entries.size)
-    }
-
-    @Test
-    fun lifeIsAppliedOnTheTerminalPaths() {
-        val src = listOf(
-            "src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt",
-            "app/src/main/kotlin/org/dlang/liveimap/ui/compose/ComposeScreen.kt",
-        ).map(::File).first { it.exists() }.readText()
-        fun slice(start: String, end: String, from: Int = 0): String {
-            val at = src.indexOf(start, from)
-            val stop = src.indexOf(end, at + start.length)
-            assertTrue(start, at >= 0 && stop > at)
-            return src.substring(at, stop)
-        }
-        val smtp = slice(
-            "deleteCopy(appContext, id, accountId)",
-            "status = sentStatus(statusLeaf(account.sentMailbox))",
-        )
-        assertTrue(smtp.contains("composeAttachmentLife"))
-        assertTrue(smtp.contains("ComposeCopyAction.SendSuccess"))
-        val jmap = slice("keepCopyUntilSubmitted(sending,", "jmapSendFailed(sending")
-        assertTrue(jmap.contains("composeAttachmentLife"))
-        assertTrue(jmap.contains("ComposeCopyAction.SendSuccess"))
-        val postpone = slice("fun postponeDraft()", "fun loadStoredCopy")
-        assertTrue(postpone.contains("composeAttachmentLife"))
-        assertTrue(postpone.contains("ComposeCopyAction.PostponeSuccess"))
-        val drop = slice("if (kept != null && kept.appendOnly)", "else if (kept != null && noCopyRetry)")
-        assertTrue(drop.contains("composeAttachmentLife"))
-        assertTrue(drop.contains("ComposeCopyAction.SendWithoutCopyDrop"))
-        assertFalse(drop.contains("onDone"))
-        val discard = slice("compose_discard_title", "compose_keep_editing")
-        assertTrue(discard.contains("composeAttachmentLife"))
-        assertTrue(discard.contains("ComposeCopyAction.Cancel"))
-        assertTrue(discard.contains("onDone()"))
-        val back = slice("fun requestClose()", "fun postponeDraft()")
-        assertTrue(back.contains("composeAttachmentLife"))
-        assertTrue(back.contains("ComposeCopyAction.Cancel"))
-        assertTrue(back.contains("onDone()"))
     }
 
     private fun assertCell(

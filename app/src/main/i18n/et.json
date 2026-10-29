@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Oma veerg"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Loendi kohal"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automaatne (ekraani suuruse järgi)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Sõnumi teksti suurus"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originaalsed värvid"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tumedad teemavärvid"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Kuva alati pilte %1$s-st"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Seadistust ei saanud salvestada"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Täpsem"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Seadista see konto uuesti"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d kontot"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d kontot"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Sellel failil pole nime"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Tundmatu märgistik; kuvatud kui %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Üksust %1$s ei saanud kustutada"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Ajutist koopiat %1$s ei saanud eemaldada"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Keha plokk"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Teksti suurus"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Piltide usaldust ei saanud laadida"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Piltide usaldust ei saanud salvestada"}
 ]

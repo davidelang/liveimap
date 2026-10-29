@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Own column"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Above the list"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatic (by screen size)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Message text size"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Original colours"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Dark theme colours"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Always show images from %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Setup could not be saved"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Advanced"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Set up this account again"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d accounts"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d accounts"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "This file has no name"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Unknown charset; shown as %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Could not delete %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "The staging copy %1$s could not be removed"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Body fetch chunk"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Text size"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Could not load image trust"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Could not save image trust"}
 ]

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Egen kolumn"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Ovanför listan"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatisk (efter skärmstorlek)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Storlek på meddelandetext"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originalfärger"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Mörka temafärger"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Visa alltid bilder från %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Konfigurationen kunde inte sparas"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Avancerat"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Konfigurera det här kontot igen"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d konton"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "other": "%1$d konton"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Den här filen har inget namn"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Okänd teckenuppsättning; visas som %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Kunde inte ta bort %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Den tillfälliga kopian %1$s kunde inte tas bort"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Brödtextblock"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Textstorlek"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Kunde inte läsa in bildförtroende"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Kunde inte spara bildförtroende"}
 ]

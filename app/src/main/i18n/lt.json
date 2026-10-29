@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Nuosavas stulpelis"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Virš sąrašo"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatinis (pagal ekrano dydį)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Pranešimo teksto dydis"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originalios spalvos"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tamsios temos spalvos"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Visada rodyti vaizdus iš %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Sąrankos nepavyko įrašyti"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Išsamiau"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Nustatyti šią paskyrą iš naujo"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d paskyra", "few": "%1$d paskyros", "many": "%1$d paskyrų", "other": "%1$d paskyros"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d paskyra", "few": "%1$d paskyros", "many": "%1$d paskyrų", "other": "%1$d paskyros"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Šis failas neturi pavadinimo"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Nežinoma koduotė; rodoma kaip %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nepavyko ištrinti %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Laikinos kopijos %1$s nepavyko pašalinti"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Turinio blokas"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Teksto dydis"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Nepavyko įkelti paveikslų pasitikėjimo"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Nepavyko įrašyti paveikslų pasitikėjimo"}
 ]

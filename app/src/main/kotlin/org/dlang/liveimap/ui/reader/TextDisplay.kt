@@ -130,6 +130,8 @@ internal fun reflow(lines: List<String>): List<String> {
  * open paragraph (depth, text, and the first raw line it covers) and runs [unflow] again from that line. A plain
  * body under the Flowed layout stays unjoined until [finished], then [reflow] sees every raw line since [reset].
  */
+internal class FlowedPush(val lines: List<String>, val firstChanged: Int)
+
 internal class FlowedStream {
     private val raw = ArrayList<String>()
     private val shown = ArrayList<String>()
@@ -153,23 +155,29 @@ internal class FlowedStream {
         flowed: Boolean,
         delSp: Boolean,
         finished: Boolean,
-    ): List<String> {
-        when (layout) {
-            TextLayout.Text, TextLayout.Monospaced -> shown.addAll(newLines)
+    ): FlowedPush {
+        val first = when (layout) {
+            TextLayout.Text, TextLayout.Monospaced -> {
+                val at = shown.size
+                shown.addAll(newLines)
+                at
+            }
             TextLayout.Flowed -> if (flowed) pushFlowed(newLines, delSp) else pushPlain(newLines, finished)
         }
-        return ArrayList(shown)
+        return FlowedPush(ArrayList(shown.subList(first, shown.size)), first)
     }
 
-    private fun pushFlowed(newLines: List<String>, delSp: Boolean) {
+    private fun pushFlowed(newLines: List<String>, delSp: Boolean): Int {
         val start = if (open) openAt else raw.size
-        if (open && shown.lastOrNull() == prefix(openDepth) + openText) shown.removeAt(shown.lastIndex)
+        val first = if (open && shown.lastOrNull() == prefix(openDepth) + openText) shown.lastIndex else shown.size
+        if (first < shown.size) shown.subList(first, shown.size).clear()
         raw.addAll(newLines)
         shown.addAll(unflow(raw.subList(start, raw.size), delSp))
         rememberOpen(start, delSp)
+        return first
     }
 
-    private fun pushPlain(newLines: List<String>, finished: Boolean) {
+    private fun pushPlain(newLines: List<String>, finished: Boolean): Int {
         raw.addAll(newLines)
         open = false
         openDepth = 0
@@ -178,9 +186,11 @@ internal class FlowedStream {
         if (finished) {
             shown.clear()
             shown.addAll(reflow(raw))
-        } else {
-            shown.addAll(newLines)
+            return 0
         }
+        val first = shown.size
+        shown.addAll(newLines)
+        return first
     }
 
     /** The last paragraph stays open when its line is a soft break and nothing after it closed it. */

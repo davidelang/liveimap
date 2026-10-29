@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "પોતાની કોલમ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "યાદી ઉપર"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "સ્વચાલિત (સ્ક્રીન કદ દ્વારા)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "સંદેશ ટેક્સ્ટનું કદ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "મૂળ રંગો"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ડાર્ક થીમ રંગો"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "હંમેશા %1$s માંથી છબીઓ બતાવો"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "સેટઅપ સાચવી શકાયું નહીં"},
 {"key": "setup_advanced", "source": "Advanced", "text": "અદ્યતન"},
 {"key": "setup_help", "source": "Set up this account again", "text": "આ ખાતું ફરી ગોઠવો"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ખાતું", "other": "%1$d ખાતાં"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ખાતું", "other": "%1$d ખાતાં"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "આ ફાઇલનું નામ નથી"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "અજ્ઞાત અક્ષરસમૂહ; %1$s તરીકે બતાવ્યું."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s કાઢી શકાયું નહીં"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "કામચલાઉ નકલ %1$s દૂર થઈ શકી નહીં"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "બોડીનો ટુકડો"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "લખાણનું કદ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ચિત્ર વિશ્વાસ લાવી શકાયો નહીં"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ચિત્ર વિશ્વાસ સાચવી શકાયો નહીં"}
 ]

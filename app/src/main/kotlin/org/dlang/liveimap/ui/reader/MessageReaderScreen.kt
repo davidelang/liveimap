@@ -158,6 +158,8 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.ui_appTextZoom
+import org.dlang.liveimap.settings.readGlobalSettings
 import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.AccountSettings
@@ -210,9 +212,10 @@ import org.dlang.liveimap.ui.toolbar.visibleReaderActions
 internal class Utf8Carry {
     var pending: ByteArray = ByteArray(0)
     var decoder: WireTextDecoder? = null
-    val text = StringBuilder()
     val committed = ArrayList<String>()
     var linePartial: String = ""
+    private var htmlFile: java.io.File? = null
+    private var htmlOut: java.io.OutputStream? = null
 
     fun closeDecoder() {
         decoder?.close()
@@ -220,15 +223,25 @@ internal class Utf8Carry {
     }
 
     fun clearText() {
-        text.clear()
         committed.clear()
         linePartial = ""
+        htmlOut?.close()
+        htmlOut = null
+        htmlFile?.delete()
+        htmlFile = null
     }
 
-    /** Appends only newly complete lines. HTML body text is returned when the part is finished. */
+    /** Appends only newly complete lines. HTML body text is read back from its file when the part is finished. */
     fun appendPiece(piece: String, lines: MutableList<String>, finished: Boolean, html: Boolean): String? {
         if (piece.isNotEmpty()) {
-            text.append(piece)
+            if (html) {
+                if (htmlOut == null) {
+                    val file = java.io.File.createTempFile("liveimap-body-", ".html")
+                    htmlFile = file
+                    htmlOut = java.io.FileOutputStream(file)
+                }
+                htmlOut?.write(piece.toByteArray(Charsets.UTF_8))
+            }
             val parts = (linePartial + piece).split('\n')
             linePartial = parts.last().removeSuffix("\r")
             val complete = parts.dropLast(1).map { it.removeSuffix("\r") }
@@ -242,7 +255,14 @@ internal class Utf8Carry {
             lines.add(linePartial)
             linePartial = ""
         }
-        if (finished && html) return text.toString()
+        if (finished && html) {
+            htmlOut?.close()
+            htmlOut = null
+            val text = htmlFile?.readText() ?: ""
+            htmlFile?.delete()
+            htmlFile = null
+            return text
+        }
         return null
     }
 }
@@ -282,7 +302,7 @@ internal data class AttachmentRow(
     val encoding: String = "",
 )
 
-internal class ReaderHeld : ViewModel() {
+internal class MessageReaderLoaded : ViewModel() {
     var openUid: Long = -1L
     var openMailbox: String = ""
     var openAccount: String = ""
@@ -376,7 +396,85 @@ internal class ReaderHeld : ViewModel() {
         selectedMailboxState.value = null
         headingState.value = MailboxTitle("", "")
     }
+
+    fun watchAccount(
+        scope: kotlinx.coroutines.CoroutineScope,
+        store: org.dlang.liveimap.settings.DataStoreSettingsStore,
+        apply: (AccountSettings) -> Unit,
+    ) = scope.launch {
+        val loaded = try {
+            store.load()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+        if (loaded != null) apply(loaded)
+    }
+
+    @Composable
+    fun startWatch(
+        scope: kotlinx.coroutines.CoroutineScope,
+        store: org.dlang.liveimap.settings.DataStoreSettingsStore,
+        apply: (AccountSettings) -> Unit,
+    ) {
+        LifecycleStartEffect(store) {
+            val job = watchAccount(scope, store, apply)
+            onStopOrDispose { job.cancel() }
+        }
+    }
 }
+
+private class HtmlPull(val text: String, val note: String?, val truncated: Boolean, val wireRead: Int)
+
+private class ReaderLabels(
+    val noAppFound: String,
+    val notConnected: String,
+    val savedText: String,
+    val noAddressBookText: String,
+    val noAddressesText: String,
+    val addressAddedText: String,
+    val addressExistsText: String,
+    val copyChangedText: String,
+    val retryLabel: String,
+    val noTextPartText: String,
+    val noHtmlPartText: String,
+    val shareTitle: String,
+    val indexNow: String,
+    val indexMin: String,
+    val indexHour: String,
+    val indexHours: String,
+    val indexDay: String,
+    val indexDays: String,
+    val indexAgo: String,
+    val indexAhead: String,
+    val indexBadPattern: String,
+)
+
+@Composable
+private fun readerLabels(): ReaderLabels = ReaderLabels(
+    noAppFound = stringResource(R.string.reader_no_app),
+    notConnected = stringResource(R.string.reader_not_connected),
+    savedText = stringResource(R.string.reader_saved),
+    noAddressBookText = stringResource(R.string.reader_no_address_book),
+    noAddressesText = stringResource(R.string.reader_no_addresses),
+    addressAddedText = stringResource(R.string.reader_address_added),
+    addressExistsText = stringResource(R.string.reader_address_exists),
+    copyChangedText = stringResource(R.string.copy_changed),
+    retryLabel = stringResource(R.string.reader_retry),
+    noTextPartText = stringResource(R.string.reader_no_text),
+    noHtmlPartText = stringResource(R.string.reader_no_html),
+    shareTitle = stringResource(R.string.reader_share),
+    indexNow = stringResource(R.string.index_now),
+    indexMin = stringResource(R.string.index_min),
+    indexHour = stringResource(R.string.index_hour),
+    indexHours = stringResource(R.string.index_hours),
+    indexDay = stringResource(R.string.index_day),
+    indexDays = stringResource(R.string.index_days),
+    indexAgo = stringResource(R.string.index_ago),
+    indexAhead = stringResource(R.string.index_ahead),
+    indexBadPattern = stringResource(R.string.index_bad_pattern),
+)
 
 private fun Context.hostActivity(): Activity? {
     var current: Context = this
@@ -412,7 +510,7 @@ fun MessageReaderScreen(
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
-    MessageReaderLoaded(
+    ReaderScreen(
         accountId = id,
         store = remember(id) { store.forAccount(id) },
         mailbox = mailbox,
@@ -430,7 +528,7 @@ fun MessageReaderScreen(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun MessageReaderLoaded(
+private fun ReaderScreen(
     accountId: String,
     store: DataStoreSettingsStore,
     mailbox: String,
@@ -448,32 +546,33 @@ private fun MessageReaderLoaded(
     LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
-    val noAppFound = stringResource(R.string.reader_no_app)
-    val notConnected = stringResource(R.string.reader_not_connected)
-    val savedText = stringResource(R.string.reader_saved)
-    val noAddressBookText = stringResource(R.string.reader_no_address_book)
-    val noAddressesText = stringResource(R.string.reader_no_addresses)
-    val addressAddedText = stringResource(R.string.reader_address_added)
-    val addressExistsText = stringResource(R.string.reader_address_exists)
-    val copyChangedText = stringResource(R.string.copy_changed)
-    val retryLabel = stringResource(R.string.reader_retry)
-    val noTextPartText = stringResource(R.string.reader_no_text)
-    val noHtmlPartText = stringResource(R.string.reader_no_html)
-    val shareTitle = stringResource(R.string.reader_share)
-    val indexNow = stringResource(R.string.index_now)
-    val indexMin = stringResource(R.string.index_min)
-    val indexHour = stringResource(R.string.index_hour)
-    val indexHours = stringResource(R.string.index_hours)
-    val indexDay = stringResource(R.string.index_day)
-    val indexDays = stringResource(R.string.index_days)
-    val indexAgo = stringResource(R.string.index_ago)
-    val indexAhead = stringResource(R.string.index_ahead)
-    val indexBadPattern = stringResource(R.string.index_bad_pattern)
+    val labels = readerLabels()
+    val noAppFound = labels.noAppFound
+    val notConnected = labels.notConnected
+    val savedText = labels.savedText
+    val noAddressBookText = labels.noAddressBookText
+    val noAddressesText = labels.noAddressesText
+    val addressAddedText = labels.addressAddedText
+    val addressExistsText = labels.addressExistsText
+    val copyChangedText = labels.copyChangedText
+    val retryLabel = labels.retryLabel
+    val noTextPartText = labels.noTextPartText
+    val noHtmlPartText = labels.noHtmlPartText
+    val shareTitle = labels.shareTitle
+    val indexNow = labels.indexNow
+    val indexMin = labels.indexMin
+    val indexHour = labels.indexHour
+    val indexHours = labels.indexHours
+    val indexDay = labels.indexDay
+    val indexDays = labels.indexDays
+    val indexAgo = labels.indexAgo
+    val indexAhead = labels.indexAhead
+    val indexBadPattern = labels.indexBadPattern
     val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val messageRef = MessageRef(accountId, mailbox, uidValidity, uid)
-    val held = viewModel<ReaderHeld>(key = "pane")
+    val held = viewModel<MessageReaderLoaded>(key = "pane")
     if (held.ready && !held.holds(messageRef)) held.dropLoaded()
     val reuseBody = held.holds(messageRef)
     val host = context.hostActivity()
@@ -535,15 +634,22 @@ private fun MessageReaderLoaded(
     var headerSender by held.headerSenderState
     var headerResentTo by held.headerResentToState
     var headerListId by held.headerListIdState
-    val trustLoaded = remember(accountId) {
-        try {
-            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get().toLong()) to true
-        } catch (_: java.io.IOException) {
-            ImageTrust() to false
+    var imageTrust by remember(accountId) { mutableStateOf(ImageTrust()) }
+    var trustCanSave by remember(accountId) { mutableStateOf(false) }
+    var trustLoadFailed by remember(accountId) { mutableStateOf(false) }
+    LaunchedEffect(accountId) {
+        val result = store.onAccount {
+            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get().toLong())
+        }
+        if (result.error != null) {
+            trustCanSave = false
+            imageTrust = ImageTrust()
+            trustLoadFailed = true
+        } else {
+            imageTrust = result.trust
+            trustCanSave = true
         }
     }
-    var imageTrust by remember(accountId) { mutableStateOf(trustLoaded.first) }
-    val trustCanSave = trustLoaded.second
     var headerDate by held.headerDateState
     var headerSubject by held.headerSubjectState
     var headerReady by held.headerReadyState
@@ -554,6 +660,10 @@ private fun MessageReaderLoaded(
     var allowImages by held.allowImagesState
     var originalColors by held.originalColorsState
     var pinchZoom by held.pinchZoomState
+    var appTextZoom by remember { mutableIntStateOf(100) }
+    LaunchedEffect(Unit) {
+        appTextZoom = clampTextZoom(ui_appTextZoom(readGlobalSettings(context)).toIntOrNull() ?: 100)
+    }
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
     var noTextPart by held.noTextPartState
@@ -601,19 +711,7 @@ private fun MessageReaderLoaded(
         displayMenu = false
     }
 
-    LifecycleStartEffect(store) {
-        val job = scope.launch {
-            val loaded = try {
-                store.load()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                null
-            }
-            if (loaded != null) account = loaded
-        }
-        onStopOrDispose { job.cancel() }
-    }
+    held.startWatch(scope, store) { loaded -> account = loaded }
 
     LaunchedEffect(mailbox, account.trashMailbox, connected) {
         if (!connected) return@LaunchedEffect
@@ -630,6 +728,10 @@ private fun MessageReaderLoaded(
         snackMessage = text
         snackMode = "retry"
         snackEvent += 1
+    }
+
+    LaunchedEffect(trustLoadFailed) {
+        if (trustLoadFailed) postSnack(context.getString(R.string.image_trust_load_failed))
     }
 
     // Per-open cache token: the same UID and section in another folder or account never shares a file (F06).
@@ -726,7 +828,12 @@ private fun MessageReaderLoaded(
         if (bodyLines.size > before) plainVersion += 1
         if (finished) bodyComplete = true
         if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
-        charsetNote = carry.decoder?.note
+        val decoder = carry.decoder
+        charsetNote = if (decoder != null && decoder.unknownCharset) {
+            appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+        } else {
+            null
+        }
     }
 
     suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean, token: Int) {
@@ -743,14 +850,15 @@ private fun MessageReaderLoaded(
             carry.clearText()
             val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
             carry.decoder = decoder
-            charsetNote = decoder.note
+            charsetNote = if (decoder.unknownCharset) appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed) else null
         }
         if (bodySection != part.section) return
         if (part.size > 0 && bodyOffset >= part.size) return
+        val step = account.bodyFetchChunk
         val length = if (part.size > 0) {
-            nextWireCount(bodyOffset, part.size, 4096, part.encoding.equals("base64", ignoreCase = true))
+            nextWireCount(bodyOffset, part.size, step, part.encoding.equals("base64", ignoreCase = true))
         } else if (bodyOffset == 0) {
-            4096
+            step
         } else {
             return
         }
@@ -803,14 +911,16 @@ private fun MessageReaderLoaded(
         carry.closeDecoder()
         carry.clearText()
         var marked = false
-        val built = StringBuilder()
         rawTruncated = false
+        val bodyFile = java.io.File.createTempFile("liveimap-section-", ".txt", appContext.cacheDir)
+        try {
+        java.io.FileOutputStream(bodyFile).use { out ->
         while (true) {
             if (bodyOffset >= RawViewCapBytes) {
                 rawTruncated = true
                 break
             }
-            val length = 4096
+            val length = account.bodyFetchChunk
             val chunk = try {
                 peekRef(section, bodyOffset, length)
             } catch (error: CancellationException) {
@@ -828,17 +938,15 @@ private fun MessageReaderLoaded(
             }
             if (chunk.isEmpty()) break
             bodyOffset += chunk.size
-            val (text, rest) = appendUtf8(carry.pending, chunk)
-            carry.pending = rest
-            built.append(text)
+            out.write(chunk)
             if (chunk.size < length) break
         }
-        if (token != bodyGeneration) return
-        if (carry.pending.isNotEmpty()) {
-            built.append(carry.pending.toString(Charsets.UTF_8))
-            carry.pending = ByteArray(0)
         }
-        bodyText = built.toString()
+        if (token != bodyGeneration) return
+        bodyText = bodyFile.readText(Charsets.UTF_8)
+        } finally {
+            bodyFile.delete()
+        }
         clearBodyLines()
         bodyLines.addAll(readerLines(bodyText))
         bodyComplete = true
@@ -875,7 +983,7 @@ private fun MessageReaderLoaded(
         if (part.size > 0) {
             val limit = minOf(part.size, cap)
             while (offset < limit && wire < cap) {
-                val length = nextWireCount(offset, limit, 4096, false)
+                val length = nextWireCount(offset, limit, account.bodyFetchChunk, false)
                 if (length <= 0) break
                 val chunk = take(length) ?: return null
                 if (chunk.isEmpty()) break
@@ -892,7 +1000,7 @@ private fun MessageReaderLoaded(
             return part.size > cap
         }
         while (wire < cap) {
-            val length = minOf(4096, cap - wire)
+            val length = minOf(account.bodyFetchChunk, cap - wire)
             val chunk = take(length) ?: return null
             if (chunk.isEmpty()) break
             val room = cap - wire
@@ -921,22 +1029,23 @@ private fun MessageReaderLoaded(
     }
 
     suspend fun readSectionText(section: String): String {
-        val local = Utf8Carry()
-        val out = StringBuilder()
-        var offset = 0
-        while (true) {
-            val chunk = peekRef(section, offset, 4096)
-            if (chunk.isEmpty()) break
-            offset += chunk.size
-            val (text, rest) = appendUtf8(local.pending, chunk)
-            local.pending = rest
-            out.append(text)
-            if (chunk.size < 4096) break
+        val step = account.bodyFetchChunk
+        val bodyFile = java.io.File.createTempFile("liveimap-header-", ".txt", appContext.cacheDir)
+        try {
+            java.io.FileOutputStream(bodyFile).use { out ->
+                var offset = 0
+                while (true) {
+                    val chunk = peekRef(section, offset, step)
+                    if (chunk.isEmpty()) break
+                    offset += chunk.size
+                    out.write(chunk)
+                    if (chunk.size < step) break
+                }
+            }
+            return bodyFile.readText(Charsets.UTF_8)
+        } finally {
+            bodyFile.delete()
         }
-        if (local.pending.isNotEmpty()) {
-            out.append(local.pending.toString(Charsets.UTF_8))
-        }
-        return out.toString()
     }
 
     suspend fun loadPreferred(view: BodyView, token: Int) {
@@ -945,6 +1054,29 @@ private fun MessageReaderLoaded(
         val root = structure ?: return
         val plain = textPart(root, "plain")
         val html = textPart(root, "html")
+        suspend fun pullHtml(part: MimePart, markSeen: Boolean): HtmlPull? {
+            var truncated = part.size > RawViewCapBytes
+            var wireRead = 0
+            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
+            try {
+                val built = StringBuilder()
+                val stopped = readPart(part, markSeen, RawViewCapBytes) { chunk ->
+                    built.append(decoder.take(chunk))
+                    wireRead += chunk.size
+                }
+                if (stopped == null) return null
+                if (stopped) truncated = true
+                else if (!truncated) built.append(decoder.finish())
+                val note = if (decoder.unknownCharset) {
+                    appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+                } else {
+                    null
+                }
+                return HtmlPull(built.toString(), note, truncated, wireRead)
+            } finally {
+                decoder.close()
+            }
+        }
         when (view) {
             BodyView.PlainOrError -> {
                 if (plain == null) {
@@ -978,48 +1110,18 @@ private fun MessageReaderLoaded(
                     carry.pending = ByteArray(0)
                     carry.closeDecoder()
                     carry.clearText()
-                    var truncated = html.size > RawViewCapBytes
-                    var wireRead = 0
-                    val text: String
-                    val note: String?
-                    var open: WireTextDecoder? = null
-                    try {
-                        if (truncated) {
-                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            open = decoder
-                            val built = StringBuilder()
-                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
-                                built.append(decoder.take(chunk))
-                                wireRead += chunk.size
-                            }
-                            if (stopped == null || token != bodyGeneration) return
-                            text = built.toString()
-                            note = decoder.note
-                        } else {
-                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            open = decoder
-                            val built = StringBuilder()
-                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
-                                built.append(decoder.take(chunk))
-                                wireRead += chunk.size
-                            }
-                            if (stopped == null || token != bodyGeneration) return
-                            if (stopped) {
-                                truncated = true
-                                text = built.toString()
-                                note = decoder.note
-                            } else {
-                                text = built.append(decoder.finish()).toString()
-                                note = decoder.note
-                            }
-                        }
+                    val pulled = try {
+                        pullHtml(html, !seenStored)
                     } catch (error: MimeDecodeException) {
                         if (token != bodyGeneration) return
                         showMissing(error.text)
                         return
-                    } finally {
-                        open?.close()
                     }
+                    if (pulled == null || token != bodyGeneration) return
+                    val text = pulled.text
+                    val note = pulled.note
+                    val truncated = pulled.truncated
+                    val wireRead = pulled.wireRead
                     bodyOffset = wireRead
                     charsetNote = note
                     bodyText = text
@@ -1047,48 +1149,18 @@ private fun MessageReaderLoaded(
                     carry.pending = ByteArray(0)
                     carry.closeDecoder()
                     carry.clearText()
-                    var truncated = html.size > RawViewCapBytes
-                    var wireRead = 0
-                    val text: String
-                    val note: String?
-                    var open: WireTextDecoder? = null
-                    try {
-                        if (truncated) {
-                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            open = decoder
-                            val built = StringBuilder()
-                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
-                                built.append(decoder.take(chunk))
-                                wireRead += chunk.size
-                            }
-                            if (stopped == null || token != bodyGeneration) return
-                            text = built.toString()
-                            note = decoder.note
-                        } else {
-                            val decoder = WireTextDecoder(html.charset, html.encoding, account.unlabeledCharset)
-                            open = decoder
-                            val built = StringBuilder()
-                            val stopped = readPart(html, markSeen = !seenStored, RawViewCapBytes) { chunk ->
-                                built.append(decoder.take(chunk))
-                                wireRead += chunk.size
-                            }
-                            if (stopped == null || token != bodyGeneration) return
-                            if (stopped) {
-                                truncated = true
-                                text = built.toString()
-                                note = decoder.note
-                            } else {
-                                text = built.append(decoder.finish()).toString()
-                                note = decoder.note
-                            }
-                        }
+                    val pulled = try {
+                        pullHtml(html, !seenStored)
                     } catch (error: MimeDecodeException) {
                         if (token != bodyGeneration) return
                         showMissing(error.text)
                         return
-                    } finally {
-                        open?.close()
                     }
+                    if (pulled == null || token != bodyGeneration) return
+                    val text = pulled.text
+                    val note = pulled.note
+                    val truncated = pulled.truncated
+                    val wireRead = pulled.wireRead
                     bodyOffset = wireRead
                     charsetNote = note
                     bodyText = htmlAsText(text)
@@ -1153,6 +1225,15 @@ private fun MessageReaderLoaded(
         }
     }
 
+    fun deleteChecked(file: File) {
+        if (!file.exists()) return
+        try {
+            java.nio.file.Files.delete(file.toPath())
+        } catch (_: java.io.IOException) {
+            postSnack(appContext.getString(R.string.error_delete_failed, file.name))
+        }
+    }
+
     fun fetchAttachment(row: AttachmentRow) {
         if (isNestedPart(row)) {
             openNestedPart(row)
@@ -1180,9 +1261,9 @@ private fun MessageReaderLoaded(
                                 break
                             }
                             val length = if (current.size > 0) {
-                                nextWireCount(offset, current.size, 65536, base64)
+                                nextWireCount(offset, current.size, account.bodyFetchChunk, base64)
                             } else {
-                                65536
+                                account.bodyFetchChunk
                             }
                             if (length <= 0) break
                             val chunk = peekRef(current.section, offset, length)
@@ -1206,23 +1287,23 @@ private fun MessageReaderLoaded(
                         }
                     }
                     if (!tmp.renameTo(dest)) {
-                        tmp.delete()
+                        deleteChecked(tmp)
                         throw java.io.IOException(notConnected)
                     }
                     markAttachment(current.section, offset, done = true, busy = false, path = dest.absolutePath)
                 } catch (error: CancellationException) {
-                    tmp.delete()
+                    deleteChecked(tmp)
                     throw error
                 } catch (error: MimeDecodeException) {
-                    tmp.delete()
+                    deleteChecked(tmp)
                     markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.message ?: "could not decode this part")
                 } catch (error: java.io.IOException) {
-                    tmp.delete()
+                    deleteChecked(tmp)
                     markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.message ?: notConnected)
                 } catch (error: MailFailure) {
-                    tmp.delete()
+                    deleteChecked(tmp)
                     markAttachment(current.section, current.fetched, done = false, busy = false)
                     postSnack(error.text)
                 } finally {
@@ -1307,6 +1388,8 @@ private fun MessageReaderLoaded(
 
     laterRetry.block = { requestView(selectedView) }
 
+    @Composable
+    fun ReaderTail() {
     LaunchedEffect(session, mailbox, uid, uidValidity, loadToken) {
         val reuse = held.holds(MessageRef(accountId, mailbox, uidValidity, uid)) && loadToken == 0
         if (reuse) {
@@ -1818,6 +1901,8 @@ private fun MessageReaderLoaded(
         }
     }
 
+    @Composable
+    fun ReaderChrome() {
     val systemDark = isSystemInDarkTheme()
     val dark = when (account.theme) {
         ThemeMode.Dark -> true
@@ -1830,66 +1915,69 @@ private fun MessageReaderLoaded(
     val htmlForeground = MaterialTheme.colorScheme.onBackground.toArgb()
     val plainFont = if (textLayout == TextLayout.Monospaced) FontFamily.Monospace else null
     val noWrap = textLayout == TextLayout.Monospaced
-    val textZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom)
+    val textZoom = effectiveTextZoom(appTextZoom, pinchZoom)
     linkBridge.onLink = { url -> pendingLink = url }
-    val plainCache = remember {
-        object {
-            var consumed = 0
-            var epoch = -1
-            var styled = false
-            var quote = Color.Unspecified
-            var link = Color.Unspecified
-            var bridge: LinkBridge? = null
-            var layout: TextLayout? = null
-            var flowed = false
-            var delSp = false
-            var pushedFinished = false
-            val stream = FlowedStream()
-            val processed = ArrayList<String>()
-            val annotated = ArrayList<Pair<Boolean, AnnotatedString>>()
+    @Composable
+    fun cachedPlainLines(): List<Pair<Boolean, AnnotatedString>> {
+        val plainCache = remember {
+            object {
+                var consumed = 0
+                var epoch = -1
+                var styled = false
+                var quote = Color.Unspecified
+                var link = Color.Unspecified
+                var bridge: LinkBridge? = null
+                var layout: TextLayout? = null
+                var flowed = false
+                var delSp = false
+                var pushedFinished = false
+                val stream = FlowedStream()
+                val processed = ArrayList<String>()
+                val annotated = ArrayList<Pair<Boolean, AnnotatedString>>()
+            }
+        }
+        return remember(plainVersion, bodyEpoch, bodyComplete, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
+            val styleChanged = !plainCache.styled ||
+                plainCache.quote != quoteTint || plainCache.link != linkColor || plainCache.bridge != linkBridge ||
+                plainCache.layout != textLayout || plainCache.flowed != plainFlowed || plainCache.delSp != plainDelSp
+            if (styleChanged || plainCache.epoch != bodyEpoch || bodyLines.size < plainCache.consumed) {
+                plainCache.processed.clear()
+                plainCache.annotated.clear()
+                plainCache.consumed = 0
+                plainCache.epoch = bodyEpoch
+                plainCache.styled = true
+                plainCache.quote = quoteTint
+                plainCache.link = linkColor
+                plainCache.bridge = linkBridge
+                plainCache.layout = textLayout
+                plainCache.flowed = plainFlowed
+                plainCache.delSp = plainDelSp
+                plainCache.stream.reset()
+                plainCache.pushedFinished = false
+            }
+            if (bodyLines.size > plainCache.consumed || (bodyComplete && !plainCache.pushedFinished)) {
+                val fresh = ArrayList<String>(bodyLines.size - plainCache.consumed)
+                for (i in plainCache.consumed until bodyLines.size) fresh.add(bodyLines[i])
+                val pushed = plainCache.stream.push(fresh, textLayout, plainFlowed, plainDelSp, bodyComplete)
+                plainCache.pushedFinished = bodyComplete
+                val kept = pushed.firstChanged
+                if (kept < plainCache.annotated.size) {
+                    plainCache.annotated.subList(kept, plainCache.annotated.size).clear()
+                }
+                if (kept < plainCache.processed.size) {
+                    plainCache.processed.subList(kept, plainCache.processed.size).clear()
+                }
+                for (line in pushed.lines) {
+                    val quoted = quotedReaderLine(line)
+                    plainCache.annotated.add(quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge))
+                    plainCache.processed.add(line)
+                }
+                plainCache.consumed = bodyLines.size
+            }
+            plainCache.annotated
         }
     }
-    val plainLines = remember(plainVersion, bodyEpoch, bodyComplete, quoteTint, linkColor, linkBridge, textLayout, plainFlowed, plainDelSp) {
-        val styleChanged = !plainCache.styled ||
-            plainCache.quote != quoteTint || plainCache.link != linkColor || plainCache.bridge != linkBridge ||
-            plainCache.layout != textLayout || plainCache.flowed != plainFlowed || plainCache.delSp != plainDelSp
-        if (styleChanged || plainCache.epoch != bodyEpoch || bodyLines.size < plainCache.consumed) {
-            plainCache.processed.clear()
-            plainCache.annotated.clear()
-            plainCache.consumed = 0
-            plainCache.epoch = bodyEpoch
-            plainCache.styled = true
-            plainCache.quote = quoteTint
-            plainCache.link = linkColor
-            plainCache.bridge = linkBridge
-            plainCache.layout = textLayout
-            plainCache.flowed = plainFlowed
-            plainCache.delSp = plainDelSp
-            plainCache.stream.reset()
-            plainCache.pushedFinished = false
-        }
-        if (bodyLines.size > plainCache.consumed || (bodyComplete && !plainCache.pushedFinished)) {
-            val fresh = ArrayList<String>(bodyLines.size - plainCache.consumed)
-            for (i in plainCache.consumed until bodyLines.size) fresh.add(bodyLines[i])
-            val displayed = plainCache.stream.push(fresh, textLayout, plainFlowed, plainDelSp, bodyComplete)
-            plainCache.pushedFinished = bodyComplete
-            var kept = 0
-            val limit = minOf(plainCache.processed.size, displayed.size)
-            while (kept < limit && plainCache.processed[kept] == displayed[kept]) kept++
-            if (kept < plainCache.annotated.size) {
-                plainCache.annotated.subList(kept, plainCache.annotated.size).clear()
-            }
-            for (i in kept until displayed.size) {
-                val line = displayed[i]
-                val quoted = quotedReaderLine(line)
-                plainCache.annotated.add(quoted to plainLineText(line, if (quoted) quoteTint else null, linkColor, linkBridge))
-            }
-            plainCache.processed.clear()
-            plainCache.processed.addAll(displayed)
-            plainCache.consumed = bodyLines.size
-        }
-        plainCache.annotated
-    }
+    val plainLines = cachedPlainLines()
     val readerLayout = effectiveReaderToolbar(account)
     val barActions = visibleReaderActions(readerLayout.toolbar, account.spamMailbox)
     val menuActions = visibleReaderActions(readerLayout.overflow, account.spamMailbox)
@@ -2228,8 +2316,14 @@ private fun MessageReaderLoaded(
                         text = { Text(senderLabel) },
                         onClick = {
                             moreMenu = false
-                            imageTrust = withSender(imageTrust, headerFrom, !on)
-                            if (trustCanSave) saveImageTrust(context.filesDir, accountId, imageTrust)
+                            val nextTrust = withSender(imageTrust, headerFrom, !on)
+                            imageTrust = nextTrust
+                            if (trustCanSave) scope.launch {
+                                val saved = store.onAccount {
+                                    saveImageTrust(context.filesDir, accountId, nextTrust, InstalledGlobals.maxImageTrustBytes.get().toLong())
+                                }
+                                if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
+                            }
                             if (!on) allowImages = true
                         },
                         modifier = Modifier.testTag("reader-images-sender"),
@@ -2251,8 +2345,14 @@ private fun MessageReaderLoaded(
                         text = { Text(listLabel) },
                         onClick = {
                             moreMenu = false
-                            imageTrust = withList(imageTrust, headerListId, !on)
-                            if (trustCanSave) saveImageTrust(context.filesDir, accountId, imageTrust)
+                            val nextTrust = withList(imageTrust, headerListId, !on)
+                            imageTrust = nextTrust
+                            if (trustCanSave) scope.launch {
+                                val saved = store.onAccount {
+                                    saveImageTrust(context.filesDir, accountId, nextTrust, InstalledGlobals.maxImageTrustBytes.get().toLong())
+                                }
+                                if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
+                            }
                             if (!on) allowImages = true
                         },
                         modifier = Modifier.testTag("reader-images-list"),
@@ -2605,7 +2705,7 @@ private fun MessageReaderLoaded(
                             update = { view ->
                                 view.settings.javaScriptEnabled = false
                                 // Text size setting; pinch-zoom is the WebView's own (no on-screen zoom buttons).
-                                view.settings.textZoom = clampTextZoom(account.readerTextZoom)
+                                view.settings.textZoom = effectiveTextZoom(appTextZoom, pinchZoom)
                                 view.settings.setSupportZoom(true)
                                 view.settings.builtInZoomControls = true
                                 view.settings.displayZoomControls = false
@@ -2652,15 +2752,15 @@ private fun MessageReaderLoaded(
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .pinchToZoom { factor ->
-                                    pinchZoom = effectiveTextZoom(account.readerTextZoom, pinchZoom * factor) /
-                                        clampTextZoom(account.readerTextZoom).toFloat()
+                                    pinchZoom = effectiveTextZoom(appTextZoom, pinchZoom * factor) /
+                                        clampTextZoom(appTextZoom).toFloat()
                                 }
                                 .verticalScroll(scroll)
                                 .padding(8.dp)
                                 .testTag("reader-plain"),
                         ) {
                           val base = LocalTextStyle.current
-                          CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = base.fontSize * (textZoom / 100f))) {
+                          CompositionLocalProvider(LocalTextStyle provides base.copy(fontSize = base.fontSize * pinchZoom)) {
                             val note = charsetNote
                             if (note != null) Text(note)
                             if (bodyTruncated && selectedView == BodyView.PlainOrText) {
@@ -2718,6 +2818,10 @@ private fun MessageReaderLoaded(
         }
     }
     }
+    }
+    ReaderChrome()
+    @Composable
+    fun ReaderDialogs() {
     val warning = typeWarning
     if (warning != null) {
         val m = warning.mismatch
@@ -2969,11 +3073,12 @@ private fun MessageReaderLoaded(
             onDismiss = { choosingSave = false },
         )
     }
+    }
     fun takeChosenAddress(choice: TakeAddress) {
         scope.launch {
                 try {
                     val book = account.addressBookMailbox
-                    when (val read = readPineBook(session, book)) {
+                    when (val read = readPineBook(session, book, account.bodyFetchChunk)) {
                         is PineRead.NotBook -> postSnack(read.notice)
                         is PineRead.Ready -> {
                             if (bookHasAddress(read.state.entries, choice.email)) {
@@ -3008,7 +3113,9 @@ private fun MessageReaderLoaded(
                 }
         }
     }
-    if (confirmTake) {
+    @Composable
+    fun TakeAddressDialog() {
+        if (!confirmTake) return
         AlertDialog(
             onDismissRequest = { confirmTake = false },
             text = { Text(stringResource(R.string.reader_take_prompt)) },
@@ -3034,6 +3141,11 @@ private fun MessageReaderLoaded(
             },
         )
     }
+    ReaderDialogs()
+    TakeAddressDialog()
+    }
+    ReaderTail()
+
 }
 
 @Composable
@@ -3154,7 +3266,7 @@ private fun ReaderHeaderCard(
     onToggleAllHeaders: () -> Unit = {},
     onCollapse: () -> Unit = {},
     extraHeaders: List<Pair<String, String>> = emptyList(),
-    unlabeledCharset: String = "ISO-8859-1",
+    unlabeledCharset: String,
 ) {
     val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
@@ -3568,7 +3680,7 @@ suspend fun readCappedText(cap: Int, peek: suspend (offset: Int, length: Int) ->
 }
 
 /** The header block as shown: raw bytes as text, or with RFC 2047 encoded-words decoded line by line on request. */
-fun headerViewText(raw: String, decode: Boolean, fallback: String = "ISO-8859-1"): String =
+fun headerViewText(raw: String, decode: Boolean, fallback: String): String =
     if (!decode) raw else raw.lineSequence().joinToString("\n") {
         org.dlang.liveimap.ui.compose.decodeHeaderWordsForView(it, fallback)
     }
@@ -3583,7 +3695,7 @@ private fun RawTextView(
     onDecode: (Boolean) -> Unit,
     scroll: androidx.compose.foundation.ScrollState,
     modifier: Modifier,
-    unlabeledCharset: String = "ISO-8859-1",
+    unlabeledCharset: String,
 ) {
     val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
     Column(modifier.verticalScroll(scroll).padding(8.dp)) {

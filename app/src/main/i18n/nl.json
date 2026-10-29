@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Eigen column"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Boven de lijst"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatisch (op schermgrootte)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Tekstgrootte van bericht"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Originele kleuren"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Donkere themakleuren"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Toon altijd afbeeldingen van %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "De instelling kon niet worden opgeslagen"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Geavanceerd"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Dit account opnieuw instellen"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d accounts"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d accounts"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Dit bestand heeft geen naam"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Onbekende tekenset; weergegeven als %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Kan %1$s niet verwijderen"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "De tijdelijke kopie %1$s kon niet worden verwijderd"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blok van de tekst"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Tekstgrootte"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Afbeeldingsvertrouwen laden mislukt"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Afbeeldingsvertrouwen opslaan mislukt"}
 ]

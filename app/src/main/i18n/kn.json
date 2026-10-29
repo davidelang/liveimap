@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ಸ್ವಂತ ಕಾಲಮ್"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ಪಟ್ಟಿಯ ಮೇಲೆ"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ಸ್ವಯಂಚಾಲಿತ (ಪರದೆಯ ಗಾತ್ರದಿಂದ)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ಸಂದೇಶ ಪಠ್ಯದ ಗಾತ್ರ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "ಮೂಲ ಬಣ್ಣಗಳು"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ಗಾಢ ಥೀಮ್ ಬಣ್ಣಗಳು"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "ಯಾವಾಗಲೂ %1$s ನಿಂದ ಚಿತ್ರಗಳನ್ನು ತೋರಿಸಿ"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "ಹೊಂದಾಣಿಕೆ ಉಳಿಸಲಾಗಲಿಲ್ಲ"},
 {"key": "setup_advanced", "source": "Advanced", "text": "ಸುಧಾರಿತ"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ಈ ಖಾತೆಯನ್ನು ಮತ್ತೆ ಹೊಂದಿಸಿ"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ಖಾತೆ", "other": "%1$d ಖಾತೆಗಳು"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ಖಾತೆ", "other": "%1$d ಖಾತೆಗಳು"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ಈ ಕಡತಕ್ಕೆ ಹೆಸರಿಲ್ಲ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "ಅಜ್ಞಾತ ಅಕ್ಷರಸಮೂಹ; %1$s ಎಂದು ತೋರಿಸಲಾಗಿದೆ."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ಅಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ತಾತ್ಕಾಲಿಕ ಪ್ರತಿ %1$s ತೆಗೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ಮುಖ್ಯ ಭಾಗದ ತುಂಡು"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ಪಠ್ಯದ ಗಾತ್ರ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ಚಿತ್ರ ನಂಬಿಕೆ ಲೋಡ್ ಆಗಲಿಲ್ಲ"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ಚಿತ್ರ ನಂಬಿಕೆ ಉಳಿಸಲಾಗಲಿಲ್ಲ"}
 ]

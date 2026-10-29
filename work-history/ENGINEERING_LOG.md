@@ -3901,3 +3901,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-28 - Skip SMTP login says what On means
 
 - The SMTP choice labels On as no SMTP login and Off as login required. The password hint no longer says a blank password sends without AUTH.
+
+## 2026-10-28 - MIME reader compose and text size
+
+- Native decode reports the charset and a short read. Bodies stream to files. Compose and the reader split, and compose save, send, and postpone share one actor. Text size is appTextZoom.

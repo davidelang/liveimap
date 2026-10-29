@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ຖັນຂອງຕົນເອງ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ຂ້າງເທິງບັນຊີລາຍຊື່"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ອັດ​ຕະ​ໂນ​ມັດ (ໂດຍ​ຂະ​ຫນາດ​ຫນ້າ​ຈໍ​)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ຂະໜາດຂໍ້ຄວາມ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "ສີຕົ້ນສະບັບ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ສີຫົວຂໍ້ຊ້ໍາ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "ສະແດງຮູບພາບຈາກ %1$s ສະເໝີ"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "ບັນທຶກການຕັ້ງຄ່າບໍ່ໄດ້"},
 {"key": "setup_advanced", "source": "Advanced", "text": "ຂັ້ນສູງ"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ຕັ້ງຄ່າບັນຊີນີ້ອີກຄັ້ງ"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ບັນຊີ"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d ບັນຊີ"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ໄຟລ໌ນີ້ບໍ່ມີຊື່"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "ຊຸດຕົວອັກສອນບໍ່ຮູ້ຈັກ ສະແດງເປັນ %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "ລຶບ %1$s ບໍ່ໄດ້"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ສຳເນົາຊົ່ວຄາວ %1$s ລຶບບໍ່ໄດ້"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ຊິ້ນສ່ວນເນື້ອຫາ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ຂະໜາດຕົວໜັງສື"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ໂຫຼດຄວາມເຊື່ອຖືຮູບບໍ່ໄດ້"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ບັນທຶກຄວາມເຊື່ອຖືຮູບບໍ່ໄດ້"}
 ]

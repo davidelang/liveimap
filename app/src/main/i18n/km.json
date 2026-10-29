@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ជួរឈរផ្ទាល់ខ្លួន"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ខាងលើបញ្ជី"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ស្វ័យប្រវត្តិ (តាមទំហំអេក្រង់)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ទំហំអត្ថបទ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "ពណ៌ដើម"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ពណ៌ស្បែកងងឹត"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "បង្ហាញរូបភាពពី %1$s ជានិច្ច"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "មិនអាចរក្សាទុកការរៀបចំ"},
 {"key": "setup_advanced", "source": "Advanced", "text": "កម្រិតខ្ពស់"},
 {"key": "setup_help", "source": "Set up this account again", "text": "រៀបចំគណនីនេះម្ដងទៀត"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d គណនី"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d គណនី"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ឯកសារនេះគ្មានឈ្មោះ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "សំណុំតួអក្សរមិនស្គាល់ បង្ហាញជា %1$s។"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "មិនអាចលុប %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ច្បាប់ចម្លងបណ្តោះអាសន្ន %1$s មិនអាចដកចេញ"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "បំណែកតួសារ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ទំហំអក្សរ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "មិនអាចផ្ទុកការទុកចិត្តរូបភាព"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "មិនអាចរក្សាទុកការទុកចិត្តរូបភាព"}
 ]

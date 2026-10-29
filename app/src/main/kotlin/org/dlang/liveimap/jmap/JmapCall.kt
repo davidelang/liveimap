@@ -225,6 +225,38 @@ fun platformJmapUpload(
     return jmapLoggedExchange(connection, traffic)
 }
 
+fun platformJmapUploadFile(
+    url: String,
+    file: java.io.File,
+    contentType: String,
+    authorization: String,
+    pin: String,
+    accountKey: String,
+    traffic: TrafficWriter?,
+    policy: TlsPolicy = TlsPolicy(),
+): JmapHttpExchange {
+    val headers = listOf(
+        "Accept" to "application/json",
+        "Content-Type" to contentType,
+        "Authorization" to authorization,
+    )
+    logJmapRequest(traffic, "POST", url, headers, authorization, ByteArray(0))
+    val connection = (URI(url).toURL().openConnection() as java.net.HttpURLConnection).apply {
+        if (this is HttpsURLConnection) pinJmapTls(this, pin, accountKey, policy)
+        instanceFollowRedirects = false
+        connectTimeout = 15_000
+        readTimeout = 15_000
+        requestMethod = "POST"
+        doOutput = true
+        setFixedLengthStreamingMode(file.length())
+        for ((name, value) in headers) setRequestProperty(name, value)
+    }
+    file.inputStream().use { input ->
+        connection.outputStream.use { stream -> input.copyTo(stream) }
+    }
+    return jmapLoggedExchange(connection, traffic)
+}
+
 private val apiRedirectStatuses = setOf(301, 302, 303, 307, 308)
 
 private fun apiHost(url: String): String {

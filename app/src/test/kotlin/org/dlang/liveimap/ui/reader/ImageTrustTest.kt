@@ -45,10 +45,13 @@ class ImageTrustTest {
     fun storeIsPerAccountAndRejectsPathIds() {
         val dir = Files.createTempDirectory("trust").toFile()
         val t = ImageTrust(setOf("a@b.c"))
-        assertTrue(saveImageTrust(dir, "acct1", t))
-        assertEquals(t, loadImageTrust(dir, "acct1"))
-        assertEquals(ImageTrust(), loadImageTrust(dir, "acct2"))
-        assertFalse(saveImageTrust(dir, "../x", t))
+        assertNull(saveImageTrust(dir, "acct1", t, 1_000_000).error)
+        assertEquals(t, loadImageTrust(dir, "acct1", 1_000_000).trust)
+        assertEquals(ImageTrust(), loadImageTrust(dir, "acct2", 1_000_000).trust)
+        assertEquals("maxImageTrustBytes", saveImageTrust(dir, "../x", t, 1_000_000).error)
+        val limited = imageTrustFile(dir, "acct1")!!
+        assertEquals("maxImageTrustBytes", loadImageTrust(dir, "acct1", limited.length()).error)
+        assertEquals("maxImageTrustBytes", saveImageTrust(dir, "acct1", t, 1).error)
         assertNull(imageTrustFile(dir, ".."))
         dir.deleteRecursively()
     }
@@ -56,6 +59,6 @@ class ImageTrustTest {
     @Test
     fun listIdFromHeader() {
         val h = "From: a@b.c\r\nList-Id: Dev =?UTF-8?Q?L=C3=BCst?=\r\n <dev.example>\r\nSubject: x\r\n"
-        assertEquals("dev.example", listIdKey(headerFields(h).listId))
+        assertEquals("dev.example", listIdKey(headerFields(h, "UTF-8").listId))
     }
 }

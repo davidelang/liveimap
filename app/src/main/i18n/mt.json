@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Kolonna proprja"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Fuq il-lista"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Awtomatiku (skond id-daqs tal-iskrin)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Id-daqs tat-test tal-messaġġ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Kuluri oriġinali"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Kuluri ta 'tema skur"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Dejjem uri stampi minn %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Is-setup ma setax jiġi ssejvjat"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Avvanzat"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Issettja dan il-kont mill-ġdid"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d kont", "two": "%1$d kontijiet", "few": "%1$d kontijiet", "many": "%1$d kont", "other": "%1$d kont"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d kont", "two": "%1$d kontijiet", "few": "%1$d kontijiet", "many": "%1$d kont", "other": "%1$d kont"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Dan il-fajl m'għandux isem"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Sett ta' karattri mhux magħruf; muri bħala %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Ma setax jitħassar %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Il-kopja temporanja %1$s ma setgħetx titneħħa"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blokk tal-ġisem"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Daqs tat-test"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Il-fiduċja tal-immaġni ma setgħetx titgħabba"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Il-fiduċja tal-immaġni ma setgħetx tiġi ssejvjata"}
 ]

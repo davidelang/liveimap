@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Собствена колона"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Над списъка"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автоматично (по размер на екрана)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Размер на текста на съобщението"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Оригинални цветове"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Тъмни цветове на темата"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Винаги показвай изображения от %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Настройката не можа да се запише"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Разширени"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Настройте този профил отново"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d профил", "other": "%1$d профила"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d профил", "other": "%1$d профила"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Този файл няма име"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Непознат набор знаци; показано като %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Неуспешно изтриване на %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Временното копие %1$s не можа да бъде премахнато"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Част от тялото"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Размер на текста"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Доверието към изображенията не се зареди"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Доверието към изображенията не се записа"}
 ]

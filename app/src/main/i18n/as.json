@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "নিজৰ স্তম্ভ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "তালিকাৰ ওপৰত"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "স্বয়ংক্ৰিয় (পৰ্দাৰ আকাৰ অনুসৰি)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "বাৰ্তাৰ লিখনীৰ আকাৰ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "মূল ৰং"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "গাঢ় থিমৰ ৰং"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "সদায় %1$s ৰ পৰা ছবি দেখুৱাওক"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "স্থাপন সংৰক্ষণ নহ’ল"},
 {"key": "setup_advanced", "source": "Advanced", "text": "উন্নত"},
 {"key": "setup_help", "source": "Set up this account again", "text": "এই একাউণ্ট পুনৰ স্থাপন কৰক"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটা একাউণ্ট", "other": "%1$dটা একাউণ্ট"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$dটা একাউণ্ট", "other": "%1$dটা একাউণ্ট"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "এই ফাইলৰ কোনো নাম নাই"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "অজ্ঞাত আখৰৰ সংহতি; %1$s হিচাপে দেখুওৱা হৈছে।"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s মচিব পৰা নগ'ল"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "অস্থায়ী প্ৰতিলিপি %1$s আঁতৰাব পৰা নগ'ল"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "বডি আনিবলৈ খণ্ড"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "লিখনীৰ আকাৰ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ছবিৰ বিশ্বাস ল'ব পৰা নগ'ল"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ছবিৰ বিশ্বাস সাঁচিব পৰা নগ'ল"}
 ]

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ନିଜର ସ୍ତମ୍ଭ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ତାଲିକାର ଉପରେ |"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ସ୍ୱୟଂଚାଳିତ (ସ୍କ୍ରିନ୍ ଆକାର ଅନୁଯାୟୀ)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ବାର୍ତ୍ତା ପାଠ୍ୟ ଆକାର |"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "ମୂଳ ରଙ୍ଗ |"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ଗା ark ଥିମ୍ ରଙ୍ଗ |"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "ସର୍ବଦା %1$s ରୁ ପ୍ରତିଛବି ଦେଖାନ୍ତୁ |"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "ସେଟଅପ୍ ସଞ୍ଚୟ ହେଲା ନାହିଁ"},
 {"key": "setup_advanced", "source": "Advanced", "text": "ଉନ୍ନତ"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ଏହି ଖାତା ପୁଣି ସେଟ୍ କରନ୍ତୁ"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ଖାତା", "other": "%1$d ଖାତା"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ଖାତା", "other": "%1$d ଖାତା"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ଏହି ଫାଇଲର କୌଣସି ନାମ ନାହିଁ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "ଅଜଣା ଅକ୍ଷରସେଟ; %1$s ଭାବେ ଦେଖାଯାଇଛି।"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ବିଲୋପ ହେଲା ନାହିଁ"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ଅସ୍ଥାୟୀ ନକଲ %1$s ହଟିଲା ନାହିଁ"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ବଡି ଖଣ୍ଡ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ପାଠ୍ୟ ଆକାର"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ଚିତ୍ର ବିଶ୍ୱାସ ଲୋଡ ହେଲା ନାହିଁ"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ଚିତ୍ର ବିଶ୍ୱାସ ସଞ୍ଚୟ ହେଲା ନାହିଁ"}
 ]

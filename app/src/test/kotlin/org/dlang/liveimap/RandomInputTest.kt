@@ -35,7 +35,7 @@ class RandomInputTest {
         "\r", "\n", "\u0000", "\uFFFD", "\uD800", "<", ">", "\"", "'", "\\", ",", ";", ":", "@", "(", ")", "<a href=\"",
         "</a>", "<meta http-equiv=refresh content=\"0;url=x\">", "<!--", "-->", "<script>", "&amp;", "&#x41;", "&#99999999;",
         "https://", "xn--", "javascript:", "%00", "\t", "\nSubject: x", "List-Id: <", "From: ", "\u202E", "\u00e9",
-        "Or\n", "Yes\t", "\u001e", "\u001f", "Group\t", "theme=", "readerTextZoom=",
+        "Or\n", "Yes\t", "\u001e", "\u001f", "Group\t", "theme=", "bodyFetchChunk=",
     )
     private val seeds = listOf(
         "=?UTF-8?B?w6l0w6k=?= <a@b.c>, \"Doe, J\" <j@d.e>",
@@ -43,7 +43,7 @@ class RandomInputTest {
         "<html><head><meta charset=utf-8></head><body><p>Hi <b>x</b></p><a href=\"https://a.test/x\">www.b.test</a>" +
             "<blockquote>q</blockquote><table><tr><td>1</td></tr></table></body></html>",
         "Or\nYes\tSubject\tLiveIMAP\nNo\tFrom\tbob",
-        "imapHost=h\nimapPort=993\ntheme=Dark\nreaderTextZoom=130\n",
+        "imapHost=h\nimapPort=993\ntheme=Dark\nbodyFetchChunk=8192\n",
         "sender a@b.c\nlist l.example\n",
         "a\r\nb\r\n> quoted\r\n",
     )
@@ -64,8 +64,8 @@ class RandomInputTest {
     }
 
     private val targets: List<Pair<String, (String) -> Unit>> = listOf(
-        "decodeHeaderWords" to { s -> decodeHeaderWords(s) },
-        "headerFields" to { s -> headerFields(s).let { listIdKey(it.listId) } },
+        "decodeHeaderWords" to { s -> decodeHeaderWords(s, "UTF-8") },
+        "headerFields" to { s -> headerFields(s, "UTF-8").let { listIdKey(it.listId) } },
         "splitAddresses" to { s -> splitAddresses(s).forEach { addrSpec(it) } },
         "htmlAsText" to { s -> htmlAsText(s) },
         "stripMetaRefresh" to { s -> stripMetaRefresh(s) },

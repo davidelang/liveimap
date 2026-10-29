@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Cột riêng"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Phía trên danh sách"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Tự động (theo kích thước màn hình)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Kích thước văn bản tin nhắn"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Màu gốc"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Màu sắc chủ đề tối"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Luôn hiển thị hình ảnh từ %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Không lưu được thiết lập"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Nâng cao"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Thiết lập lại tài khoản này"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d tài khoản"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d tài khoản"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Tệp này không có tên"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Bộ ký tự không xác định; hiển thị là %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Không xóa được %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Không gỡ được bản sao tạm %1$s"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Khối nội dung"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Cỡ chữ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Không tải được tin cậy hình ảnh"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Không lưu được tin cậy hình ảnh"}
 ]

@@ -312,3 +312,6 @@ fun pinnedJmapPost(pin: String, accountKey: String, traffic: org.dlang.liveimap.
 
 fun pinnedJmapUpload(pin: String, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, ByteArray, String, String) -> JmapHttpExchange =
     { url, bytes, type, authorization -> platformJmapUpload(url, bytes, type, authorization, pin, accountKey, traffic, policy) }
+
+fun pinnedJmapUploadFile(pin: String, accountKey: String, traffic: org.dlang.liveimap.engine.TrafficWriter?, policy: TlsPolicy = TlsPolicy()): (String, java.io.File, String, String) -> JmapHttpExchange =
+    { url, file, type, authorization -> platformJmapUploadFile(url, file, type, authorization, pin, accountKey, traffic, policy) }

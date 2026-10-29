@@ -64,7 +64,7 @@ class ViewerHeadersTest {
         val h = "From: a@x\r\nX-Mailer: M\r\nList-Id: Foo\r\n <foo.x>\r\nSubject: =?UTF-8?Q?h=C3=A9?=\r\n\r\n"
         assertEquals(
             listOf("List-Id" to "Foo <foo.x>", "X-Mailer" to "M", "Subject" to "hé"),
-            org.dlang.liveimap.ui.reader.viewerHeaderLines(h, "List-Id, X-Mailer, Subject, X-None"),
+            org.dlang.liveimap.ui.reader.viewerHeaderLines(h, "List-Id, X-Mailer, Subject, X-None", "ISO-8859-1"),
         )
     }
 }
@@ -72,7 +72,7 @@ class ViewerHeadersTest {
 class CrossAccountTest {
     @Test
     fun listPost() {
-        fun p(h: String) = listPostAddress(parseRfc822("$h\r\nSubject: s\r\n\r\nb".toByteArray()))
+        fun p(h: String) = listPostAddress(parseRfc822("$h\r\nSubject: s\r\n\r\nb".toByteArray(), "ISO-8859-1"))
         assertEquals("dev@lists.x", p("List-Post: <mailto:dev@lists.x?subject=hi>"))
         assertEquals(null, p("List-Post: NO (posting not allowed)"))
         assertEquals(null, p("From: a@x"))
@@ -91,12 +91,12 @@ class CrossAccountTest {
 
     @Test
     fun sentToPrefersOwnServersDeliveryHeader() {
-        fun m(h: String) = parseRfc822("$h\r\nSubject: s\r\n\r\nb".toByteArray())
+        fun m(h: String) = parseRfc822("$h\r\nSubject: s\r\n\r\nb".toByteArray(), "ISO-8859-1")
         // F65: attacker Cc's the work address; the server's top Delivered-To says it came to home
         val forged = m("Delivered-To: home@x\r\nDelivered-To: work@corp\r\nTo: home@x\r\nCc: work@corp")
-        assertEquals(listOf("home@x"), sentToAddresses(forged).map { addrSpec(it) })
-        assertEquals(listOf("a@x", "b@x"), sentToAddresses(m("To: a@x\r\nCc: b@x")).map { addrSpec(it) })
-        assertEquals(listOf("me@x"), sentToAddresses(m("X-Original-To: me@x\r\nTo: list@x")).map { addrSpec(it) })
+        assertEquals(listOf("home@x"), sentToAddresses(forged, "ISO-8859-1").map { addrSpec(it) })
+        assertEquals(listOf("a@x", "b@x"), sentToAddresses(m("To: a@x\r\nCc: b@x"), "ISO-8859-1").map { addrSpec(it) })
+        assertEquals(listOf("me@x"), sentToAddresses(m("X-Original-To: me@x\r\nTo: list@x"), "ISO-8859-1").map { addrSpec(it) })
     }
 
     @Test

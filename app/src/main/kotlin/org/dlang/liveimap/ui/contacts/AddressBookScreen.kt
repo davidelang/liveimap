@@ -87,7 +87,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
     }
 
     suspend fun read(mailbox: String) {
-        when (val r = readPineBook(session, mailbox)) {
+        when (val r = readPineBook(session, mailbox, settings?.bodyFetchChunk ?: 65536)) {
             is PineRead.NotBook -> { state = null; notice = r.notice }
             is PineRead.Ready -> state = r.state
         }

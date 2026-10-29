@@ -82,7 +82,7 @@ internal fun deviceCopyAfterSmtpFailure(copy: DeviceCopy, text: String): DeviceC
 
 internal fun smtpFailureText(text: String): String = text.removePrefix(SmtpUncertainPrefix)
 
-internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
+internal fun unsentSubject(bytes: ByteArray, missingSubject: String, charset: String): String {
     val text = bytes.toString(Charsets.ISO_8859_1)
     val logical = ArrayList<String>()
     for (raw in text.split('\n')) {
@@ -99,7 +99,7 @@ internal fun unsentSubject(bytes: ByteArray, missingSubject: String): String {
         if (colon <= 0) continue
         val name = line.substring(0, colon).trim()
         if (!name.equals("Subject", ignoreCase = true)) continue
-        return decodeHeaderWords(line.substring(colon + 1).trim())
+        return decodeHeaderWords(line.substring(colon + 1).trim(), charset)
     }
     return missingSubject
 }
@@ -298,7 +298,7 @@ internal fun readCopies(context: Context, accountId: String = ""): List<DeviceCo
  * Writes the copy atomically (temp file + rename, message file before meta, so a crash never leaves a meta pointing at
  * half a message). Returns false when it could not be written; the caller tells the user (F50).
  */
-internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boolean {
+internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String, charset: String = ""): Boolean {
     val dir = unsentDirs(filesDir, accountId).firstOrNull() ?: return false
     try {
         dir.mkdirs()
@@ -309,13 +309,13 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boo
                 out.fd.sync()
             }
             if (!tmp.renameTo(File(dir, name))) {
-                tmp.delete()
+                Files.delete(tmp.toPath())
                 throw java.io.IOException("rename failed")
             }
         }
         val message = copy.file.readBytes()
         atomic("${copy.id}.rfc822", message)
-        val subject = unsentSubject(headerThroughBlankLine(message), "")
+        val subject = unsentSubject(headerThroughBlankLine(message), "", charset)
             .replace("\n", "")
             .replace("\r", "")
         val text = buildString {
@@ -356,13 +356,18 @@ internal fun writeCopy(filesDir: File, copy: DeviceCopy, accountId: String): Boo
     }
 }
 
-internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = ""): Boolean =
-    writeCopy(context.filesDir, copy, accountId)
+internal fun writeCopy(context: Context, copy: DeviceCopy, accountId: String = "", charset: String = ""): Boolean =
+    writeCopy(context.filesDir, copy, accountId, charset)
+
+private fun deletePresent(file: File) {
+    if (!file.exists()) return
+    Files.delete(file.toPath())
+}
 
 internal fun deleteCopy(filesDir: File, id: String, accountId: String) {
     for (dir in unsentDirs(filesDir, accountId)) {
-        File(dir, "$id.rfc822").delete()
-        File(dir, "$id.meta").delete()
+        deletePresent(File(dir, "$id.rfc822"))
+        deletePresent(File(dir, "$id.meta"))
         val message = File(dir, id)
         if (message.isDirectory) message.deleteRecursively()
     }

@@ -679,7 +679,7 @@ fun rejectedAccountSettings(settings: AccountSettings): String? {
         "sievePort" to settings.sievePort.toLong(),
         "extraIdleBudget" to settings.extraIdleBudget.toLong(),
         "maxConnections" to settings.maxConnections.toLong(),
-        "readerTextZoom" to settings.readerTextZoom.toLong(),
+        "bodyFetchChunk" to settings.bodyFetchChunk.toLong(),
         "composerWrapColumn" to settings.composerWrapColumn.toLong(),
         "idleWakeSeconds" to settings.idleWakeSeconds.toLong(),
         "pollSeconds" to settings.pollSeconds.toLong(),

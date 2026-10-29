@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Свой столбец"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Над списком"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автоматически (по размеру экрана)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Размер текста сообщения"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Оригинальные цвета"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Темные цвета темы"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Всегда показывать изображения из %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Не удалось сохранить настройку"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Дополнительно"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Настроить эту учётную запись снова"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d учётная запись", "few": "%1$d учётные записи", "many": "%1$d учётных записей", "other": "%1$d учётной записи"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d учётная запись", "few": "%1$d учётные записи", "many": "%1$d учётных записей", "other": "%1$d учётной записи"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "У этого файла нет имени"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Неизвестная кодировка; показано как %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Не удалось удалить %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Временную копию %1$s не удалось удалить"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Блок тела"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Размер текста"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Не удалось загрузить доверие к изображениям"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Не удалось сохранить доверие к изображениям"}
 ]

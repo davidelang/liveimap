@@ -9711,7 +9711,7 @@ static bool setup_conv(ConvState * st, const char * name) {
 }
 
 static bool table_gap(const std::string & n) {
-    return n == "gb18030" || n == "euc-jp" || n == "eucjp" || n == "cseucpkdfmtjapanese" || n == "iso-2022-jp-2";
+    return n == "iso-2022-jp-2";
 }
 
 static bool tables_claim(const char * name) {
@@ -10042,6 +10042,24 @@ static void feed_utf8(std::string * out, ConvState * st, const unsigned char * b
     }
 }
 
+#include "jis0212.inc"
+#include "gb18030_ranges.inc"
+
+static uint32_t gb18030_range_cp(unsigned pointer) {
+    if ((pointer > 39419u && pointer < 189000u) || pointer > 1237575u) return 0xFFFFFFFFu;
+    if (pointer == 7457u) return 0xE7C7u;
+    if (pointer >= 189000u) return 0x10000u + (pointer - 189000u);
+    size_t lo = 0;
+    size_t hi = kGb18030Range_n;
+    while (lo + 1u < hi) {
+        size_t mid = lo + (hi - lo) / 2u;
+        if (kGb18030RangePtr[mid] <= pointer) lo = mid;
+        else hi = mid;
+    }
+    if (kGb18030Range_n == 0 || kGb18030RangePtr[lo] > pointer) return 0xFFFFFFFFu;
+    return kGb18030RangeCp[lo] + pointer - kGb18030RangePtr[lo];
+}
+
 static void feed_dbcs(std::string * out, ConvState * st, const unsigned char * b, size_t len, bool final) {
     size_t i = 0;
     while (i < len) {
@@ -10085,17 +10103,42 @@ static void feed_dbcs(std::string * out, ConvState * st, const unsigned char * b
             continue;
         }
         if (st->kind == KIND_EUCJP && c == 0x8Fu) {
-            if (i + 3 > len) {
+            if (i + 1 >= len) {
                 if (!final) hold_rest(st, b + i, len - i);
                 else emit_cp(out, st, 0xFFFDu);
                 return;
             }
-            emit_cp(out, st, 0xFFFDu);
+            unsigned char lead = b[i + 1];
+            if (lead < 0xA1u || lead > 0xFEu) {
+                emit_cp(out, st, 0xFFFDu);
+                ++i;
+                continue;
+            }
+            if (i + 2 >= len) {
+                if (!final) hold_rest(st, b + i, len - i);
+                else emit_cp(out, st, 0xFFFDu);
+                return;
+            }
+            unsigned char trail = b[i + 2];
+            if (trail < 0xA1u || trail > 0xFEu) {
+                emit_cp(out, st, 0xFFFDu);
+                i += 2;
+                continue;
+            }
+            uint16_t cp = 0xFFFDu;
+            unsigned key = (static_cast<unsigned>(lead) << 8) | trail;
+            if (!pair_find(kJis0212, kJis0212_n, key, &cp)) cp = 0xFFFDu;
+            emit_cp(out, st, cp);
             i += 3;
             continue;
         }
         if (c < 0x80u) {
             emit_cp(out, st, c);
+            ++i;
+            continue;
+        }
+        if (st->kind == KIND_GB18030 && c == 0x80u) {
+            emit_cp(out, st, 0x20ACu);
             ++i;
             continue;
         }
@@ -10107,12 +10150,34 @@ static void feed_dbcs(std::string * out, ConvState * st, const unsigned char * b
             }
             unsigned char s = b[i + 1];
             if (s >= 0x30u && s <= 0x39u) {
-                if (i + 4 > len) {
+                if (i + 2 >= len) {
                     if (!final) hold_rest(st, b + i, len - i);
                     else emit_cp(out, st, 0xFFFDu);
                     return;
                 }
-                emit_cp(out, st, 0xFFFDu);
+                unsigned char third = b[i + 2];
+                if (third < 0x81u || third > 0xFEu) {
+                    emit_cp(out, st, 0xFFFDu);
+                    i += 2;
+                    continue;
+                }
+                if (i + 3 >= len) {
+                    if (!final) hold_rest(st, b + i, len - i);
+                    else emit_cp(out, st, 0xFFFDu);
+                    return;
+                }
+                unsigned char fourth = b[i + 3];
+                if (fourth < 0x30u || fourth > 0x39u) {
+                    emit_cp(out, st, 0xFFFDu);
+                    i += 3;
+                    continue;
+                }
+                unsigned pointer = (static_cast<unsigned>(c) - 0x81u) * 12600u +
+                    (static_cast<unsigned>(s) - 0x30u) * 1260u +
+                    (static_cast<unsigned>(third) - 0x81u) * 10u +
+                    (static_cast<unsigned>(fourth) - 0x30u);
+                uint32_t cp = gb18030_range_cp(pointer);
+                emit_cp(out, st, cp == 0xFFFFFFFFu ? 0xFFFDu : cp);
                 i += 4;
                 continue;
             }
@@ -10468,8 +10533,10 @@ static char * dup_cstr(const char * s) {
 
 struct TextDecode {
     std::string text;
-    std::string note;
+    std::string charsetUsed;
     int status;
+    int unknownCharset;
+    int unknown;
 };
 
 static void apply_charset(const std::string & binary, const char * declared, const char * fallback, bool final,
@@ -10486,17 +10553,8 @@ static void apply_charset(const std::string & binary, const char * declared, con
     bool known = !missing && known_charset(label);
     const char * decode_as = known ? label : used;
     if (reset) {
-        if (!known) {
-            if (missing) {
-                out->note = "no character set was declared; shown as ";
-                out->note += used;
-            } else {
-                out->note = "unknown character set ";
-                out->note += label;
-                out->note += "; shown as ";
-                out->note += used;
-            }
-        }
+        out->charsetUsed = decode_as;
+        out->unknownCharset = known ? 0 : 1;
         if (known && !tables_finish(decode_as)) {
             memset(st, 0, sizeof(*st));
             st->use_java = true;
@@ -10516,16 +10574,11 @@ static void apply_charset(const std::string & binary, const char * declared, con
         out->text.append(utf8);
         return;
     }
-    size_t before = out->text.size();
     bool saw_before = st->saw;
     st->saw = false;
     convert_feed(&out->text, st, binary.data(), binary.size(), final);
-    if (st->saw && known) {
-        out->note = "contains bytes that are not valid ";
-        out->note += label;
-    }
+    if (st->saw) out->unknown = 1;
     if (!st->saw) st->saw = saw_before;
-    (void)before;
 }
 
 struct MimeStream {
@@ -10537,7 +10590,9 @@ struct MimeStream {
     bool conv_ready;
     bool failed;
     bool error_sent;
-    std::string note;
+    std::string charset_used;
+    int unknown_charset;
+    int unknown;
     std::string java_name;
     std::string java_raw;
     std::string java_shown;
@@ -10553,6 +10608,8 @@ static TextDecode decode_all(const char * bytes, size_t len, const char * declar
     const char * encoding) {
     TextDecode out;
     out.status = 0;
+    out.unknownCharset = 0;
+    out.unknown = 0;
     std::string in(bytes == nullptr ? "" : bytes, bytes == nullptr ? 0 : len);
     int mech = mechanism_of(encoding);
     std::string ready;
@@ -10581,12 +10638,18 @@ static void mime_decode_ensure(void) {
     if (extended_charconv != mime_extended_charconv) mime_decode_install();
 }
 
+static void fill_text_flags(const TextDecode & got, char ** charset_used, int * unknown_charset, int * unknown) {
+    if (charset_used != nullptr) *charset_used = dup_str(got.charsetUsed);
+    if (unknown_charset != nullptr) *unknown_charset = got.unknownCharset;
+    if (unknown != nullptr) *unknown = got.unknown;
+}
+
 extern "C" int mime_decode_text(const char * bytes, size_t len, const char * declared, const char * fallback,
-    const char * encoding, char ** text, char ** note, int * status) {
+    const char * encoding, char ** text, char ** charset_used, int * status, int * unknown_charset, int * unknown) {
     mime_decode_ensure();
     TextDecode got = decode_all(bytes, len, declared, fallback, encoding);
     if (text != nullptr) *text = dup_str(got.text);
-    if (note != nullptr) *note = dup_str(got.note);
+    fill_text_flags(got, charset_used, unknown_charset, unknown);
     if (status != nullptr) *status = got.status;
     return got.status;
 }
@@ -10600,20 +10663,30 @@ extern "C" struct MimeStream * mime_stream_open(const char * declared, const cha
     stream->conv_ready = false;
     stream->failed = false;
     stream->error_sent = false;
+    stream->unknown_charset = 0;
+    stream->unknown = 0;
     memset(&stream->conv, 0, sizeof(stream->conv));
     return stream;
 }
 
-extern "C" char * mime_stream_take(struct MimeStream * stream, const char * bytes, size_t len, int final, char ** note,
-    int * status) {
+static void stream_flags(MimeStream * stream, char ** charset_used, int * unknown_charset, int * unknown) {
+    if (charset_used != nullptr) *charset_used = dup_str(stream->charset_used);
+    if (unknown_charset != nullptr) *unknown_charset = stream->unknown_charset;
+    if (unknown != nullptr) *unknown = stream->unknown;
+}
+
+extern "C" char * mime_stream_take(struct MimeStream * stream, const char * bytes, size_t len, int final,
+    char ** charset_used, int * status, int * unknown_charset, int * unknown) {
     if (stream == nullptr) {
         if (status != nullptr) *status = 1;
-        if (note != nullptr) *note = dup_cstr("");
+        if (charset_used != nullptr) *charset_used = dup_cstr("");
+        if (unknown_charset != nullptr) *unknown_charset = 0;
+        if (unknown != nullptr) *unknown = 0;
         return dup_cstr(kDecodeError);
     }
     if (stream->failed) {
         if (status != nullptr) *status = 1;
-        if (note != nullptr) *note = dup_str(stream->note);
+        stream_flags(stream, charset_used, unknown_charset, unknown);
         if (!stream->error_sent) {
             stream->error_sent = true;
             return dup_cstr(kDecodeError);
@@ -10628,7 +10701,7 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
         stream->error_sent = true;
         stream->wire.clear();
         if (status != nullptr) *status = 1;
-        if (note != nullptr) *note = dup_cstr("");
+        stream_flags(stream, charset_used, unknown_charset, unknown);
         return dup_cstr(kDecodeError);
     }
     stream->wire.swap(rest);
@@ -10637,21 +10710,26 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
         stream->failed = true;
         stream->error_sent = true;
         if (status != nullptr) *status = 1;
-        if (note != nullptr) *note = dup_cstr("");
+        stream_flags(stream, charset_used, unknown_charset, unknown);
         return dup_cstr(kDecodeError);
     }
     TextDecode part;
     part.status = 0;
+    part.unknownCharset = stream->unknown_charset;
+    part.unknown = 0;
+    part.charsetUsed = stream->charset_used;
     if (!stream->conv_ready) {
         apply_charset(binary, stream->declared.c_str(), stream->fallback.c_str(), final != 0, &stream->conv, true, &part,
             &stream->java_name);
         stream->conv_ready = true;
-        stream->note = part.note;
+        stream->charset_used = part.charsetUsed;
+        stream->unknown_charset = part.unknownCharset;
+        if (part.unknown) stream->unknown = 1;
         if (part.status != 0) {
             stream->failed = true;
             stream->error_sent = true;
             if (status != nullptr) *status = 1;
-            if (note != nullptr) *note = dup_str(stream->note);
+            stream_flags(stream, charset_used, unknown_charset, unknown);
             return dup_cstr(part.text.empty() ? kDecodeError : part.text.c_str());
         }
         if (stream->conv.use_java) {
@@ -10659,7 +10737,6 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
             stream->java_shown = part.text;
         }
     } else if (stream->conv.use_java) {
-        part.note = stream->note;
         stream->java_raw.append(binary);
         std::string utf8;
         int r = java_charset_utf8(stream->java_name.c_str(), stream->java_raw.data(), stream->java_raw.size(), final != 0, &utf8);
@@ -10667,7 +10744,7 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
             stream->failed = true;
             stream->error_sent = true;
             if (status != nullptr) *status = 1;
-            if (note != nullptr) *note = dup_str(stream->note);
+            stream_flags(stream, charset_used, unknown_charset, unknown);
             return dup_cstr(kDecodeError);
         }
         if (utf8.size() >= stream->java_shown.size() && utf8.compare(0, stream->java_shown.size(), stream->java_shown) == 0) {
@@ -10677,18 +10754,12 @@ extern "C" char * mime_stream_take(struct MimeStream * stream, const char * byte
         }
         stream->java_shown.swap(utf8);
     } else {
-        part.note = stream->note;
-        bool known = !stream->declared.empty() && known_charset(stream->declared.c_str());
         stream->conv.saw = false;
         convert_feed(&part.text, &stream->conv, binary.data(), binary.size(), final != 0);
-        if (stream->conv.saw && known) {
-            stream->note = "contains bytes that are not valid ";
-            stream->note += stream->declared;
-        }
-        part.note = stream->note;
+        if (stream->conv.saw) stream->unknown = 1;
     }
-    if (note != nullptr) *note = dup_str(stream->note);
     if (status != nullptr) *status = 0;
+    stream_flags(stream, charset_used, unknown_charset, unknown);
     return dup_str(part.text);
 }
 
@@ -11249,13 +11320,15 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t * data, size_t size) {
     unsigned op = data[0];
     if (op % 5u == 0u) {
         char * text = nullptr;
-        char * note = nullptr;
+        char * charset_used = nullptr;
         int status = 0;
+        int unknown_charset = 0;
+        int unknown = 0;
         const char * enc = (op & 8u) != 0 ? "base64" : "quoted-printable";
         const char * cs = (op & 16u) != 0 ? "utf-8" : "x-unknown";
-        mime_decode_text(bytes, n, cs, "ISO-8859-1", enc, &text, &note, &status);
+        mime_decode_text(bytes, n, cs, "ISO-8859-1", enc, &text, &charset_used, &status, &unknown_charset, &unknown);
         free(text);
-        free(note);
+        free(charset_used);
     } else if (op % 5u == 1u) {
         char * text = mime_preview_text(bytes, n, "utf-8", "quoted-printable", op & 1u, nullptr, "ISO-8859-1");
         free(text);

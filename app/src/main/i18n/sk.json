@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Vlastný stĺpec"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Nad zoznamom"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automaticky (podľa veľkosti obrazovky)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Veľkosť textu správy"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Pôvodné farby"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tmavé farby motívu"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Vždy zobrazovať obrázky z %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Nastavenie sa nepodarilo uložiť"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Rozšírené"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Nastaviť toto konto znova"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtov"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d účet", "few": "%1$d účty", "many": "%1$d účtu", "other": "%1$d účtov"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Tento súbor nemá názov"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Neznáma znaková sada; zobrazené ako %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nepodarilo sa odstrániť %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Dočasnú kópiu %1$s sa nepodarilo odstrániť"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blok tela"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Veľkosť textu"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Dôveru obrázkov sa nepodarilo načítať"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Dôveru obrázkov sa nepodarilo uložiť"}
 ]

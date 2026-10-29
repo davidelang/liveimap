@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Свая калонка"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Над спісам"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Аўтаматычна (у залежнасці ад памеру экрана)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Памер тэксту паведамлення"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Арыгінальныя колеры"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Цёмныя колеры тэмы"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Заўсёды паказваць выявы з %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Не ўдалося захаваць наладку"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Дадаткова"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Наладзіць гэты ўліковы запіс зноў"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d уліковы запіс", "few": "%1$d уліковыя запісы", "many": "%1$d уліковых запісаў", "other": "%1$d уліковага запісу"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d уліковы запіс", "few": "%1$d уліковыя запісы", "many": "%1$d уліковых запісаў", "other": "%1$d уліковага запісу"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Гэты файл не мае назвы"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Невядомая кадзіроўка; паказана як %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Не ўдалося выдаліць %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Часовую копію %1$s не ўдалося выдаліць"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Кавалак цела"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Памер тэксту"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Не ўдалося загрузіць давер да выяў"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Не ўдалося захаваць давер да выяў"}
 ]

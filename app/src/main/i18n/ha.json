@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Rukunin kansa"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Sama da jerin"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Atomatik (ta girman allo)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Girman rubutun saƙo"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Launuka na asali"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Launin jigo mai duhu"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Koyaushe nuna hotuna daga %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Ba a iya ajiye saitin ba"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Ci gaba"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Sake saita wannan asusu"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d asusu", "other": "%1$d asusuna"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d asusu", "other": "%1$d asusuna"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Wannan fayil ba shi da suna"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Haruffa da ba a sani ba; an nuna a matsayin %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "An kasa share %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Ba a iya cire kwafin wucin gadi %1$s ba"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Yankin jikin saƙo"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Girman rubutu"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "An kasa loda amincewar hoto"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "An kasa ajiye amincewar hoto"}
 ]

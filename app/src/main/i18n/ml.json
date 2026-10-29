@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "സ്വന്തം കോളം"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "പട്ടികയ്ക്ക് മുകളിൽ"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "സ്വയമേവ (സ്ക്രീൻ വലിപ്പം അനുസരിച്ച്)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "സന്ദേശ വാചക വലുപ്പം"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "യഥാർത്ഥ നിറങ്ങൾ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ഇരുണ്ട തീം നിറങ്ങൾ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s-ൽ നിന്നുള്ള ചിത്രങ്ങൾ എപ്പോഴും കാണിക്കുക"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "സജ്ജീകരണം സംരക്ഷിക്കാനായില്ല"},
 {"key": "setup_advanced", "source": "Advanced", "text": "വിപുലം"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ഈ അക്കൗണ്ട് വീണ്ടും സജ്ജമാക്കുക"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d അക്കൗണ്ട്", "other": "%1$d അക്കൗണ്ടുകൾ"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d അക്കൗണ്ട്", "other": "%1$d അക്കൗണ്ടുകൾ"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ഈ ഫയലിന് പേരില്ല"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "അജ്ഞാത അക്ഷരക്കൂട്ടം; %1$s ആയി കാണിക്കുന്നു."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ഇല്ലാതാക്കാനായില്ല"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "താൽക്കാലിക പകർപ്പ് %1$s നീക്കാനായില്ല"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ബോഡി ഭാഗം"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "എഴുത്തിന്റെ വലുപ്പം"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ചിത്രവിശ്വാസം ലോഡ് ചെയ്യാനായില്ല"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ചിത്രവിശ്വാസം സംരക്ഷിക്കാനായില്ല"}
 ]

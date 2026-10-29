@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "சொந்த நெடுவரிசை"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "பட்டியலுக்கு மேலே"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "தானியங்கு (திரை அளவு மூலம்)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "செய்தி உரை அளவு"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "அசல் நிறங்கள்"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "இருண்ட தீம் வண்ணங்கள்"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s இலிருந்து படங்களை எப்போதும் காட்டு"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "அமைப்பைச் சேமிக்க முடியவில்லை"},
 {"key": "setup_advanced", "source": "Advanced", "text": "மேம்பட்டது"},
 {"key": "setup_help", "source": "Set up this account again", "text": "இந்தக் கணக்கை மீண்டும் அமை"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d கணக்கு", "other": "%1$d கணக்குகள்"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d கணக்கு", "other": "%1$d கணக்குகள்"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "இந்தக் கோப்புக்குப் பெயர் இல்லை"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "தெரியாத எழுத்துக்குழு; %1$s ஆகக் காட்டப்பட்டது."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s நீக்க முடியவில்லை"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "தற்காலிக நகல் %1$s அகற்ற முடியவில்லை"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "உடல் துண்டு"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "உரை அளவு"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "பட நம்பிக்கை ஏற்றப்படவில்லை"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "பட நம்பிக்கை சேமிக்கப்படவில்லை"}
 ]

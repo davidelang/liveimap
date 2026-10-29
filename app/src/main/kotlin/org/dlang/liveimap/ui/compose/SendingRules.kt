@@ -356,26 +356,32 @@ fun accountRules(settings: org.dlang.liveimap.settings.AccountSettings): List<Se
  * delivery headers the user's own server adds on top (the first Delivered-To, else the first X-Original-To) are
  * used when present: a sender who Cc's a known rule address cannot switch the reply identity. Without them, To/Cc.
  */
-fun sentToAddresses(original: ParsedRfc822): List<String> {
+fun sentToAddresses(original: ParsedRfc822, charset: String): List<String> {
     for (name in listOf("Delivered-To", "X-Original-To")) {
         val top = original.headers.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: continue
-        val got = splitAddresses(top.raw).map(::decodeAddressDisplay)
+        val got = splitAddresses(top.raw).map { decodeAddressDisplay(it, charset) }
         if (got.isNotEmpty()) return got
     }
-    return listOf("To", "Cc").flatMap { addresses(original, it) }
+    return listOf("To", "Cc").flatMap { addresses(original, it, charset) }
 }
 
 /** Context from the message being answered or forwarded ([original] null for new messages). */
-fun composeContext(kind: ComposeKindTag, original: ParsedRfc822?, recipients: List<String>, folder: String): ComposeContext {
+fun composeContext(
+    kind: ComposeKindTag,
+    original: ParsedRfc822?,
+    recipients: List<String>,
+    folder: String,
+    charset: String,
+): ComposeContext {
     if (original == null) return ComposeContext(kind, recipients = recipients, folder = folder)
-    val to = sentToAddresses(original)
+    val to = sentToAddresses(original, charset)
     return ComposeContext(
         kind = kind,
         recipients = recipients,
         originalTo = to,
         listId = headerValues(original, "List-Id").firstOrNull().orEmpty(),
         folder = folder,
-        originalFrom = addresses(original, "From"),
+        originalFrom = addresses(original, "From", charset),
     )
 }
 

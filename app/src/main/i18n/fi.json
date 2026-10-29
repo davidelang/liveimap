@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Oma kolumni"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Listan yläpuolella"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automaattinen (näytön koon mukaan)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Viestin tekstin koko"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Alkuperäiset värit"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tummat teemavärit"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Näytä aina kuvat %1$s:stä"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Määritystä ei voitu tallentaa"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Lisäasetukset"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Määritä tämä tili uudelleen"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d tili", "other": "%1$d tiliä"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d tili", "other": "%1$d tiliä"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Tällä tiedostolla ei ole nimeä"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Tuntematon merkistö; näytetään muodossa %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Kohdetta %1$s ei voitu poistaa"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Väliaikaista kopiota %1$s ei voitu poistaa"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Runkolohko"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Tekstin koko"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Kuvien luottamusta ei voitu ladata"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Kuvien luottamusta ei voitu tallentaa"}
 ]

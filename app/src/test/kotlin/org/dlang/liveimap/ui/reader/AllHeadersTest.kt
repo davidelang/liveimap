@@ -18,9 +18,9 @@ class AllHeadersTest {
         assertEquals(raw, text)
         assertFalse(truncated)
         // Shown unparsed by default; decoding encoded-words is an option, and markup stays text either way.
-        assertEquals(raw, headerViewText(text, decode = false))
-        assertTrue(headerViewText(text, decode = true).startsWith("Subject: Café"))
-        assertTrue(headerViewText(text, decode = true).contains("<script>alert(1)</script>"))
+        assertEquals(raw, headerViewText(text, decode = false, fallback = "ISO-8859-1"))
+        assertTrue(headerViewText(text, decode = true, fallback = "ISO-8859-1").startsWith("Subject: Café"))
+        assertTrue(headerViewText(text, decode = true, fallback = "ISO-8859-1").contains("<script>alert(1)</script>"))
     }
 
     @Test

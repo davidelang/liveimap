@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ਆਪਣਾ ਕਾਲਮ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "ਸੂਚੀ ਦੇ ਉੱਪਰ"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "ਆਟੋਮੈਟਿਕ (ਸਕ੍ਰੀਨ ਆਕਾਰ ਦੁਆਰਾ)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "ਸੁਨੇਹਾ ਟੈਕਸਟ ਦਾ ਆਕਾਰ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "ਅਸਲੀ ਰੰਗ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ਗੂੜ੍ਹੇ ਥੀਮ ਦੇ ਰੰਗ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "ਹਮੇਸ਼ਾ %1$s ਤੋਂ ਚਿੱਤਰ ਦਿਖਾਓ"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "ਸੈੱਟਅੱਪ ਸੰਭਾਲਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ"},
 {"key": "setup_advanced", "source": "Advanced", "text": "ਉੱਨਤ"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ਇਸ ਖਾਤੇ ਨੂੰ ਦੁਬਾਰਾ ਸੈੱਟ ਕਰੋ"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ਖਾਤਾ", "other": "%1$d ਖਾਤੇ"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ਖਾਤਾ", "other": "%1$d ਖਾਤੇ"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ਇਸ ਫ਼ਾਈਲ ਦਾ ਕੋਈ ਨਾਮ ਨਹੀਂ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "ਅਣਜਾਣ ਅੱਖਰ-ਸਮੂਹ; %1$s ਵਜੋਂ ਵਿਖਾਇਆ।"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ਮਿਟਾਇਆ ਨਹੀਂ ਜਾ ਸਕਿਆ"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ਆਰਜ਼ੀ ਕਾਪੀ %1$s ਹਟਾਈ ਨਹੀਂ ਜਾ ਸਕੀ"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "ਮੁੱਖ ਭਾਗ ਦਾ ਟੁਕੜਾ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "ਲਿਖਤ ਦਾ ਆਕਾਰ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ਚਿੱਤਰ ਭਰੋਸਾ ਲੋਡ ਨਹੀਂ ਹੋਇਆ"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ਚਿੱਤਰ ਭਰੋਸਾ ਸੰਭਾਲਿਆ ਨਹੀਂ ਗਿਆ"}
 ]

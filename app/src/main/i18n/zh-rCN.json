@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "自己的专栏"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "列表上方"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "自动（根据屏幕尺寸）"},
-{"key": "settings_text_size", "source": "Message text size", "text": "消息文字大小"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "原色"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "深色主题颜色"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "始终显示来自 %1$s 的图像"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "无法保存设置"},
 {"key": "setup_advanced", "source": "Advanced", "text": "高级"},
 {"key": "setup_help", "source": "Set up this account again", "text": "重新设置此帐户"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 个账户"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 个账户"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "此文件没有名称"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "未知字符集；按 %1$s 显示。"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "无法删除 %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "无法移除暂存副本 %1$s"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "正文读取块"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "文字大小"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "无法加载图片信任"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "无法保存图片信任"}
 ]

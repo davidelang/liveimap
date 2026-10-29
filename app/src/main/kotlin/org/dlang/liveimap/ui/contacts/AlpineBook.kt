@@ -1,10 +1,12 @@
 package org.dlang.liveimap.ui.contacts
 
+import java.io.File
 import org.dlang.liveimap.session.FolderAt
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailSession
+import org.dlang.liveimap.session.fetchPartFile
 import org.dlang.liveimap.session.SelectedAddress
 import org.dlang.liveimap.ui.compose.addrSpec
 import org.dlang.liveimap.ui.compose.splitAddresses
@@ -24,7 +26,7 @@ data class AlpineBookLoad(
     val entries: List<AlpineEntry>,
 )
 
-suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoad {
+suspend fun loadAlpineBook(session: MailSession, mailbox: String, chunk: Int = 65536): AlpineBookLoad {
     if (mailbox.isEmpty()) {
         return AlpineBookLoad("Address book mailbox is not set", emptyList())
     }
@@ -59,13 +61,12 @@ suspend fun loadAlpineBook(session: MailSession, mailbox: String): AlpineBookLoa
         val lastHeader = if (last.uid == first.uid) firstHeader else s.peekPart(last.uid, "HEADER", 0, 0)
         if (!isBookRevision(lastHeader, headerSubject(firstHeader))) {
             // F85: the newest message is not a revision; take the newest one that is.
-            return@inFolder when (val read = readPineBook(s, mailbox)) {
+            return@inFolder when (val read = readPineBook(s, mailbox, chunk)) {
                 is PineRead.NotBook -> AlpineBookLoad(read.notice, emptyList())
                 is PineRead.Ready -> AlpineBookLoad(null, read.state.entries)
             }
         }
-        val lastText = s.fetchRfc822(last.uid)
-        val body = rfc822BodyText(lastText)
+        val body = readBookBody(s, last.uid, chunk)
             ?: return@inFolder AlpineBookLoad("This mailbox is not an Alpine address book", emptyList())
         return@inFolder AlpineBookLoad(null, parseAlpineBook(body))
     }
@@ -165,7 +166,7 @@ sealed class PineWriteResult {
     data class NotBook(val notice: String) : PineWriteResult()
 }
 
-suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
+suspend fun readPineBook(session: MailSession, mailbox: String, chunk: Int = 65536): PineRead {
     if (mailbox.isEmpty()) return PineRead.NotBook("Address book mailbox is not set")
     // Fresh view: SELECT of the mailbox already selected keeps the count from before our own APPEND (seen on
     // lab dovecot-245), so the new revision was invisible; inFolder(fresh) re-reads it in the same call.
@@ -199,19 +200,19 @@ suspend fun readPineBook(session: MailSession, mailbox: String): PineRead {
                 break
             }
         }
-        val lastMessage = s.fetchRfc822(last.uid)
-        val split = headerAndSeparator(lastMessage)
-            ?: return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
-        if (!looksLikeHeaders(split.header)) {
+        val lastHeader = s.peekPart(last.uid, "HEADER", 0, 0)
+        if (!looksLikeHeaders(lastHeader)) {
             return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         }
+        val body = readBookBody(s, last.uid, chunk)
+            ?: return@inFolder PineRead.NotBook("This mailbox is not an Alpine address book")
         return@inFolder PineRead.Ready(
             PineBookState(
                 headerUid = header.uid,
                 lastUid = last.uid,
-                headerBytes = split.header,
-                separator = split.separator,
-                entries = parseAlpineBook(split.body.toString(Charsets.UTF_8)),
+                headerBytes = lastHeader,
+                separator = byteArrayOf(13, 10, 13, 10),
+                entries = parseAlpineBook(body),
                 uids = ordered.map { it.uid },
                 uidValidity = selected.uidValidity,
                 bookSubject = bookSubject,
@@ -451,6 +452,17 @@ private fun headerText(bytes: ByteArray): String {
     val split = splitRfc822(bytes)
     val header = if (split == null) bytes else split.first
     return header.toString(Charsets.ISO_8859_1)
+}
+
+private suspend fun readBookBody(session: MailSession, uid: Long, chunk: Int): String? {
+    val dest = File.createTempFile("liveimap-alpine-", ".txt")
+    try {
+        fetchPartFile(session, uid, "1", chunk, dest)
+        if (dest.length() == 0L) return null
+        return dest.readText(Charsets.UTF_8)
+    } finally {
+        if (dest.exists()) java.nio.file.Files.delete(dest.toPath())
+    }
 }
 
 private fun rfc822BodyText(rfc822: ByteArray): String? {

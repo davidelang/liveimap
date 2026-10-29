@@ -171,23 +171,41 @@ interface MailSession {
         append(mailbox, rfc822, flags)
         return 0
     }
-    suspend fun appendFile(mailbox: String, file: File, flags: Set<String> = emptySet()) {
-        append(mailbox, file.readBytes(), flags)
-    }
-    suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String> = emptySet()): Long =
-        appendReturningUid(mailbox, file.readBytes(), flags)
+    suspend fun appendFile(mailbox: String, file: File, flags: Set<String> = emptySet())
+    suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String> = emptySet()): Long
     /** [dsnNotify]: RFC 3461 NOTIFY mask, 0 = none. Returns 1 DSN requested, -1 asked but not offered, 0 none. */
     suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int = 0): Int
     /** As [smtpSend] with MAIL FROM [envelopeFrom]; empty = the account address. Sessions without SMTP ignore it. */
     suspend fun smtpSendFrom(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
         smtpSend(rfc822, recipients, dsnNotify)
-    suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int = 0): Int =
-        smtpSend(file.readBytes(), recipients, dsnNotify)
-    suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int =
-        smtpSendFile(file, recipients, dsnNotify)
+    suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int = 0): Int
+    suspend fun smtpSendFromFile(file: File, recipients: List<String>, dsnNotify: Int, envelopeFrom: String): Int
     /** SMTP login only, nothing sent (Test account). */
     suspend fun smtpLoginCheck(): SmtpLoginCheck = throw MailFailure("not supported")
     fun close()
 }
 
 enum class SmtpLoginCheck { LoggedIn, NoAuthOffered, NoPassword }
+
+/** Writes [section] to [dest] in [chunk] pieces. An optional [prefix] is written first. Returns the section bytes written. */
+internal suspend fun fetchPartFile(
+    session: MailSession,
+    uid: Long,
+    section: String,
+    chunk: Int,
+    dest: File,
+    prefix: ByteArray = ByteArray(0),
+): Int {
+    java.io.FileOutputStream(dest).use { out ->
+        if (prefix.isNotEmpty()) out.write(prefix)
+        var offset = 0
+        while (true) {
+            val piece = session.peekPart(uid, section, offset, chunk)
+            if (piece.isEmpty()) break
+            out.write(piece)
+            offset += piece.size
+            if (piece.size < chunk) break
+        }
+        return offset
+    }
+}

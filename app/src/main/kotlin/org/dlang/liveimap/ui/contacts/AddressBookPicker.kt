@@ -101,7 +101,7 @@ private fun AddressBookPickerLoaded(
             OpenResult.Connected -> Unit
         }
         try {
-            val loaded = loadAlpineBook(session, mailbox)
+            val loaded = loadAlpineBook(session, mailbox, settings.bodyFetchChunk)
             notice = loaded.notice
             entries = loaded.entries
         } catch (error: CancellationException) {

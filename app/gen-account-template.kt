@@ -5,6 +5,7 @@ private val ignoredAccountToolbarKeys = setOf(
     "readerToolbar",
     "composeBar",
     "toolbarRows",
+    "readerTextZoom",
 )
 
 data class AccountSettings(

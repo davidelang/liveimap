@@ -23,6 +23,8 @@ private val lineBreaks = setOf(
 private class HtmlRender {
     val out = StringBuilder()
     val links = ArrayList<String>()
+    val linkNumbers = HashMap<String, Int>()
+    var listCounter = 0
     var quote = false
     var atLineStart = true
     var cellOpen = false
@@ -99,12 +101,14 @@ private fun webOrMailto(href: String): Boolean {
 private fun appendLinkMark(node: Element, state: HtmlRender) {
     val href = node.attr("href")
     if (!webOrMailto(href)) return
-    val existing = state.links.indexOf(href)
-    val n = if (existing >= 0) {
-        existing + 1
+    val known = state.linkNumbers[href]
+    val n = if (known != null) {
+        known
     } else {
+        state.listCounter += 1
         state.links.add(href)
-        state.links.size
+        state.linkNumbers[href] = state.listCounter
+        state.listCounter
     }
     appendRaw(state, " [$n]")
 }

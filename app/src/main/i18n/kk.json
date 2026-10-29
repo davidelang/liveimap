@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Жеке баған"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Тізім үстінде"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автоматты (экран өлшемі бойынша)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Хабарлама мәтінінің өлшемі"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Түпнұсқа түстер"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Қою тақырып түстері"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Әрқашан %1$s кескіндерін көрсетіңіз"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Баптау сақталмады"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Қосымша"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Бұл тіркелгіні қайта баптау"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d тіркелгі", "other": "%1$d тіркелгі"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d тіркелгі", "other": "%1$d тіркелгі"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Бұл файлдың аты жоқ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Белгісіз кодтау; %1$s ретінде көрсетілді."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s жойылмады"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Уақытша көшірме %1$s жойылмады"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Мәтін бөлігі"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Мәтін өлшемі"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Сурет сенімі жүктелмеді"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Сурет сенімі сақталмады"}
 ]

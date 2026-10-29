@@ -14,7 +14,7 @@ data class HeaderFields(
     val listId: String = "",
 )
 
-fun headerFields(header: String, fallback: String = "ISO-8859-1"): HeaderFields {
+fun headerFields(header: String, fallback: String): HeaderFields {
     var from = ""
     var to = ""
     var cc = ""
@@ -39,7 +39,7 @@ fun headerFields(header: String, fallback: String = "ISO-8859-1"): HeaderFields 
 }
 
 /** The account's viewer header list ("viewerHeaders"): those headers, in list order, decoded. */
-fun viewerHeaderLines(header: String, list: String, fallback: String = "ISO-8859-1"): List<Pair<String, String>> {
+fun viewerHeaderLines(header: String, list: String, fallback: String): List<Pair<String, String>> {
     val names = org.dlang.liveimap.ui.compose.headerNames(list)
     if (names.isEmpty()) return emptyList()
     val lines = unfoldedHeaderLines(header)

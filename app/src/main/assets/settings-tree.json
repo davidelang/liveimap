@@ -14,6 +14,16 @@
           ],
           "children": [
             {
+              "setting": "appTextZoom",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 100,
+              "title": "setting_appTextZoom_title",
+              "min": 50,
+              "max": 300
+            },
+            {
               "setting": "indexPageSize",
               "type": "Int",
               "scope": "ui",
@@ -1532,14 +1542,14 @@
                   }
                 },
                 {
-                  "setting": "readerTextZoom",
+                  "setting": "bodyFetchChunk",
                   "type": "Int",
                   "scope": "account",
                   "kind": "number",
-                  "default": 100,
-                  "title": "settings_text_size",
-                  "min": 50,
-                  "max": 300
+                  "default": 65536,
+                  "title": "setting_bodyFetchChunk_title",
+                  "min": 1024,
+                  "max": 1048576
                 },
                 {
                   "setting": "viewerHeaders",

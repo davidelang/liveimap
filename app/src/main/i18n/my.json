@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "ကိုယ်ပိုင်ကော်လံ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "စာရင်းအထက်"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "အလိုအလျောက် (မျက်နှာပြင်အရွယ်အစားအားဖြင့်)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "မက်ဆေ့ချ် စာသားအရွယ်အစား"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "မူရင်းအရောင်များ"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "အမှောင် အပြင်အဆင် အရောင်များ"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s မှ ပုံများကို အမြဲပြသပါ။"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "သတ်မှတ်မှုကို သိမ်း၍မရပါ"},
 {"key": "setup_advanced", "source": "Advanced", "text": "အဆင့်မြင့်"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ဤအကောင့်ကို ထပ်သတ်မှတ်ပါ"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d အကောင့်"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d အကောင့်"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ဤဖိုင်တွင် အမည်မရှိပါ"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "မသိသော စာလုံးအစု၊ %1$s အဖြစ် ပြထားသည်။"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s ကို ဖျက်၍မရပါ"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "ယာယီမိတ္တူ %1$s ကို ဖယ်၍မရပါ"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "စာကိုယ်အပိုင်း"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "စာသားအရွယ်"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ပုံယုံကြည်မှုကို ဖွင့်၍မရပါ"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ပုံယုံကြည်မှုကို သိမ်း၍မရပါ"}
 ]

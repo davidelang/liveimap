@@ -66,12 +66,17 @@ static bool line_exceeds(const std::string & bytes, int limit) {
 }
 
 static int text_mechanism(const std::string & bytes, int eight_bit) {
-    // A line of 998 is cut before its break, so it cannot stay 7bit or 8bit.
-    if (eight_bit && !line_exceeds(bytes, 997)) {
-        for (unsigned char b : bytes) {
-            if (b > 127) return MAILMIME_MECHANISM_8BIT;
+    bool ascii = true;
+    for (unsigned char b : bytes) {
+        if (b > 127) {
+            ascii = false;
+            break;
         }
-        return MAILMIME_MECHANISM_7BIT;
+    }
+    // 998 octets or less stays 7bit or 8bit. A longer line is quoted-printable.
+    if (!line_exceeds(bytes, 998)) {
+        if (ascii) return MAILMIME_MECHANISM_7BIT;
+        if (eight_bit) return MAILMIME_MECHANISM_8BIT;
     }
     return MAILMIME_MECHANISM_QUOTED_PRINTABLE;
 }
@@ -495,7 +500,7 @@ static struct mailmime * multiple_part(const char * type) {
 }
 
 static const char * part_name_at(const char ** part_names, int index) {
-    if (part_names == nullptr || part_names[index] == nullptr || part_names[index][0] == 0) return "attachment";
+    if (part_names == nullptr || part_names[index] == nullptr || part_names[index][0] == 0) return nullptr;
     return part_names[index];
 }
 
@@ -590,6 +595,11 @@ extern "C" int mime_build_file(const char * path,
         for (int i = 0; i < part_count; ++i) {
             const char * part_path = part_paths != nullptr ? part_paths[i] : nullptr;
             const char * name = part_name_at(part_names, i);
+            if (name == nullptr) {
+                mailmime_free(root);
+                set_error(error, error_cap, "this file has no name");
+                return 2;
+            }
             if (part_path == nullptr || part_path[0] == 0) {
                 mailmime_free(root);
                 remember_damaged(damaged, damaged_cap, name);

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "आफ्नै स्तम्भ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "सूची माथि"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "स्वचालित (स्क्रिन आकार द्वारा)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "सन्देश पाठ आकार"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "मौलिक रंगहरू"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "गाढा विषयवस्तु रङहरू"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "सधैं %1$s बाट छविहरू देखाउनुहोस्"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "सेटअप सुरक्षित भएन"},
 {"key": "setup_advanced", "source": "Advanced", "text": "उन्नत"},
 {"key": "setup_help", "source": "Set up this account again", "text": "यो खाता फेरि सेटअप गर्नुहोस्"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d खाता", "other": "%1$d खाता"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d खाता", "other": "%1$d खाता"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "यो फाइलको नाम छैन"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "अज्ञात वर्णसेट; %1$s का रूपमा देखाइयो।"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s मेटाउन सकिएन"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "अस्थायी प्रतिलिपि %1$s हटाउन सकिएन"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "मुख्य भागको खण्ड"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "पाठको आकार"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "तस्बिर विश्वास लोड भएन"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "तस्बिर विश्वास सुरक्षित भएन"}
 ]

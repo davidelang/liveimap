@@ -1,5 +1,6 @@
 package org.dlang.liveimap.session
 
+import java.io.File
 import org.dlang.liveimap.settings.AccountSettings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
@@ -77,8 +78,21 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun append(mailbox: String, rfc822: ByteArray, flags: Set<String>): Unit = notConnected()
 
+    override suspend fun appendFile(mailbox: String, file: File, flags: Set<String>): Unit = notConnected()
+
+    override suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String>): Long = notConnected()
+
     override suspend fun smtpSend(rfc822: ByteArray, recipients: List<String>, dsnNotify: Int): Int =
         notConnected()
+
+    override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int = notConnected()
+
+    override suspend fun smtpSendFromFile(
+        file: File,
+        recipients: List<String>,
+        dsnNotify: Int,
+        envelopeFrom: String,
+    ): Int = notConnected()
 
     override fun close() {
     }

@@ -95,8 +95,10 @@ class MainActivity : ComponentActivity() {
                     controller.show(bars)
                 }
             }
-            MaterialTheme(colorScheme = colorScheme) {
-                LiveImapNavHost()
+            org.dlang.liveimap.ui.AppTextZoom {
+                MaterialTheme(colorScheme = colorScheme) {
+                    LiveImapNavHost()
+                }
             }
         }
     }

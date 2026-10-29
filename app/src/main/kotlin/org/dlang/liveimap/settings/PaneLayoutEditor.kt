@@ -47,9 +47,10 @@ fun paneContentLabel(content: PaneContent): String = stringResource(
 /** Settings editor for the custom panel layout. [onSave] gets "" for Auto. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PaneLayoutEditor(saved: String, textZoom: Int, persist: Boolean = true, onSave: (String) -> Unit) {
+fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) -> Unit) {
     val configuration = LocalConfiguration.current
-    val auto = autoPaneLayout(planLayout(configuration.screenWidthDp, configuration.screenHeightDp, configuration.fontScale * textZoom / 100f))
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    val auto = autoPaneLayout(planLayout(configuration.screenWidthDp, configuration.screenHeightDp, fontScale))
     var tree by remember(saved, persist) { mutableStateOf(decodePaneLayout(saved)) }
     var selected by remember(saved, persist) { mutableStateOf<List<Int>?>(null) }
     val custom = tree != null

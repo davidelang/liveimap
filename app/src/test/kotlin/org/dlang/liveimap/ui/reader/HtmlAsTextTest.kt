@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.reader
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HtmlAsTextTest {
@@ -57,5 +58,17 @@ class HtmlAsTextTest {
         val html = "<div>".repeat(n) + "deep text" + "</div>".repeat(n) + "<blockquote>q</blockquote>after"
         val text = htmlAsText(html)
         assertEquals("deep text\n> q\nafter", text)
+    }
+
+    @Test
+    fun tenThousandLinksNumberInOrder() {
+        val html = buildString {
+            repeat(10_000) { append("<a href=\"https://e.test/").append(it).append("\">t</a>") }
+        }
+        val text = htmlAsText(html)
+        assertTrue(text.contains("t [1]"))
+        assertTrue(text.contains("t [10000]"))
+        assertTrue(text.contains("[10000] https://e.test/9999"))
+        assertFalse(text.contains("[10001]"))
     }
 }

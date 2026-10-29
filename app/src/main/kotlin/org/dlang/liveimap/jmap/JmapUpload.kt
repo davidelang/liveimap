@@ -3,6 +3,7 @@ package org.dlang.liveimap.jmap
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
 import org.dlang.liveimap.engine.applyTlsPolicy
+import java.io.File
 import java.net.URI
 
 fun jmapUploadUrl(uploadUrl: String, accountId: String): String {
@@ -60,6 +61,38 @@ fun jmapUpload(
         val code = jmapNet { exchange.status }
         if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")
         // RFC 8620 §6.1 shows 201; Stalwart answers 200 with the same body. Both carry the blobId.
+        if (code == 200 || code == 201) return jmapBlobId(jmapNet { exchange.body() })
+        throw JmapFailure("jmap upload status $code")
+    } finally {
+        exchange.close()
+    }
+}
+
+fun jmapUpload(
+    session: JmapSession,
+    file: File,
+    username: String,
+    password: String,
+    pin: String,
+    post: (String, File, String, String) -> JmapHttpExchange,
+    trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
+    policy: TlsPolicy = TlsPolicy(),
+    accountKey: String = "",
+): String {
+    val accountId = session.primaryMailAccountId
+    if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
+    if (session.uploadUrl.isBlank()) throw JmapFailure("jmap upload url is empty")
+    if (!file.isFile || file.length() == 0L) throw JmapFailure("jmap upload is empty")
+    val url = jmapUploadUrl(session.uploadUrl, accountId)
+    if (!jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap upload url is not https")
+    val authorization = jmapBasicAuthorization(username, password)
+    val exchange = jmapNet { post(url, file, "message/rfc822", authorization) }
+    try {
+        val host = uploadHost(url)
+        val verdict = applyTlsPolicy(jmapVerdict(accountKey, url) { jmapNet { trust(host, exchange.peerDer(), pin) } }, policy)
+        if (verdict.isNotEmpty()) throw JmapFailure(verdict)
+        val code = jmapNet { exchange.status }
+        if (code in uploadRedirectStatuses) throw JmapFailure("jmap upload redirect")
         if (code == 200 || code == 201) return jmapBlobId(jmapNet { exchange.body() })
         throw JmapFailure("jmap upload status $code")
     } finally {

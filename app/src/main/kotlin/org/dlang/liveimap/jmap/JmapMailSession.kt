@@ -545,9 +545,45 @@ class JmapMailSession(
         }
     }
 
+    override suspend fun appendFile(mailbox: String, file: File, flags: Set<String>) {
+        appendReturningUidFile(mailbox, file, flags)
+    }
+
+    override suspend fun appendReturningUidFile(mailbox: String, file: File, flags: Set<String>): Long = onSession {
+        if (!file.isFile || file.length() == 0L) throw MailFailure("message is empty")
+        ensureListedLocked(mailbox)
+        val mailboxId = idOfLocked(mailbox)
+        val keywords = flags.map { keywordOf(it) }.distinct().joinToString(",", "{", "}") { q(it) + ":true" }
+        val s = need()
+        val policy = accountPolicy()
+        val blob = jmap {
+            jmapUpload(
+                s,
+                file,
+                accountName(),
+                password,
+                pin,
+                pinnedJmapUploadFile(pin, accountKey, traffic, policy),
+                PeerTrust::check,
+                policy,
+                accountKey,
+            )
+        }
+        val body = """{"using":$USING,"methodCalls":[["Email/import",{"accountId":${q(accountId())},"emails":{"k1":{"blobId":${q(blob)},"mailboxIds":{${q(mailboxId)}:true},"keywords":$keywords}}},"0"]]}"""
+        val created = call(body) { root -> importedId(root) }
+        uids.getOrPut(mailboxId) { Uids() }.uid(created)
+    }
+
     override suspend fun smtpSendFile(file: File, recipients: List<String>, dsnNotify: Int): Int = onSession {
         sendOpenSession(file, recipients)
     }
+
+    override suspend fun smtpSendFromFile(
+        file: File,
+        recipients: List<String>,
+        dsnNotify: Int,
+        envelopeFrom: String,
+    ): Int = smtpSendFile(file, recipients, dsnNotify)
 
     private suspend fun sendOpenSession(file: File, recipients: List<String>): Int {
         val saved = account ?: throw MailFailure("not connected")
@@ -556,16 +592,15 @@ class JmapMailSession(
         val discovered = need()
         val policy = accountPolicy()
         jmap {
-            val bytes = file.readBytes()
             jmapSend(
                 JmapOffer.Mail(discovered),
-                bytes,
+                file,
                 saved.email,
                 recipients,
                 accountName(),
                 password,
                 pin,
-                pinnedJmapUpload(pin, accountKey, traffic, policy),
+                pinnedJmapUploadFile(pin, accountKey, traffic, policy),
                 pinnedJmapPost(pin, accountKey, traffic, policy),
                 PeerTrust::check,
                 saved.sentMailbox,

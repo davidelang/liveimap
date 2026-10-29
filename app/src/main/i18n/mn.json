@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Өөрийн багана"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Жагсаалтын дээгүүр"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автомат (дэлгэцийн хэмжээгээр)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Мессежийн текстийн хэмжээ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Жинхэнэ өнгө"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Харанхуй сэдэвт өнгө"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s-ийн зургийг үргэлж харуул"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Тохиргоо хадгалагдаагүй"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Дэлгэрэнгүй"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Энэ бүртгэлийг дахин тохируулах"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d бүртгэл", "other": "%1$d бүртгэл"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d бүртгэл", "other": "%1$d бүртгэл"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Энэ файлд нэр алга"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Үл мэдэгдэх тэмдэгтийн багц; %1$s гэж харуулав."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s-г устгаж чадсангүй"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Түр хуулбар %1$s-г устгаж чадсангүй"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Биеийн хэсэг"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Бичвэрийн хэмжээ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Зургийн итгэлийг ачаалж чадсангүй"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Зургийн итгэлийг хадгалж чадсангүй"}
 ]

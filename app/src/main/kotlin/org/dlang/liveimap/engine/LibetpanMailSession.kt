@@ -752,7 +752,7 @@ class LibetpanMailSession(
                     ?: throw MailFailure("fetch failed")
                 return@read uidOnlyRows(request, ids)
             }
-            val settings = account
+            val settings = account ?: throw MailFailure("not connected")
             val useServerPreview = request.includePreview && featureCaps.previewKind() == "Preview"
             val fetched = nativeFetchIndex(
                 h,
@@ -765,12 +765,12 @@ class LibetpanMailSession(
                 request.prefetch,
                 request.includePreview,
                 request.previewByteLimit,
-                settings?.preferHtml == true,
-                settings?.showDeleted != false,
+                settings.preferHtml,
+                settings.showDeleted,
                 useServerPreview,
-                settings?.email.orEmpty(),
-                settings?.altAddresses.orEmpty().joinToString("\n"),
-                settings?.unlabeledCharset ?: "ISO-8859-1",
+                settings.email,
+                settings.altAddresses.joinToString("\n"),
+                settings.unlabeledCharset,
                 accountId,
             ) ?: throw MailFailure("fetch failed")
             fetched.toList()
@@ -1425,7 +1425,7 @@ class LibetpanMailSession(
         textAcc: List<String>,
     ): SortColumns {
         val n = uidAcc.size
-        val charset = account?.unlabeledCharset ?: "ISO-8859-1"
+        val charset = account?.unlabeledCharset ?: throw MailFailure("not connected")
         val raw = textAcc.toTypedArray()
         val texts = when (key) {
             SortKey.Subject -> {
@@ -1791,7 +1791,7 @@ class LibetpanMailSession(
 
     private fun threadOrder(key: SortKey, headers: ClientHeaders): MessageOrder {
         val flat = if (key == SortKey.ThreadOrderedSubject) {
-            val charset = account?.unlabeledCharset ?: "ISO-8859-1"
+            val charset = account?.unlabeledCharset ?: throw MailFailure("not connected")
             val decoded = if (headers.subject.isEmpty()) emptyArray() else decodeHeaderPhrases(headers.subject, charset)
             val subjects = Array(decoded.size) { baseSubject(decoded[it]) }
             val epochs = LongArray(headers.uids.size) { dateHeaderEpoch(headers.date[it]) ?: Long.MIN_VALUE }

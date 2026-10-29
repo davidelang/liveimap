@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Własna kolumna"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Nad listą"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automatycznie (według rozmiaru ekranu)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Rozmiar tekstu wiadomości"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Oryginalne kolory"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Ciemne kolory motywu"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Zawsze pokazuj obrazy z %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Nie udało się zapisać konfiguracji"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Zaawansowane"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Skonfiguruj to konto ponownie"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "few": "%1$d konta", "many": "%1$d kont", "other": "%1$d konta"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d konto", "few": "%1$d konta", "many": "%1$d kont", "other": "%1$d konta"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Ten plik nie ma nazwy"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Nieznany zestaw znaków; pokazano jako %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nie można usunąć %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Kopia tymczasowa %1$s nie została usunięta"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Blok treści"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Rozmiar tekstu"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Nie można wczytać zaufania obrazów"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Nie można zapisać zaufania obrazów"}
 ]

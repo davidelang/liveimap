@@ -76,8 +76,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import org.dlang.liveimap.jmap.JmapFailure
 import org.dlang.liveimap.jmap.JmapSentFolderMissing
 import org.dlang.liveimap.jmap.JmapMaybeSent
@@ -86,7 +86,9 @@ import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.jmapBasicAuthorization
 import org.dlang.liveimap.jmap.platformJmapExchange
 import org.dlang.liveimap.jmap.pinnedJmapPost
-import org.dlang.liveimap.jmap.pinnedJmapUpload
+import org.dlang.liveimap.jmap.pinnedJmapUploadFile
+import org.dlang.liveimap.session.fetchPartFile
+import org.dlang.liveimap.ui.reader.WireTextDecoder
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -105,7 +107,7 @@ import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
 import org.dlang.liveimap.ui.reader.htmlAsText
-import org.dlang.liveimap.ui.reader.unknownCharsetNote
+
 import org.dlang.liveimap.ui.contacts.AddressBookPicker
 import org.dlang.liveimap.ui.contacts.AddressSuggestion
 import org.dlang.liveimap.ui.contacts.AlpineEntry
@@ -188,7 +190,7 @@ internal fun fileAttachmentRow(
     )
 }
 
-internal object PickedAttachmentHold {
+internal class PickedAttachmentHold {
     private val rows = HashMap<String, ForwardRow>()
 
     fun put(row: ForwardRow) {
@@ -199,6 +201,56 @@ internal object PickedAttachmentHold {
 
     fun remove(key: String) {
         rows.remove(key)
+    }
+
+    fun dispose() {
+        rows.clear()
+    }
+}
+
+/** Screen-owned compose state. Save, send, and postpone share [actor]. */
+internal class ComposeLoaded {
+    val actor = ComposeActor()
+    val picked = PickedAttachmentHold()
+
+    fun dispose() {
+        picked.dispose()
+    }
+
+    fun watchAccount(
+        scope: kotlinx.coroutines.CoroutineScope,
+        store: org.dlang.liveimap.settings.DataStoreSettingsStore,
+        apply: (AccountSettings) -> Unit,
+    ) = scope.launch {
+        val loaded = try {
+            store.load()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+        if (loaded != null) apply(loaded)
+    }
+}
+
+/** One channel serializes save, send, and postpone. A failed op does not stop the actor. */
+internal class ComposeActor {
+    private val channel = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    fun start(scope: kotlinx.coroutines.CoroutineScope) = scope.launch {
+        for (op in channel) op()
+    }
+
+    suspend fun <T> run(block: suspend () -> T): T {
+        val done = CompletableDeferred<T>()
+        channel.send {
+            try {
+                done.complete(block())
+            } catch (error: Throwable) {
+                done.completeExceptionally(error)
+            }
+        }
+        return done.await()
     }
 }
 
@@ -321,6 +373,10 @@ internal fun copyIdAfterDeleted(deleted: Boolean, currentId: String): String {
     return currentId
 }
 
+internal fun rejectUnnamedFile(name: String) {
+    if (name.isEmpty()) throw java.io.IOException("error_file_no_name")
+}
+
 private fun pickedDisplayName(resolver: ContentResolver, uri: Uri): String {
     resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) {
@@ -338,6 +394,7 @@ private class PickedFile(val name: String, val type: String, val path: String)
 
 private fun readPickedUri(resolver: ContentResolver, uri: Uri, contents: File, key: String): PickedFile {
     val name = pickedDisplayName(resolver, uri)
+    rejectUnnamedFile(name)
     Files.createDirectories(contents.toPath())
     val dest = File(contents, key)
     val stream = resolver.openInputStream(uri) ?: throw java.io.IOException("unreadable")
@@ -346,7 +403,11 @@ private fun readPickedUri(resolver: ContentResolver, uri: Uri, contents: File, k
             java.io.FileOutputStream(dest).use { output -> input.copyTo(output) }
         }
     } catch (error: Throwable) {
-        dest.delete()
+        try {
+            if (dest.exists()) Files.delete(dest.toPath())
+        } catch (_: java.io.IOException) {
+            throw java.io.IOException("error_delete_failed")
+        }
         throw error
     }
     val type = try {
@@ -448,7 +509,7 @@ fun ComposeScreen(
     }
     val id = accountId
     if (id.isNullOrEmpty()) return
-    ComposeLoaded(
+    ComposeForm(
         accountId = id,
         store = remember(id) { store.forAccount(id) },
         seed = seed,
@@ -462,7 +523,7 @@ fun ComposeScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ComposeLoaded(
+private fun ComposeForm(
     accountId: String,
     store: DataStoreSettingsStore,
     seed: ComposeSeed,
@@ -485,7 +546,13 @@ private fun ComposeLoaded(
     val attachUnreadable = stringResource(R.string.compose_attach_unreadable)
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
-    val gate = remember { Mutex() }
+    val screen = remember { ComposeLoaded() }
+    val actor = screen.actor
+    val pickedHold = screen.picked
+    DisposableEffect(screen) {
+        onDispose { screen.dispose() }
+    }
+    LaunchedEffect(screen) { actor.start(this) }
     var account by remember { mutableStateOf(AccountSettings()) }
     var notice by remember { mutableStateOf<String?>(null) }
     var status by rememberSaveable { mutableStateOf<String?>(null) }
@@ -605,7 +672,7 @@ private fun ComposeLoaded(
     }
 
     fun releasePickedHold() {
-        for (key in pickedKeys()) PickedAttachmentHold.remove(key)
+        for (key in pickedKeys()) pickedHold.remove(key)
         pickedKeyText = ""
     }
 
@@ -652,7 +719,7 @@ private fun ComposeLoaded(
         val kept = ArrayList<String>()
         val held = ArrayList<ForwardRow>()
         for (key in pickedKeys()) {
-            val row = PickedAttachmentHold.get(key) ?: continue
+            val row = pickedHold.get(key) ?: continue
             kept.add(key)
             held.add(row)
         }
@@ -674,11 +741,16 @@ private fun ComposeLoaded(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
-                    errors.add(error.message ?: attachUnreadable)
+                    val failed = when (error.message) {
+                        "error_file_no_name" -> appContext.getString(R.string.error_file_no_name)
+                        "error_delete_failed" -> appContext.getString(R.string.error_delete_failed, key)
+                        else -> error.message ?: attachUnreadable
+                    }
+                    errors.add(failed)
                     continue
                 }
                 val row = fileAttachmentRow(key, read.name, read.type, null, read.path)
-                PickedAttachmentHold.put(row)
+                pickedHold.put(row)
                 addPickedKey(row.key)
                 forwardRows = forwardRows + row
             }
@@ -777,18 +849,33 @@ private fun ComposeLoaded(
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
         suspend fun decodedQuote(part: MimePart, html: Boolean): String {
-            val bytes = peekWireBytes(
-                part.size,
-                4096,
-                part.encoding.equals("base64", ignoreCase = true),
-            ) { offset, length ->
-                val box = seed.mailbox
-                if (box == null) throw MailFailure("message reference is incomplete; reload the list")
-                else inBox(box) { s -> s.peekPart(uid, part.section, offset, length) } // F116
+            val box = seed.mailbox ?: throw MailFailure("message reference is incomplete; reload the list")
+            val chunk = account.bodyFetchChunk
+            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
+            val text = try {
+                val built = StringBuilder()
+                var offset = 0
+                val base64 = part.encoding.equals("base64", ignoreCase = true)
+                while (part.size <= 0 || offset < part.size) {
+                    val length = if (part.size <= 0) chunk else nextWireCount(offset, part.size, chunk, base64)
+                    if (length <= 0) break
+                    val piece = inBox(box) { s -> s.peekPart(uid, part.section, offset, length) }
+                    if (piece.isEmpty()) {
+                        if (offset == 0 && part.size > 0) throw MailFailure("part ended early")
+                        break
+                    }
+                    built.append(decoder.take(piece))
+                    offset += piece.size
+                    if (part.size <= 0 && piece.size < chunk) break
+                }
+                built.append(decoder.finish()).toString()
+            } finally {
+                decoder.close()
             }
-            val decoded = decodePart(bytes, part.charset, part.encoding, account.unlabeledCharset)
-            if (decoded.unknownCharset && notice.isNullOrEmpty()) notice = unknownCharsetNote
-            return if (html) htmlAsText(decoded.text) else decoded.text
+            if (decoder.unknownCharset && notice.isNullOrEmpty()) {
+                notice = appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+            }
+            return if (html) htmlAsText(text) else text
         }
         val plain = textPart(tree, "plain")
         if (plain != null) return decodedQuote(plain, html = false)
@@ -815,6 +902,7 @@ private fun ComposeLoaded(
         // Includes an address still being typed, so the From line follows it before Enter or a comma.
         splitAddresses(chipProbe(toText, toBuffer)) + splitAddresses(chipProbe(ccText, ccBuffer)),
         seed.mailbox.orEmpty(),
+        account.unlabeledCharset,
     ).copy(pinnedFrom = pinnedFrom)
 
     fun resolveNow(settings: AccountSettings): Resolved {
@@ -837,7 +925,7 @@ private fun ComposeLoaded(
         originalParsed = parsed
         val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
         val rules0 = resolveNow(settings)
-        val draft = replyDraft(replyAll, parsed, settings.email, quote, rules0.quotePrefix, rules0.leadIn)
+        val draft = replyDraft(replyAll, parsed, settings.email, quote, account.unlabeledCharset, rules0.quotePrefix, rules0.leadIn)
         val replyToAddrs = addresses(parsed, "Reply-To", account.unlabeledCharset)
         val fromAddrs = addresses(parsed, "From", account.unlabeledCharset)
         fun route(use: Boolean) = replyRecipients(
@@ -884,9 +972,18 @@ private fun ComposeLoaded(
         if (draftLoaded && forwardRows.isNotEmpty()) return
         val asAttachment = seed.forwardAsAttachment ?: settings.forwardAsAttachment
         if (asAttachment) {
-            val original = inBox(box) { s -> s.fetchRfc822(uid) }
+            val contents = contentsDir(appContext.filesDir, accountId, draftId)
+            val stored = File(contents, "rfc822-$uid")
+            val got = inBox(box) { s ->
+                withContext(Dispatchers.IO) { Files.createDirectories(contents.toPath()) }
+                fetchPartFile(s, uid, "*", account.bodyFetchChunk, stored)
+            }
+            if (got == 0) throw MailFailure(fetchFailed)
             if (!draftLoaded) {
-                val parsed = parseRfc822(original, account.unlabeledCharset)
+                val parsed = parseRfc822(
+                    inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) },
+                    account.unlabeledCharset,
+                )
                 originalParsed = parsed
                 resolveNow(settings)
                 val draft = forwardDraft(parsed, "")
@@ -901,11 +998,12 @@ private fun ComposeLoaded(
                     section = "",
                     filename = "forwarded.eml",
                     mediaType = "message/rfc822",
-                    size = original.size,
+                    size = stored.length().coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                     included = true,
-                    bytes = original,
+                    bytes = null,
                     wireBase64 = false,
                     encoding = null,
+                    path = stored.path,
                 ),
             )
             return
@@ -986,7 +1084,20 @@ private fun ComposeLoaded(
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
         if (draftLoaded && forwardRows.isNotEmpty()) return
-        applyEditor(loadEditor(inBox(box) { s -> s.fetchRfc822(uid) }, account.unlabeledCharset))
+        val dest = File.createTempFile("liveimap-resume-", ".eml", appContext.cacheDir)
+        try {
+            val got = inBox(box) { s -> fetchPartFile(s, uid, "*", account.bodyFetchChunk, dest) }
+            if (got == 0) throw MailFailure(fetchFailed)
+            applyEditor(loadEditor(dest.readBytes(), account.unlabeledCharset))
+        } finally {
+            if (dest.exists()) {
+                try {
+                    Files.delete(dest.toPath())
+                } catch (_: java.io.IOException) {
+                    notice = appContext.getString(R.string.error_delete_failed, dest.name)
+                }
+            }
+        }
     }
 
     fun composedHeaders(settings: AccountSettings): List<Pair<String, String>> {
@@ -996,43 +1107,59 @@ private fun ComposeLoaded(
         return (if (replyTo.isNotBlank() && !typedReplyTo) listOf("Reply-To" to replyTo) else emptyList()) + typed
     }
 
+    suspend fun streamPartFile(stored: File, uid: Long, source: String, row: ForwardRow, step: Int) {
+        val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
+        java.io.FileOutputStream(stored).use { out ->
+            if (row.size <= 0) {
+                out.write(inBox(source) { s -> s.peekPart(uid, row.section, 0, step) })
+            } else {
+                var offset = 0
+                while (offset < row.size) {
+                    val length = nextWireCount(offset, row.size, step, base64)
+                    if (length <= 0) break
+                    val piece = inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
+                    if (piece.isEmpty()) throw MailFailure("part ended early")
+                    out.write(piece)
+                    offset += piece.size
+                }
+            }
+        }
+    }
+
+    suspend fun stageForwardPath(row: ForwardRow, settings: AccountSettings, contents: File): String {
+        val path = row.path
+        if (path != null) return path
+        val stored = File(contents, row.key)
+        val uid = sourceUid
+        try {
+            withContext(Dispatchers.IO) { Files.createDirectories(contents.toPath()) }
+            if (row.bytes != null) {
+                withContext(Dispatchers.IO) { stored.writeBytes(row.bytes) }
+            } else {
+                if (uid == null) throw MailFailure(fetchFailed)
+                val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
+                streamPartFile(stored, uid, source, row, settings.bodyFetchChunk)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: MailFailure) {
+            throw error
+        } catch (error: Exception) {
+            throw MailFailure(error.message ?: fetchFailed)
+        }
+        return stored.path
+    }
+
     suspend fun assemble(settings: AccountSettings, dest: File, eightBit: Boolean): BuiltMail {
         val paths = ArrayList<String>()
         val types = ArrayList<String>()
         val dispositions = ArrayList<String>()
         val names = ArrayList<String>()
         val encodings = ArrayList<String>()
-        val uid = sourceUid
         val contents = contentsDir(appContext.filesDir, accountId, draftId)
         for (row in forwardRows) {
             if (!row.included) continue
-            val path = row.path
-            val partPath = if (path != null) {
-                path
-            } else {
-                val payload = if (row.bytes != null) {
-                    row.bytes
-                } else {
-                    if (uid == null) throw MailFailure(fetchFailed)
-                    val source = seed.mailbox ?: account.postponedMailbox // F116: the source's folder, not wherever
-                    val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
-                    peekWireBytes(row.size, 65536, base64) { offset, length ->
-                        inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
-                    }
-                }
-                val stored = File(contents, row.key)
-                try {
-                    withContext(Dispatchers.IO) {
-                        Files.createDirectories(contents.toPath())
-                        stored.writeBytes(payload)
-                    }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    throw MailFailure(error.message ?: fetchFailed)
-                }
-                stored.path
-            }
+            val partPath = stageForwardPath(row, settings, contents)
             val type = cleanHeader(row.mediaType).ifEmpty { "application/octet-stream" }
             val file = cleanHeader(row.filename).ifEmpty { "attachment" }
             val (nameParam, dispositionParam) = filenameParams(file)
@@ -1242,9 +1369,7 @@ private fun ComposeLoaded(
         }
     }
 
-    suspend fun retryCopy(copy: DeviceCopy): Boolean {
-        when (retryDelivery(account.emailSubmission && copy.via.isEmpty(), copy.appendOnly)) { // F92
-            RetryDelivery.Append -> {
+    suspend fun retryAppend(copy: DeviceCopy): Boolean {
                 if (copy.mailbox.isEmpty()) {
                     notice = sentMailboxMissing
                     return false
@@ -1267,8 +1392,9 @@ private fun ComposeLoaded(
                 status = sentStatus(statusLeaf(copy.mailbox))
                 removePostponedSource()
                 return true
-            }
-            RetryDelivery.Smtp -> {
+    }
+
+    suspend fun retrySmtp(copy: DeviceCopy): Boolean {
                 val accepted = try {
                     sendSmtp(copyRfc822(copy.id), copy.recipients, copy.via)
                 } catch (error: CancellationException) {
@@ -1286,7 +1412,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val saved = copy.withMessage(file = accepted, appendOnly = true)
-                        failAttachment(writeCopy(appContext, saved, accountId), saved.id, true)
+                        failAttachment(writeCopy(appContext, saved, accountId, account.unlabeledCharset), saved.id, true)
                         if (held?.id == copy.id) held = saved
                         notice = error.text
                         status = acceptedNotice
@@ -1305,8 +1431,9 @@ private fun ComposeLoaded(
                 }
                 removePostponedSource()
                 return true
-            }
-            RetryDelivery.Submission -> {
+    }
+
+    suspend fun retrySubmission(copy: DeviceCopy): Boolean {
                 val password = try {
                     store.password()
                 } catch (error: CancellationException) {
@@ -1316,28 +1443,19 @@ private fun ComposeLoaded(
                     status = notSentNotice
                     return false
                 }
-                val bytes = try {
-                    withContext(Dispatchers.IO) { copy.file.readBytes() }
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    notice = error.message ?: fetchFailed
-                    status = notSentNotice
-                    return false
-                }
                 var leftOver: String? = null
                 try {
                     if (password == null) throw MailFailure("password missing")
                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
-                    keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
+                    keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                         offer,
-                        bytes,
+                        copy.file,
                         account.email,
                         copy.recipients,
                         account.username,
                         password,
                         account.jmapCertPin,
-                        pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                        pinnedJmapUploadFile(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                         pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                         // F150: the copy's own Sent choice (blank after "send without copy" or a no-Fcc bounce).
                         sentName = copy.mailbox,
@@ -1387,7 +1505,13 @@ private fun ComposeLoaded(
                 }
                 removePostponedSource()
                 return true
-            }
+    }
+
+    suspend fun retryCopy(copy: DeviceCopy): Boolean {
+        return when (retryDelivery(account.emailSubmission && copy.via.isEmpty(), copy.appendOnly)) { // F92
+            RetryDelivery.Append -> retryAppend(copy)
+            RetryDelivery.Smtp -> retrySmtp(copy)
+            RetryDelivery.Submission -> retrySubmission(copy)
         }
     }
 
@@ -1397,7 +1521,7 @@ private fun ComposeLoaded(
         scope.launch {
             var leave = false
             try {
-                gate.withLock {
+                actor.run {
                     leave = try {
                         block()
                     } catch (error: CancellationException) {
@@ -1501,7 +1625,14 @@ private fun ComposeLoaded(
                     notice = error.text
                     return@launchLocked false
                 } finally {
-                    drafted.delete()
+                    if (drafted.exists()) {
+                        try {
+                            Files.delete(drafted.toPath())
+                        } catch (_: java.io.IOException) {
+                            val failed = appContext.getString(R.string.error_delete_failed, drafted.name)
+                            notice = if (notice.isNullOrEmpty()) failed else notice + "\n" + failed
+                        }
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -1564,16 +1695,7 @@ private fun ComposeLoaded(
     }
 
     LifecycleStartEffect(store) {
-        val job = scope.launch {
-            val loaded = try {
-                store.load()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                null
-            }
-            if (loaded != null) account = loaded
-        }
+        val job = screen.watchAccount(scope, store) { loaded -> account = loaded }
         onStopOrDispose { job.cancel() }
     }
 
@@ -1583,7 +1705,7 @@ private fun ComposeLoaded(
         kotlinx.coroutines.delay(300)
         resolveNow(account)
     }
-    LaunchedEffect(seed, unsentId, retryOnOpen) {
+    suspend fun openComposer() {
         val storedId = reloadCopyId(assembledCopyId, unsentId, reloadSuppressed)
         if (seed.kind == ComposeKind.New && storedId == null && !baselineReady) {
             captureBaseline()
@@ -1605,14 +1727,14 @@ private fun ComposeLoaded(
             }
         }
         var leave = false
-        gate.withLock {
+        actor.run {
             val settings = try {
                 store.load()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
                 notice = error.message ?: notConnected
-                return@withLock
+                return@run
             }
             account = settings
             try {
@@ -1621,7 +1743,7 @@ private fun ComposeLoaded(
                 throw error
             } catch (error: Exception) {
                 notice = error.message ?: notConnected
-                return@withLock
+                return@run
             }
             val opened = try {
                 session.open(settings)
@@ -1629,16 +1751,16 @@ private fun ComposeLoaded(
                 throw error
             } catch (error: MailFailure) {
                 notice = error.text
-                return@withLock
+                return@run
             }
             when (opened) {
                 is OpenResult.Rejected -> {
                     notice = opened.capabilities
-                    return@withLock
+                    return@run
                 }
                 is OpenResult.Failed -> {
                     notice = opened.text
-                    return@withLock
+                    return@run
                 }
                 OpenResult.Connected -> Unit
             }
@@ -1693,6 +1815,9 @@ private fun ComposeLoaded(
         // Source loads replace forwardRows; put back picked rows whose bytes are still held.
         if (leave && deliveryDone) releasePickedHold() else appendHeldPickedRows()
         if (leave) onDone()
+    }
+    LaunchedEffect(seed, unsentId, retryOnOpen) {
+        openComposer()
     }
 
     BackHandler(enabled = !pickerOpen && discardOpen) {
@@ -1775,7 +1900,7 @@ private fun ComposeLoaded(
                             throw error
                         } catch (error: Exception) {
                             val copy = seededCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via)
-                            failAttachment(writeCopy(appContext, copy, accountId), copy.id, false)
+                            failAttachment(writeCopy(appContext, copy, accountId, account.unlabeledCharset), copy.id, false)
                             held = copy
                             notice = error.message ?: notConnected
                             status = notSentNotice
@@ -1784,27 +1909,19 @@ private fun ComposeLoaded(
                         // F50/David's JMAP rule: the device copy exists before the upload/submission starts, marked
                         // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
                         val sending = seededCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageFile, via = via)
-                        val bytes = try {
-                            withContext(Dispatchers.IO) { messageFile.readBytes() }
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Exception) {
-                            notice = error.message ?: fetchFailed
-                            return@launchLocked false
-                        }
                         var leftOver: String? = null
                         try {
                             if (password == null) throw MailFailure("password missing")
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
-                            keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
+                            keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
                                 offer,
-                                bytes,
+                                messageFile,
                                 account.email,
                                 built.recipients,
                                 account.username,
                                 password,
                                 account.jmapCertPin,
-                                pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                                pinnedJmapUploadFile(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                 pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                 sentName = account.sentMailbox,
                                 draftsName = account.postponedMailbox,
@@ -1842,7 +1959,7 @@ private fun ComposeLoaded(
                     // F50: the device copy exists before SMTP starts, marked "may be sent", so a process death or
                     // cancel mid-send keeps the message and the Unsent list says to check Sent before retrying.
                     val sending = seededCopy(id, false, account.sentMailbox, built.recipients, messageFile, via = via, uncertain = true)
-                    val copySaved = writeCopy(appContext, sending, accountId)
+                    val copySaved = writeCopy(appContext, sending, accountId, account.unlabeledCharset)
                     if (!copySaved) {
                         failAttachment(false, sending.id, false)
                         notice = appContext.getString(R.string.compose_copy_not_saved)
@@ -1857,7 +1974,7 @@ private fun ComposeLoaded(
                     } catch (error: MailFailure) {
                         val uncertain = smtpUncertain(error.text)
                         val copy = sending.copyWith(uncertain = uncertain)
-                        val saved = writeCopy(appContext, copy, accountId)
+                        val saved = writeCopy(appContext, copy, accountId, account.unlabeledCharset)
                         failAttachment(saved, copy.id, false)
                         held = copy
                         notice = smtpFailureText(error.text) +
@@ -1872,7 +1989,7 @@ private fun ComposeLoaded(
                         throw error
                     } catch (error: MailFailure) {
                         val copy = seededCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
-                        failAttachment(writeCopy(appContext, copy, accountId), copy.id, true)
+                        failAttachment(writeCopy(appContext, copy, accountId, account.unlabeledCharset), copy.id, true)
                         held = copy
                         notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
                         offerNoCopy = true
@@ -1890,6 +2007,8 @@ private fun ComposeLoaded(
                 }
     }
 
+    @Composable
+    fun ComposeChrome() {
     Scaffold(
         modifier = Modifier.fillMaxSize().testTag("smoke-compose"),
         topBar = {
@@ -2066,7 +2185,7 @@ private fun ComposeLoaded(
                 } else if (kept != null && noCopyRetry) {
                     noCopyRetry = false
                     val bare = kept.withoutSentCopy()
-                    scope.launch { writeCopy(appContext, bare, accountId); held = bare; retryCopy(bare) }
+                    scope.launch { writeCopy(appContext, bare, accountId, account.unlabeledCharset); held = bare; retryCopy(bare) }
                 } else {
                     withoutCopy = true
                     sendMessage()
@@ -2163,21 +2282,18 @@ private fun ComposeLoaded(
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
                             for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
-                                val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
-                                val bounced = buildBounce(
-                                    original,
-                                    resentFrom = resentFrom,
-                                    resentTo = resentTo,
-                                    resentDate = rfc822Date(),
-                                    resentMessageId = newMessageId(account.email),
-                                )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 val file = copyRfc822(id)
                                 file.parentFile?.mkdirs()
-                                withContext(Dispatchers.IO) { file.writeBytes(bounced) }
+                                val prefix = bouncePrefix(resentFrom, resentTo, rfc822Date(), newMessageId(account.email))
+                                val got = inBox(box) { s -> fetchPartFile(s, uid, "*", account.bodyFetchChunk, file, prefix) } // F116
+                                if (got == 0) {
+                                    notice = fetchFailed
+                                    return@launchLocked false
+                                }
                                 val sending = seededCopy(id, false, savedMailbox, recipients, file, uncertain = true)
-                                if (!writeCopy(appContext, sending, accountId)) {
+                                if (!writeCopy(appContext, sending, accountId, account.unlabeledCharset)) {
                                     notice = appContext.getString(R.string.compose_copy_not_saved)
                                     status = notSentNotice
                                     return@launchLocked false
@@ -2188,7 +2304,7 @@ private fun ComposeLoaded(
                                     throw error
                                 } catch (error: MailFailure) {
                                     val copy = deviceCopyAfterSmtpFailure(sending, error.text)
-                                    val saved = writeCopy(appContext, copy, accountId)
+                                    val saved = writeCopy(appContext, copy, accountId, account.unlabeledCharset)
                                     held = copy
                                     notice = smtpFailureText(error.text) +
                                         if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
@@ -2208,7 +2324,7 @@ private fun ComposeLoaded(
                                     throw error
                                 } catch (error: MailFailure) {
                                     val copy = seededCopy(id, true, account.sentMailbox, recipients, accepted)
-                                    writeCopy(appContext, copy, accountId)
+                                    writeCopy(appContext, copy, accountId, account.unlabeledCharset)
                                     held = copy
                                     notice = error.text
                                     status = acceptedNotice
@@ -2230,44 +2346,33 @@ private fun ComposeLoaded(
                                 return@launchLocked false
                             }
                             for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
-                                val original = inBox(box) { s -> s.fetchRfc822(uid) } // F116: pinned to the source folder
-                                val bounced = buildBounce(
-                                    original,
-                                    resentFrom = resentFrom,
-                                    resentTo = resentTo,
-                                    resentDate = rfc822Date(),
-                                    resentMessageId = newMessageId(account.email),
-                                )
                                 val id = UUID.randomUUID().toString()
                                 val savedMailbox = if (account.bounceFcc) account.sentMailbox else ""
                                 val file = copyRfc822(id)
                                 file.parentFile?.mkdirs()
-                                withContext(Dispatchers.IO) { file.writeBytes(bounced) }
-                                val bouncing = seededCopy(id, false, savedMailbox, recipients, file)
-                                val bytes = try {
-                                    withContext(Dispatchers.IO) { file.readBytes() }
-                                } catch (error: CancellationException) {
-                                    throw error
-                                } catch (error: Exception) {
-                                    notice = error.message ?: fetchFailed
+                                val prefix = bouncePrefix(resentFrom, resentTo, rfc822Date(), newMessageId(account.email))
+                                val got = inBox(box) { s -> fetchPartFile(s, uid, "*", account.bodyFetchChunk, file, prefix) } // F116
+                                if (got == 0) {
+                                    notice = fetchFailed
                                     return@launchLocked false
                                 }
+                                val bouncing = seededCopy(id, false, savedMailbox, recipients, file)
                                 try {
                                     if (password == null) throw MailFailure("password missing")
                                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
                                     keepCopyUntilSubmitted(
                                         bouncing,
-                                        { writeCopy(appContext, it, accountId) },
+                                        { writeCopy(appContext, it, accountId, account.unlabeledCharset) },
                                         { deleteCopy(appContext, it, accountId) },
                                     ) { jmapSend(
                                         offer,
-                                        bytes,
+                                        file,
                                         account.email,
                                         recipients,
                                         account.username,
                                         password,
                                         account.jmapCertPin,
-                                        pinnedJmapUpload(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
+                                        pinnedJmapUploadFile(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                         pinnedJmapPost(account.jmapCertPin, accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), account.tlsPolicy()),
                                         // F149: Fcc on bounce off means no Sent copy (staged in Drafts instead).
                                         sentName = savedMailbox,
@@ -2447,7 +2552,7 @@ private fun ComposeLoaded(
                     label = { Text(row.filename + " " + row.size) },
                     trailingIcon = {
                         IconButton(onClick = {
-                            PickedAttachmentHold.remove(row.key)
+                            pickedHold.remove(row.key)
                             dropPickedKey(row.key)
                             forwardRows = forwardRows.filter { it.key != row.key }
                         }) {
@@ -2476,6 +2581,10 @@ private fun ComposeLoaded(
         }
     }
     }
+    }
+    ComposeChrome()
+    @Composable
+    fun ComposeDialogs() {
     if (discardOpen) {
         AlertDialog(
             onDismissRequest = { discardOpen = false },
@@ -2504,7 +2613,9 @@ private fun ComposeLoaded(
                 }
             },
         )
-    }
+    }    }
+    ComposeDialogs()
+
 }
 
 internal fun oppositeForwardLabel(inlineLabel: String, attachmentLabel: String, settingOn: Boolean): String =

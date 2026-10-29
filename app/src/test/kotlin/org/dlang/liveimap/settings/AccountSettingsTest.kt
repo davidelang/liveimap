@@ -55,6 +55,11 @@ class AccountSettingsTest {
         assertEquals(true, AccountSettings().trafficLogSizeLimit)
         assertEquals(4, AccountSettings().trafficLogMaxMb)
         assertEquals(200, AccountSettings().jmapPartCacheMessages)
+        assertEquals(65536, AccountSettings().bodyFetchChunk)
+        val chunk = AccountSettings(bodyFetchChunk = 8192)
+        assertEquals(8192, decodeAccountSettings(chunk.encode()).bodyFetchChunk)
+        assertEquals(1024, decodeAccountSettings("bodyFetchChunk=1\n").bodyFetchChunk)
+        assertEquals(1048576, decodeAccountSettings("bodyFetchChunk=99999999\n").bodyFetchChunk)
         assertEquals(9, AccountSettings().idleRenewMinutes)
     }
 

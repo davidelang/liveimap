@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "自分のコラム"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "リストの上"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "自動（画面サイズによる）"},
-{"key": "settings_text_size", "source": "Message text size", "text": "メッセージのテキストサイズ"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "オリジナルカラー"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ダークテーマカラー"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "%1$s からの画像を常に表示する"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "設定を保存できませんでした"},
 {"key": "setup_advanced", "source": "Advanced", "text": "詳細"},
 {"key": "setup_help", "source": "Set up this account again", "text": "このアカウントを再設定"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 件のアカウント"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"other": "%1$d 件のアカウント"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "このファイルには名前がありません"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "不明な文字セットです。%1$s として表示しています。"},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s を削除できませんでした"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "一時コピー %1$s を削除できませんでした"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "本文の取得サイズ"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "文字サイズ"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "画像の信頼を読み込めませんでした"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "画像の信頼を保存できませんでした"}
 ]

@@ -291,13 +291,11 @@ private fun LiveImapNavHostReady() {
     var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
     var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    var textZoom by remember { mutableStateOf(100) }
     var arrangement by remember { mutableStateOf(ArrangementChoice.SideBySide) }
-    // Effective font: system font scale x the app's text size; re-planned on rotation, fold, resize, font change.
     val autoLayout = planLayout(
         configuration.screenWidthDp,
         configuration.screenHeightDp,
-        configuration.fontScale * textZoom / 100f,
+        androidx.compose.ui.platform.LocalDensity.current.fontScale,
     )
     // Folders above the list (left column) is planned but not rendered yet; that plan uses two panes for now.
     val autoPanes = if (autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.Beside) 3 else minOf(autoLayout.panes, 2)
@@ -481,7 +479,6 @@ private fun LiveImapNavHostReady() {
         layoutAccountId = drawers.firstOrNull { it.chosen }?.id.orEmpty()
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
-        textZoom = account.readerTextZoom
         NonAsciiText.active = account.nonAsciiDisplay
         accounts = store.listAccounts()
     }

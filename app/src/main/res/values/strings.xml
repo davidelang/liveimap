@@ -277,7 +277,14 @@
     <string name="settings_folder_beside">Own column</string>
     <string name="settings_folder_above">Above the list</string>
     <string name="settings_pane_auto">Automatic (by screen size)</string>
-    <string name="settings_text_size">Message text size</string>
+    <string name="error_file_no_name">This file has no name</string>
+    <string name="reader_unknown_charset">Unknown charset; shown as %1$s.</string>
+    <string name="error_delete_failed">Could not delete %1$s</string>
+    <string name="error_jmap_staging_left">The staging copy %1$s could not be removed</string>
+    <string name="setting_bodyFetchChunk_title">Body fetch chunk</string>
+    <string name="setting_appTextZoom_title">Text size</string>
+    <string name="image_trust_load_failed">Could not load image trust</string>
+    <string name="image_trust_save_failed">Could not save image trust</string>
     <string name="reader_original_colors">Original colors</string>
     <string name="reader_dark_colors">Dark theme colors</string>
     <string name="reader_images_sender_on">Always show images from %1$s</string>

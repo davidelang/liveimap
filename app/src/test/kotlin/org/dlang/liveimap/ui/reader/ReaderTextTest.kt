@@ -41,7 +41,7 @@ class ReaderTextTest {
             "Cc: first@example.com\r\n" +
             "\tsecond@example.com\r\n" +
             "Subject: Hi\r\n"
-        val fields = headerFields(header)
+        val fields = headerFields(header, "ISO-8859-1")
         assertEquals("one@example.com, two@example.com", fields.to)
         assertEquals("first@example.com second@example.com", fields.cc)
         assertEquals("Ada <ada@example.com>", fields.from)
@@ -56,7 +56,7 @@ class ReaderTextTest {
             "Sender: Second <second@example.com>\r\n" +
             "Resent-To: early@example.com\r\n" +
             "Resent-To: late@example.com\r\n"
-        val fields = headerFields(header)
+        val fields = headerFields(header, "ISO-8859-1")
         assertEquals("Ada <ada@example.com>", fields.from)
         assertEquals("one@example.com", fields.to)
         assertEquals("cc@example.com", fields.cc)

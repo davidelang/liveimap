@@ -535,6 +535,7 @@ struct JniCache {
     jclass nsKind = nullptr;
     jclass selectResult = nullptr;
     jclass mimePart = nullptr;
+    jclass mimeTextResult = nullptr;
     jclass messageRef = nullptr;
     jclass arrayList = nullptr;
     jclass hashSet = nullptr;
@@ -547,6 +548,7 @@ struct JniCache {
     jmethodID nsInit = nullptr;
     jmethodID selectInit = nullptr;
     jmethodID mimeInit = nullptr;
+    jmethodID mimeTextResultInit = nullptr;
     jmethodID messageRefInit = nullptr;
     jmethodID listInit = nullptr;
     jmethodID listAdd = nullptr;
@@ -906,6 +908,7 @@ bool resolveJni(JNIEnv * env) {
     if (!requireClass(env, &gJni.nsKind, "org/dlang/liveimap/session/NamespaceKind")) return false;
     if (!requireClass(env, &gJni.selectResult, "org/dlang/liveimap/session/SelectResult")) return false;
     if (!requireClass(env, &gJni.mimePart, "org/dlang/liveimap/session/MimePart")) return false;
+    if (!requireClass(env, &gJni.mimeTextResult, "org/dlang/liveimap/ui/reader/MimeTextResult")) return false;
     if (!requireClass(env, &gJni.messageRef, "org/dlang/liveimap/session/MessageRef")) return false;
     if (!requireClass(env, &gJni.arrayList, "java/util/ArrayList")) return false;
     if (!requireClass(env, &gJni.hashSet, "java/util/HashSet")) return false;
@@ -923,6 +926,8 @@ bool resolveJni(JNIEnv * env) {
     if (!requireMethod(env, &gJni.selectInit, gJni.selectResult, "<init>", "(JJI)V")) return false;
     if (!requireMethod(env, &gJni.mimeInit, gJni.mimePart, "<init>",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V")) return false;
+    if (!requireMethod(env, &gJni.mimeTextResultInit, gJni.mimeTextResult, "<init>",
+        "(ZLjava/lang/String;Ljava/lang/String;ZZ)V")) return false;
     if (!requireMethod(env, &gJni.messageRefInit, gJni.messageRef, "<init>",
         "(Ljava/lang/String;Ljava/lang/String;JJ)V")) return false;
     if (!requireMethod(env, &gJni.listInit, gJni.arrayList, "<init>", "()V")) return false;
@@ -6418,10 +6423,10 @@ extern thread_local JNIEnv * mimeEnv;
 extern "C" {
 void mime_decode_install(void);
 int mime_decode_text(const char * bytes, size_t len, const char * declared, const char * fallback,
-    const char * encoding, char ** text, char ** note, int * status);
+    const char * encoding, char ** text, char ** charset_used, int * status, int * unknown_charset, int * unknown);
 struct MimeStream * mime_stream_open(const char * declared, const char * fallback, const char * encoding);
-char * mime_stream_take(struct MimeStream * stream, const char * bytes, size_t len, int final, char ** note,
-    int * status);
+char * mime_stream_take(struct MimeStream * stream, const char * bytes, size_t len, int final,
+    char ** charset_used, int * status, int * unknown_charset, int * unknown);
 void mime_stream_close(struct MimeStream * stream);
 struct MimeXfer * mime_xfer_open(const char * encoding);
 char * mime_xfer_take(struct MimeXfer * xfer, const char * bytes, size_t len, int final, size_t * out_len,
@@ -6460,7 +6465,19 @@ static jobjectArray stringTriple(JNIEnv * env, const char * a, const char * b, c
     return arr;
 }
 
-extern "C" JNIEXPORT jobjectArray JNICALL
+static jobject newMimeText(JNIEnv * env, int status, const char * text, const char * charset, int unknownCharset,
+    int unknown) {
+    jstring jText = newString(env, text != nullptr ? text : "");
+    jstring jCharset = newString(env, charset != nullptr ? charset : "");
+    jobject obj = env->NewObject(gJni.mimeTextResult, gJni.mimeTextResultInit,
+        status == 0 ? JNI_TRUE : JNI_FALSE, jText, jCharset,
+        unknownCharset != 0 ? JNI_TRUE : JNI_FALSE, unknown != 0 ? JNI_TRUE : JNI_FALSE);
+    if (jText != nullptr) env->DeleteLocalRef(jText);
+    if (jCharset != nullptr) env->DeleteLocalRef(jCharset);
+    return obj;
+}
+
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_text(JNIEnv * env, jclass, jbyteArray bytes, jstring declared,
     jstring fallback, jstring encoding) {
     MimeEnvScope scope(env);
@@ -6469,17 +6486,19 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_text(JNIEnv * env, jclass, jbyteArr
     auto fallbackUtf = utf8FromJava(env, fallback);
     auto encodingUtf = utf8FromJava(env, encoding);
     char * text = nullptr;
-    char * note = nullptr;
+    char * charset = nullptr;
     int status = 1;
+    int unknownCharset = 0;
+    int unknown = 0;
     mime_decode_text(in.data(), in.size(),
         declaredUtf ? declaredUtf->c_str() : "",
-        fallbackUtf ? fallbackUtf->c_str() : "ISO-8859-1",
+        fallbackUtf ? fallbackUtf->c_str() : "",
         encodingUtf ? encodingUtf->c_str() : "",
-        &text, &note, &status);
-    jobjectArray arr = stringTriple(env, status == 0 ? "ok" : "error", text != nullptr ? text : "", note != nullptr ? note : "");
+        &text, &charset, &status, &unknownCharset, &unknown);
+    jobject obj = newMimeText(env, status, text, charset, unknownCharset, unknown);
     std::free(text);
-    std::free(note);
-    return arr;
+    std::free(charset);
+    return obj;
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -6496,24 +6515,81 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_streamOpen(JNIEnv * env, jclass, js
     return static_cast<jlong>(reinterpret_cast<uintptr_t>(stream));
 }
 
-extern "C" JNIEXPORT jobjectArray JNICALL
+extern "C" JNIEXPORT jobject JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_streamTake(JNIEnv * env, jclass, jlong handle, jbyteArray chunk,
     jboolean finalChunk) {
     MimeEnvScope scope(env);
     std::string in = bytesOf(env, chunk);
-    char * note = nullptr;
+    char * charset = nullptr;
     int status = 1;
+    int unknownCharset = 0;
+    int unknown = 0;
     char * text = mime_stream_take(reinterpret_cast<MimeStream *>(static_cast<uintptr_t>(handle)),
-        in.data(), in.size(), finalChunk == JNI_TRUE ? 1 : 0, &note, &status);
-    jobjectArray arr = stringTriple(env, text != nullptr ? text : "", note != nullptr ? note : "", status == 0 ? "ok" : "error");
+        in.data(), in.size(), finalChunk == JNI_TRUE ? 1 : 0, &charset, &status, &unknownCharset, &unknown);
+    jobject obj = newMimeText(env, status, text, charset, unknownCharset, unknown);
     std::free(text);
-    std::free(note);
-    return arr;
+    std::free(charset);
+    return obj;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_ui_reader_MimeDecode_streamClose(JNIEnv *, jclass, jlong handle) {
     mime_stream_close(reinterpret_cast<MimeStream *>(static_cast<uintptr_t>(handle)));
+}
+
+static void throwMimeDecode(JNIEnv * env, const char * text) {
+    jclass ex = env->FindClass("org/dlang/liveimap/ui/compose/MimeDecodeException");
+    if (ex != nullptr) {
+        env->ThrowNew(ex, text);
+        env->DeleteLocalRef(ex);
+    }
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_org_dlang_liveimap_ui_reader_MimeDecode_multipartParts(JNIEnv * env, jclass, jbyteArray bytes) {
+    std::string in = bytesOf(env, bytes);
+    size_t indx = 0;
+    struct mailmime * mime = nullptr;
+    int parsed = mailmime_parse(in.empty() ? "" : in.data(), in.size(), &indx, &mime);
+    if (parsed != MAILIMF_NO_ERROR || mime == nullptr || mime->mm_type != MAILMIME_MULTIPLE ||
+        mime->mm_data.mm_multipart.mm_mp_list == nullptr) {
+        if (mime != nullptr) mailmime_free(mime);
+        throwMimeDecode(env, "multipart has no boundary");
+        return nullptr;
+    }
+    clist * list = mime->mm_data.mm_multipart.mm_mp_list;
+    int count = 0;
+    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) count++;
+    jclass bytesClass = env->FindClass("[B");
+    jobjectArray out = bytesClass != nullptr ? env->NewObjectArray(count, bytesClass, nullptr) : nullptr;
+    if (bytesClass != nullptr) env->DeleteLocalRef(bytesClass);
+    if (out == nullptr) {
+        mailmime_free(mime);
+        return nullptr;
+    }
+    int index = 0;
+    const char * base = in.data();
+    const char * end = base + in.size();
+    for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur), ++index) {
+        auto * part = static_cast<struct mailmime *>(clist_content(cur));
+        const char * start = part != nullptr ? part->mm_mime_start : nullptr;
+        size_t len = part != nullptr ? part->mm_length : 0;
+        if (start == nullptr || start < base || start > end || len > static_cast<size_t>(end - start)) {
+            mailmime_free(mime);
+            throwMimeDecode(env, "could not parse this message");
+            return nullptr;
+        }
+        jbyteArray row = env->NewByteArray(static_cast<jsize>(len));
+        if (row == nullptr) {
+            mailmime_free(mime);
+            return nullptr;
+        }
+        if (len > 0) env->SetByteArrayRegion(row, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(start));
+        env->SetObjectArrayElement(out, index, row);
+        env->DeleteLocalRef(row);
+    }
+    mailmime_free(mime);
+    return out;
 }
 
 extern "C" JNIEXPORT jlong JNICALL

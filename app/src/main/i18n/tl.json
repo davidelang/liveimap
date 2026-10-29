@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Sariling column"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Sa itaas ng listahan"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Awtomatiko (ayon sa laki ng screen)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Laki ng text ng mensahe"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Mga orihinal na kulay"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Madilim na kulay ng tema"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Palaging magpakita ng mga larawan mula sa %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Hindi nasave ang setup"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Advanced"},
 {"key": "setup_help", "source": "Set up this account again", "text": "I-set up muli ang account na ito"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d account"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d account", "other": "%1$d account"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Walang pangalan ang file na ito"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Hindi kilalang charset; ipinapakita bilang %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Hindi matanggal ang %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Hindi maalis ang pansamantalang kopya %1$s"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bloke ng katawan"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Laki ng teksto"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Hindi ma-load ang tiwala sa larawan"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Hindi ma-save ang tiwala sa larawan"}
 ]

@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Öz sütunu"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Siyahının üstündə"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Avtomatik (ekran ölçüsünə görə)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Mesajın mətn ölçüsü"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Orijinal rənglər"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Tünd mövzu rəngləri"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Həmişə %1$s-dən şəkilləri göstərin"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Quraşdırma saxlanılmadı"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Ətraflı"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Bu hesabı yenidən quraşdır"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hesab", "other": "%1$d hesab"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d hesab", "other": "%1$d hesab"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Bu faylın adı yoxdur"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Naməlum kodlaşdırma; %1$s kimi göstərilir."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s silinə bilmədi"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Müvəqqəti nüsxə %1$s silinə bilmədi"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Gövdə hissəsi"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Mətn ölçüsü"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Şəkil etibarı yüklənmədi"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Şəkil etibarı saxlanılmadı"}
 ]

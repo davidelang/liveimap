@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Columna pròpia"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Per sobre de la llista"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automàtic (per mida de la pantalla)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Mida del text del missatge"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Colors originals"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Colors temàtics foscos"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Mostra sempre imatges de %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "No s’ha pogut desar la configuració"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Avançat"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Torna a configurar aquest compte"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d compte", "many": "%1$d comptes", "other": "%1$d comptes"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d compte", "many": "%1$d comptes", "other": "%1$d comptes"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Aquest fitxer no té nom"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Joc de caràcters desconegut; es mostra com a %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "No s'ha pogut suprimir %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "No s'ha pogut eliminar la còpia temporal %1$s"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bloc de cos"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Mida del text"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "No s'ha pogut carregar la confiança d'imatges"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "No s'ha pogut desar la confiança d'imatges"}
 ]

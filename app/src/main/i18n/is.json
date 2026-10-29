@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Eigin dálkur"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Ofan listanum"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Sjálfvirkt (eftir skjástærð)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Textastærð skilaboða"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Upprunalegir litir"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Dökkir þemalitir"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Sýndu alltaf myndir frá %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Ekki tókst að vista uppsetninguna"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Ítarlegt"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Setja þennan reikning upp aftur"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d reikningur", "other": "%1$d reikningar"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d reikningur", "other": "%1$d reikningar"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Þessi skrá hefur ekkert nafn"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Óþekkt stafatafla; sýnt sem %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Tókst ekki að eyða %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Bráðabirgðaeintakið %1$s var ekki fjarlægt"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bolhluti"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Leturstærð"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Tókst ekki að hlaða myndtrausti"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Tókst ekki að vista myndtraust"}
 ]

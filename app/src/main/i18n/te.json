@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "స్వంత కాలమ్"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "జాబితా పైన"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "స్వయంచాలక (స్క్రీన్ పరిమాణం ద్వారా)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "సందేశ వచన పరిమాణం"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "అసలు రంగులు"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "ముదురు థీమ్ రంగులు"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "ఎల్లప్పుడూ %1$s నుండి చిత్రాలను చూపు"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "సెటప్ సేవ్ కాలేదు"},
 {"key": "setup_advanced", "source": "Advanced", "text": "అధునాతనం"},
 {"key": "setup_help", "source": "Set up this account again", "text": "ఈ ఖాతాను మళ్లీ సెటప్ చేయండి"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ఖాతా", "other": "%1$d ఖాతాలు"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d ఖాతా", "other": "%1$d ఖాతాలు"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "ఈ ఫైలుకు పేరు లేదు"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "తెలియని అక్షరసమితి; %1$s గా చూపబడింది."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s తొలగించలేకపోయాం"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "తాత్కాలిక కాపీ %1$s తొలగించలేకపోయాం"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "బాడీ ముక్క"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "పాఠ్య పరిమాణం"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "చిత్ర నమ్మకం లోడ్ కాలేదు"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "చిత్ర నమ్మకం సేవ్ కాలేదు"}
 ]

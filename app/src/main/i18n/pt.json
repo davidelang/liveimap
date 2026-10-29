@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Coluna própria"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Acima da lista"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automático (por tamanho de tela)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Tamanho do texto da mensagem"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Cores originais"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Cores escuras do tema"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Sempre mostrar imagens do %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "A configuração não pôde ser salva"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Avançado"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Configurar esta conta de novo"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d conta", "many": "%1$d contas", "other": "%1$d contas"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d conta", "many": "%1$d contas", "other": "%1$d contas"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Este arquivo não tem nome"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Conjunto de caracteres desconhecido; mostrado como %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Não foi possível apagar %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "A cópia temporária %1$s não pôde ser removida"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bloco do corpo"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Tamanho do texto"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Não foi possível carregar a confiança das imagens"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Não foi possível guardar a confiança das imagens"}
 ]

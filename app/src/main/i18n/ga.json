@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Colún féin"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Os cionn an liosta"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Uathoibríoch (de réir méid an scáileáin)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Méid téacs na teachtaireachta"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Dathanna bunaidh"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Dathanna dorcha téama"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Taispeáin íomhánna ó %1$s i gcónaí"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Níorbh fhéidir an socrú a shábháil"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Casta"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Socraigh an cuntas seo arís"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d chuntas", "two": "%1$d chuntas", "few": "%1$d chuntas", "many": "%1$d gcuntas", "other": "%1$d cuntas"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d chuntas", "two": "%1$d chuntas", "few": "%1$d chuntas", "many": "%1$d gcuntas", "other": "%1$d cuntas"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Níl ainm ar an gcomhad seo"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Tacar carachtar anaithnid; taispeánta mar %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Níorbh fhéidir %1$s a scriosadh"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Níorbh fhéidir an chóip shealadach %1$s a bhaint"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bloc coirp"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Méid an téacs"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Níorbh fhéidir muinín na n-íomhánna a luchtú"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Níorbh fhéidir muinín na n-íomhánna a shábháil"}
 ]

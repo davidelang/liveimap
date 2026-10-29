@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Coloana proprie"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Deasupra listei"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Automat (după dimensiunea ecranului)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Dimensiunea textului mesajului"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Culori originale"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Culori tematice întunecate"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Afișați întotdeauna imagini de la %1$s"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Configurarea nu a putut fi salvată"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Avansat"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Configurează din nou acest cont"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d cont", "few": "%1$d conturi", "other": "%1$d de conturi"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d cont", "few": "%1$d conturi", "other": "%1$d de conturi"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Acest fișier nu are nume"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Set de caractere necunoscut; afișat ca %1$s."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nu s-a putut șterge %1$s"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Copia temporară %1$s nu a putut fi eliminată"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Bloc de corp"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Dimensiunea textului"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Încrederea imaginilor nu a putut fi încărcată"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Încrederea imaginilor nu a putut fi salvată"}
 ]

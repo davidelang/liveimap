@@ -1,9 +1,12 @@
 package org.dlang.liveimap.engine
 
+import kotlinx.coroutines.CancellationException
 import org.dlang.liveimap.session.MailFailure
+import org.dlang.liveimap.ui.reader.WireTextDecoder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class WireTextTest {
@@ -32,11 +35,28 @@ class WireTextTest {
         assertTrue(runCatching { requireSearchArgument("Keyword", "a b") }.isFailure)
         assertTrue(runCatching { requireSearchArgument("Text", "a\r\nb") }.isFailure)
     }
+
+    @Test fun closeTwiceFreesOnce() {
+        val decoder = WireTextDecoder("utf-8", "7bit", "UTF-8")
+        decoder.close()
+        decoder.close()
+    }
+
+    @Test fun cancelledUseCloses() {
+        val decoder = WireTextDecoder("utf-8", "7bit", "UTF-8")
+        try {
+            decoder.use { throw CancellationException("stop") }
+            fail("use returned")
+        } catch (error: CancellationException) {
+            assertEquals("stop", error.message)
+        }
+        decoder.close()
+    }
 }
 
 class WireTextPathsTest {
     private fun parsed(headers: String) =
-        org.dlang.liveimap.ui.compose.parseRfc822("$headers\r\nSubject: x\r\n\r\nbody".toByteArray())
+        org.dlang.liveimap.ui.compose.parseRfc822("$headers\r\nSubject: x\r\n\r\nbody".toByteArray(), "ISO-8859-1")
 
     @Test fun listSuppliedFolderNameRefused() {
         // A name a shared-namespace user created with CRLF (arrives as a LIST literal) is refused on reuse.

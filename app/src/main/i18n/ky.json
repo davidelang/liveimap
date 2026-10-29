@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "Өздүк тилке"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "Тизмеден жогору"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "Автоматтык (экран өлчөмү боюнча)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "Билдирүү текстинин өлчөмү"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "Оригиналдуу түстөр"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "Кара түстөр"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "Ар дайым %1$s сүрөттөрүн көрсөтүү"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "Жөндөө сакталган жок"},
 {"key": "setup_advanced", "source": "Advanced", "text": "Кеңейтилген"},
 {"key": "setup_help", "source": "Set up this account again", "text": "Бул каттоо эсебин кайра жөндөө"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d каттоо", "other": "%1$d каттоо"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d каттоо", "other": "%1$d каттоо"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "Бул файлдын аты жок"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "Белгисиз коддоо; %1$s катары көрсөтүлдү."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s өчүрүлгөн жок"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Убактылуу көчүрмө %1$s өчүрүлгөн жок"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "Текст бөлүгү"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "Текст өлчөмү"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Сүрөт ишеними жүктөлгөн жок"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Сүрөт ишеними сакталган жок"}
 ]

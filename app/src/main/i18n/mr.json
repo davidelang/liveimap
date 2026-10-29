@@ -257,7 +257,6 @@
 {"key": "settings_folder_beside", "source": "Own column", "text": "स्वतःचा स्तंभ"},
 {"key": "settings_folder_above", "source": "Above the list", "text": "यादी वर"},
 {"key": "settings_pane_auto", "source": "Automatic (by screen size)", "text": "स्वयंचलित (स्क्रीन आकारानुसार)"},
-{"key": "settings_text_size", "source": "Message text size", "text": "संदेश मजकूर आकार"},
 {"key": "reader_original_colors", "source": "Original colors", "text": "मूळ रंग"},
 {"key": "reader_dark_colors", "source": "Dark theme colors", "text": "गडद थीम रंग"},
 {"key": "reader_images_sender_on", "source": "Always show images from %1$s", "text": "नेहमी %1$s वरून प्रतिमा दाखवा"},
@@ -1161,5 +1160,13 @@
 {"key": "setup_failed", "source": "Setup could not be saved", "text": "सेटअप जतन करता आले नाही"},
 {"key": "setup_advanced", "source": "Advanced", "text": "प्रगत"},
 {"key": "setup_help", "source": "Set up this account again", "text": "हे खाते पुन्हा सेट करा"},
-{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d खाते", "other": "%1$d खाती"}}
+{"key": "backup_restored", "source": {"one": "%1$d account", "other": "%1$d accounts"}, "text": {"one": "%1$d खाते", "other": "%1$d खाती"}},
+{"key": "error_file_no_name", "source": "This file has no name", "text": "या फाइलचे नाव नाही"},
+{"key": "reader_unknown_charset", "source": "Unknown charset; shown as %1$s.", "text": "अज्ञात वर्णसंच; %1$s म्हणून दाखवले."},
+{"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s हटवता आले नाही"},
+{"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "तात्पुरती प्रत %1$s काढता आली नाही"},
+{"key": "setting_bodyFetchChunk_title", "source": "Body fetch chunk", "text": "मुख्य भागाचा तुकडा"},
+{"key": "setting_appTextZoom_title", "source": "Text size", "text": "मजकुराचा आकार"},
+{"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "प्रतिमा विश्वास लोड झाला नाही"},
+{"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "प्रतिमा विश्वास जतन झाला नाही"}
 ]
