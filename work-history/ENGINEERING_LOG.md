@@ -3925,3 +3925,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - Distribution nickname index ignores locale case
 
 - Completion nickname lookup uses char case, the same fold as equals(ignoreCase = true), so Turkish I and i still match.
+
+## 2026-10-29 - Settings tree allows a trailing comma
+
+- A comma after the last value of a list or object in settings-tree.json is the same tree without it, in the app parser and in both generator loads. The checked-in tree is unchanged.

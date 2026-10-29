@@ -493,8 +493,60 @@ def upgrade_group(node, reg):
     return group
 
 
+def loads_settings_tree(data):
+    # A comma after the last value of a list or object is not part of the tree.
+    if isinstance(data, (bytes, bytearray)):
+        text = data.decode("utf-8")
+    else:
+        text = data
+    return json.loads(_without_trailing_commas(text))
+
+
+def _without_trailing_commas(text):
+    out = []
+    i = 0
+    n = len(text)
+    in_str = False
+    esc = False
+    last = ""
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+                last = '"'
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+            out.append(c)
+            i += 1
+            continue
+        if c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j < n and text[j] in "]}" and last in '0123456789"el]}':
+                i += 1
+                continue
+            out.append(c)
+            last = ","
+            i += 1
+            continue
+        out.append(c)
+        if c not in " \t\r\n":
+            last = c
+        i += 1
+    return "".join(out)
+
+
 def upgrade(tree_path, registry_path):
-    tree = json.loads(Path(tree_path).read_text())
+    tree = loads_settings_tree(Path(tree_path).read_text())
     reg = parse_registry(registry_path)
     account_children = []
     for node in tree:
@@ -1239,7 +1291,7 @@ def main():
         raise SystemExit("usage: gen-settings-tree.py <tree.json> <ktOut> | --upgrade")
     tree_path, kt_root = sys.argv[1:]
     raw = Path(tree_path).read_bytes()
-    doc = json.loads(raw)
+    doc = loads_settings_tree(raw)
     emit(doc, kt_root, raw)
 
 

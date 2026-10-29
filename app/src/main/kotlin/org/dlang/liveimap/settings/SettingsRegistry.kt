@@ -87,7 +87,14 @@ private class JsonParser(private val text: String) {
             fields[key] = value()
             skip()
             when {
-                peek(',') -> i++
+                peek(',') -> {
+                    i++
+                    skip()
+                    if (peek('}')) {
+                        i++
+                        return JsonValue.Obj(fields)
+                    }
+                }
                 peek('}') -> {
                     i++
                     return JsonValue.Obj(fields)
@@ -109,7 +116,14 @@ private class JsonParser(private val text: String) {
             items.add(value())
             skip()
             when {
-                peek(',') -> i++
+                peek(',') -> {
+                    i++
+                    skip()
+                    if (peek(']')) {
+                        i++
+                        return JsonValue.Arr(items)
+                    }
+                }
                 peek(']') -> {
                     i++
                     return JsonValue.Arr(items)
