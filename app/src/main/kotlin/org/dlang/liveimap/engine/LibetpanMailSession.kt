@@ -2423,14 +2423,14 @@ class LibetpanMailSession(
     private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
     // Columns: 0 prefix Array<String?>, 1 delimiter IntArray, 2 kind IntArray (0 Personal, 1 Other, 2 Shared).
-    private external fun nativeNamespaces(handle: Long): Array<Any>?
+    private external fun nativeNamespaces(handle: Long): Array<Any?>?
     private external fun nativeHierarchyDelimiter(handle: Long): Char
     // Columns: 0 mailbox, 1 leaf, 2 specialUse (null if none) Array<String?>; 3 hasChildren, 4 delimiter, 5 messages (-1 if absent), 6 unseen (-1 if absent) IntArray.
-    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<Any>?
+    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<Any?>?
     private external fun nativeMailboxListed(handle: Long, name: String): Boolean
     private external fun nativeSubscribedMailboxes(handle: Long, extended: Boolean): Array<String>?
     // Columns: 0 mailbox Array<String?>, 1 messages IntArray.
-    private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Array<Any>?
+    private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Array<Any?>?
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeCloseMailbox(handle: Long)
@@ -2455,7 +2455,7 @@ class LibetpanMailSession(
         altAddresses: String,
         unlabeledCharset: String,
         accountId: String,
-    ): Array<Any>?
+    ): Array<Any?>?
 
     // One MimePart, big-endian. Each part: u16 length + UTF-8 for section, type, subtype, disposition;
     // filename u16 0xFFFF if null else length + UTF-8; size i32; charset, encoding, format as u16 length + UTF-8;
@@ -2527,7 +2527,7 @@ class LibetpanMailSession(
         withCharset: Boolean,
         fuzzy: Boolean,
         accountId: String,
-    ): Array<Any>?
+    ): Array<Any?>?
 
     private external fun nativeSearchScopeCount(
         handle: Long,
