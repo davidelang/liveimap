@@ -317,7 +317,12 @@ fun pickedAddresses(entry: AlpineEntry, book: List<AlpineEntry> = emptyList()): 
     expandPicked(entry) { email -> book.firstOrNull { it.nickname.equals(email, ignoreCase = true) } }
 
 internal fun pickedAddresses(entry: AlpineEntry, index: Map<String, AlpineEntry>): List<SelectedAddress> =
-    expandPicked(entry) { email -> index[email.lowercase()] }
+    expandPicked(entry) { email -> index[nicknameIndexKey(email)] }
+
+/** Case fold for nickname.equals(ignoreCase = true). Char case is not the default locale (Turkish I). */
+internal fun nicknameIndexKey(value: String): String = buildString(value.length) {
+    for (ch in value) append(ch.lowercaseChar())
+}
 
 private fun expandPicked(entry: AlpineEntry, lookup: (String) -> AlpineEntry?): List<SelectedAddress> {
     val address = entry.address.trim()

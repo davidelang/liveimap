@@ -82,7 +82,7 @@ private fun nicknameIndex(entries: List<CompletionEntry>): Map<String, AlpineEnt
     completionNicknameIndexes++
     val index = HashMap<String, AlpineEntry>(entries.size)
     for (entry in entries) {
-        val key = entry.nickname.lowercase()
+        val key = nicknameIndexKey(entry.nickname)
         if (key.isEmpty() || key in index) continue
         index[key] = AlpineEntry(entry.nickname, entry.displayName, entry.email.trim(), "", "")
     }

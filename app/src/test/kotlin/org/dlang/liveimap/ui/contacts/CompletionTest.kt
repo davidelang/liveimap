@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 class CompletionTest {
     @Test
@@ -96,6 +97,28 @@ class CompletionTest {
         assertEquals(listOf("ada@example.com"), matched[1].members.map { it.email })
         assertFalse(matched[2].distribution)
         assertEquals(3, completionNicknameIndexes)
+    }
+
+    @Test
+    fun distributionNicknameIndexMatchesAsciiCaseOnTurkishLocale() {
+        val previous = Locale.getDefault()
+        Locale.setDefault(Locale.forLanguageTag("tr"))
+        try {
+            resetCompletionNicknameIndexes()
+            val sources = listOf(
+                CompletionSource(
+                    "Pine",
+                    listOf(
+                        CompletionEntry("Igor", "Igor", "igor@example.com"),
+                        CompletionEntry("team", "Team", "(igor)"),
+                    ),
+                ),
+            )
+            val hits = completeAddress("team", sources)
+            assertEquals(listOf("igor@example.com"), hits.single().members.map { it.email })
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test
