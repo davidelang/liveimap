@@ -1,18 +1,18 @@
 package org.dlang.liveimap.accounts
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.dlang.liveimap.settings.newAccountSettings
 
 internal class BackupRecord(
-    val settings: AccountSettings,
+    val settings: Settings,
     val imapPassword: String?,
     val smtpPassword: String?,
     val sievePassword: String?,
 )
 
 internal fun encodeBackupRecord(
-    settings: AccountSettings,
+    settings: Settings,
     imapPassword: String,
     smtpPassword: String,
     sievePassword: String,

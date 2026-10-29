@@ -1,14 +1,14 @@
 package org.dlang.liveimap.session
 
 import java.io.File
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 
 class DisconnectedMailSession : MailSession {
     override val capabilities: Set<String> = emptySet()
 
-    override suspend fun open(account: AccountSettings): OpenResult =
+    override suspend fun open(account: Settings): OpenResult =
         OpenResult.Failed("not connected")
 
     override suspend fun namespaces(): List<Namespace> = notConnected()

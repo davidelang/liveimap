@@ -10,7 +10,7 @@ class TrafficFilesTest {
     private fun dir(): File = Files.createTempDirectory("traffic").toFile()
 
     private fun writer(root: File, roll: Long = 0): TrafficWriter {
-        return TrafficLog.writer(root, "acct-1", roll) ?: error("writer")
+        return TrafficLog.writer(root, "acct-1", roll)
     }
 
     @Test
@@ -54,21 +54,18 @@ class TrafficFilesTest {
     }
 
     @Test
-    fun unlinkedFileOpensTheNextName() {
+    fun zeroCapLeavesTheOpenFile() {
         val root = dir()
         val w = writer(root)
         w.record("app", '>', "one".toByteArray())
         w.sync()
         val folder = File(File(root, "traffic"), "acct-1")
         val first = folder.listFiles()?.single() ?: error("file")
+        TrafficLog.sweep(folder, 0, System.currentTimeMillis(), keepNames = setOf(first.name))
+        assertTrue(first.exists())
         TrafficLog.sweep(folder, 0, System.currentTimeMillis())
-        assertTrue(!first.exists())
-        w.record("app", '>', "two".toByteArray())
-        w.sync()
-        val left = folder.listFiles()?.filter { it.isFile } ?: emptyList()
-        assertEquals(1, left.size)
-        assertTrue(left[0].name != first.name)
-        assertTrue(TrafficLog.readRecords(left[0]).single().bytes.contentEquals("two".toByteArray()))
+        assertTrue(first.exists())
+        assertTrue(TrafficLog.readRecords(first).single().bytes.contentEquals("one".toByteArray()))
     }
 
     @Test

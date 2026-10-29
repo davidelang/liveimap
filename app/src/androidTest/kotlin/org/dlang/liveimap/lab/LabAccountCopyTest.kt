@@ -4,7 +4,7 @@ import android.util.Base64
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.accounts.AccountStore
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Test
 
@@ -46,7 +46,7 @@ class LabAccountCopyTest {
     @Test
     fun importAccount(): Unit = runBlocking {
         val (s64, p64) = java.io.File("/data/local/tmp/lab-acct").readText().trim().split(":")
-        val src = decodeAccountSettings(String(Base64.decode(s64, Base64.NO_WRAP)))
+        val src = decodeSettings(String(Base64.decode(s64, Base64.NO_WRAP)))
         val store = AccountStore.shared(InstrumentationRegistry.getInstrumentation().targetContext)
         val original = store.listAccounts().firstOrNull { it.drawer }?.id
         createLabAccount(

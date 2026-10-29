@@ -1,11 +1,11 @@
 package org.dlang.liveimap.ui.reader
 
 import org.dlang.liveimap.settings.TextLayout
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SaveNameRule
 import org.dlang.liveimap.settings.bodyViewLabel
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,14 +150,14 @@ class ReaderTextTest {
 
     @Test
     fun readerTextLayoutRoundTripAndMissingKey() {
-        assertEquals(TextLayout.Text, AccountSettings().readerTextLayout)
+        assertEquals(TextLayout.Text, Settings().readerTextLayout)
         for (layout in TextLayout.entries) {
-            assertEquals(layout, decodeAccountSettings(AccountSettings(readerTextLayout = layout).encode()).readerTextLayout)
+            assertEquals(layout, decodeSettings(Settings(readerTextLayout = layout).encode()).readerTextLayout)
         }
-        val absent = AccountSettings(readerTextLayout = TextLayout.Flowed).encode().lineSequence()
+        val absent = Settings(readerTextLayout = TextLayout.Flowed).encode().lineSequence()
             .filter { it.isNotEmpty() && !it.startsWith("readerTextLayout=") }
             .joinToString("\n")
-        assertEquals(TextLayout.Text, decodeAccountSettings(absent).readerTextLayout)
+        assertEquals(TextLayout.Text, decodeSettings(absent).readerTextLayout)
     }
 
     @Test

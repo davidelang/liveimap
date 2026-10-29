@@ -1,6 +1,6 @@
 package org.dlang.liveimap.ui
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.accountDrawerFolders
@@ -65,7 +65,7 @@ class DrawerAccountTest {
     @Test
     fun encodedPreferenceKeepsFolders() {
         val favorite = FolderFavorite(false, "INBOX.a", '/')
-        val encoded = AccountSettings(
+        val encoded = Settings(
             postponedMailbox = "drafts",
             favorites = listOf(favorite),
         ).encode()

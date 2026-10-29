@@ -35,7 +35,7 @@ class PinercSendingImportTest {
             patterns-roles=LIT:pattern="/NICK=work/TO=@corp.example" action="/ROLE=1/FROM=David <david@corp.example>/FCC=Work.Sent/LSIG=Work",
                 LIT:pattern="/NICK=odd/SCORE=5" action="/ROLE=1/FROM=x@y"
         """.trimIndent() + "\n"
-        val r = previewPinerc(text, AccountSettings())
+        val r = previewPinerc(text, Settings())
         val n = r.next
         assertEquals("David Lang\nlang.hm", n.signature)
         assertEquals("| ", n.quotePrefix)
@@ -66,7 +66,7 @@ class PinercSendingImportTest {
     fun roleWithoutConditionsIsNotImported() {
         // F106: /NICK only would match every compose and silently add Reply-To
         val text = "patterns-roles=LIT:pattern=\"/NICK=Work\" action=\"/ROLE=1/REPLYTO=collector@evil.example\"\n"
-        val r = previewPinerc(text, AccountSettings())
+        val r = previewPinerc(text, Settings())
         assertTrue(decodeRules(r.next.sendingRules).isEmpty())
         assertTrue(r.skipped.any { "Work" in it && "every message" in it })
     }
@@ -82,7 +82,7 @@ class PinercSendingImportTest {
 
         val quoted = pinercQuoted("a,b")
         assertEquals("\"a,b\"", quoted)
-        assertEquals(listOf("a,b"), previewPinerc("alt-addresses=$quoted\n", AccountSettings()).next.altAddresses)
+        assertEquals(listOf("a,b"), previewPinerc("alt-addresses=$quoted\n", Settings()).next.altAddresses)
 
         val role = SendingRule(
             name = "work",
@@ -93,7 +93,7 @@ class PinercSendingImportTest {
             ),
             actions = RuleActions(fromAddress = "me@x", sendAccount = "other-account"),
         )
-        val account = AccountSettings(
+        val account = Settings(
             signature = "Hello\nthere",
             quotePrefix = "| ",
             replyLeadIn = "On {date}, {from} wrote:",
@@ -115,7 +115,7 @@ class PinercSendingImportTest {
         assertFalse(rolesLine.contains("list.example"))
         assertFalse(rolesLine.contains("other-account"))
         assertFalse(text.contains("signature tokens are unread"))
-        val back = previewPinerc(text, AccountSettings()).next
+        val back = previewPinerc(text, Settings()).next
         assertEquals("Hello\nthere", back.signature)
         assertEquals("| ", back.quotePrefix)
         assertEquals("On {date}, {from} wrote:", back.replyLeadIn)
@@ -152,14 +152,14 @@ class PinercSendingImportTest {
         val previous = ToolbarStore.record
         try {
             ToolbarStore.replace(ToolbarRecord(readerToolbar = custom))
-            assertTrue(encodePinerc(AccountSettings()).contains("# toolbar"))
+            assertTrue(encodePinerc(Settings()).contains("# toolbar"))
             ToolbarStore.replace(ToolbarRecord())
-            assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
+            assertFalse(encodePinerc(Settings()).contains("# toolbar"))
             ToolbarStore.replace(ToolbarRecord(readerToolbar = defaultReaderToolbar()))
-            assertFalse(encodePinerc(AccountSettings()).contains("# toolbar"))
+            assertFalse(encodePinerc(Settings()).contains("# toolbar"))
             val index = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
             ToolbarStore.replace(ToolbarRecord(indexBar = index))
-            assertTrue(encodePinerc(AccountSettings()).contains("# toolbar"))
+            assertTrue(encodePinerc(Settings()).contains("# toolbar"))
         } finally {
             ToolbarStore.replace(previous)
         }

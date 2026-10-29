@@ -1,6 +1,6 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 
 private val plusFailure = Regex("SASL (SCRAM-SHA-[0-9]+)-PLUS( failed|\\))")
@@ -10,7 +10,7 @@ private val plusFailure = Regex("SASL (SCRAM-SHA-[0-9]+)-PLUS( failed|\\))")
  * the same mechanism without channel binding, same TLS mode. Null when no retry applies: a forced
  * mechanism (the user chose it), a plaintext connection, or any other failure.
  */
-fun plusFallback(account: AccountSettings, failure: String): AccountSettings? {
+fun plusFallback(account: Settings, failure: String): Settings? {
     if (account.authMechanism.isNotBlank()) return null
     if (account.tlsMode == TlsMode.None) return null
     // F64: when the TLS peer was trusted only by the user (accept-invalid, or a pin the user confirmed),

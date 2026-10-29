@@ -96,59 +96,7 @@
               "editor": "toolbars",
               "opens": "screen",
               "title": "settings_toolbars",
-              "settings": [
-                {
-                  "setting": "indexBar",
-                  "type": "Encoded",
-                  "scope": "ui",
-                  "kind": "subscreen",
-                  "default": "T:Search|O:Refresh,Filter|H:",
-                  "title": "settings_panel_index"
-                },
-                {
-                  "setting": "selectionBar",
-                  "type": "Encoded",
-                  "scope": "ui",
-                  "kind": "subscreen",
-                  "default": "T:Delete|O:Seen,Flag,Move|H:",
-                  "title": "settings_panel_selection"
-                },
-                {
-                  "setting": "folderBar",
-                  "type": "Encoded",
-                  "scope": "ui",
-                  "kind": "subscreen",
-                  "default": "T:Refresh|O:CollapseAll,SaveDefault,ResetDefault|H:",
-                  "title": "settings_panel_folders"
-                },
-                {
-                  "setting": "readerToolbar",
-                  "type": "Encoded",
-                  "scope": "ui",
-                  "kind": "subscreen",
-                  "default": "",
-                  "title": "settings_panel_reader",
-                  "nullable": true
-                },
-                {
-                  "setting": "composeBar",
-                  "type": "Encoded",
-                  "scope": "ui",
-                  "kind": "subscreen",
-                  "default": "T:|O:Postpone|H:",
-                  "title": "settings_panel_compose"
-                },
-                {
-                  "setting": "toolbarRows",
-                  "type": "Int",
-                  "scope": "ui",
-                  "kind": "number",
-                  "default": 2,
-                  "title": "toolbar_rows",
-                  "min": 1,
-                  "max": 4
-                }
-              ]
+              "settings": []
             },
             {
               "setting": "settingsOpensOn",
@@ -824,8 +772,7 @@
                   "default": 8,
                   "title": "settings_max_connections",
                   "min": 2,
-                  "max": 20,
-                  "titleArgs": "range"
+                  "max": 20
                 },
                 {
                   "setting": "connectTimeoutSec",
@@ -1931,14 +1878,6 @@
                   },
                   "pinerc": "saved-msg-name-rule",
                   "pinercFormat": "saveRule"
-                },
-                {
-                  "setting": "lastSaveMailbox",
-                  "type": "String",
-                  "scope": "account",
-                  "kind": "mailbox",
-                  "default": "",
-                  "title": "setting_lastSaveMailbox_title"
                 }
               ],
               "summary": [
@@ -2289,7 +2228,7 @@
               }
             },
             {
-              "setting": "folderPane",
+              "setting": "folderPlace",
               "type": "Enum",
               "scope": "account",
               "kind": "choice",
@@ -2297,13 +2236,15 @@
               "title": "settings_folder_pane",
               "choices": [
                 "Off",
-                "On",
-                "Auto"
+                "Auto",
+                "Beside",
+                "AboveList"
               ],
               "choiceTitles": {
                 "Off": "settings_multi_pane_off",
-                "On": "settings_multi_pane_wide",
-                "Auto": "settings_pane_auto"
+                "Auto": "settings_pane_auto",
+                "Beside": "settings_folder_beside",
+                "AboveList": "settings_folder_above"
               },
               "enabledWhen": {
                 "setting": "multiPane",
@@ -2382,28 +2323,6 @@
                 "None": "settings_preview_none",
                 "Small": "settings_preview_small",
                 "Large": "settings_preview_large"
-              }
-            },
-            {
-              "setting": "folderPosition",
-              "type": "Enum",
-              "scope": "account",
-              "kind": "choice",
-              "default": "Auto",
-              "title": "settings_folder_position",
-              "choices": [
-                "Auto",
-                "Beside",
-                "AboveList"
-              ],
-              "choiceTitles": {
-                "Auto": "settings_pane_auto",
-                "Beside": "settings_folder_beside",
-                "AboveList": "settings_folder_above"
-              },
-              "enabledWhen": {
-                "setting": "multiPane",
-                "notEquals": "Off"
               }
             }
           ],
@@ -2588,21 +2507,13 @@
                   "title": "settings_log_traffic"
                 },
                 {
-                  "setting": "trafficLogSizeLimit",
-                  "type": "Bool",
-                  "scope": "account",
-                  "kind": "bool",
-                  "default": true,
-                  "title": "setting_trafficLogSizeLimit_title"
-                },
-                {
                   "setting": "trafficLogMaxMb",
                   "type": "Int",
                   "scope": "account",
                   "kind": "number",
                   "default": 4,
                   "title": "setting_trafficLogMaxMb_title",
-                  "min": 1,
+                  "min": 0,
                   "max": 64
                 },
                 {
@@ -2748,6 +2659,142 @@
       "kind": "text",
       "default": "",
       "title": "settings_toolbars"
+    },
+    {
+      "setting": "lastSaveMailbox",
+      "type": "String",
+      "scope": "account",
+      "kind": "mailbox",
+      "default": "",
+      "title": "setting_lastSaveMailbox_title"
+    },
+    {
+      "setting": "defaultAccount",
+      "type": "String",
+      "scope": "ui",
+      "kind": "text",
+      "default": "",
+      "title": "setting_defaultAccount_title"
+    },
+    {
+      "setting": "trafficRetentionDays",
+      "type": "Int",
+      "scope": "ui",
+      "kind": "number",
+      "default": 30,
+      "title": "setting_trafficRetentionDays_title",
+      "min": 1,
+      "max": 3650
+    },
+    {
+      "setting": "trafficFilesPerCap",
+      "type": "Int",
+      "scope": "account",
+      "kind": "number",
+      "default": 0,
+      "title": "setting_trafficFilesPerCap_title",
+      "min": 0,
+      "max": 10000
+    },
+    {
+      "setting": "imageTrustMaxEntries",
+      "type": "Int",
+      "scope": "account",
+      "kind": "number",
+      "default": 5000,
+      "title": "setting_imageTrustMaxEntries_title",
+      "min": 1,
+      "max": 1000000
+    },
+    {
+      "setting": "previewByteLimit",
+      "type": "Int",
+      "scope": "account",
+      "kind": "number",
+      "default": 2048,
+      "title": "setting_previewByteLimit_title",
+      "min": 1,
+      "max": 104857600
+    },
+    {
+      "setting": "unseenListLimit",
+      "type": "Int",
+      "scope": "account",
+      "kind": "number",
+      "default": 300,
+      "title": "setting_unseenListLimit_title",
+      "min": 0,
+      "max": 100000
+    },
+    {
+      "setting": "linkCheckMaxScanBytes",
+      "type": "Int",
+      "scope": "ui",
+      "kind": "number",
+      "default": 2000000,
+      "title": "setting_linkCheckMaxScanBytes_title",
+      "min": 1,
+      "max": 2147483647
+    },
+    {
+      "setting": "linkCheckMaxAnchors",
+      "type": "Int",
+      "scope": "ui",
+      "kind": "number",
+      "default": 2000,
+      "title": "setting_linkCheckMaxAnchors_title",
+      "min": 1,
+      "max": 1000000
+    },
+    {
+      "setting": "pinercMaxBytes",
+      "type": "Int",
+      "scope": "ui",
+      "kind": "number",
+      "default": 1048576,
+      "title": "setting_pinercMaxBytes_title",
+      "min": 1,
+      "max": 2147483647
+    },
+    {
+      "setting": "jmapStopWatchWaitMs",
+      "type": "Long",
+      "scope": "account",
+      "kind": "number",
+      "default": 5000,
+      "title": "setting_jmapStopWatchWaitMs_title",
+      "min": 1,
+      "max": 600000
+    },
+    {
+      "setting": "jmapMaxWindow",
+      "type": "Int",
+      "scope": "account",
+      "kind": "number",
+      "default": 120,
+      "title": "setting_jmapMaxWindow_title",
+      "min": 1,
+      "max": 10000
+    },
+    {
+      "setting": "authenticatorLifeMinutes",
+      "type": "Int",
+      "scope": "ui",
+      "kind": "number",
+      "default": 10,
+      "title": "setting_authenticatorLifeMinutes_title",
+      "min": 1,
+      "max": 1440
+    },
+    {
+      "setting": "longSearchPollMs",
+      "type": "Long",
+      "scope": "ui",
+      "kind": "number",
+      "default": 250,
+      "title": "setting_longSearchPollMs_title",
+      "min": 1,
+      "max": 600000
     }
   ]
 }

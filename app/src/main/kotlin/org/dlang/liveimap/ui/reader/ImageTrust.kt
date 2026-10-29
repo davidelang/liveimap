@@ -88,6 +88,9 @@ fun loadImageTrust(filesDir: File, accountId: String, limit: Long): ImageTrustRe
 
 fun saveImageTrust(filesDir: File, accountId: String, trust: ImageTrust, limit: Long): ImageTrustResult {
     val f = imageTrustFile(filesDir, accountId) ?: return ImageTrustResult(error = "maxImageTrustBytes")
+    val entries = trust.senders.size + trust.lists.size
+    val entryCap = org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.imageTrustMaxEntries ?: 5000
+    if (entries > entryCap) return ImageTrustResult(error = "imageTrustMaxEntries")
     val text = encodeImageTrust(trust)
     if (text.toByteArray(Charsets.UTF_8).size.toLong() >= limit) return ImageTrustResult(error = "maxImageTrustBytes")
     return try {

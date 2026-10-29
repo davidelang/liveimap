@@ -249,10 +249,13 @@ fun FolderListScreen(
     // F121: the account is fixed per screen (saved with its back-stack entry); a drawer switch never rebinds it
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var accountChecked by remember { mutableStateOf(false) }
+    var noAccounts by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val listed = store.listAccounts().map { it.id }.toSet()
+        noAccounts = listed.isEmpty()
         accountId = folderScreenAccountId(accountId, listed, store.chosenAccountId())
         accountChecked = true
+        if (!noAccounts && accountId == null) onOpenDrawer?.invoke()
     }
     val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val id = accountId
@@ -262,7 +265,7 @@ fun FolderListScreen(
             return
         }
         // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
-        if (accountId != null || accountChecked) {
+        if (noAccounts && accountChecked) {
             NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, onCustomize, onOpenHelp, onOpenAbout, onOpenSettings)
         }
         return

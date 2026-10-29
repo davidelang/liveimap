@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 
@@ -147,7 +147,7 @@ class SerialMailSession(
         }
     }
 
-    override suspend fun open(account: AccountSettings): OpenResult =
+    override suspend fun open(account: Settings): OpenResult =
         onLane { inner.open(account) }
 
     override suspend fun openWith(credentials: org.dlang.liveimap.accounts.AccountCredentials): OpenResult =
@@ -299,7 +299,7 @@ class SerialMailSession(
     }
 
     /** Extra IDLE setup is the inner session's one login. Not the lane: that lock is for folder commands. */
-    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+    override suspend fun watchOnly(account: Settings, mailbox: String, onChange: (MailboxChange) -> Unit) {
         withContext(Dispatchers.IO) { inner.watchOnly(account, mailbox, onChange) }
     }
 

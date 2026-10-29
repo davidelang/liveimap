@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import org.dlang.liveimap.settings.SettingValue
+import org.dlang.liveimap.settings.SettingsHub
+import org.dlang.liveimap.settings.withSetting
 import org.dlang.liveimap.settings.percentDecode
 import org.dlang.liveimap.settings.percentEncode
 import org.dlang.liveimap.settings.readUiLine
-import org.dlang.liveimap.settings.saveGlobal
 
 data class ToolbarRecord(
     val indexBar: IndexBarLayout = defaultIndexBar(),
@@ -30,8 +32,20 @@ object ToolbarStore {
     fun toolbarRows(): Int = record.toolbarRows
 
     fun install(uiRecord: String) {
-        val line = readUiLine(uiRecord, "toolbars")
-        record = if (line.isNullOrEmpty()) ToolbarRecord() else decodeToolbarValue(line)
+        val line = when {
+            uiRecord.isEmpty() -> null
+            uiRecord.contains("toolbars=") || uiRecord.contains("\n") -> readUiLine(uiRecord, "toolbars")
+            else -> uiRecord
+        }
+        record = if (line.isNullOrEmpty()) {
+            ToolbarRecord()
+        } else {
+            try {
+                decodeToolbarValue(line)
+            } catch (_: IllegalArgumentException) {
+                record
+            }
+        }
     }
 
     fun replace(next: ToolbarRecord) {
@@ -42,7 +56,9 @@ object ToolbarStore {
     fun encodeValue(): String = encodeToolbarValue(record)
 
     suspend fun save(context: Context) {
-        saveGlobal(context, "toolbars", encodeValue())
+        val encoded = encodeValue()
+        val next = SettingsHub.uiNow().withSetting("toolbars", SettingValue(encoded))
+        SettingsHub.saveUiKeys(context, next, setOf("toolbars"))
     }
 }
 

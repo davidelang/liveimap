@@ -6,9 +6,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.settings.installSettingsTree
 import org.dlang.liveimap.settings.readUiLine
-import org.dlang.liveimap.settings.settingsTreeText
+import org.dlang.liveimap.settings.settingsRegistry
 import org.dlang.liveimap.settings.updateGlobalRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,7 +17,7 @@ import org.junit.Test
 class ToolbarStoreTest {
     @Before
     fun tree() {
-        installSettingsTree(settingsTreeText())
+        check(settingsRegistry.isNotEmpty())
     }
 
     @Test

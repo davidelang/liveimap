@@ -14,8 +14,8 @@ data class LinkCheck(
     val claimedHost: String,
 )
 
-private const val MaxScan = 2_000_000
-private const val MaxAnchors = 2000
+private fun maxScan(): Int = org.dlang.liveimap.settings.SettingsHub.uiNow().linkCheckMaxScanBytes
+private fun maxAnchors(): Int = org.dlang.liveimap.settings.SettingsHub.uiNow().linkCheckMaxAnchors
 private val anchorRe = Regex("""<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))[^>]*>(.*?)</a\s*>""",
     setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 private val tagRe = Regex("<[^>]*>")
@@ -51,10 +51,11 @@ private fun decodeEntities(s: String): String = s
 fun claimedHostFor(html: String, url: String): String {
     val real = webHost(url)
     if (real.isEmpty()) return ""
-    val text = if (html.length > MaxScan) html.substring(0, MaxScan) else html
+    val scan = maxScan()
+    val text = if (html.length > scan) html.substring(0, scan) else html
     var n = 0
     for (m in anchorRe.findAll(text)) {
-        if (++n > MaxAnchors) break
+        if (++n > maxAnchors()) break
         val href = decodeEntities(m.groupValues[1].ifEmpty { m.groupValues[2] }.ifEmpty { m.groupValues[3] }).trim()
         if (webHost(href) != real) continue
         val shown = decodeEntities(tagRe.replace(m.groupValues[4], " ")).trim()

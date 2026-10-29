@@ -17,6 +17,9 @@ public abstract class GenerateSettingsTreeTask extends DefaultTask {
     @InputFile
     public abstract RegularFileProperty getScriptFile();
 
+    @InputFile
+    public abstract RegularFileProperty getTemplateFile();
+
     @OutputDirectory
     public abstract DirectoryProperty getKtOut();
 

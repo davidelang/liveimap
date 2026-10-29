@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ServerCheckStepTest {
-    private val a = AccountSettings(imapHost = "10.0.0.1", imapPort = 143)
-    private val b = AccountSettings(imapHost = "10.2.3.133", imapPort = 33550)
+    private val a = Settings(imapHost = "10.0.0.1", imapPort = 143)
+    private val b = Settings(imapHost = "10.2.3.133", imapPort = 33550)
 
     @Test fun switchingAccountsNeverChecks() {
         assertEquals(ServerCheckStep.Rebase, serverCheckStep(a, "acct-a", b, "acct-b", userSaved = false, editing = false))

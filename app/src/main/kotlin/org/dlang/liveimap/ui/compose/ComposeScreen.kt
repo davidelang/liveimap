@@ -97,12 +97,12 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
@@ -221,7 +221,7 @@ internal class ComposeLoaded {
     fun watchAccount(
         scope: kotlinx.coroutines.CoroutineScope,
         store: org.dlang.liveimap.settings.DataStoreSettingsStore,
-        apply: (AccountSettings) -> Unit,
+        apply: (Settings) -> Unit,
     ) = scope.launch {
         val loaded = try {
             store.load()
@@ -554,7 +554,7 @@ private fun ComposeForm(
         onDispose { screen.dispose() }
     }
     LaunchedEffect(screen) { actor.start(this) }
-    var account by remember { mutableStateOf(AccountSettings()) }
+    var account by remember { mutableStateOf(Settings()) }
     var notice by remember { mutableStateOf<String?>(null) }
     var status by rememberSaveable { mutableStateOf<String?>(null) }
     var connected by remember { mutableStateOf(false) }
@@ -822,7 +822,7 @@ private fun ComposeForm(
         }
     }
 
-    suspend fun sourcesForCompose(settings: AccountSettings): List<CompletionSource> {
+    suspend fun sourcesForCompose(settings: Settings): List<CompletionSource> {
         val ids = settings.completionSources
         val pine = if (pineSourceId !in ids) {
             emptyList()
@@ -935,7 +935,7 @@ private fun ComposeForm(
         account.unlabeledCharset,
     ).copy(pinnedFrom = pinnedFrom)
 
-    fun resolveNow(settings: AccountSettings): Resolved {
+    fun resolveNow(settings: Settings): Resolved {
         val r = resolveSending(accountRules(settings), accountDefaultRule(settings), accountId, sendingContext())
         sending = r
         return r
@@ -947,8 +947,8 @@ private fun ComposeForm(
         return if (at >= 0) at else body.length
     }
 
-    suspend fun loadReply(settings: AccountSettings, replyAll: Boolean) {
-        val rawViewCap = InstalledGlobals.maxRawViewBytes.get()
+    suspend fun loadReply(settings: Settings, replyAll: Boolean) {
+        val rawViewCap = SettingsHub.uiNow().maxRawViewBytes.toInt()
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) }, account.unlabeledCharset)
@@ -994,8 +994,8 @@ private fun ComposeForm(
         )
     }
 
-    suspend fun loadForward(settings: AccountSettings) {
-        val rawViewCap = InstalledGlobals.maxRawViewBytes.get()
+    suspend fun loadForward(settings: Settings) {
+        val rawViewCap = SettingsHub.uiNow().maxRawViewBytes.toInt()
         val box = seed.mailbox ?: return
         val uid = seed.uids.firstOrNull() ?: return
         sourceUid = uid
@@ -1130,7 +1130,7 @@ private fun ComposeForm(
         }
     }
 
-    fun composedHeaders(settings: AccountSettings): List<Pair<String, String>> {
+    fun composedHeaders(settings: Settings): List<Pair<String, String>> {
         val replyTo = sending?.replyTo.orEmpty()
         val typed = headerNames(settings.composerHeaders).map { it to headerValuesTyped[it.lowercase()].orEmpty() }
         val typedReplyTo = typed.any { it.first.equals("Reply-To", true) && it.second.isNotBlank() }
@@ -1156,7 +1156,7 @@ private fun ComposeForm(
         }
     }
 
-    suspend fun stageForwardPath(row: ForwardRow, settings: AccountSettings, contents: File): String {
+    suspend fun stageForwardPath(row: ForwardRow, settings: Settings, contents: File): String {
         val path = row.path
         if (path != null) return path
         val stored = File(contents, row.key)
@@ -1180,7 +1180,7 @@ private fun ComposeForm(
         return stored.path
     }
 
-    suspend fun assemble(settings: AccountSettings, dest: File, eightBit: Boolean): BuiltMail {
+    suspend fun assemble(settings: Settings, dest: File, eightBit: Boolean): BuiltMail {
         val paths = ArrayList<String>()
         val types = ArrayList<String>()
         val dispositions = ArrayList<String>()

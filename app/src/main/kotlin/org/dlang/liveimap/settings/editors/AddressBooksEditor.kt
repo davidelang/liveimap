@@ -160,7 +160,7 @@ import org.dlang.liveimap.ui.toolbar.notePaneScroll
 internal data class CompletionRow(val id: String, val label: String, val enabled: Boolean)
 
 internal fun completionRows(
-    settings: AccountSettings,
+    settings: Settings,
     sets: List<AndroidContactSet>,
     pineLabel: String,
 ): List<CompletionRow> {

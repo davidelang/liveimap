@@ -7,20 +7,20 @@ import org.junit.Test
 
 /** Contacts phases 3 and 5: extra and global Alpine books, and per-account book source ids. */
 class ExtraBooksTest {
-    private val host = AccountSettings(imapHost = "imap.example.com")
+    private val host = Settings(imapHost = "imap.example.com")
 
     @Test fun settingsRoundTrip() {
-        val s = AccountSettings(addressBookMailbox = "ab", extraAddressBooks = listOf("work, x", "b|c"), globalAddressBooks = listOf("global"))
-        val back = decodeAccountSettings(s.encode())
+        val s = Settings(addressBookMailbox = "ab", extraAddressBooks = listOf("work, x", "b|c"), globalAddressBooks = listOf("global"))
+        val back = decodeSettings(s.encode())
         assertEquals(s.extraAddressBooks, back.extraAddressBooks)
         assertEquals(s.globalAddressBooks, back.globalAddressBooks)
-        assertEquals(emptyList<String>(), decodeAccountSettings(AccountSettings().encode()).extraAddressBooks)
+        assertEquals(emptyList<String>(), decodeSettings(Settings().encode()).extraAddressBooks)
     }
 
     @Test fun booksListPrimaryFirstGlobalsReadOnly() {
-        val s = AccountSettings(addressBookMailbox = "ab", extraAddressBooks = listOf("ab", "two"), globalAddressBooks = listOf("g", "two"))
+        val s = Settings(addressBookMailbox = "ab", extraAddressBooks = listOf("ab", "two"), globalAddressBooks = listOf("g", "two"))
         assertEquals(listOf("ab" to false, "two" to false, "g" to true), s.alpineBooks())
-        assertEquals(emptyList<Pair<String, Boolean>>(), AccountSettings().alpineBooks())
+        assertEquals(emptyList<Pair<String, Boolean>>(), Settings().alpineBooks())
     }
 
     @Test fun sourceIdRoundTrip() {

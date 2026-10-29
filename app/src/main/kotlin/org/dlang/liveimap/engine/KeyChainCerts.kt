@@ -16,7 +16,7 @@ import org.dlang.liveimap.session.MailFailure
 class KeyChainCert(val chain: Array<ByteArray>, val key: PrivateKey)
 
 /**
- * Android KeyChain client certificates (AccountSettings.clientCertAlias). The alias comes from
+ * Android KeyChain client certificates (Settings.clientCertAlias). The alias comes from
  * KeyChain.choosePrivateKeyAlias in account settings; at connect time the chain and a non-exportable key handle
  * are handed to native code, and OpenSSL signs through [KeyChainSigner] (JNI callback).
  *

@@ -53,10 +53,10 @@ import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.Compression
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.SmtpNoAuth
 import org.dlang.liveimap.settings.SortKey
@@ -101,7 +101,7 @@ internal fun openResultAfterPlusFallback(first: OpenResult, opened: OpenResult):
 
 /** Settings for an SMTP probe that has not opened IMAP. */
 internal class SmtpProbeMaterial(
-    val settings: AccountSettings,
+    val settings: Settings,
     val password: String,
     val smtpPassword: String,
 )
@@ -181,7 +181,7 @@ class LibetpanMailSession(
     @Volatile
     private var storedFeatureCaps: Capabilities = parsedCaps
 
-    private var account: AccountSettings? = null
+    private var account: Settings? = null
         set(value) {
             field = value
             storedFeatureCaps = parsedCaps.without(value?.hiddenCapabilities ?: emptySet())
@@ -264,6 +264,14 @@ class LibetpanMailSession(
     @Volatile
     private var credentials: org.dlang.liveimap.accounts.AccountCredentials? = null
 
+    /** Test accepts a pin into the draft. A real connect (no credentials) still stores it. */
+    @Volatile
+    private var draftSettings: ((Settings) -> Unit)? = null
+
+    fun setDraftSettings(onDraft: ((Settings) -> Unit)?) {
+        draftSettings = onDraft
+    }
+
     override suspend fun openWith(credentials: org.dlang.liveimap.accounts.AccountCredentials): OpenResult {
         this.credentials = credentials
         return open(credentials.settings)
@@ -275,7 +283,7 @@ class LibetpanMailSession(
 
     private fun ownStore(): DataStoreSettingsStore = DataStoreSettingsStore(context, accountId)
 
-    private fun trafficDirectory(account: AccountSettings): String {
+    private fun trafficDirectory(account: Settings): String {
         if (!account.logImapTraffic) return ""
         val dir = TrafficLog.trafficLogDir(context.cacheDir, accountId)
         if (dir == null) {
@@ -288,35 +296,31 @@ class LibetpanMailSession(
         return dir.absolutePath
     }
 
-    private fun accountWriter(acct: AccountSettings?): TrafficWriter? {
-        if (acct == null || !acct.logImapTraffic) return null
-        val roll = if (acct.trafficLogSizeLimit) acct.trafficLogMaxMb.toLong() * 1024L * 1024L / 4L else 0L
+    private fun accountWriter(acct: Settings?): TrafficWriter {
+        val roll = if (acct != null && acct.logImapTraffic && acct.trafficLogMaxMb > 0) {
+            acct.trafficLogMaxMb.toLong() * 1024L * 1024L
+        } else {
+            0L
+        }
         val held = trafficWriter
         if (held != null && trafficWriterRoll == roll) return held
-        if (TrafficLog.trafficLogDir(context.cacheDir, accountId) == null) {
-            if (!trafficRefusedLogged) {
-                trafficRefusedLogged = true
-                android.util.Log.w("LiveIMAP", "traffic directory refused for $accountId")
-            }
-            return null
-        }
-        val writer = TrafficLog.writer(context.cacheDir, accountId, roll) ?: return null
+        val writer = TrafficLog.writer(context.cacheDir, accountId, roll)
         trafficWriter = writer
         trafficWriterRoll = roll
         return writer
     }
 
-    private fun statusNote(acct: AccountSettings, text: String) {
-        val writer = accountWriter(acct)
-        if (writer != null) writer.note("imap", text) else TrafficLog.status(text)
+    private fun statusNote(acct: Settings, text: String) {
+        accountWriter(acct).note("imap", text)
     }
 
-    private fun applyLimits(handle: Long, account: AccountSettings) {
-        val roll = if (account.logImapTraffic && account.trafficLogSizeLimit) {
-            account.trafficLogMaxMb.toLong() * 1024L * 1024L / 4L
+    private fun applyLimits(handle: Long, account: Settings) {
+        val roll = if (account.logImapTraffic && account.trafficLogMaxMb > 0) {
+            account.trafficLogMaxMb.toLong() * 1024L * 1024L
         } else {
             0L
         }
+        keeper.noopAfterMs = account.keepAliveMinutes.toLong() * 60L * 1000L
         nativeSetSessionLimits(
             handle,
             account.connectTimeoutSec,
@@ -329,7 +333,7 @@ class LibetpanMailSession(
         )
     }
 
-    override suspend fun open(account: AccountSettings): OpenResult {
+    override suspend fun open(account: Settings): OpenResult {
         val key = account.preservedSecurityKey()
         if (key != null) {
             refusedSecurityKey = key
@@ -383,12 +387,22 @@ class LibetpanMailSession(
                     host = account.imapHost,
                     port = account.imapPort,
                 )
-                if (credentials == null && confirm(prompt)) {
+                if (confirm(prompt)) {
                     val pinned = account.copy(certPin = prompt.fingerprint)
                     trustedAccount = pinned
                     val text = opened.text
+                    val probing = credentials
                     try {
-                        ownStore().update { it.copy(certPin = prompt.fingerprint) }
+                        if (probing == null) {
+                            ownStore().update { it.copy(certPin = prompt.fingerprint) }
+                        } else {
+                            credentials = org.dlang.liveimap.accounts.AccountCredentials(
+                                pinned,
+                                probing.password,
+                                probing.smtpPassword,
+                            )
+                            draftSettings?.invoke(pinned)
+                        }
                         opened = login(pinned, password)
                     } catch (error: kotlinx.coroutines.CancellationException) {
                         throw error
@@ -400,14 +414,24 @@ class LibetpanMailSession(
         }
         if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && opened.text == "plaintext login needs confirmation") {
             val confirm = plaintextConfirmer
-            val accepted = credentials == null && confirm != null && confirm()
+            val accepted = confirm != null && confirm()
             val stopped = context.getString(R.string.plaintext_auth_stopped)
             if (!accepted) {
                 opened = OpenResult.Failed(stopped)
             } else {
                 val allowed = trustedAccount.copy(allowPlaintextAuth = true)
+                val probing = credentials
                 try {
-                    ownStore().update { it.copy(allowPlaintextAuth = true) }
+                    if (probing == null) {
+                        ownStore().update { it.copy(allowPlaintextAuth = true) }
+                    } else {
+                        credentials = org.dlang.liveimap.accounts.AccountCredentials(
+                            allowed,
+                            probing.password,
+                            probing.smtpPassword,
+                        )
+                        draftSettings?.invoke(allowed)
+                    }
                     opened = login(allowed, password)
                 } catch (error: kotlinx.coroutines.CancellationException) {
                     throw error
@@ -442,7 +466,7 @@ class LibetpanMailSession(
      * mechanism that failed (servers whose SASL lacks the binding type, e.g. tls-unique-only on TLS 1.3). The
      * retry keeps the TLS mode, so it never falls back to clear text, and it is not saved.
      */
-    private fun login(account: AccountSettings, knownPassword: String? = null): OpenResult {
+    private fun login(account: Settings, knownPassword: String? = null): OpenResult {
         val first = loginOnce(account, knownPassword)
         if (first !is OpenResult.Failed) return first
         val retry = plusFallback(account, first.text) ?: return first
@@ -461,7 +485,7 @@ class LibetpanMailSession(
         return runBlocking { ownStore().password() } ?: throw MailFailure("password missing")
     }
 
-    private fun loginOnce(account: AccountSettings, knownPassword: String? = null): OpenResult {
+    private fun loginOnce(account: Settings, knownPassword: String? = null): OpenResult {
         namespaceList = null
         val password = if (knownPassword != null) {
             knownPassword
@@ -1852,7 +1876,7 @@ class LibetpanMailSession(
      * Extra IDLE: the watch connection is the only login (connect, log in, EXAMINE, IDLE). The command
      * connection is never opened.
      */
-    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+    override suspend fun watchOnly(account: Settings, mailbox: String, onChange: (MailboxChange) -> Unit) {
         stageCommand = true
         val opened = try {
             open(account)
@@ -2162,7 +2186,7 @@ class LibetpanMailSession(
         }
     }
 
-    private fun stageSmtp(account: AccountSettings, password: String): SessionOpen {
+    private fun stageSmtp(account: Settings, password: String): SessionOpen {
         val from = if (account.email.isNotEmpty()) account.email else account.username
         val keyChain = KeyChainCerts.load(account.clientCertAlias)
         val opened = nativeStage(
@@ -2708,7 +2732,7 @@ class LibetpanMailSession(
          * the certificate, and never logs in. A TLS failure with old TLS off is retried once with it on, to tell
          * the user the server needs that setting. Blocking; call off the main thread.
          */
-        fun checkServerSettings(account: AccountSettings): ServerCheck {
+        fun checkServerSettings(account: Settings): ServerCheck {
             fun run(oldTls: Boolean) = ServerProbe.parse(
                 nativeProbe(
                     account.imapHost,
@@ -2765,7 +2789,7 @@ internal fun uidWindowOf(raw: LongArray): UidWindow {
     return UidWindow(total, uids)
 }
 
-internal fun clientSortChunk(): Int = InstalledGlobals.clientSortChunk.get()
+internal fun clientSortChunk(): Int = SettingsHub.uiNow().clientSortChunk
 
 /** F141: a failed sort chunk is drift (restart the walk) when the folder shrank or sequence numbers went stale. */
 internal fun sortChunkDrift(existsAtStart: Int, existsNow: Int, stale: Boolean): Boolean = stale || existsNow < existsAtStart

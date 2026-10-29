@@ -12,6 +12,7 @@ data class AccountChoice(
     val name: String,
     val drawer: Boolean,
     val editing: Boolean = false,
+    val corrupt: Boolean = false,
 )
 
 data class DrawerAccount(
@@ -20,6 +21,7 @@ data class DrawerAccount(
     val chosen: Boolean,
     val postponedMailbox: String,
     val favorites: List<FolderFavorite>,
+    val corrupt: Boolean = false,
 )
 
 data class AccountDrawerFolders(
@@ -29,7 +31,7 @@ data class AccountDrawerFolders(
 
 fun accountDrawerFolders(encoded: String?): AccountDrawerFolders {
     if (encoded == null) return AccountDrawerFolders(postponedMailbox = "", favorites = emptyList())
-    val settings = decodeAccountSettings(encoded)
+    val settings = decodeSettings(encoded)
     return AccountDrawerFolders(
         postponedMailbox = settings.postponedMailbox,
         favorites = settings.favorites,
@@ -37,11 +39,11 @@ fun accountDrawerFolders(encoded: String?): AccountDrawerFolders {
 }
 
 interface SettingsStore {
-    suspend fun load(): AccountSettings
-    suspend fun save(settings: AccountSettings)
+    suspend fun load(): Settings
+    suspend fun save(settings: Settings)
     suspend fun password(): String?
     /** F55/F66: change some fields without writing back a stale snapshot of the others. */
-    suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
+    suspend fun update(edit: (Settings) -> Settings): Settings {
         val next = edit(load())
         save(next)
         return next
@@ -53,7 +55,7 @@ interface SettingsStore {
     suspend fun listDrawerAccounts(): List<DrawerAccount> = emptyList()
     suspend fun chosenAccountId(): String? = null
     suspend fun selectAccount(accountId: String) {}
-    suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String = ""
+    suspend fun createAccount(settings: Settings, password: String, smtpPassword: String): String = ""
     suspend fun removeAccount(accountId: String): Boolean = false
     fun theme(): Flow<ThemeMode> = flowOf(ThemeMode.FollowSystem)
 }
@@ -71,11 +73,11 @@ class DataStoreSettingsStore(
     private suspend fun <T> bound(block: suspend () -> T): T =
         if (boundAccountId == null) block() else withContext(AccountTarget(boundAccountId)) { block() }
 
-    override suspend fun load(): AccountSettings = bound { store.load() }
+    override suspend fun load(): Settings = bound { store.load() }
 
-    override suspend fun save(settings: AccountSettings) = bound { store.save(settings) }
+    override suspend fun save(settings: Settings) = bound { store.save(settings) }
 
-    override suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings = bound { store.update(edit) }
+    override suspend fun update(edit: (Settings) -> Settings): Settings = bound { store.update(edit) }
 
     override suspend fun password(): String? = bound { store.password() }
 
@@ -92,10 +94,10 @@ class DataStoreSettingsStore(
     override suspend fun listDrawerAccounts(): List<DrawerAccount> = store.listDrawerAccounts()
 
     override suspend fun chosenAccountId(): String? {
-        boundAccountId?.let { return it }
-        val id = store.listAccounts().firstOrNull { it.drawer }?.id
-        if (id.isNullOrEmpty()) return null
-        return id
+        org.dlang.liveimap.accounts.parseAccountId(boundAccountId)?.let { return it }
+        return store.listAccounts().firstOrNull { it.drawer && !it.corrupt }?.id?.let {
+            org.dlang.liveimap.accounts.parseAccountId(it)
+        }
     }
 
     override suspend fun selectAccount(accountId: String) {
@@ -103,12 +105,14 @@ class DataStoreSettingsStore(
         store.selectAccount(accountId)
     }
 
-    override suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String =
+    override suspend fun createAccount(settings: Settings, password: String, smtpPassword: String): String =
         store.createAccount(settings, password, smtpPassword)
 
     override suspend fun removeAccount(accountId: String): Boolean = store.removeAccount(accountId)
 
     override fun theme(): Flow<ThemeMode> = store.theme()
+
+    suspend fun commitKeys(draft: Settings, keys: Set<String>): Settings = bound { store.commitKeys(draft, keys) }
 
     suspend fun <T> onAccount(block: suspend () -> T): T = store.onAccount(block)
 

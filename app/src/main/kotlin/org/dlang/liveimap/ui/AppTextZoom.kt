@@ -19,10 +19,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.launch
+import org.dlang.liveimap.settings.SettingValue
+import org.dlang.liveimap.settings.SettingsHub
+import org.dlang.liveimap.settings.withSetting
 import org.dlang.liveimap.settings.clampTextZoom
-import org.dlang.liveimap.settings.globalSettingsRecord
-import org.dlang.liveimap.settings.setUi_appTextZoom
-import org.dlang.liveimap.settings.ui_appTextZoom
 
 fun scaledFontScale(systemScale: Float, appTextZoom: Int): Float =
     systemScale * appTextZoom / 100f
@@ -46,10 +46,10 @@ class AppZoomSession(private val start: Int) {
 fun AppTextZoom(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val ui by SettingsHub.ui.collectAsState()
     var zoom by remember { mutableIntStateOf(100) }
-    val record by globalSettingsRecord(context).collectAsState(initial = "")
-    LaunchedEffect(record) {
-        zoom = clampTextZoom(ui_appTextZoom(record).toIntOrNull() ?: 100)
+    LaunchedEffect(ui.appTextZoom) {
+        zoom = clampTextZoom(ui.appTextZoom)
     }
     val system = LocalDensity.current
     val scaled = Density(system.density, scaledFontScale(system.fontScale, zoom))
@@ -72,7 +72,10 @@ fun AppTextZoom(content: @Composable () -> Unit) {
                     val next = session.commit(consumed) ?: return@awaitEachGesture
                     if (next == zoom) return@awaitEachGesture
                     zoom = next
-                    scope.launch { setUi_appTextZoom(context, next.toString()) }
+                    scope.launch {
+                        val current = SettingsHub.uiNow()
+                        SettingsHub.saveUiKeys(context, current.withSetting("appTextZoom", SettingValue(next.toString())), setOf("appTextZoom"))
+                    }
                 }
             },
         ) {

@@ -44,7 +44,7 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.androidAccountOf
 import org.dlang.liveimap.settings.pineSourceId
@@ -96,7 +96,7 @@ private fun ContactCopyLoaded(
     val appContext = context.applicationContext
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
-    var account by remember { mutableStateOf(AccountSettings()) }
+    var account by remember { mutableStateOf(Settings()) }
     var sources by remember { mutableStateOf<List<CopySource>>(emptyList()) }
     var step by remember { mutableStateOf(CopyStep.Source) }
     var sourceId by remember { mutableStateOf("") }
@@ -496,14 +496,14 @@ private fun contactLabel(contact: CopyContact, context: Context): String {
  */
 private fun copySources(
     accountId: String,
-    settings: AccountSettings,
-    others: List<Pair<org.dlang.liveimap.settings.AccountChoice, AccountSettings>>,
+    settings: Settings,
+    others: List<Pair<org.dlang.liveimap.settings.AccountChoice, Settings>>,
     sets: List<AndroidContactSet>,
     context: Context,
 ): List<CopySource> {
     val setById = sets.associateBy { it.id }
     val out = ArrayList<CopySource>()
-    fun books(owner: String, ownerName: String?, s: AccountSettings) {
+    fun books(owner: String, ownerName: String?, s: Settings) {
         for ((mailbox, readOnly) in s.alpineBooks()) {
             val base = if (ownerName == null) context.getString(R.string.copy_alpine_book, mailbox)
                 else context.getString(R.string.copy_alpine_book_of, mailbox, ownerName)
@@ -522,7 +522,7 @@ private fun copySources(
 }
 
 private sealed class ConnectedAccount {
-    data class Ready(val settings: AccountSettings) : ConnectedAccount()
+    data class Ready(val settings: Settings) : ConnectedAccount()
     data class Failed(val notice: String) : ConnectedAccount()
 }
 

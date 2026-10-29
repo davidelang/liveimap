@@ -10,7 +10,7 @@ import org.junit.Test
 class NoSnapshotSaveTest {
     @Test
     fun updateKeepsConcurrentChanges() = runBlocking {
-        val store = MemStore(AccountSettings(sieveCertPin = ""))
+        val store = MemStore(Settings(sieveCertPin = ""))
         store.save(store.load().copy(theme = ThemeMode.Dark)) // another screen, meanwhile
         store.update { it.copy(sieveCertPin = "AB:CD") }
         val now = store.load()
@@ -30,9 +30,9 @@ class NoSnapshotSaveTest {
     }
 }
 
-private class MemStore(var value: AccountSettings) : SettingsStore {
+private class MemStore(var value: Settings) : SettingsStore {
     override suspend fun load() = value
-    override suspend fun save(settings: AccountSettings) { value = settings }
+    override suspend fun save(settings: Settings) { value = settings }
     override suspend fun password() = ""
     override suspend fun setPassword(value: String) {}
 }

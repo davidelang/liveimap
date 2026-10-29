@@ -147,6 +147,8 @@ android {
     }
     androidResources {
         localeFilters += listOf("en") + i18nLocales
+        // Replaces the default pattern. settings-tree.json stays a build input and is not in the APK.
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!settings-tree.json"
     }
     val androidUserHome = System.getenv("ANDROID_USER_HOME")
         ?: error("ANDROID_USER_HOME unset; run ./build_app (sets worktree .android-shared)")
@@ -288,6 +290,7 @@ dependencies {
 val generateSettingsTree = tasks.register<liveimap.GenerateSettingsTreeTask>("generateSettingsTree") {
     treeFile.set(file("src/main/assets/settings-tree.json"))
     scriptFile.set(file("gen-settings-tree.py"))
+    templateFile.set(file("gen-account-template.kt"))
     ktOut.set(layout.buildDirectory.dir("generated/settingsTree"))
 }
 

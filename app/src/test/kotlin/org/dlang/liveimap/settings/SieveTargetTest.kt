@@ -9,7 +9,7 @@ import org.junit.Test
 class SieveTargetTest {
     @Test
     fun sameAsInboundUsesImapLogin() {
-        val settings = AccountSettings(
+        val settings = Settings(
             imapHost = "imap.example.com",
             username = "ada",
             sievePort = 4190,
@@ -26,7 +26,7 @@ class SieveTargetTest {
 
     @Test
     fun jmapSameAsInboundUsesSessionHost() {
-        val settings = AccountSettings(
+        val settings = Settings(
             jmapFolders = true,
             imapHost = "https://mail.example/jmap",
             username = "ada",
@@ -40,7 +40,7 @@ class SieveTargetTest {
 
     @Test
     fun jmapFailureIsAMissingHost() {
-        val settings = AccountSettings(jmapFolders = true, imapHost = "", sieveSameAsInbound = true)
+        val settings = Settings(jmapFolders = true, imapHost = "", sieveSameAsInbound = true)
         try {
             sieveTarget(settings, "pw", null)
             error("expected host")
@@ -51,7 +51,7 @@ class SieveTargetTest {
 
     @Test
     fun ownHostKeepsTheSievePassword() {
-        val settings = AccountSettings(
+        val settings = Settings(
             sieveSameAsInbound = false,
             sieveHost = "sieve.example.com",
             sievePort = 4199,
@@ -67,7 +67,7 @@ class SieveTargetTest {
 
     @Test
     fun blankHostOrMissingPassword() {
-        val settings = AccountSettings(sieveSameAsInbound = false, sieveHost = "  ")
+        val settings = Settings(sieveSameAsInbound = false, sieveHost = "  ")
         try {
             sieveTarget(settings, "x", "y")
             error("expected host")
@@ -85,7 +85,7 @@ class SieveTargetTest {
 
     @Test
     fun sieveHostChangeDropsTheSievePassword() {
-        val previous = AccountSettings(imapHost = "imap.example.com", sieveHost = "sieve.example.com", sieveSameAsInbound = false)
+        val previous = Settings(imapHost = "imap.example.com", sieveHost = "sieve.example.com", sieveSameAsInbound = false)
         val moved = retargetCredentials(previous, previous.copy(sieveHost = "other.example"))
         assertTrue(moved.dropSievePassword)
         assertFalse(moved.dropImapPassword)

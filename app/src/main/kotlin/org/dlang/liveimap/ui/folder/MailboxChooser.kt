@@ -53,7 +53,7 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.accountCommand
 import org.dlang.liveimap.ui.UiDims
@@ -136,7 +136,7 @@ private fun Context.hostActivity(): Activity? {
 @Composable
 internal fun MailboxChooser(
     store: SettingsStore,
-    onStored: (AccountSettings) -> Unit,
+    onStored: (Settings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
     /** F103: the folder the messages are in; it is not offered as a target. */
@@ -166,7 +166,7 @@ internal fun MailboxChooser(
 private fun MailboxChooserLoaded(
     accountId: String,
     store: SettingsStore,
-    onStored: (AccountSettings) -> Unit,
+    onStored: (Settings) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
     exclude: String = "",

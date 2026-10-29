@@ -2,7 +2,7 @@ package org.dlang.liveimap.debug.acceptance
 
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.MailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 /**
  * One acceptance pass: capabilities hidden by the capability override and/or the slow fallbacks forced on.
@@ -55,7 +55,7 @@ class HidingSession(private val inner: MailSession, private val hide: Set<String
 fun variantSession(session: MailSession, variant: AcceptanceVariant): MailSession =
     if (variant.hide.isEmpty()) session else HidingSession(session, variant.hide)
 
-fun variantAccount(account: AccountSettings, variant: AcceptanceVariant): AccountSettings =
+fun variantAccount(account: Settings, variant: AcceptanceVariant): Settings =
     if (variant.forceFallbacks) account.copy(forceSlowerFallbacks = true) else account
 
 /** One server of a matrix run: a label and how to open a context on it (null: could not connect, with why). */

@@ -10,7 +10,7 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 
 /** Plan tag of the tests added with the runner (sandbox/roadmap/acceptance-testing.md). */
@@ -23,7 +23,7 @@ class AcceptanceSkip(reason: String) : Exception(reason)
 
 class AcceptanceContext(
     val session: MailSession,
-    val account: AccountSettings,
+    val account: Settings,
     /** Capabilities before a variant hides any. Defaults to the session, so existing callers stay correct. */
     val serverCapabilities: Set<String> = session.capabilities,
     /** Re-opens the session (reconnect test). */
@@ -50,14 +50,14 @@ class AcceptanceTest(val case: AcceptanceCase, val run: suspend AcceptanceContex
 private fun t(name: String, feature: String, writes: Boolean = false, run: suspend AcceptanceContext.() -> String) =
     AcceptanceTest(AcceptanceCase(name, feature, listOf(RunnerPlan), writes, scale = false), run)
 
-private fun testMessage(account: AccountSettings, subject: String): ByteArray {
+private fun testMessage(account: Settings, subject: String): ByteArray {
     val from = account.email.ifBlank { account.username }
     return ("From: $from\r\nTo: $from\r\nSubject: $subject\r\nMessage-ID: <acc-${System.nanoTime()}@liveimap.test>\r\n" +
         "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\nLiveIMAP acceptance run.\r\n").toByteArray()
 }
 
 /** 5120-byte body of one repeated line, plus the headers. */
-private fun fiveKbMessage(account: AccountSettings, subject: String): ByteArray {
+private fun fiveKbMessage(account: Settings, subject: String): ByteArray {
     val from = account.email.ifBlank { account.username }
     val headers = "From: $from\r\nTo: $from\r\nSubject: $subject\r\nMessage-ID: <acc-${System.nanoTime()}@liveimap.test>\r\n" +
         "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=us-ascii\r\n\r\n"

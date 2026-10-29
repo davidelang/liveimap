@@ -334,7 +334,7 @@ object RulePresets {
 // ---------- account glue ----------
 
 /** The account's simple fields as the always-matching last rule. */
-fun accountDefaultRule(settings: org.dlang.liveimap.settings.AccountSettings) = SendingRule(
+fun accountDefaultRule(settings: org.dlang.liveimap.settings.Settings) = SendingRule(
     AccountDefaultRule,
     actions = RuleActions(
         fromName = settings.displayName,
@@ -349,7 +349,7 @@ fun accountDefaultRule(settings: org.dlang.liveimap.settings.AccountSettings) = 
     ),
 )
 
-fun accountRules(settings: org.dlang.liveimap.settings.AccountSettings): List<SendingRule> = decodeRules(settings.sendingRules)
+fun accountRules(settings: org.dlang.liveimap.settings.Settings): List<SendingRule> = decodeRules(settings.sendingRules)
 
 /**
  * F65: the addresses a sentTo rule matches. Every sentTo rule names one of the user's own addresses, so the
@@ -386,7 +386,7 @@ fun composeContext(
 }
 
 /** Settings as the composer sends with them: From, Fcc and the rest from [r]. */
-fun org.dlang.liveimap.settings.AccountSettings.withSending(r: Resolved?): org.dlang.liveimap.settings.AccountSettings {
+fun org.dlang.liveimap.settings.Settings.withSending(r: Resolved?): org.dlang.liveimap.settings.Settings {
     if (r == null) return this
     return copy(
         displayName = r.fromName.ifEmpty { displayName },

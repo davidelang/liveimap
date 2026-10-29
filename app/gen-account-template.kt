@@ -1,14 +1,4 @@
-private val ignoredAccountToolbarKeys = setOf(
-    "indexBar",
-    "selectionBar",
-    "folderBar",
-    "readerToolbar",
-    "composeBar",
-    "toolbarRows",
-    "readerTextZoom",
-)
-
-data class AccountSettings(
+data class Settings(
 /* @gen-fields */
     val unknownSettings: List<String> = emptyList(),
 ) {
@@ -23,7 +13,7 @@ data class AccountSettings(
         if (idleRenewMinutes !in 1..29) throw IllegalArgumentException("idleRenewMinutes")
         if (connectTimeoutSec !in 1..600) throw IllegalArgumentException("connectTimeoutSec")
         if (readTimeoutSec !in 1..3600) throw IllegalArgumentException("readTimeoutSec")
-        if (trafficLogMaxMb !in 1..64) throw IllegalArgumentException("trafficLogMaxMb")
+        if (trafficLogMaxMb !in 0..64) throw IllegalArgumentException("trafficLogMaxMb")
         if (jmapPartCacheMessages !in 1..10000) throw IllegalArgumentException("jmapPartCacheMessages")
         if (longSearchProgressSec < 1) throw IllegalArgumentException("longSearchProgressSec")
         if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
@@ -59,7 +49,7 @@ data class AccountSettings(
     }
 
     /** A chosen value, including the default, drops every kept line for [key]. */
-    fun withoutPreserved(key: String): AccountSettings {
+    fun withoutPreserved(key: String): Settings {
         val kept = ArrayList<String>()
         for (entry in unknownSettings) {
             val first = entry.substringBefore('\n')
@@ -78,14 +68,19 @@ private val fieldNames = listOf(
 // Lines a fresh account writes. A preserved key still at that line stays omitted.
 private fun failureEncodedLine(key: String): String? = if (key == "tlsMode") "tlsMode=None" else null
 
+internal fun decodeIntList(text: String): List<Int> {
+    if (text.isEmpty()) return emptyList()
+    return text.split(',').map { it.trim().toInt() }
+}
+
 private val defaultEncodedLines: Map<String, String> by lazy {
-    AccountSettings().encode().lineSequence().filter { it.isNotEmpty() }.associate { line ->
+    Settings().encode().lineSequence().filter { it.isNotEmpty() }.associate { line ->
         val eq = line.indexOf('=')
         line.substring(0, eq) to line
     }
 }
 
-fun AccountSettings.encode(): String = buildString {
+fun Settings.encode(): String = buildString {
     val preserved = HashSet<String>()
     for (entry in unknownSettings) {
         val first = entry.substringBefore('\n')
@@ -113,7 +108,18 @@ fun AccountSettings.encode(): String = buildString {
     }
 }
 
-fun decodeAccountSettings(text: String): AccountSettings {
+fun Settings.encodeUi(): String = buildString {
+    fun put(line: String) {
+        appendLine(line)
+    }
+/* @gen-ui-encode */
+}
+
+fun Settings.withUiOf(ui: Settings): Settings = copy(
+/* @gen-ui-copy */
+)
+
+fun decodeSettings(text: String): Settings {
     val values = linkedMapOf<String, String>()
     val unknown = ArrayList<String>()
     var openKey: String? = null
@@ -124,8 +130,6 @@ fun decodeAccountSettings(text: String): AccountSettings {
         if (eq > 0 && key in fieldNames) {
             values[key] = line.substring(eq + 1) // F69: a duplicate key: the last one wins
             openKey = key
-        } else if (eq > 0 && key in ignoredAccountToolbarKeys) {
-            openKey = null
         } else if (openKey == "inboundRules" && line.contains('\t')) {
             values[openKey] = values.getValue(openKey) + "\n" + line // rule lines always carry a TAB
         } else if (eq > 0) {
@@ -138,7 +142,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
             openKey = null // F69: a malformed line is skipped
         }
     }
-    val d = AccountSettings()
+    val d = Settings()
     fun listDroppedAll(key: String, value: Any?): Boolean = when (key) {
         "inboundRules", "favorites" -> value is List<*> && value.isEmpty()
         "folderViews", "folderStarts" -> value is Map<*, *> && value.isEmpty()
@@ -164,7 +168,7 @@ fun decodeAccountSettings(text: String): AccountSettings {
     } else {
         field("smtpTlsMode", decodedTlsMode) { enumValueOf<TlsMode>(values.getValue("smtpTlsMode")) }
     }
-    return AccountSettings(
+    return Settings(
 /* @gen-decode */
         unknownSettings = unknown,
     )

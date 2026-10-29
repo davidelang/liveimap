@@ -58,7 +58,7 @@ class PinercImportTest {
             feature-list=expunge-without-confirm
             inbox-password=secret
             """.trimIndent() + "\n"
-        val preview = previewPinerc(text, AccountSettings())
+        val preview = previewPinerc(text, Settings())
         val next = preview.next
         assertEquals("imap.example.com", next.imapHost)
         assertEquals(143, next.imapPort)
@@ -75,7 +75,7 @@ class PinercImportTest {
         assertFalse(next.askBeforeExpunge)
         assertEquals("", next.spamMailbox)
         assertEquals(
-            AccountSettings(),
+            Settings(),
             next.copy(
                 imapHost = "",
                 imapPort = SettingsDefaults.imapPort,
@@ -101,7 +101,7 @@ class PinercImportTest {
     fun tlsSortAndLocalPathAreNotApplied() {
         val tls = previewPinerc(
             "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("imap.example.com", tls.next.imapHost)
         assertEquals("ada", tls.next.username)
@@ -109,18 +109,18 @@ class PinercImportTest {
         assertEquals(TlsMode.Implicit, tls.next.tlsMode)
         assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
-        val sort = previewPinerc("sort-key=Score\n", AccountSettings())
-        assertEquals(AccountSettings(), sort.next)
+        val sort = previewPinerc("sort-key=Score\n", Settings())
+        assertEquals(Settings(), sort.next)
         assertTrue(sort.skipped.contains("Sort key is not supported"))
 
-        val sent = previewPinerc("default-fcc=~/mail/sent\n", AccountSettings())
+        val sent = previewPinerc("default-fcc=~/mail/sent\n", Settings())
         assertEquals("", sent.next.sentMailbox)
         assertTrue(sent.skipped.contains("Local path is not a mailbox"))
     }
 
     @Test
     fun unmentionedFieldsStay() {
-        val current = AccountSettings(
+        val current = Settings(
             spamMailbox = "Junk",
             theme = ThemeMode.Dark,
             swipeTrailing = SwipeBinding(SwipeAction.Move, moveMailbox = "Archive"),
@@ -135,59 +135,59 @@ class PinercImportTest {
 
     @Test
     fun smtpPortsUsersAndInboxWithoutPort() {
-        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", Settings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
         assertEquals(TlsMode.StartTls, submit.next.smtpTlsMode)
-        assertEquals(AccountSettings().tlsMode, submit.next.tlsMode)
+        assertEquals(Settings().tlsMode, submit.next.tlsMode)
 
-        val explicit = previewPinerc("smtp-server=smtp.example.com:2525/submit\n", AccountSettings())
+        val explicit = previewPinerc("smtp-server=smtp.example.com:2525/submit\n", Settings())
         assertEquals(2525, explicit.next.smtpPort)
         assertEquals(TlsMode.StartTls, explicit.next.smtpTlsMode)
 
-        val plain = previewPinerc("smtp-server=smtp.example.com\n", AccountSettings())
+        val plain = previewPinerc("smtp-server=smtp.example.com\n", Settings())
         assertEquals(25, plain.next.smtpPort)
-        assertEquals(AccountSettings().smtpTlsMode, plain.next.smtpTlsMode)
-        assertEquals(AccountSettings().tlsMode, plain.next.tlsMode)
+        assertEquals(Settings().smtpTlsMode, plain.next.smtpTlsMode)
+        assertEquals(Settings().tlsMode, plain.next.tlsMode)
 
         val tls = previewPinerc(
             "smtp-server={smtp.example.com/tls}\n",
-            AccountSettings(smtpHost = "old"),
+            Settings(smtpHost = "old"),
         )
         assertEquals("smtp.example.com", tls.next.smtpHost)
         assertEquals(25, tls.next.smtpPort)
         assertEquals(TlsMode.StartTls, tls.next.smtpTlsMode)
         assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
-        val implicit = previewPinerc("smtp-server={smtp.example.com/ssl}\n", AccountSettings())
+        val implicit = previewPinerc("smtp-server={smtp.example.com/ssl}\n", Settings())
         assertEquals(465, implicit.next.smtpPort)
         assertEquals(TlsMode.Implicit, implicit.next.smtpTlsMode)
 
         val secure = previewPinerc(
             "inbox-path={imap.example.com/Secure/user=ada}INBOX\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("imap.example.com", secure.next.imapHost)
         assertEquals("ada", secure.next.username)
         assertEquals(143, secure.next.imapPort)
-        assertEquals(AccountSettings().tlsMode, secure.next.tlsMode)
+        assertEquals(Settings().tlsMode, secure.next.tlsMode)
         assertTrue(secure.skipped.none { it == "IMAP and SMTP ask for different TLS" })
 
         val notls = previewPinerc(
             "inbox-path={imap.example.com/notls/user=ada}INBOX\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals(143, notls.next.imapPort)
         assertEquals(TlsMode.None, notls.next.tlsMode)
 
-        val inbox = previewPinerc("inbox-path={imap.example.com/user=ada}INBOX\n", AccountSettings())
+        val inbox = previewPinerc("inbox-path={imap.example.com/user=ada}INBOX\n", Settings())
         assertEquals("imap.example.com", inbox.next.imapHost)
         assertEquals(143, inbox.next.imapPort)
         assertEquals("ada", inbox.next.username)
 
         val differ = previewPinerc(
             "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=bob}\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("ada", differ.next.username)
         assertEquals("smtp.example.com", differ.next.smtpHost)
@@ -197,14 +197,14 @@ class PinercImportTest {
 
         val same = previewPinerc(
             "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=ada}\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("", same.next.smtpUsername)
         assertTrue(same.skipped.isEmpty())
 
         val conflict = previewPinerc(
             "inbox-path={imap.example.com/ssl/user=ada}INBOX\nsmtp-server=smtp.example.com/submit\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals(993, conflict.next.imapPort)
         assertEquals(587, conflict.next.smtpPort)
@@ -214,7 +214,7 @@ class PinercImportTest {
 
         val agree = previewPinerc(
             "inbox-path={imap.example.com/tls/user=ada}INBOX\nsmtp-server=smtp.example.com/submit\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals(TlsMode.StartTls, agree.next.tlsMode)
         assertEquals(TlsMode.StartTls, agree.next.smtpTlsMode)
@@ -227,49 +227,49 @@ class PinercImportTest {
     fun userIdEmailAndFolders() {
         val kept = previewPinerc(
             "inbox-path={imap.example.com/user=ada}INBOX\nuser-id=bob\nuser-domain=lang.hm\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("ada", kept.next.username)
         assertEquals("bob@lang.hm", kept.next.email)
 
-        val fromId = previewPinerc("user-id=bob\nuser-domain=lang.hm\n", AccountSettings())
+        val fromId = previewPinerc("user-id=bob\nuser-domain=lang.hm\n", Settings())
         assertEquals("bob", fromId.next.username)
         assertEquals("bob@lang.hm", fromId.next.email)
 
-        val at = previewPinerc("user-id=bob@other.hm\nuser-domain=lang.hm\n", AccountSettings())
+        val at = previewPinerc("user-id=bob@other.hm\nuser-domain=lang.hm\n", Settings())
         assertEquals("bob@other.hm", at.next.username)
         assertEquals("bob@other.hm", at.next.email)
 
         val domainOnly = previewPinerc(
             "user-domain=lang.hm\n",
-            AccountSettings(username = "ada", email = "keep@lang.hm"),
+            Settings(username = "ada", email = "keep@lang.hm"),
         )
         assertEquals("ada", domainOnly.next.username)
         assertEquals("keep@lang.hm", domainOnly.next.email)
 
-        val braced = previewPinerc("default-fcc={imap.example.com}INBOX.sent\n", AccountSettings())
+        val braced = previewPinerc("default-fcc={imap.example.com}INBOX.sent\n", Settings())
         assertEquals("INBOX.sent", braced.next.sentMailbox)
 
-        val slash = previewPinerc("postponed-folder=INBOX/postponed\n", AccountSettings())
+        val slash = previewPinerc("postponed-folder=INBOX/postponed\n", Settings())
         assertEquals("", slash.next.postponedMailbox)
         assertTrue(slash.skipped.contains("Local path is not a mailbox"))
 
         val book = previewPinerc(
             "address-book=~/abook, {imap.example.com}ab\n",
-            AccountSettings(addressBookMailbox = "keep"),
+            Settings(addressBookMailbox = "keep"),
         )
         assertEquals("ab", book.next.addressBookMailbox)
         assertTrue(book.skipped.contains("Local path is not a mailbox"))
 
         val localBook = previewPinerc(
             "address-book=~/abook\n",
-            AccountSettings(addressBookMailbox = "keep"),
+            Settings(addressBookMailbox = "keep"),
         )
         assertEquals("keep", localBook.next.addressBookMailbox)
 
         val quoted = previewPinerc(
             "address-book=\"{imap.example.com}ab\", \"~/abook\"\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("ab", quoted.next.addressBookMailbox)
         assertTrue(quoted.skipped.contains("Local path is not a mailbox"))
@@ -277,36 +277,36 @@ class PinercImportTest {
 
     @Test
     fun sortFeaturesAndOmittedLines() {
-        val date = previewPinerc("sort-key=Date\n", AccountSettings())
+        val date = previewPinerc("sort-key=Date\n", Settings())
         assertEquals(FolderView(SortKey.Date, newestFirst = false), date.next.defaultView)
 
-        val ordered = previewPinerc("sort-key=orderedsubj/reverse\n", AccountSettings())
+        val ordered = previewPinerc("sort-key=orderedsubj/reverse\n", Settings())
         assertEquals(
             FolderView(SortKey.ThreadOrderedSubject, newestFirst = true),
             ordered.next.defaultView,
         )
 
-        val manual = previewPinerc("feature-list=expunge-only-manually\n", AccountSettings())
+        val manual = previewPinerc("feature-list=expunge-only-manually\n", Settings())
         assertTrue(manual.next.askBeforeExpunge)
-        assertEquals(AccountSettings(), manual.next)
+        assertEquals(Settings(), manual.next)
         assertTrue(manual.skipped.contains("Expunge already happens only when asked"))
 
         val last = previewPinerc(
             "feature-list=no-expunge-without-confirm,expunge-without-confirm-everywhere\n",
-            AccountSettings(),
+            Settings(),
         )
         assertFalse(last.next.askBeforeExpunge)
 
         val back = previewPinerc(
             "feature-list=expunge-without-confirm,no-expunge-without-confirm-everywhere\n",
-            AccountSettings(),
+            Settings(),
         )
         assertTrue(back.next.askBeforeExpunge)
-        assertEquals(AccountSettings(), back.next)
+        assertEquals(Settings(), back.next)
 
         val mixed = previewPinerc(
             "feature-list=expunge-without-confirm,enable-foo,expunge-only-manually\n",
-            AccountSettings(),
+            Settings(),
         )
         assertFalse(mixed.next.askBeforeExpunge)
         assertEquals(1, mixed.omittedCount)
@@ -314,17 +314,17 @@ class PinercImportTest {
 
         val omitted = previewPinerc(
             "normal-foreground-color=red\nkeymap=a\nkeybinding-style=b\nfoo=bar\ninbox-password=secret\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals(4, omitted.omittedCount)
         assertEquals(listOf("Passwords are not imported"), omitted.skipped)
         assertTrue(omitted.rows.isEmpty())
-        assertEquals(AccountSettings(), omitted.next)
+        assertEquals(Settings(), omitted.next)
         assertTrue(omitted.skipped.none { "secret" in it })
 
         val notes = previewPinerc(
             "signature-file=/tmp/sig\nliteral-signature=hi\nincoming-folders=a\nstay-open-folders=b\nfolder-collections=c\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals(
             listOf(
@@ -341,10 +341,10 @@ class PinercImportTest {
         )
         assertEquals(listOf("Signature: changed", "Favorite: a").size, notes.rows.size)
         assertEquals("hi", notes.next.signature)
-        assertEquals(AccountSettings(), notes.next.copy(favorites = emptyList(), signature = ""))
+        assertEquals(Settings(), notes.next.copy(favorites = emptyList(), signature = ""))
         assertEquals(listOf("Display name: Old → Ada"), previewPinerc(
             "personal-name=Ada\n",
-            AccountSettings(displayName = "Old"),
+            Settings(displayName = "Old"),
         ).rows)
     }
 
@@ -360,24 +360,24 @@ class PinercImportTest {
             "last" to StartRule.Last,
         )
         for ((text, rule) in cases) {
-            val preview = previewPinerc("incoming-startup-rule=$text\n", AccountSettings())
+            val preview = previewPinerc("incoming-startup-rule=$text\n", Settings())
             assertEquals(rule, preview.next.inboxStart)
             assertTrue(preview.rows.any { it.startsWith("INBOX opens at:") })
         }
         val upper = previewPinerc(
             "incoming-startup-rule=FIRST-UNSEEN\n",
-            AccountSettings(inboxStart = StartRule.Last),
+            Settings(inboxStart = StartRule.Last),
         )
         assertEquals(StartRule.FirstUnseen, upper.next.inboxStart)
         val unknown = previewPinerc(
             "incoming-startup-rule=first-new\n",
-            AccountSettings(inboxStart = StartRule.Last),
+            Settings(inboxStart = StartRule.Last),
         )
         assertEquals(StartRule.Last, unknown.next.inboxStart)
         assertTrue(unknown.skipped.contains("Startup rule not recognized"))
         val leave = previewPinerc(
             "personal-name=Ada\n",
-            AccountSettings(
+            Settings(
                 inboxStart = StartRule.Last,
                 pinercStartDefault = PinercStartDefault.LeaveUnchanged,
             ),
@@ -385,7 +385,7 @@ class PinercImportTest {
         assertEquals(StartRule.Last, leave.next.inboxStart)
         val alpine = previewPinerc(
             "personal-name=Ada\n",
-            AccountSettings(
+            Settings(
                 inboxStart = StartRule.Last,
                 pinercStartDefault = PinercStartDefault.AlpineDefault,
             ),
@@ -394,7 +394,7 @@ class PinercImportTest {
         assertTrue(alpine.rows.contains("INBOX opens at: First unread (alpine's default)"))
         val patterns = previewPinerc(
             "patterns-other=/START=first-unseen\n",
-            AccountSettings(),
+            Settings(),
         )
         assertTrue(patterns.skipped.contains("Per-folder startup rules are not imported"))
         assertEquals(StartRule.Newest, patterns.next.inboxStart)
@@ -402,7 +402,7 @@ class PinercImportTest {
 
     @Test
     fun autoExpungeIsOfferedOnlyWhenConfirmIsTurnedOff() {
-        val without = previewPinerc("feature-list=expunge-without-confirm\n", AccountSettings())
+        val without = previewPinerc("feature-list=expunge-without-confirm\n", Settings())
         assertFalse(without.next.askBeforeExpunge)
         assertFalse(without.next.autoExpunge)
         assertTrue(without.offerAutoExpunge)
@@ -416,7 +416,7 @@ class PinercImportTest {
 
         val everywhere = previewPinerc(
             "feature-list=expunge-without-confirm-everywhere\n",
-            AccountSettings(),
+            Settings(),
         )
         assertFalse(everywhere.next.askBeforeExpunge)
         assertFalse(everywhere.next.autoExpunge)
@@ -428,7 +428,7 @@ class PinercImportTest {
 
         val lastOff = previewPinerc(
             "feature-list=no-expunge-without-confirm,expunge-without-confirm-everywhere\n",
-            AccountSettings(),
+            Settings(),
         )
         assertFalse(lastOff.next.askBeforeExpunge)
         assertFalse(lastOff.next.autoExpunge)
@@ -436,7 +436,7 @@ class PinercImportTest {
 
         val confirm = previewPinerc(
             "feature-list=no-expunge-without-confirm\n",
-            AccountSettings(askBeforeExpunge = false),
+            Settings(askBeforeExpunge = false),
         )
         assertTrue(confirm.next.askBeforeExpunge)
         assertFalse(confirm.next.autoExpunge)
@@ -448,7 +448,7 @@ class PinercImportTest {
 
         val confirmEverywhere = previewPinerc(
             "feature-list=no-expunge-without-confirm-everywhere\n",
-            AccountSettings(askBeforeExpunge = false),
+            Settings(askBeforeExpunge = false),
         )
         assertTrue(confirmEverywhere.next.askBeforeExpunge)
         assertFalse(confirmEverywhere.offerAutoExpunge)
@@ -456,25 +456,25 @@ class PinercImportTest {
 
         val lastOn = previewPinerc(
             "feature-list=expunge-without-confirm,no-expunge-without-confirm-everywhere\n",
-            AccountSettings(),
+            Settings(),
         )
         assertTrue(lastOn.next.askBeforeExpunge)
         assertFalse(lastOn.offerAutoExpunge)
         assertFalse(pinercApplied(lastOn, turnOnAutoExpunge = true).autoExpunge)
 
-        val manual = previewPinerc("feature-list=expunge-only-manually\n", AccountSettings())
+        val manual = previewPinerc("feature-list=expunge-only-manually\n", Settings())
         assertTrue(manual.next.askBeforeExpunge)
         assertFalse(manual.offerAutoExpunge)
         assertFalse(pinercApplied(manual, turnOnAutoExpunge = true).autoExpunge)
 
-        val noList = previewPinerc("personal-name=Ada\n", AccountSettings())
+        val noList = previewPinerc("personal-name=Ada\n", Settings())
         assertFalse(noList.offerAutoExpunge)
         assertFalse(pinercApplied(noList, turnOnAutoExpunge = true).autoExpunge)
-        assertFalse(previewPinerc("\n", AccountSettings()).offerAutoExpunge)
+        assertFalse(previewPinerc("\n", Settings()).offerAutoExpunge)
 
         val already = previewPinerc(
             "feature-list=expunge-without-confirm\n",
-            AccountSettings(autoExpunge = true),
+            Settings(autoExpunge = true),
         )
         assertFalse(already.next.askBeforeExpunge)
         assertTrue(already.next.autoExpunge)
@@ -486,7 +486,7 @@ class PinercImportTest {
 
         val alreadyOff = previewPinerc(
             "feature-list=expunge-without-confirm\n",
-            AccountSettings(askBeforeExpunge = false),
+            Settings(askBeforeExpunge = false),
         )
         assertFalse(alreadyOff.next.askBeforeExpunge)
         assertFalse(alreadyOff.next.autoExpunge)
@@ -499,27 +499,27 @@ class PinercImportTest {
 
     @Test
     fun folderNamesUseSameServerPrefixAndSkipOtherHosts() {
-        val bareInbox = previewPinerc("inbox-path=inbox\n", AccountSettings())
+        val bareInbox = previewPinerc("inbox-path=inbox\n", Settings())
         assertEquals("", bareInbox.next.imapHost)
-        assertEquals(AccountSettings(), bareInbox.next)
+        assertEquals(Settings(), bareInbox.next)
         assertTrue(bareInbox.skipped.contains("inbox-path needs a server in braces"))
 
         val keptHost = previewPinerc(
             "inbox-path=inbox\n",
-            AccountSettings(imapHost = "imap.example.com", imapPort = 993, username = "ada"),
+            Settings(imapHost = "imap.example.com", imapPort = 993, username = "ada"),
         )
         assertEquals("imap.example.com", keptHost.next.imapHost)
         assertEquals(993, keptHost.next.imapPort)
         assertEquals("ada", keptHost.next.username)
         assertTrue(keptHost.skipped.contains("inbox-path needs a server in braces"))
 
-        val openBrace = previewPinerc("inbox-path={imap.example.com\n", AccountSettings())
-        assertEquals(AccountSettings(), openBrace.next)
+        val openBrace = previewPinerc("inbox-path={imap.example.com\n", Settings())
+        assertEquals(Settings(), openBrace.next)
         assertTrue(openBrace.skipped.none { it == "inbox-path needs a server in braces" })
 
         val tls = previewPinerc(
             "inbox-path={imap.example.com/ssl/user=ada}INBOX\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("imap.example.com", tls.next.imapHost)
         assertEquals("ada", tls.next.username)
@@ -528,7 +528,7 @@ class PinercImportTest {
         assertTrue(tls.skipped.none { it == "IMAP and SMTP ask for different TLS" })
         assertTrue(tls.skipped.none { it == "inbox-path needs a server in braces" })
 
-        val host = AccountSettings(imapHost = "imap.example.com")
+        val host = Settings(imapHost = "imap.example.com")
         val other = previewPinerc("default-fcc={other.example.com}Sent\n", host)
         assertEquals("", other.next.sentMailbox)
         assertEquals("imap.example.com", other.next.imapHost)
@@ -546,7 +546,7 @@ class PinercImportTest {
 
         val fromInbox = previewPinerc(
             "inbox-path={imap.example.com/user=ada}INBOX\ndefault-fcc={other.example.com}Sent\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("imap.example.com", fromInbox.next.imapHost)
         assertEquals(143, fromInbox.next.imapPort)
@@ -592,30 +592,30 @@ class PinercImportTest {
 
         val emptyHostBraced = previewPinerc(
             "default-fcc={imap.example.com}INBOX.sent\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("INBOX.sent", emptyHostBraced.next.sentMailbox)
         assertEquals("", emptyHostBraced.next.imapHost)
 
         val emptyHostCollection = previewPinerc(
             "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\ndefault-fcc=sent-mail\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("sent-mail", emptyHostCollection.next.sentMailbox)
         assertEquals("", emptyHostCollection.next.imapHost)
 
-        val noCollection = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        val noCollection = previewPinerc("default-fcc=INBOX.sent-mail\n", Settings())
         assertEquals("INBOX.sent-mail", noCollection.next.sentMailbox)
 
-        val localPost = previewPinerc("postponed-folder=INBOX/postponed\n", AccountSettings())
+        val localPost = previewPinerc("postponed-folder=INBOX/postponed\n", Settings())
         assertEquals("", localPost.next.postponedMailbox)
         assertTrue(localPost.skipped.contains("Local path is not a mailbox"))
 
-        val lists = previewPinerc("folder-collections=c\n", AccountSettings())
+        val lists = previewPinerc("folder-collections=c\n", Settings())
         assertEquals(listOf("Folder lists are not imported"), lists.skipped)
-        assertEquals(AccountSettings(), lists.next)
+        assertEquals(Settings(), lists.next)
 
-        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", Settings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
 
@@ -636,16 +636,16 @@ class PinercImportTest {
 
     @Test
     fun previewOfSentNameDoesNotOpenASession() {
-        val preview = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        val preview = previewPinerc("default-fcc=INBOX.sent-mail\n", Settings())
         assertEquals("INBOX.sent-mail", preview.next.sentMailbox)
-        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", Settings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
     }
 
     @Test
     fun missingMailboxDropsOnlyThatRow() {
-        val current = AccountSettings(
+        val current = Settings(
             sentMailbox = "keep-sent",
             postponedMailbox = "old-post",
             imapHost = "imap.example.com",
@@ -684,7 +684,7 @@ class PinercImportTest {
 
     @Test
     fun failedCheckDropsMailboxChangesOnce() {
-        val current = AccountSettings(
+        val current = Settings(
             imapHost = "imap.example.com",
             sentMailbox = "old-sent",
             postponedMailbox = "same-post",
@@ -705,14 +705,14 @@ class PinercImportTest {
         assertTrue(checked.rows.none { it.startsWith("Address book mailbox:") })
         assertEquals(1, checked.skipped.count { it == "Could not check folders" })
         assertTrue(checked.skipped.none { "was not found" in it })
-        val untouched = previewPinerc("personal-name=Ada\n", AccountSettings())
-        assertSame(untouched, withoutCheckedMailboxes(untouched, AccountSettings(), testPinercPhrases()))
+        val untouched = previewPinerc("personal-name=Ada\n", Settings())
+        assertSame(untouched, withoutCheckedMailboxes(untouched, Settings(), testPinercPhrases()))
     }
 
 
     @Test
     fun incomingFoldersBecomeFavorites() {
-        val host = AccountSettings(imapHost = "imap.example.com")
+        val host = Settings(imapHost = "imap.example.com")
         val listed = previewPinerc(
             "incoming-folders=Lists {imap.example.com}INBOX.lists\n",
             host,
@@ -749,7 +749,7 @@ class PinercImportTest {
 
         val emptyHost = previewPinerc(
             "incoming-folders={imap.example.com}INBOX.lists\n",
-            AccountSettings(),
+            Settings(),
         )
         assertEquals("INBOX.lists", emptyHost.next.favorites.single().mailbox)
         assertEquals("", emptyHost.next.imapHost)
@@ -796,7 +796,7 @@ class PinercImportTest {
 
         val keep = FolderFavorite(node = false, mailbox = "INBOX.keep", delimiter = '/', label = "Keep")
         val node = FolderFavorite(node = true, mailbox = "INBOX.tree", delimiter = '/', label = "Tree")
-        val current = AccountSettings(
+        val current = Settings(
             imapHost = "imap.example.com",
             sentMailbox = "old-sent",
             favorites = listOf(keep, node),
@@ -847,8 +847,8 @@ class PinercImportTest {
         )
         assertEquals(1, again.skipped.count { it == "Could not check folders" })
         assertEquals(listOf(keep, node), again.next.favorites)
-        val plainPreview = previewPinerc("personal-name=Ada\n", AccountSettings())
-        assertSame(plainPreview, withoutCheckedFavorites(plainPreview, AccountSettings(), phrases))
+        val plainPreview = previewPinerc("personal-name=Ada\n", Settings())
+        assertSame(plainPreview, withoutCheckedFavorites(plainPreview, Settings(), phrases))
 
         assertEquals(
             '/',
@@ -871,14 +871,14 @@ class PinercImportTest {
         assertEquals('#', stamped.next.favorites[3].delimiter)
         assertEquals("One", stamped.next.favorites[2].label)
         assertEquals("Two", stamped.next.favorites[3].label)
-        assertSame(plainPreview, withFavoriteDelimiter(plainPreview, AccountSettings(), '#'))
+        assertSame(plainPreview, withFavoriteDelimiter(plainPreview, Settings(), '#'))
 
-        val sent = previewPinerc("default-fcc=INBOX.sent-mail\n", AccountSettings())
+        val sent = previewPinerc("default-fcc=INBOX.sent-mail\n", Settings())
         assertEquals("INBOX.sent-mail", sent.next.sentMailbox)
-        val stay = previewPinerc("stay-open-folders=b\n", AccountSettings())
+        val stay = previewPinerc("stay-open-folders=b\n", Settings())
         assertEquals(listOf("Folder lists are not imported"), stay.skipped)
         assertTrue(stay.next.favorites.isEmpty())
-        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", AccountSettings())
+        val submit = previewPinerc("smtp-server=smtp.example.com/submit\n", Settings())
         assertEquals("smtp.example.com", submit.next.smtpHost)
         assertEquals(587, submit.next.smtpPort)
     }
@@ -886,7 +886,7 @@ class PinercImportTest {
     @Test
     fun exportRoundTrip() {
         val leaf = FolderFavorite(node = false, mailbox = "Friends", delimiter = '.', label = "Work")
-        val account = AccountSettings(
+        val account = Settings(
             imapHost = "imap.example.com",
             imapPort = 993,
             smtpHost = "smtp.example.com",
@@ -921,7 +921,7 @@ class PinercImportTest {
         )
         val text = encodePinerc(account)
         assertEquals(account, previewPinerc(text, account).next)
-        val blank = previewPinerc(text, AccountSettings())
+        val blank = previewPinerc(text, Settings())
         assertEquals("ada", blank.next.username)
         assertEquals("ada@example.com", blank.next.email)
         assertEquals("Ada Lovelace", blank.next.displayName)
@@ -957,7 +957,7 @@ class PinercImportTest {
         }
 
         val other = encodePinerc(
-            AccountSettings(
+            Settings(
                 inboxStart = StartRule.Newest,
                 addressBookNeverTrim = true,
                 addressBookHistory = 9,
@@ -973,7 +973,7 @@ class PinercImportTest {
         assertTrue(other.contains("# date format: Short"))
 
         val submitText = encodePinerc(
-            AccountSettings(
+            Settings(
                 imapHost = "imap.example.com",
                 smtpHost = "smtp.example.com",
                 smtpPort = 587,
@@ -990,7 +990,7 @@ class PinercImportTest {
 
     @Test
     fun plainLeafRoundTripsWithoutAKeyBranch() {
-        if (settingsRegistry.isEmpty()) installSettingsTree(settingsTreeText())
+        if (settingsRegistry.isEmpty()) installGeneratedSettings()
         val leaf = settingsRegistry.values.map { it.leaf }.first { candidate ->
             candidate.pinercFormat == "text" &&
                 candidate.pinerc != "user-id" &&
@@ -1002,10 +1002,10 @@ class PinercImportTest {
             File("app/src/main/kotlin/org/dlang/liveimap/settings/PinercImport.kt"),
         ).first { it.isFile }.readText()
         assertFalse(source.contains(key))
-        val changed = AccountSettings().withSetting(leaf.setting, SettingValue("||"))
+        val changed = Settings().withSetting(leaf.setting, SettingValue("||"))
         val text = encodePinerc(changed)
         assertTrue(text.contains("$key="))
-        assertEquals("||", pinercPreview(text, AccountSettings(), testPinercPhrases()).next.getSetting(leaf.setting))
+        assertEquals("||", pinercPreview(text, Settings(), testPinercPhrases()).next.getSetting(leaf.setting))
     }
 }
 
@@ -1050,5 +1050,5 @@ internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
     favorite = "Favorite",
 )
 
-internal fun previewPinerc(text: String, current: AccountSettings): PinercPreview =
+internal fun previewPinerc(text: String, current: Settings): PinercPreview =
     pinercPreview(text, current, testPinercPhrases())

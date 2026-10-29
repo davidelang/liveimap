@@ -1,6 +1,6 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -16,7 +16,7 @@ class DisconnectedSessionTest {
         val session = DisconnectedMailSession()
         assertTrue(session is DisconnectedMailSession)
         assertTrue(session.capabilities.isEmpty())
-        val result = runImmediate { session.open(AccountSettings()) }
+        val result = runImmediate { session.open(Settings()) }
         assertTrue(result is OpenResult.Failed)
         assertEquals("not connected", (result as OpenResult.Failed).text)
         session.close()

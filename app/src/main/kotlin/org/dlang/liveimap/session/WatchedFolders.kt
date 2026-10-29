@@ -5,7 +5,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -35,20 +35,20 @@ private data class NoIdleMailbox(val host: String, val user: String, val port: I
 /** Concurrent set. Not a lock. A throw leaves the mark. A finished apply decides that mailbox again. */
 private val noIdleMailboxes = ConcurrentHashMap.newKeySet<NoIdleMailbox>()
 
-private fun noIdleKey(settings: AccountSettings, mailbox: String): NoIdleMailbox =
+private fun noIdleKey(settings: Settings, mailbox: String): NoIdleMailbox =
     NoIdleMailbox(settings.imapHost, settings.username, settings.imapPort, mailbox)
 
-private fun idleHidden(account: AccountSettings): Boolean =
+private fun idleHidden(account: Settings): Boolean =
     account.hiddenCapabilities.any { it.equals("IDLE", ignoreCase = true) }
 
 /** IDLE is usable only when this session advertises it and the account has not hidden it. */
-private fun idleUsable(account: AccountSettings, session: MailSession): Boolean {
+private fun idleUsable(account: Settings, session: MailSession): Boolean {
     if (idleHidden(account)) return false
     return session.featureCaps.idle
 }
 
 /** Feeds the stored extra folders into the splitter. A mailbox the last apply left without IDLE is status, not idle, and only while it is still watched. Does not open a socket. */
-fun extraWatchPlan(settings: AccountSettings): WatchPlan {
+fun extraWatchPlan(settings: Settings): WatchPlan {
     val planned = planWatchedFolders(settings.watchedFolders, connectionLimits(settings).idleSlots)
     val idle = ArrayList<String>(planned.idle.size)
     val skipped = ArrayList<String>()
@@ -90,7 +90,7 @@ fun connectionLimits(maxConnections: Int, idleBudget: Int): ConnectionLimits {
     return ConnectionLimits(total, search, idle)
 }
 
-fun connectionLimits(settings: AccountSettings): ConnectionLimits =
+fun connectionLimits(settings: Settings): ConnectionLimits =
     connectionLimits(settings.maxConnections, settings.extraIdleBudget)
 
 private val connectionDigits = Regex("\\d{1,3}")
@@ -103,7 +103,7 @@ fun maxConnectionsFromText(text: String): Int? =
  *  [seenGeneration] is the value read before extraIdleLock. A stop that bumped it does not open. */
 suspend fun applyStoredIdle(
     sessions: ExtraIdleSessions,
-    account: AccountSettings,
+    account: Settings,
     accountId: String = "",
     seenGeneration: Int = sessions.readGeneration(),
 ) {
@@ -231,7 +231,7 @@ class ExtraIdleSessions(private val factory: (String) -> MailSession) {
     fun generationStill(seen: Int): Boolean = generation.get() == seen
 
     /** [names] is this account's extra IDLE set. Another account's sessions stay open. */
-    suspend fun apply(account: AccountSettings, names: List<String>, accountId: String = "") {
+    suspend fun apply(account: Settings, names: List<String>, accountId: String = "") {
         if (accountId.isBlank()) return
         val hiddenIdle = !account.jmapFolders && idleHidden(account)
         val keep = HashSet<Pair<String, String>>()

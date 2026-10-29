@@ -96,7 +96,7 @@ data class IndexRequest(
     val limit: Int = 60,
     val prefetch: Int = 60,
     val includePreview: Boolean = false,
-    val previewByteLimit: Int = 2048,
+    val previewByteLimit: Int = org.dlang.liveimap.settings.SettingsHub.openAccount()?.previewByteLimit ?: 2048,
     val firstSequence: Int = 0,
     val lastSequence: Int = 0,
     val uidsOnly: Boolean = false,

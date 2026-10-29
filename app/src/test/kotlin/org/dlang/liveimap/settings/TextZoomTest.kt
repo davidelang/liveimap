@@ -2,6 +2,7 @@ package org.dlang.liveimap.settings
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TextZoomTest {
@@ -16,11 +17,14 @@ class TextZoomTest {
     }
 
     @Test
-    fun settingRoundTripsAndDefaultIsNotWritten() {
-        assertFalse(AccountSettings().encode().contains("readerTextZoom"))
-        val hostile = AccountSettings().encode() + "readerTextZoom=130\n"
-        val decoded = decodeAccountSettings(hostile)
-        assertFalse(decoded.encode().contains("readerTextZoom"))
-        assertEquals(AccountSettings().encode(), decoded.encode())
+    fun settingRoundTripsAndOldKeyStaysUnknown() {
+        val text = Settings(appTextZoom = 130).encodeUi()
+        assertTrue(text.contains("appTextZoom=130"))
+        assertEquals(130, decodeSettings(text).appTextZoom)
+        val hostile = Settings().encode() + "readerTextZoom=130\n"
+        val decoded = decodeSettings(hostile)
+        assertEquals(Settings().appTextZoom, decoded.appTextZoom)
+        assertTrue(decoded.unknownSettings.any { it.startsWith("readerTextZoom=") })
+        assertFalse(decoded.encode().contains("appTextZoom=130"))
     }
 }

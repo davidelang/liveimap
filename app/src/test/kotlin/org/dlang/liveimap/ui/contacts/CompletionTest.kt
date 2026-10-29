@@ -1,8 +1,8 @@
 package org.dlang.liveimap.ui.contacts
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.androidSourceId
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -123,33 +123,33 @@ class CompletionTest {
 
     @Test
     fun missingCompletionSourcesKeyDecodesToPineOnly() {
-        val encoded = AccountSettings().encode()
-        assertFalse(encoded.contains("completionSources="))
-        assertEquals(listOf("pine"), decodeAccountSettings(encoded).completionSources)
-        val removed = AccountSettings(completionSources = listOf("android|x|y")).encode()
+        val encoded = Settings().encode()
+        assertTrue(encoded.contains("completionSources="))
+        assertEquals(listOf("pine"), decodeSettings(encoded).completionSources)
+        val removed = Settings(completionSources = listOf("android|x|y")).encode()
             .lineSequence()
             .filter { it.isNotEmpty() && !it.startsWith("completionSources=") }
             .joinToString("\n")
-        assertEquals(listOf("pine"), decodeAccountSettings(removed).completionSources)
+        assertEquals(listOf("pine"), decodeSettings(removed).completionSources)
     }
 
     @Test
     fun emptyCompletionSourcesValueDecodesToNone() {
-        val appended = AccountSettings().encode().trimEnd() + "\ncompletionSources=\n"
-        assertEquals(emptyList<String>(), decodeAccountSettings(appended).completionSources)
-        val saved = AccountSettings(completionSources = emptyList())
+        val appended = Settings().encode().trimEnd() + "\ncompletionSources=\n"
+        assertEquals(emptyList<String>(), decodeSettings(appended).completionSources)
+        val saved = Settings(completionSources = emptyList())
         assertTrue(saved.encode().lines().contains("completionSources="))
-        assertEquals(emptyList<String>(), decodeAccountSettings(saved.encode()).completionSources)
-        assertEquals(saved.encode(), decodeAccountSettings(saved.encode()).encode())
+        assertEquals(emptyList<String>(), decodeSettings(saved.encode()).completionSources)
+        assertEquals(saved.encode(), decodeSettings(saved.encode()).encode())
     }
 
     @Test
     fun completionSourcesKeepOrderAndEncoding() {
         val id = androidSourceId("com.google", "Ada/Lane")
         assertEquals("android|com.google|Ada%2FLane", id)
-        val saved = AccountSettings(completionSources = listOf(id, "pine"))
+        val saved = Settings(completionSources = listOf(id, "pine"))
         val text = saved.encode()
-        assertEquals(listOf(id, "pine"), decodeAccountSettings(text).completionSources)
-        assertEquals(text, decodeAccountSettings(text).encode())
+        assertEquals(listOf(id, "pine"), decodeSettings(text).completionSources)
+        assertEquals(text, decodeSettings(text).encode())
     }
 }

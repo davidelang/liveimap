@@ -6,7 +6,6 @@ import org.dlang.liveimap.settings.FolderPlacement.None
 import org.dlang.liveimap.settings.PaneArrangement.SideBySide
 import org.dlang.liveimap.settings.PaneArrangement.Stacked
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,14 +47,15 @@ class AutoPanesTest {
         assertTrue((p.columns - FolderMinChars - GutterChars) - listChars - GutterChars >= ReaderMinChars)
     }
 
-    @Test fun existingAccountsKeepOffNewAccountsAuto() {
+    @Test fun absentMultiPaneLoadsTheJsonDefault() {
         assertEquals(MultiPane.Auto, newAccountSettings().multiPane)
-        assertEquals(MultiPane.Off, AccountSettings().multiPane)
-        val legacy = AccountSettings().encode()
-        assertFalse(legacy.contains("multiPane"))
-        assertEquals(MultiPane.Off, decodeAccountSettings(legacy).multiPane)
-        val fresh = decodeAccountSettings(newAccountSettings().encode())
+        assertEquals(MultiPane.Auto, Settings().multiPane)
+        val stored = Settings().encode()
+        assertTrue(stored.contains("multiPane=Auto"))
+        val absent = stored.lineSequence().filter { !it.startsWith("multiPane=") }.joinToString("\n")
+        assertEquals(MultiPane.Auto, decodeSettings(absent).multiPane)
+        val fresh = decodeSettings(newAccountSettings().encode())
         assertEquals(MultiPane.Auto, fresh.multiPane)
-        assertEquals(LayoutChoice.Auto, fresh.folderPane)
+        assertEquals(FolderPlace.Auto, fresh.folderPlace)
     }
 }

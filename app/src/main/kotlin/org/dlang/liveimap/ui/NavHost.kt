@@ -138,6 +138,7 @@ import org.dlang.liveimap.settings.LayoutChoice
 import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.settings.SettingsTree
+import org.dlang.liveimap.settings.LoadCheckDialog
 import org.dlang.liveimap.settings.rememberSettingsGate
 import org.dlang.liveimap.settings.ToolbarRevision
 import org.dlang.liveimap.settings.favoriteLabel
@@ -283,6 +284,7 @@ fun LiveImapNavHost() {
 
 @Composable
 private fun LiveImapNavHostReady() {
+    LoadCheckDialog()
     var multiPane by remember { mutableStateOf(MultiPane.Off) }
     // Custom panel layout (null = Auto); design-decisions.md "Custom panel layout".
     var customTree by remember { mutableStateOf<PaneNode?>(null) }
@@ -446,7 +448,11 @@ private fun LiveImapNavHostReady() {
     )
 
     suspend fun applyRunningLayout() {
-        val account = store.load()
+        val account = try {
+            store.load()
+        } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
+            return
+        }
         multiPane = account.multiPane
         val decoded = decodePaneLayout(account.customLayout)
         val problem = decoded?.let { paneLayoutProblem(it) }
@@ -466,15 +472,23 @@ private fun LiveImapNavHostReady() {
             )
         }
         treeDp.clear()
-        folderPane = account.folderPane
+        folderPane = org.dlang.liveimap.settings.layoutChoiceOf(account.folderPlace)
         foldPosture = account.foldPosture
         arrangement = account.paneArrangement
-        folderPosition = account.folderPosition
+        folderPosition = org.dlang.liveimap.settings.positionOf(account.folderPlace)
         LayoutApply.noteFullScreen()
     }
 
     suspend fun applyOpenAccount() {
-        val account = store.load()
+        val account = try {
+            store.load()
+        } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
+            drawerAccounts = store.listDrawerAccounts()
+            accounts = store.listAccounts()
+            header = ""
+            if (accounts.isNotEmpty()) drawerState.open()
+            return
+        }
         val drawers = store.listDrawerAccounts()
         drawerAccounts = drawers
         header = drawers.firstOrNull { it.chosen }?.name ?: org.dlang.liveimap.accounts.accountVisibleName(account)
@@ -1839,6 +1853,14 @@ private fun ColumnScope.DrawerSheetContent(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .testTag("drawer-account-name"),
             )
+            if (account.corrupt) {
+                Text(
+                    text = stringResource(R.string.settings_account_corrupt),
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .testTag("drawer-account-corrupt"),
+                )
+            }
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.drawer_inbox)) },
                 selected = false,

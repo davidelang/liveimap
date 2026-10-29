@@ -1,7 +1,7 @@
 package org.dlang.liveimap.engine.sieve
 
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,10 +28,10 @@ class InboundRuleIdTest {
             criteria = listOf(RuleCriterion(RuleField.From, "ann@example.com")),
             fileInto = "INBOX.lists",
         )
-        val text = AccountSettings(inboundRules = listOf(stored)).encode()
+        val text = Settings(inboundRules = listOf(stored)).encode()
         val line = text.lines().first { it.startsWith("inboundRules=") }
         assertFalse(line.contains("id="))
-        val decoded = decodeAccountSettings(text).inboundRules.single()
+        val decoded = decodeSettings(text).inboundRules.single()
         assertEquals("", decoded.id)
         val kept = InboundRule(
             id = "keep",

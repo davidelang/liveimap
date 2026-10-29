@@ -169,7 +169,8 @@ import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.session.idleDroppedByServer
 import org.dlang.liveimap.session.idleFallbackSeconds
 import org.dlang.liveimap.settings.DeletePolicy
@@ -182,7 +183,6 @@ import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.FolderView
-import org.dlang.liveimap.settings.InstalledGlobals
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 import org.dlang.liveimap.settings.ThreadIndexStyle
@@ -813,7 +813,7 @@ private class IndexScreenMemory(
     val userMovedSincePill = mutableStateOf(false)
     val lastReported = mutableStateOf<String?>(null)
     val view = mutableStateOf(if (reuseWindow) model.view else FolderView(SortKey.Arrival, true))
-    val account = mutableStateOf(if (reuseWindow) model.account else AccountSettings())
+    val account = mutableStateOf(if (reuseWindow) model.account else Settings())
     val menuKeys = mutableStateOf(model.menuKeys)
     val anchorPage = mutableStateOf(if (reuseWindow) model.anchorPage else 0)
     val connected = mutableStateOf(reuseWindow)
@@ -1484,7 +1484,7 @@ private fun MessageIndexLoaded(
         }
     }
 
-    suspend fun saveAskSkip(edit: (AccountSettings) -> AccountSettings): Boolean {
+    suspend fun saveAskSkip(edit: (Settings) -> Settings): Boolean {
         val loaded = try {
             store.load()
         } catch (error: CancellationException) {
@@ -3723,7 +3723,7 @@ private fun indexPartyName(mailbox: String, sentMailbox: String, recipients: Str
 private fun IndexMessageRow(
     row: IndexRow,
     mailbox: String,
-    account: AccountSettings,
+    account: Settings,
     depth: Int = 0,
     position: Int = 0,
     selected: Boolean,
@@ -4222,7 +4222,7 @@ internal class WatchBackoff {
     fun onWatchLost(scope: CoroutineScope, session: MailSession) {
         if (job?.isActive == true) return
         attempt = 0
-        val seconds = InstalledGlobals.reconnectDelaysSec.get()
+        val seconds = SettingsHub.uiNow().reconnectDelaysSec
         val delays = if (seconds.isEmpty()) {
             longArrayOf(2_000L, 10_000L, 60_000L)
         } else {

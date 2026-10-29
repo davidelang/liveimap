@@ -1,7 +1,7 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -10,7 +10,7 @@ import org.junit.Test
 class ConnectionLimitsTest {
     @Test
     fun defaultLeavesRoomForSearchAndTwoExtraIdleFolders() {
-        val limits = connectionLimits(AccountSettings())
+        val limits = connectionLimits(Settings())
         assertEquals(ConnectionLimits(DefaultMaxConnections, searchConnection = true, idleSlots = 2), limits)
         assertEquals(true, limits.total <= 10) // under Dovecot's default per-user/IP limit
         // A limit of 8 with the IDLE ceiling yields five slots. The stored budget still caps a new account at two.
@@ -44,7 +44,7 @@ class ConnectionLimitsTest {
 
     @Test
     fun foldersBeyondTheLimitFallBackToStatus() {
-        val settings = AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), maxConnections = 5, extraIdleBudget = 8)
+        val settings = Settings(watchedFolders = listOf("A", "B", "C", "D"), maxConnections = 5, extraIdleBudget = 8)
         val plan = extraWatchPlan(settings)
         assertEquals(listOf("A", "B"), plan.idle)
         assertEquals(listOf("C", "D"), plan.status)
@@ -52,11 +52,11 @@ class ConnectionLimitsTest {
 
     @Test
     fun storedValuesRoundTripAndClamp() {
-        val text = AccountSettings(maxConnections = 4).encode()
+        val text = Settings(maxConnections = 4).encode()
         assertEquals(true, text.contains("maxConnections=4"))
-        assertEquals(4, decodeAccountSettings(text).maxConnections)
-        assertEquals(false, AccountSettings().encode().contains("maxConnections="))
-        val huge = AccountSettings().encode().trimEnd() + "\nmaxConnections=9999\n"
-        assertEquals(MaxConnectionsCeiling, decodeAccountSettings(huge).maxConnections)
+        assertEquals(4, decodeSettings(text).maxConnections)
+        assertEquals(true, Settings().encode().contains("maxConnections="))
+        val huge = Settings().encode().trimEnd() + "\nmaxConnections=9999\n"
+        assertEquals(MaxConnectionsCeiling, decodeSettings(huge).maxConnections)
     }
 }

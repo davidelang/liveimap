@@ -8,10 +8,10 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 
-suspend fun probeServer(session: MailSession, account: AccountSettings): List<String> {
+suspend fun probeServer(session: MailSession, account: Settings): List<String> {
     val loginFailure = loginLine(session, account)
     if (loginFailure != null) return listOf(loginFailure)
     val lines = mutableListOf(okLine("login", "connected"))
@@ -38,7 +38,7 @@ suspend fun probeServer(session: MailSession, account: AccountSettings): List<St
     return lines
 }
 
-private suspend fun loginLine(session: MailSession, account: AccountSettings): String? {
+private suspend fun loginLine(session: MailSession, account: Settings): String? {
     val opened = try {
         session.open(account)
     } catch (error: MailFailure) {

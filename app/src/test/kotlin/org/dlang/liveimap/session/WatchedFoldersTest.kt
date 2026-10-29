@@ -6,7 +6,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.yield
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
@@ -67,19 +67,19 @@ class WatchedFoldersTest {
     @Test
     fun extraWatchPlanUsesStoredListAndBudget() {
         val statusOnly = extraWatchPlan(
-            AccountSettings(watchedFolders = listOf("INBOX", "Sent Mail"), extraIdleBudget = 0),
+            Settings(watchedFolders = listOf("INBOX", "Sent Mail"), extraIdleBudget = 0),
         )
         assertEquals(emptyList<String>(), statusOnly.idle)
         assertEquals(listOf("INBOX", "Sent Mail"), statusOnly.status)
 
         val split = extraWatchPlan(
-            AccountSettings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
+            Settings(watchedFolders = listOf("A", "B", "C", "D"), extraIdleBudget = 2),
         )
         assertEquals(listOf("A", "B"), split.idle)
         assertEquals(listOf("C", "D"), split.status)
 
         val duplicates = extraWatchPlan(
-            AccountSettings(watchedFolders = listOf("INBOX", "INBOX", "Sent"), extraIdleBudget = 1),
+            Settings(watchedFolders = listOf("INBOX", "INBOX", "Sent"), extraIdleBudget = 1),
         )
         assertEquals(listOf("INBOX"), duplicates.idle)
         assertEquals(listOf("Sent"), duplicates.status)

@@ -28,7 +28,7 @@ import org.dlang.liveimap.engine.TrafficRecorder
 import org.dlang.liveimap.session.IndexMode
 import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.OpenResult
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assume.assumeTrue
@@ -91,7 +91,7 @@ class LabSuiteTest {
             if (ok == "fail") failed++
             steps.append(name).append('\t').append(ok).append('\t').append(detail.replace('\t', ' ').replace('\n', ' ').take(400)).append('\n')
         }
-        val account = AccountSettings(
+        val account = Settings(
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = tls,
             logImapTraffic = true, allowPlaintextAuth = arg("labPlainAuth") == "true",
             allowOldTls = arg("labOldTls") == "true",
@@ -108,7 +108,7 @@ class LabSuiteTest {
             smtpPort = arg("labSmtpPort").toIntOrNull() ?: 25,
             idleRenewMinutes = 1,
         )
-        decoyId = createLabAccount(ctx, AccountSettings(imapHost = "decoy.invalid", username = "decoy"), "decoy-secret")
+        decoyId = createLabAccount(ctx, Settings(imapHost = "decoy.invalid", username = "decoy"), "decoy-secret")
         labId = createLabAccount(ctx, account, arg("labPass"), arg("labPass"))
         store.selectAccount(decoyId)
         TrafficRecorder.start(
@@ -341,6 +341,8 @@ class LabSuiteTest {
                             // Only the plaintext strict fake (fake_run.py, labSievePlain) may see plaintext auth.
                             allowPlaintextAuth = arg("labSievePlain") == "true",
                             traffic = org.dlang.liveimap.engine.TrafficLog.writer(ctx.cacheDir, labId),
+                            connectSeconds = 30,
+                            readSeconds = 60,
                         )
                     }
                 }

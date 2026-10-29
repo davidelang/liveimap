@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.engine.LibetpanMailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 internal interface IdleTurn {
     suspend fun <T> turn(block: suspend () -> T): T
@@ -98,7 +98,7 @@ suspend fun suspendMailSessions() {
     accountSessions.suspendConnections()
 }
 
-suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
+suspend fun applyExtraIdle(account: Settings, accountId: String) {
     applyExtraIdleTo(extraIdleSessions, extraIdleTurn, account, accountId, extraIdleDrops)
 }
 
@@ -109,7 +109,7 @@ suspend fun applyExtraIdle(account: AccountSettings, accountId: String) {
 internal suspend fun applyExtraIdleTo(
     sessions: ExtraIdleSessions,
     turn: IdleTurn,
-    account: AccountSettings,
+    account: Settings,
     accountId: String,
     drops: ExtraIdleDropLog,
 ) {

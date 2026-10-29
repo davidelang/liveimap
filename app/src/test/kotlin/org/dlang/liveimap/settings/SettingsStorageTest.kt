@@ -17,7 +17,7 @@ import org.junit.Test
 class SettingsStorageTest {
     @Before
     fun tree() {
-        installSettingsTree(settingsTreeText())
+        installGeneratedSettings()
     }
 
     @Test
@@ -53,10 +53,10 @@ class SettingsStorageTest {
     fun accountToolbarLinesDoNotChangeTheUiRecord() {
         ToolbarStore.install("indexPageSize=60")
         val before = ToolbarStore.encodeValue()
-        decodeAccountSettings("indexBar=zzz\ntoolbarRows=9\nfriendlyName=A\n")
+        decodeSettings("indexBar=zzz\ntoolbarRows=9\nfriendlyName=A\n")
         assertEquals(before, ToolbarStore.encodeValue())
-        assertEquals("A", decodeAccountSettings("indexBar=zzz\nfriendlyName=A\n").friendlyName)
-        assertFalse(AccountSettings(friendlyName = "A").encode().contains("indexBar="))
+        assertEquals("A", decodeSettings("indexBar=zzz\nfriendlyName=A\n").friendlyName)
+        assertFalse(Settings(friendlyName = "A").encode().contains("indexBar="))
     }
 }
 

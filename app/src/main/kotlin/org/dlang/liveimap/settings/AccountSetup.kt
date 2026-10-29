@@ -29,11 +29,11 @@ import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.session.confirmMailPlaintext
 
 /** David, 2026-10-12: every account must be able to send: over JMAP, or through an SMTP server. */
-fun sendingProblem(settings: AccountSettings): Int? =
+fun sendingProblem(settings: Settings): Int? =
     if (!settings.emailSubmission && settings.smtpHost.isBlank()) R.string.settings_no_way_to_send else null
 
 /** Choose IMAP or JMAP access. Choosing JMAP with no SMTP server turns on sending over JMAP, so mail can go out. */
-fun withMailAccess(settings: AccountSettings, jmap: Boolean): AccountSettings {
+fun withMailAccess(settings: Settings, jmap: Boolean): Settings {
     val next = settings.copy(jmapFolders = jmap)
     return if (jmap && next.smtpHost.isBlank()) next.copy(emailSubmission = true) else next
 }
@@ -55,7 +55,7 @@ internal fun imapAuthenticationFailure(error: Throwable?): Boolean =
  * Test account: real logins, not reachability. IMAP access logs in over IMAP; JMAP access (or sending over JMAP)
  * makes one authenticated JMAP call; SMTP sending logs in to SMTP and quits without sending anything.
  */
-suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes): List<String> {
+suspend fun testAccountLogins(settings: Settings, probes: AccountProbes): List<String> {
     val blocked = settings.preservedSecurityKey()
     if (blocked != null) return listOf("FAIL account settings need attention: $blocked")
     val lines = ArrayList<String>()
@@ -104,14 +104,17 @@ suspend fun testAccountLogins(settings: AccountSettings, probes: AccountProbes):
 /** The real probes: a throwaway connection with the candidate settings (the account's own session is untouched). */
 fun testAccountProbes(
     accountId: String,
-    candidate: AccountSettings,
+    candidate: Settings,
     password: String,
     smtpPassword: String,
     session: MailSession? = null,
+    onDraft: ((Settings) -> Unit)? = null,
 ): AccountProbes {
     val credentials = AccountCredentials(candidate, password, smtpPassword)
     val app = org.dlang.liveimap.LiveImapApplication.context
-    val live = session ?: SerialMailSession(LibetpanMailSession(app ?: error("no application"), accountId)).apply {
+    val live = session ?: SerialMailSession(LibetpanMailSession(app ?: error("no application"), accountId).also {
+        it.setDraftSettings(onDraft)
+    }).apply {
         setCertConfirmer { confirmMailCertificate(it) }
         setPlaintextConfirmer { confirmMailPlaintext() }
     }

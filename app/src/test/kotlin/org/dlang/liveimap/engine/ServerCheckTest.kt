@@ -1,6 +1,6 @@
 package org.dlang.liveimap.engine
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServerCheckTest {
-    private val base = AccountSettings(imapHost = "lab.test", imapPort = 143, tlsMode = TlsMode.StartTls)
+    private val base = Settings(imapHost = "lab.test", imapPort = 143, tlsMode = TlsMode.StartTls)
     private val good = "IMAP4rev1 AUTH=PLAIN AUTH=SCRAM-SHA-256"
 
     @Test

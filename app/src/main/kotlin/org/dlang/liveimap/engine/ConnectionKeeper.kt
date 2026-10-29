@@ -16,7 +16,7 @@ import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.SelectResult
 
-internal const val idleBeforeNoopMs = 120_000L
+internal const val idleBeforeNoopMs = 9L * 60L * 1000L
 
 interface Link {
     fun dead(): Boolean
@@ -32,6 +32,7 @@ interface Link {
 class ConnectionKeeper(
     private val link: Link,
 ) {
+    @Volatile var noopAfterMs: Long = idleBeforeNoopMs
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Connected)
     val connectionState: StateFlow<ConnectionState> = state
 
@@ -183,7 +184,7 @@ class ConnectionKeeper(
 
     private fun nowMs(): Long = System.nanoTime() / 1_000_000L
 
-    private fun idleTooLong(): Boolean = nowMs() - lastUsed >= idleBeforeNoopMs
+    private fun idleTooLong(): Boolean = nowMs() - lastUsed >= noopAfterMs
 
     /** True when the reconnect's folder epoch is not the one the command had selected. */
     private fun prepare(): Boolean {

@@ -1,8 +1,8 @@
 package org.dlang.liveimap.ui.compose
 
 import java.io.File
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,13 +12,13 @@ import org.junit.Test
 class ComposeRulesGlueTest {
     @Test
     fun sendingFieldsRoundTrip() {
-        val s = AccountSettings(
+        val s = Settings(
             signature = "David\nLang & co", sigDashes = false, sigAtBottom = true, quotePrefix = "| ",
             replyLeadIn = "{name} wrote:", dsnMode = DsnMode.FailureDelay,
             composerHeaders = "Reply-To, X-Priority", viewerHeaders = "List-Id",
             sendingRules = encodeRules(listOf(RulePresets.mailingList("x.example.org", "me@example.org"))),
         )
-        val back = decodeAccountSettings(s.encode())
+        val back = decodeSettings(s.encode())
         assertEquals(s.signature, back.signature)
         assertFalse(back.sigDashes)
         assertTrue(back.sigAtBottom)
@@ -28,7 +28,7 @@ class ComposeRulesGlueTest {
         assertEquals(s.composerHeaders, back.composerHeaders)
         assertEquals(s.viewerHeaders, back.viewerHeaders)
         assertEquals(s.sendingRules, back.sendingRules)
-        assertFalse(AccountSettings().encode().contains("signature="))
+        assertTrue(Settings().encode().contains("signature="))
     }
 
     @Test

@@ -92,14 +92,7 @@ private val uiInstalled = listOf(
     "clientSortChunk",
 )
 
-private val uiRequired = uiInstalled + listOf(
-    "indexBar",
-    "selectionBar",
-    "folderBar",
-    "readerToolbar",
-    "composeBar",
-    "toolbarRows",
-)
+private val uiRequired = uiInstalled
 
 private val serverRequired = listOf(
     "imapHost",
@@ -164,9 +157,16 @@ private object InstalledTree {
     var specs: Map<String, SettingSpec> = emptyMap()
 }
 
-val settingsRegistry: Map<String, SettingSpec> get() = InstalledTree.specs
+val settingsRegistry: Map<String, SettingSpec>
+    get() {
+        if (InstalledTree.specs.isEmpty()) installGeneratedSettings()
+        return InstalledTree.specs
+    }
 
-fun installedSettingsRoots(): List<TreeNode> = InstalledTree.roots
+fun installedSettingsRoots(): List<TreeNode> {
+    if (InstalledTree.roots.isEmpty()) installGeneratedSettings()
+    return InstalledTree.roots
+}
 
 fun findSettingsPage(nodes: List<TreeNode>, page: String): TreeNode.Page? {
     for (node in nodes) {
@@ -601,8 +601,7 @@ private fun checkValue(setting: String, expected: JsonValue, errors: MutableList
 
 private fun completeLeaf(leaf: TreeLeaf?): Boolean = leaf != null && leaf.choices != null
 
-fun installSettingsTree(text: String) {
-    val doc = parseSettingsDocument(text)
+internal fun installBuiltTree(pages: List<TreeNode>, stored: List<TreeLeaf>) {
     val leaves = linkedMapOf<String, TreeLeaf>()
     fun walk(node: TreeNode) {
         when (node) {
@@ -612,12 +611,12 @@ fun installSettingsTree(text: String) {
             is TreeNode.Editor -> node.children.forEach { walk(it) }
         }
     }
-    doc.pages.forEach { walk(it) }
-    doc.stored.forEach { leaves[it.setting] = it }
+    pages.forEach { walk(it) }
+    stored.forEach { leaves[it.setting] = it }
     InstalledTree.leaves = leaves
-    InstalledTree.roots = doc.pages
+    InstalledTree.roots = pages
     InstalledTree.specs = leaves.mapValues { (_, leaf) -> specOf(leaf) }
-    val titles = groupTitles(doc.pages)
+    val titles = groupTitles(pages)
     val ids = SettingsTreeGenerated.groupIds
     if (titles.size == ids.size) SettingsTreeIndex.install(titles.zip(ids))
 }
@@ -670,7 +669,7 @@ object SettingsTreeIndex {
     fun id(title: String): String = ids[title] ?: title
 }
 
-fun rejectedAccountSettings(settings: AccountSettings): String? {
+fun rejectedAccountSettings(settings: Settings): String? {
     val leaves = InstalledTree.leaves
     if (leaves.isEmpty()) return null
     val values = listOf(
@@ -736,4 +735,7 @@ private fun intListOk(leaf: TreeLeaf, value: String): Boolean {
 
 fun uiKeysInstalled(): List<String> = uiInstalled
 
-internal fun leafByKey(key: String): TreeLeaf? = InstalledTree.leaves[key]
+internal fun leafByKey(key: String): TreeLeaf? {
+    if (InstalledTree.leaves.isEmpty()) installGeneratedSettings()
+    return InstalledTree.leaves[key]
+}

@@ -3,7 +3,7 @@ package org.dlang.liveimap.lab
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.accounts.AccountStore
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Test
 
@@ -20,7 +20,7 @@ class LabAccountTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         createLabAccount(
             ctx,
-            AccountSettings(
+            Settings(
                 displayName = arg("labName"), imapHost = arg("labHost"), imapPort = arg("labPort").toInt(),
                 username = arg("labUser"), tlsMode = TlsMode.None,
                 allowPlaintextAuth = true, email = arg("labEmail"),

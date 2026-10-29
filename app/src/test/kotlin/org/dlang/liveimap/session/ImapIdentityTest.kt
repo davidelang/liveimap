@@ -1,6 +1,6 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,7 +9,7 @@ import org.junit.Test
 class ImapIdentityTest {
     @Test
     fun sameImapIdentity() {
-        val base = AccountSettings(
+        val base = Settings(
             imapHost = "imap.example",
             imapPort = 143,
             username = "ada",

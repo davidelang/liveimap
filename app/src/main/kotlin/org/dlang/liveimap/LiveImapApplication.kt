@@ -28,9 +28,10 @@ class LiveImapApplication : Application() {
             runBlocking {
                 restoreAccounts(this@LiveImapApplication)
                 AccountStore.shared(this@LiveImapApplication).sweepPendingDeletes()
+                org.dlang.liveimap.settings.SettingsHub.prepare(this@LiveImapApplication)
+                sweepTraffic()
             }
         }, "account-restore").apply { isDaemon = true; start() }
-        sweepTraffic()
         Thread({
             while (true) {
                 try {
@@ -48,12 +49,14 @@ class LiveImapApplication : Application() {
         val dirs = root.listFiles()?.filter { it.isDirectory } ?: return
         val now = System.currentTimeMillis()
         for (dir in dirs) {
-            val maxMb = try {
-                runBlocking { DataStoreSettingsStore(this@LiveImapApplication, dir.name).load().trafficLogMaxMb }.toLong()
-            } catch (_: Exception) {
-                4L
+            val account = org.dlang.liveimap.settings.SettingsHub.accountNow(dir.name)
+            val maxBytes = if (account != null && account.trafficLogMaxMb > 0) {
+                account.trafficLogMaxMb.toLong() * 1024L * 1024L
+            } else {
+                0L
             }
-            TrafficLog.sweep(dir, maxMb * 1024L * 1024L, now)
+            val days = org.dlang.liveimap.settings.SettingsHub.uiNow().trafficRetentionDays
+            TrafficLog.sweep(dir, maxBytes, now, days, TrafficLog.currentNames(dir.name))
         }
     }
 

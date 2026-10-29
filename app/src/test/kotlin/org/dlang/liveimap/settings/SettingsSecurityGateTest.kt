@@ -9,7 +9,7 @@ import org.junit.Test
 class SettingsSecurityGateTest {
     @Test
     fun testAccountStopsWhenASecurityLineIsPreserved() = runBlocking {
-        val settings = AccountSettings(unknownSettings = listOf("tlsMode=NotAMode"))
+        val settings = Settings(unknownSettings = listOf("tlsMode=NotAMode"))
         val probes = AccountProbes(
             imapLogin = { fail("imap") },
             smtpLogin = { fail("smtp"); SmtpLoginCheck.LoggedIn },
@@ -21,11 +21,11 @@ class SettingsSecurityGateTest {
 
     @Test
     fun withoutPreservedDropsTlsModeAndLeavesOtherSettings() {
-        val broken = AccountSettings(unknownSettings = listOf("tlsMode=NotAMode"))
+        val broken = Settings(unknownSettings = listOf("tlsMode=NotAMode"))
         val cleared = broken.withoutPreserved("tlsMode")
         assertEquals(emptyList<String>(), cleared.unknownSettings)
         assertEquals(null, cleared.preservedSecurityKey())
-        val plain = AccountSettings(username = "ada", imapHost = "imap.example")
+        val plain = Settings(username = "ada", imapHost = "imap.example")
         assertEquals(plain, plain.withoutPreserved("tlsMode"))
     }
 }

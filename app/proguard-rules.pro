@@ -27,5 +27,5 @@
 
 # SettingsAccessGeneratedKt.with_* stays one method per group (R8 must not inline them together).
 -keep,allowobfuscation class org.dlang.liveimap.settings.SettingsAccessGeneratedKt {
-    org.dlang.liveimap.settings.AccountSettings with_*(org.dlang.liveimap.settings.AccountSettings,java.lang.String,org.dlang.liveimap.settings.SettingValue);
+    org.dlang.liveimap.settings.Settings with_*(org.dlang.liveimap.settings.Settings,java.lang.String,org.dlang.liveimap.settings.SettingValue);
 }

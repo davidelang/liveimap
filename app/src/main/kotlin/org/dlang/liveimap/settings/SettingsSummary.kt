@@ -14,7 +14,7 @@ sealed class SummaryPiece {
 
 fun summaryPiece(
     cases: List<JsonValue>,
-    settings: AccountSettings,
+    settings: Settings,
     accounts: Int,
     sdk: Int,
 ): SummaryPiece? {
@@ -78,7 +78,7 @@ private fun summaryArg(
     is SummaryPiece.Text -> renderSummary(piece, text, plural)
 }
 
-private fun pieceOf(obj: JsonValue.Obj, settings: AccountSettings, accounts: Int): SummaryPiece {
+private fun pieceOf(obj: JsonValue.Obj, settings: Settings, accounts: Int): SummaryPiece {
     val plural = (obj.fields["plural"] as? JsonValue.Str)?.value
     if (plural != null) {
         val countKey = (obj.fields["count"] as? JsonValue.Str)?.value ?: return SummaryPiece.Literal("")
@@ -93,7 +93,7 @@ private fun pieceOf(obj: JsonValue.Obj, settings: AccountSettings, accounts: Int
     return argPiece(value, settings, accounts)
 }
 
-private fun argPiece(raw: JsonValue, settings: AccountSettings, accounts: Int): SummaryPiece {
+private fun argPiece(raw: JsonValue, settings: Settings, accounts: Int): SummaryPiece {
     val obj = raw as? JsonValue.Obj ?: return SummaryPiece.Literal("")
     val format = (obj.fields["format"] as? JsonValue.Str)?.value
     if (format == "rulesWho") return SummaryPiece.Literal(rulesSummaryWho(settings))
@@ -124,7 +124,7 @@ private fun argPiece(raw: JsonValue, settings: AccountSettings, accounts: Int): 
     return if (number != null && rawText == number.toString()) SummaryPiece.Number(number) else SummaryPiece.Literal(rawText)
 }
 
-private fun fieldText(settings: AccountSettings, key: String, field: String?): String {
+private fun fieldText(settings: Settings, key: String, field: String?): String {
     if (field == null) return settings.getSetting(key)
     if (key == "defaultView") {
         val view = parseView(settings.getSetting(key))
@@ -154,7 +154,7 @@ private fun choiceResource(key: String, value: String): String {
     return value
 }
 
-private fun countOf(settings: AccountSettings, key: String, accounts: Int): Int {
+private fun countOf(settings: Settings, key: String, accounts: Int): Int {
     if (key == "\$accounts") return accounts
     return when (key) {
         "watchedFolders" -> settings.watchedFolders.size

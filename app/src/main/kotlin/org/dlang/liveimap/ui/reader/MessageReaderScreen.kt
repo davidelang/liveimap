@@ -158,17 +158,18 @@ import org.dlang.liveimap.session.MimePart
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
-import org.dlang.liveimap.settings.ui_appTextZoom
+
 import org.dlang.liveimap.settings.globalSettingsRecord
 import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SwipeAction
 import org.dlang.liveimap.settings.SwipeBinding
 import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.InstalledGlobals
+
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
@@ -312,7 +313,7 @@ internal class MessageReaderLoaded : ViewModel() {
     val carry = Utf8Carry()
     val scrollOffsetState = mutableIntStateOf(0)
     var webScroll: Int = 0
-    val accountState = mutableStateOf(AccountSettings())
+    val accountState = mutableStateOf(Settings())
     val structureState = mutableStateOf<MimePart?>(null)
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
     val renderedHtmlState = mutableStateOf(false)
@@ -364,7 +365,7 @@ internal class MessageReaderLoaded : ViewModel() {
         bodyCompleteState.value = false
         scrollOffsetState.intValue = 0
         webScroll = 0
-        accountState.value = AccountSettings()
+        accountState.value = Settings()
         structureState.value = null
         selectedViewState.value = BodyView.PlainOrError
         renderedHtmlState.value = false
@@ -400,7 +401,7 @@ internal class MessageReaderLoaded : ViewModel() {
     fun watchAccount(
         scope: kotlinx.coroutines.CoroutineScope,
         store: org.dlang.liveimap.settings.DataStoreSettingsStore,
-        apply: (AccountSettings) -> Unit,
+        apply: (Settings) -> Unit,
     ) = scope.launch {
         val loaded = try {
             store.load()
@@ -416,7 +417,7 @@ internal class MessageReaderLoaded : ViewModel() {
     fun startWatch(
         scope: kotlinx.coroutines.CoroutineScope,
         store: org.dlang.liveimap.settings.DataStoreSettingsStore,
-        apply: (AccountSettings) -> Unit,
+        apply: (Settings) -> Unit,
     ) {
         LifecycleStartEffect(store) {
             val job = watchAccount(scope, store, apply)
@@ -542,7 +543,7 @@ private fun ReaderScreen(
     onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
 ) {
-    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
+    val RawViewCapBytes = SettingsHub.uiNow().maxRawViewBytes.toInt()
     LocalScreenAccounts.current.Register(accountId)
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -639,7 +640,7 @@ private fun ReaderScreen(
     var trustLoadFailed by remember(accountId) { mutableStateOf(false) }
     LaunchedEffect(accountId) {
         val result = store.onAccount {
-            loadImageTrust(context.filesDir, accountId, InstalledGlobals.maxImageTrustBytes.get().toLong())
+            loadImageTrust(context.filesDir, accountId, SettingsHub.uiNow().maxImageTrustBytes.toInt().toLong())
         }
         if (result.error != null) {
             trustCanSave = false
@@ -660,10 +661,10 @@ private fun ReaderScreen(
     var allowImages by held.allowImagesState
     var originalColors by held.originalColorsState
     var pinchZoom by held.pinchZoomState
+    val appUi by org.dlang.liveimap.settings.SettingsHub.ui.collectAsState()
     var appTextZoom by remember { mutableIntStateOf(100) }
-    val appZoomRecord by globalSettingsRecord(context).collectAsState(initial = "")
-    LaunchedEffect(appZoomRecord) {
-        appTextZoom = clampTextZoom(ui_appTextZoom(appZoomRecord).toIntOrNull() ?: 100)
+    LaunchedEffect(appUi.appTextZoom) {
+        appTextZoom = clampTextZoom(appUi.appTextZoom)
     }
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }
@@ -2321,7 +2322,7 @@ private fun ReaderScreen(
                             imageTrust = nextTrust
                             if (trustCanSave) scope.launch {
                                 val saved = store.onAccount {
-                                    saveImageTrust(context.filesDir, accountId, nextTrust, InstalledGlobals.maxImageTrustBytes.get().toLong())
+                                    saveImageTrust(context.filesDir, accountId, nextTrust, SettingsHub.uiNow().maxImageTrustBytes.toInt().toLong())
                                 }
                                 if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
                             }
@@ -2350,7 +2351,7 @@ private fun ReaderScreen(
                             imageTrust = nextTrust
                             if (trustCanSave) scope.launch {
                                 val saved = store.onAccount {
-                                    saveImageTrust(context.filesDir, accountId, nextTrust, InstalledGlobals.maxImageTrustBytes.get().toLong())
+                                    saveImageTrust(context.filesDir, accountId, nextTrust, SettingsHub.uiNow().maxImageTrustBytes.toInt().toLong())
                                 }
                                 if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
                             }
@@ -3269,7 +3270,7 @@ private fun ReaderHeaderCard(
     extraHeaders: List<Pair<String, String>> = emptyList(),
     unlabeledCharset: String,
 ) {
-    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
+    val RawViewCapBytes = SettingsHub.uiNow().maxRawViewBytes.toInt()
     var recipientsOpen by remember(toLine) { mutableStateOf(false) }
     Card(
         modifier = Modifier
@@ -3699,7 +3700,7 @@ private fun RawTextView(
     modifier: Modifier,
     unlabeledCharset: String,
 ) {
-    val RawViewCapBytes = InstalledGlobals.maxRawViewBytes.get()
+    val RawViewCapBytes = SettingsHub.uiNow().maxRawViewBytes.toInt()
     Column(modifier.verticalScroll(scroll).padding(8.dp)) {
         if (headers) {
             Row(verticalAlignment = Alignment.CenterVertically) {

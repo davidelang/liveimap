@@ -16,6 +16,10 @@ class BackgroundStopTest {
         val stop = text.substring(at, at + 180)
         assertTrue(stop.contains("indexWatch[0]?.cancel()"))
         assertTrue(stop.contains("watchRecovery.cancel()"))
-        assertTrue(text.contains("suspend fun pollLoop("))
+        val load = listOf(
+            File("src/main/kotlin/org/dlang/liveimap/ui/index/IndexSessionLoad.kt"),
+            File("app/src/main/kotlin/org/dlang/liveimap/ui/index/IndexSessionLoad.kt"),
+        ).first { it.exists() }.readText()
+        assertTrue(load.contains("suspend fun pollLoop("))
     }
 }

@@ -41,7 +41,7 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.tlsPolicy
 
@@ -50,7 +50,7 @@ import org.dlang.liveimap.settings.tlsPolicy
  * HTTPS stack; every exchange goes through [jmapCall], so it keeps the existing guarantees:
  *  - F53: no redirects are followed, and every session URL stays on the discovered host;
  *  - F58: JSON nesting is capped (JsonParser) and response bodies are size-capped (readJmapBody);
- *  - F63: trust uses the account's own JMAP pin ([AccountSettings.jmapCertPin]), never the IMAP one;
+ *  - F63: trust uses the account's own JMAP pin ([Settings.jmapCertPin]), never the IMAP one;
  *  - F68: network IOExceptions surface as failures (here [MailFailure]), never as crashes.
  *
  * Folder names are paths of JMAP mailbox names joined by '/'. JMAP email ids are strings; this session numbers
@@ -63,8 +63,8 @@ class JmapMailSession(
     private val accountKey: String,
     private val traffic: TrafficWriter?,
     /** account, authorization (sent only if the session resource needs it) */
-    private val discover: (AccountSettings, String) -> JmapOffer,
-    private val passwordOf: suspend (AccountSettings) -> String,
+    private val discover: (Settings, String) -> JmapOffer,
+    private val passwordOf: suspend (Settings) -> String,
     /** Stores a confirmed JMAP pin on the account (field-level update, F75). */
     private val savePin: suspend (String) -> Unit,
 ) : MailSession {
@@ -194,7 +194,7 @@ class JmapMailSession(
         return result.await() as T
     }
 
-    private var account: AccountSettings? = null
+    private var account: Settings? = null
     private var session: JmapSession? = null
     private var authorization = ""
     private var pin = ""
@@ -251,7 +251,7 @@ class JmapMailSession(
 
     override val capabilities: Set<String> get() = setOf("IMAP4rev1", "JMAP")
 
-    override suspend fun open(account: AccountSettings): OpenResult = onSession {
+    override suspend fun open(account: Settings): OpenResult = onSession {
         val key = account.preservedSecurityKey()
         if (key != null) return@onSession OpenResult.Failed("account settings need attention: $key")
         try {
@@ -362,7 +362,7 @@ class JmapMailSession(
             IndexMode.ArrivalRange -> {
                 val first = request.firstSequence.coerceAtLeast(1)
                 val last = request.lastSequence.coerceAtLeast(first)
-                emailQueryGet(accountId(), id, first - 1, (last - first + 1).coerceAtMost(MAX_WINDOW), newestFirst = false)
+                emailQueryGet(accountId(), id, first - 1, (last - first + 1).coerceAtMost(jmapWindow()), newestFirst = false)
             }
             IndexMode.ByUid -> {
                 val wanted = request.uids.mapNotNull { table.byUid[it] }
@@ -751,7 +751,7 @@ class JmapMailSession(
         // A TLS read blocked in another thread (or a server that holds the response headers until the first
         // event, as Stalwart's eventsource did in the lab) is not always freed by close(); the read times out on
         // its own (readTimeout), so do not hold the caller hostage to it.
-        kotlinx.coroutines.withTimeoutOrNull(STOP_WATCH_WAIT_MS) { job.join() }
+        kotlinx.coroutines.withTimeoutOrNull(stopWatchWaitMs()) { job.join() }
     }
 
     override suspend fun stopWatch() {
@@ -961,7 +961,7 @@ class JmapMailSession(
         var counted = 0
         while (true) {
             val positionJson = if (position == 0) "" else ""","position":$position"""
-            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":{"inMailbox":${q(mailboxId)}},"sort":[{"property":"receivedAt","isAscending":true}]$positionJson,"limit":$MAX_WINDOW,"calculateTotal":true},"0"]]}"""
+            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":{"inMailbox":${q(mailboxId)}},"sort":[{"property":"receivedAt","isAscending":true}]$positionJson,"limit":${jmapWindow()},"calculateTotal":true},"0"]]}"""
             val (ids, total) = call(body) { root -> queryIds(root) to queryTotal(root) }
             if (total != null) reported = total
             var fresh = 0
@@ -974,7 +974,7 @@ class JmapMailSession(
             if (fresh == 0) break
             val known = reported
             if (known != null && counted >= known) break
-            if (known == null && ids.size < MAX_WINDOW) break
+            if (known == null && ids.size < jmapWindow()) break
             position += ids.size
         }
         table.existingNumbered = true
@@ -997,7 +997,7 @@ class JmapMailSession(
         while (true) {
             val positionJson = if (position == 0) "" else ""","position":$position"""
             val sortPart = if (sortJson == null) "" else ""","sort":$sortJson"""
-            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":$filter$sortPart$positionJson,"limit":$MAX_WINDOW,"calculateTotal":true},"0"],["Email/get",{"accountId":${q(accountId())},"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":$properties},"1"]]}"""
+            val body = """{"using":$USING,"methodCalls":[["Email/query",{"accountId":${q(accountId())},"filter":$filter$sortPart$positionJson,"limit":${jmapWindow()},"calculateTotal":true},"0"],["Email/get",{"accountId":${q(accountId())},"#ids":{"resultOf":"0","name":"Email/query","path":"/ids"},"properties":$properties},"1"]]}"""
             val (ids, fields, total) = call(body) { root -> Triple(queryIds(root), emailsById(root), queryTotal(root)) }
             if (total != null) reported = total
             val fresh = ArrayList<String>()
@@ -1013,7 +1013,7 @@ class JmapMailSession(
             if (fresh.isEmpty()) break
             val known = reported
             if (known != null && hits.size >= known) break
-            if (known == null && ids.size < MAX_WINDOW) break
+            if (known == null && ids.size < jmapWindow()) break
             position += ids.size
         }
         return hits
@@ -1095,9 +1095,13 @@ class JmapMailSession(
         }
     }
 
+    private fun jmapWindow(): Int = account?.jmapMaxWindow ?: 120
+
+    private fun stopWatchWaitMs(): Long = account?.jmapStopWatchWaitMs ?: 5_000L
+
     companion object {
         const val DELIMITER = '/'
-        private const val MAX_WINDOW = 120
+        private const val MAX_WINDOW = 10000
         private const val USING = """["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"]"""
         private val PROPERTIES = """["id","keywords","size","receivedAt","sentAt","subject","from","to","preview","hasAttachment"]"""
 

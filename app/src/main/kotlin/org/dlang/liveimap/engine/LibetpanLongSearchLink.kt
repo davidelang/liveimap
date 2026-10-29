@@ -9,11 +9,11 @@ import org.dlang.liveimap.session.confirmMailPlaintext
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SearchProgress
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 /** A fresh libetpan connection for one long search in [folder]; never shared with the main session. */
 class LibetpanLongSearchLink(
-    private val account: AccountSettings,
+    private val account: Settings,
     private val accountId: String,
     private val folder: FolderAt,
     private val confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },
@@ -21,7 +21,7 @@ class LibetpanLongSearchLink(
 ) : LongSearchLink {
     /** A mailbox name with no listed epoch. A name that has an epoch uses the primary constructor. */
     constructor(
-        account: AccountSettings,
+        account: Settings,
         accountId: String,
         mailbox: String,
         confirmCert: suspend (CertPrompt) -> Boolean = { confirmMailCertificate(it) },

@@ -1,13 +1,13 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlusFallbackTest {
-    private val tls = AccountSettings(imapHost = "lab.test", tlsMode = TlsMode.StartTls)
+    private val tls = Settings(imapHost = "lab.test", tlsMode = TlsMode.StartTls)
     private val failed = "IMAP lab.test:143 (lab.test) user liveimap: login failed: bad protocol / cancel " +
         "(SASL SCRAM-SHA-256-PLUS failed locally; client mechanisms: PLAIN SCRAM-SHA-256)"
 
@@ -29,7 +29,7 @@ class PlusFallbackTest {
 }
 
 class PlusFallbackTrustTest {
-    private val base = org.dlang.liveimap.settings.AccountSettings(imapHost = "h", tlsMode = org.dlang.liveimap.settings.TlsMode.Implicit)
+    private val base = org.dlang.liveimap.settings.Settings(imapHost = "h", tlsMode = org.dlang.liveimap.settings.TlsMode.Implicit)
 
     @org.junit.Test fun noFallbackWhenTrustCameFromTheUser() {
         val f = "SASL SCRAM-SHA-256-PLUS failed"

@@ -40,14 +40,17 @@ import org.dlang.liveimap.jmap.JmapPlainHttp
 import org.dlang.liveimap.jmap.jmapServerTarget
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.ui.compose.deleteUnsentAccount
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.getSetting
+import org.dlang.liveimap.settings.withSetting
+import org.dlang.liveimap.settings.withUiOf
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.session.dropMailSession
 import org.dlang.liveimap.ui.contacts.forgetCompletionCaches
 import org.dlang.liveimap.settings.accountDrawerFolders
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 
 private const val logTag = "LiveIMAP"
@@ -125,16 +128,24 @@ class AccountStore private constructor(private val context: Context) {
         accountCommands.close()
     }
 
-    suspend fun load(): AccountSettings {
+    suspend fun load(): Settings {
         return onAccount { withContext(Dispatchers.IO) { loadLocked() } }
     }
 
-    suspend fun save(settings: AccountSettings) {
+    suspend fun save(settings: Settings) {
         val encoded = settings.encode()
         try {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
                 writePreferences()
+                val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+                    ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                if (id != null) {
+                    org.dlang.liveimap.settings.SettingsHub.replaceAccount(
+                        id,
+                        settings.withUiOf(org.dlang.liveimap.settings.SettingsHub.uiNow()),
+                    )
+                }
             }
         } catch (gone: AccountGone) {
             Log.w(logTag, "save dropped, account gone ${gone.accountId}", gone)
@@ -144,8 +155,8 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
-    suspend fun update(edit: (AccountSettings) -> AccountSettings): AccountSettings {
-        var next: AccountSettings = newAccountSettings()
+    suspend fun update(edit: (Settings) -> Settings): Settings {
+        var next: Settings = newAccountSettings()
         try {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) {
@@ -154,6 +165,9 @@ class AccountStore private constructor(private val context: Context) {
                     stageSave(updated, updated.encode())
                 }
                 writePreferences()
+                val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+                    ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, next)
             }
         } catch (gone: AccountGone) {
             Log.w(logTag, "update dropped, account gone ${gone.accountId}", gone)
@@ -161,6 +175,41 @@ class AccountStore private constructor(private val context: Context) {
             Log.w(logTag, "update dropped, no account selected", missing)
         }
         return next
+    }
+
+    /**
+     * Overlays [keys] from [draft] onto the blob stored now. UI keys go to the global record.
+     * A throw leaves the stored blobs as they were and does not publish.
+     */
+    suspend fun commitKeys(draft: org.dlang.liveimap.settings.Settings, keys: Set<String>): org.dlang.liveimap.settings.Settings {
+        if (keys.isEmpty()) return draft
+        val registry = org.dlang.liveimap.settings.settingsRegistry
+        val uiKeys = keys.filter { registry[it]?.scope == org.dlang.liveimap.settings.SettingScope.Ui }.toSet()
+        val accountKeys = keys.filter { key ->
+            val scope = registry[key]?.scope
+            scope != null && scope != org.dlang.liveimap.settings.SettingScope.Ui
+        }.toSet()
+        var published = draft
+        if (accountKeys.isNotEmpty()) {
+            onAccount {
+                val writePreferences = withContext(Dispatchers.IO) {
+                    var current = loadLocked()
+                    for (key in accountKeys) {
+                        current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
+                    }
+                    published = current
+                    stageSave(current, current.encode())
+                }
+                writePreferences()
+                val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+                    ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
+            }
+        }
+        if (uiKeys.isNotEmpty()) {
+            org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
+        }
+        return published
     }
 
     suspend fun password(): String? {
@@ -213,23 +262,24 @@ class AccountStore private constructor(private val context: Context) {
      * IMAP secret is a null password, which a send reports as password missing.
      */
     suspend fun accountById(accountId: String): AccountCredentials? {
+        val id = parseAccountId(accountId) ?: return null
         return onAccount {
             withContext(Dispatchers.IO) {
-                val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId }
+                val account = readAccounts().firstOrNull { parseAccountId(it.userData[userAccountId]) == id }
                     ?: return@withContext null
-                val text = storedPreference(accountId) ?: return@withContext null
-                val settings = overlayAccountFields(decodeAccountSettings(text), account.userData)
+                val text = storedPreference(id) ?: return@withContext null
+                val settings = overlayAccountFields(decodeSettings(text), account.userData)
                 val slot = account.passwordSlot
                 val password = if (slot.isNullOrEmpty()) {
                     null
                 } else {
                     try {
-                        cipher.decrypt(accountId, slot)
+                        cipher.decrypt(id, slot)
                     } catch (_: SecretUnreadable) {
                         null
                     }
                 }
-                val smtp = readSecretSlot(accountId, userSmtpPasswordSlot)
+                val smtp = readSecretSlot(id, userSmtpPasswordSlot)
                 AccountCredentials(settings, password, smtp)
             }
         }
@@ -255,17 +305,19 @@ class AccountStore private constructor(private val context: Context) {
     suspend fun listAccounts(): List<AccountChoice> {
         return onAccount {
             withContext(Dispatchers.IO) {
-                val accounts = readAccounts()
-                val chosen = chooseAccount(accounts, selectedId())
-                accounts.mapNotNull { account ->
-                    val id = account.userData[userAccountId]
-                    if (id.isNullOrEmpty()) return@mapNotNull null
-                    AccountChoice(
-                        id = id,
-                        name = listedName(account),
-                        drawer = account === chosen,
-                        editing = false,
-                    )
+                val open = parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                readAccounts().map { account ->
+                    val id = parseAccountId(account.userData[userAccountId])
+                    if (id == null) {
+                        AccountChoice(id = account.name, name = account.name, drawer = false, editing = false, corrupt = true)
+                    } else {
+                        AccountChoice(
+                            id = id,
+                            name = listedName(account),
+                            drawer = id == open,
+                            editing = false,
+                        )
+                    }
                 }
             }
         }
@@ -274,39 +326,49 @@ class AccountStore private constructor(private val context: Context) {
     suspend fun listDrawerAccounts(): List<DrawerAccount> {
         return onAccount {
             withContext(Dispatchers.IO) {
-                val accounts = readAccounts()
-                val chosen = chooseAccount(accounts, selectedId())
-                accounts.mapNotNull { account ->
-                    val id = account.userData[userAccountId]
-                    if (id.isNullOrEmpty()) return@mapNotNull null
-                    val stored = storedPreference(id)
-                    val decoded = stored?.let { runCatching { decodeAccountSettings(it) }.getOrNull() }
-                    val folders = if (decoded == null) accountDrawerFolders(null) else accountDrawerFolders(stored)
-                    val friendly = decoded?.friendlyName?.takeIf { it.isNotBlank() }
-                    DrawerAccount(
-                        id = id,
-                        name = friendly ?: listedName(account),
-                        chosen = account === chosen,
-                        postponedMailbox = folders.postponedMailbox,
-                        favorites = folders.favorites,
-                    )
+                val open = parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                readAccounts().map { account ->
+                    val id = parseAccountId(account.userData[userAccountId])
+                    val stored = if (id == null) null else storedPreference(id)
+                    if (id == null || stored == null) {
+                        DrawerAccount(
+                            id = id ?: account.name,
+                            name = account.name,
+                            chosen = false,
+                            postponedMailbox = "",
+                            favorites = emptyList(),
+                            corrupt = true,
+                        )
+                    } else {
+                        val decoded = runCatching { decodeSettings(stored) }.getOrNull()
+                        val folders = if (decoded == null) accountDrawerFolders(null) else accountDrawerFolders(stored)
+                        val friendly = decoded?.friendlyName?.takeIf { it.isNotEmpty() }
+                        DrawerAccount(
+                            id = id,
+                            name = friendly ?: listedName(account),
+                            chosen = id == open,
+                            postponedMailbox = folders.postponedMailbox,
+                            favorites = folders.favorites,
+                            corrupt = decoded == null,
+                        )
+                    }
                 }
             }
         }
     }
 
     suspend fun selectAccount(accountId: String) {
-        if (accountId.isBlank()) return
+        val id = parseAccountId(accountId) ?: return
         onAccount {
             withContext(Dispatchers.IO) {
-                val known = readAccounts().any { it.userData[userAccountId] == accountId }
+                val known = readAccounts().any { it.userData[userAccountId] == id }
                 if (!known) return@withContext
-                writeSelectedId(accountId)
+                org.dlang.liveimap.settings.SettingsHub.selectOpen(id)
             }
         }
     }
 
-    suspend fun createAccount(settings: AccountSettings, password: String, smtpPassword: String): String {
+    suspend fun createAccount(settings: Settings, password: String, smtpPassword: String): String {
         return onAccount {
             withContext(Dispatchers.IO) {
                 val accounts = readAccounts()
@@ -320,7 +382,7 @@ class AccountStore private constructor(private val context: Context) {
                 )
                 writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
                 writePreference(accountId, settings.encode())
-                if (accounts.isEmpty()) writeSelectedId(accountId)
+                org.dlang.liveimap.settings.SettingsHub.noteAccountWritten(context, accountId, settings, accounts.isEmpty())
                 refreshBackup(accountId, password)
                 accountId
             }
@@ -338,14 +400,14 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun deleteAccount(accountId: String, systemPath: Boolean = false) {
-        if (accountId.isBlank()) return
+        if (parseAccountId(accountId) == null) return
         addPendingDelete(context, accountId)
         val manager = AccountManager.get(context)
         val entry = manager.getAccountsByType(liveimapAccountType).firstOrNull { row ->
             manager.getUserData(row, userAccountId) == accountId
         }
         val accounts = readAccounts()
-        val selected = selectedId()
+        val selected: String? = null
         val name = entry?.name ?: accountId
         try {
             if (systemPath) {
@@ -361,11 +423,20 @@ class AccountStore private constructor(private val context: Context) {
                 withContext(Dispatchers.IO) {
                     deleteStepsThroughSix(accountId, accounts, selected, name)
                 }
+                val ui = org.dlang.liveimap.settings.SettingsHub.uiNow()
+                if (ui.settingsLastEditedAccount == accountId) {
+                    org.dlang.liveimap.settings.SettingsHub.saveUiKeys(
+                        context,
+                        ui.copy(settingsLastEditedAccount = ""),
+                        setOf("settingsLastEditedAccount"),
+                    )
+                }
             }
             if (entry != null && !manager.removeAccountExplicitly(entry)) {
                 throw AccountDeleteFailed(7, IllegalStateException("removeAccountExplicitly false"))
             }
             onAccount { withContext(Dispatchers.IO) { deleteStepEight(accountId) } }
+            org.dlang.liveimap.settings.SettingsHub.afterAccountRemoved(context, accountId)
         } catch (failed: AccountDeleteFailed) {
             notifyAccountDeleteFailed(context, name, failed.step, failed)
             throw failed
@@ -380,7 +451,7 @@ class AccountStore private constructor(private val context: Context) {
                     manager.getUserData(row, userAccountId) == accountId
                 }
                 val accounts = readAccounts()
-                val selected = selectedId()
+                val selected: String? = null
                 onAccount {
                     withContext(Dispatchers.IO) {
                         deleteStepsThroughSix(accountId, accounts, selected, entry?.name ?: accountId)
@@ -403,7 +474,7 @@ class AccountStore private constructor(private val context: Context) {
     /** Recreates the AccountManager entry for a restored settings record. Does not invent a second record. */
     internal suspend fun restoreAccountEntry(
         accountId: String,
-        settings: AccountSettings,
+        settings: Settings,
         imapPassword: String?,
         smtpPassword: String?,
         sievePassword: String?,
@@ -423,26 +494,19 @@ class AccountStore private constructor(private val context: Context) {
                 if (smtpPassword != null) writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
                 if (sievePassword != null) writeSecretSlot(accountId, userSievePasswordSlot, sievePassword)
                 if (storedPreference(accountId) == null) writePreference(accountId, settings.encode())
-                if (accounts.isEmpty()) writeSelectedId(accountId)
+                if (accounts.isEmpty()) {
+                    org.dlang.liveimap.settings.SettingsHub.noteAccountWritten(context, accountId, settings, true)
+                }
             }
         }
     }
 
-    fun chosenAccountIdFlow(): Flow<String?> =
-        context.accountSettingsDataStore.data
-            .map { prefs -> prefs[stringPreferencesKey(selectedAccountIdKey)] }
-            .distinctUntilChanged()
+    fun chosenAccountIdFlow(): Flow<String?> = org.dlang.liveimap.settings.SettingsHub.openId
 
-    fun theme(): Flow<ThemeMode> = flow {
-        context.accountSettingsDataStore.data.collect { prefs ->
-            val text = withContext(Dispatchers.IO) { themeText(prefs) }
-            val mode = if (text == null) {
-                ThemeMode.FollowSystem
-            } else {
-                decodeAccountSettings(text).theme
-            }
-            emit(mode)
-        }
+    fun theme(): Flow<ThemeMode> = org.dlang.liveimap.settings.SettingsHub.openId.map { id ->
+        val parsed = parseAccountId(id)
+        if (parsed == null) ThemeMode.FollowSystem
+        else org.dlang.liveimap.settings.SettingsHub.accountNow(parsed)?.theme ?: ThemeMode.FollowSystem
     }
 
     private fun dropHttpAllowUnlessPlain(accountId: String, imapHost: String) {
@@ -454,16 +518,19 @@ class AccountStore private constructor(private val context: Context) {
         if (!plain) JmapPlainHttp.drop(accountId)
     }
 
-    private suspend fun loadLocked(): AccountSettings {
+    private suspend fun loadLocked(): Settings {
         val accounts = readAccounts()
-        val account = pick(accounts)
-        val accountId = account?.userData?.get(userAccountId) ?: return newAccountSettings()
-        val text = storedPreference(accountId) ?: return newAccountSettings()
-        return overlayAccountFields(decodeAccountSettings(text), account.userData)
+        val account = pick(accounts) ?: throw NoAccountSelected()
+        val accountId = parseAccountId(account.userData[userAccountId]) ?: throw NoAccountSelected()
+        org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
+        val text = storedPreference(accountId) ?: throw NoAccountSelected()
+        return overlayAccountFields(decodeSettings(text), account.userData).withUiOf(
+            org.dlang.liveimap.settings.SettingsHub.uiNow(),
+        )
     }
 
     private suspend fun stageSave(
-        settings: AccountSettings,
+        settings: Settings,
         encoded: String,
     ): suspend () -> Unit {
         val existing = requireWritable(readAccounts())
@@ -474,7 +541,7 @@ class AccountStore private constructor(private val context: Context) {
         val previous = if (existing == null || storedText == null) {
             null
         } else {
-            overlayAccountFields(decodeAccountSettings(storedText), existing.userData)
+            overlayAccountFields(decodeSettings(storedText), existing.userData)
         }
         val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
         if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
@@ -498,7 +565,7 @@ class AccountStore private constructor(private val context: Context) {
 
     private suspend fun refreshBackup(accountId: String, imap: String?) {
         val text = storedPreference(accountId) ?: return
-        val settings = runCatching { decodeAccountSettings(text) }.getOrNull() ?: return
+        val settings = runCatching { decodeSettings(text) }.getOrNull() ?: return
         if (settings.passwordStorage != org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore) return
         val imapPlain = imap ?: imapPasswordFor(accountId) ?: return
         val smtp = readSecretSlot(accountId, userSmtpPasswordSlot).orEmpty()
@@ -544,14 +611,13 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     private fun themeText(prefs: androidx.datastore.preferences.core.Preferences): String? {
-        val account = chooseAccount(readAccounts(), prefs[stringPreferencesKey(selectedAccountIdKey)])
-        val accountId = account?.userData?.get(userAccountId) ?: return null
-        return prefs[stringPreferencesKey(accountId)]
+        val id = parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value) ?: return null
+        return prefs[stringPreferencesKey(id)]
     }
 
     private suspend fun nameFor(
         existing: ManagedAccount?,
-        settings: AccountSettings,
+        settings: Settings,
         accountId: String,
     ): String {
         val next = accountVisibleName(settings)
@@ -560,7 +626,7 @@ class AccountStore private constructor(private val context: Context) {
         val previous = if (previousText == null) {
             existing.name
         } else {
-            accountVisibleName(decodeAccountSettings(previousText))
+            accountVisibleName(decodeSettings(previousText))
         }
         return if (existing.name == previous) next else existing.name
     }
@@ -652,30 +718,37 @@ class AccountStore private constructor(private val context: Context) {
      * it is exactly that account, or none; never the drawer's active account and never a fallback to another.
      */
     private suspend fun pick(accounts: List<ManagedAccount>): ManagedAccount? {
-        val target = coroutineContext[AccountTarget]?.accountId
-            ?: return chooseAccount(accounts, selectedId())
+        val target = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+            ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+            ?: return null
         return accounts.firstOrNull { it.userData[userAccountId] == target }
     }
 
     private suspend fun requireWritable(accounts: List<ManagedAccount>): ManagedAccount {
-        val target = coroutineContext[AccountTarget]?.accountId
-        if (target == null) return chooseAccount(accounts, selectedId()) ?: throw NoAccountSelected()
+        val target = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+            ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+            ?: throw NoAccountSelected()
         return accounts.firstOrNull { it.userData[userAccountId] == target } ?: throw AccountGone(target)
     }
 
-    private suspend fun selectedId(): String? {
-        return context.accountSettingsDataStore.data.first()[stringPreferencesKey(selectedAccountIdKey)]
+    internal suspend fun storedBlobs(): Map<String, String> {
+        val prefs = context.accountSettingsDataStore.data.first()
+        val out = linkedMapOf<String, String>()
+        for ((key, value) in prefs.asMap()) {
+            if (key.name == selectedAccountIdKey) continue
+            val text = value as? String ?: continue
+            out[key.name] = text
+        }
+        return out
     }
 
-    private suspend fun writeSelectedId(accountId: String) {
-        context.accountSettingsDataStore.edit { prefs ->
-            prefs[stringPreferencesKey(selectedAccountIdKey)] = accountId
-        }
+    internal suspend fun putBlob(accountId: String, text: String) {
+        writePreference(accountId, text)
     }
 
     private suspend fun smtpAccountId(): String {
         val chosen = requireWritable(readAccounts())
-        return chosen.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
+        return parseAccountId(chosen.userData[userAccountId]) ?: throw NoAccountSelected()
     }
 
     private fun findAccount(accountId: String): Account? {
@@ -737,8 +810,8 @@ class AccountStore private constructor(private val context: Context) {
             throw AccountDeleteFailed(2, error)
         }
         if (stored == null) return
-        var settings: AccountSettings? = null
-        val decoded = runCatching { decodeAccountSettings(stored) }
+        var settings: Settings? = null
+        val decoded = runCatching { decodeSettings(stored) }
         if (decoded.isSuccess) {
             settings = decoded.getOrThrow()
         } else {
@@ -772,13 +845,7 @@ class AccountStore private constructor(private val context: Context) {
             }
             context.accountSettingsDataStore.edit { prefs ->
                 prefs.remove(stringPreferencesKey(accountId))
-                if (decision.selectedId.isNullOrEmpty()) {
-                    if (selected == accountId || decision.remove) {
-                        prefs.remove(stringPreferencesKey(selectedAccountIdKey))
-                    }
-                } else if (decision.selectedId != selected) {
-                    prefs[stringPreferencesKey(selectedAccountIdKey)] = decision.selectedId
-                }
+                prefs.remove(stringPreferencesKey(selectedAccountIdKey))
             }
         } catch (error: Exception) {
             throw AccountDeleteFailed(6, error)
@@ -802,7 +869,7 @@ class AccountStore private constructor(private val context: Context) {
             if (key.name == selectedAccountIdKey) continue
             val text = value as? String ?: continue
             try {
-                val alias = decodeAccountSettings(text).clientCertAlias
+                val alias = decodeSettings(text).clientCertAlias
                 if (alias.startsWith(KeyChainCerts.LAB_PREFIX)) referenced.add(alias.removePrefix(KeyChainCerts.LAB_PREFIX))
             } catch (error: Exception) {
                 Log.w(logTag, "orphan sweep stopped at ${key.name}", error)
@@ -911,7 +978,7 @@ private fun postAccountNotice(context: Context, accountName: String, text: Strin
 
 /** One account's settings and secrets, for sending through it (see AccountStore.accountById). */
 class AccountCredentials(
-    val settings: AccountSettings,
+    val settings: Settings,
     val password: String?,
     val smtpPassword: String?,
 ) {

@@ -1,8 +1,8 @@
 package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.engine.sieve.sieveTlsProtocols
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.dlang.liveimap.settings.tlsPolicy
 import org.junit.Assert.assertEquals
@@ -13,7 +13,7 @@ import org.junit.Test
 class TlsPolicyTest {
     @Test
     fun offByDefaultKeepsEveryVerdict() {
-        val policy = AccountSettings().tlsPolicy()
+        val policy = Settings().tlsPolicy()
         assertFalse(policy.acceptInvalidCert)
         assertFalse(policy.allowOldTls)
         for (verdict in certificateVerdicts) assertEquals(verdict, applyTlsPolicy(verdict, policy))
@@ -41,13 +41,13 @@ class TlsPolicyTest {
 
     @Test
     fun settingsRoundTripAndOmittedWhenOff() {
-        val defaults = AccountSettings().encode()
-        assertFalse(defaults.contains("acceptInvalidCert="))
-        assertFalse(defaults.contains("allowOldTls="))
-        val text = AccountSettings(acceptInvalidCert = true, allowOldTls = true).encode()
+        val defaults = Settings().encode()
+        assertTrue(defaults.contains("acceptInvalidCert=false"))
+        assertTrue(defaults.contains("allowOldTls=false"))
+        val text = Settings(acceptInvalidCert = true, allowOldTls = true).encode()
         assertTrue(text.contains("acceptInvalidCert=true"))
         assertTrue(text.contains("allowOldTls=true"))
-        val back = decodeAccountSettings(text)
+        val back = decodeSettings(text)
         assertTrue(back.acceptInvalidCert)
         assertTrue(back.allowOldTls)
         assertEquals(TlsPolicy(acceptInvalidCert = true, allowOldTls = true), back.tlsPolicy())
@@ -55,8 +55,8 @@ class TlsPolicyTest {
 
     @Test
     fun authMechanismRoundTrip() {
-        assertFalse(AccountSettings().encode().contains("authMechanism="))
-        val back = decodeAccountSettings(AccountSettings(authMechanism = "SCRAM-SHA-256").encode())
+        assertTrue(Settings().encode().contains("authMechanism="))
+        val back = decodeSettings(Settings(authMechanism = "SCRAM-SHA-256").encode())
         assertEquals("SCRAM-SHA-256", back.authMechanism)
     }
 }

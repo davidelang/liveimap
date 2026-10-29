@@ -11,7 +11,7 @@ import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 
 data class PinercPreview(
-    val next: AccountSettings,
+    val next: Settings,
     val rows: List<String>,
     val skipped: List<String>,
     val omittedCount: Int,
@@ -76,12 +76,12 @@ data class PinercPhrases(
 fun parsePinerc(text: String): Map<String, String?> =
     parseEntries(text).mapValues { it.value.decoded }
 
-fun pinercPreview(text: String, current: AccountSettings, phrases: PinercPhrases): PinercPreview =
+fun pinercPreview(text: String, current: Settings, phrases: PinercPhrases): PinercPreview =
     PinercRun(text, current, phrases).run()
 
 private class PinercRun(
     val text: String,
-    val current: AccountSettings,
+    val current: Settings,
     val phrases: PinercPhrases,
 ) {
     val entries = parseEntries(text)
@@ -475,14 +475,14 @@ private class PinercRun(
     }
 }
 
-fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): AccountSettings =
+fun pinercApplied(preview: PinercPreview, turnOnAutoExpunge: Boolean): Settings =
     if (turnOnAutoExpunge && preview.offerAutoExpunge) {
         preview.next.copy(autoExpunge = true)
     } else {
         preview.next
     }
 
-fun encodePinerc(settings: AccountSettings): String {
+fun encodePinerc(settings: Settings): String {
     val lines = ArrayList<String>()
     if (settings.inboxStart == StartRule.Newest) lines.add("# Newest")
     if (settings.autoExpunge) lines.add("# auto-expunge")
@@ -503,7 +503,7 @@ fun encodePinerc(settings: AccountSettings): String {
     ) {
         lines.add("# toolbar")
     }
-    if ((settings.folderPane != LayoutChoice.Off && settings.folderPane != LayoutChoice.Auto) ||
+    if ((settings.folderPlace != FolderPlace.Off && settings.folderPlace != FolderPlace.Auto) ||
         settings.foldPosture != LayoutChoice.Off ||
         settings.fullScreen
     ) {
@@ -533,7 +533,7 @@ fun encodePinerc(settings: AccountSettings): String {
 }
 
 private fun writePinercLeaf(
-    settings: AccountSettings,
+    settings: Settings,
     leaf: TreeLeaf,
     lines: ArrayList<String>,
     done: HashSet<String>,
@@ -582,14 +582,14 @@ private fun writePinercLeaf(
     }
 }
 
-private fun writePinercIdentity(settings: AccountSettings, add: (String, String) -> Unit) {
+private fun writePinercIdentity(settings: Settings, add: (String, String) -> Unit) {
     val userId = if ('@' in settings.email) settings.email.substringBefore('@') else settings.username
     val domain = if ('@' in settings.email) settings.email.substringAfter('@') else ""
     add("user-id", pinercQuoted(userId))
     add("user-domain", pinercQuoted(domain))
 }
 
-private fun writePinercBooks(settings: AccountSettings, add: (String, String) -> Unit) {
+private fun writePinercBooks(settings: Settings, add: (String, String) -> Unit) {
     if (settings.addressBookMailbox.isNotEmpty()) {
         val books = listOf(settings.addressBookMailbox) + settings.extraAddressBooks.filter { it != settings.addressBookMailbox }
         add("address-book", books.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
@@ -600,7 +600,7 @@ private fun writePinercBooks(settings: AccountSettings, add: (String, String) ->
 }
 
 private fun writePinercInt(
-    settings: AccountSettings,
+    settings: Settings,
     leaf: TreeLeaf,
     key: String,
     lines: ArrayList<String>,
@@ -614,13 +614,7 @@ private fun writePinercInt(
 }
 
 private fun pinercLeaves(): List<TreeLeaf> {
-    if (settingsRegistry.isEmpty()) {
-        val file = listOf(
-            java.io.File("src/main/assets/settings-tree.json"),
-            java.io.File("app/src/main/assets/settings-tree.json"),
-        ).firstOrNull { it.isFile }
-        if (file != null) installSettingsTree(file.readText())
-    }
+    if (settingsRegistry.isEmpty()) installGeneratedSettings()
     return settingsRegistry.values.map { it.leaf }.filter { it.pinerc != null }
 }
 
@@ -638,7 +632,7 @@ suspend fun pinercMailboxListed(session: MailSession, name: String): Boolean {
 
 fun withoutMissingMailboxes(
     preview: PinercPreview,
-    current: AccountSettings,
+    current: Settings,
     missing: Set<String>,
     phrases: PinercPhrases,
 ): PinercPreview {
@@ -667,7 +661,7 @@ fun withoutMissingMailboxes(
 
 fun withoutCheckedMailboxes(
     preview: PinercPreview,
-    current: AccountSettings,
+    current: Settings,
     phrases: PinercPhrases,
 ): PinercPreview {
     val drops = mutableListOf<String>()
@@ -699,7 +693,7 @@ fun favoriteDelimiter(namespaces: List<Namespace>): Char {
 
 fun withFavoriteDelimiter(
     preview: PinercPreview,
-    current: AccountSettings,
+    current: Settings,
     delimiter: Char,
 ): PinercPreview {
     val fresh = newLeafMailboxes(preview.next.favorites, current.favorites).toSet()
@@ -719,7 +713,7 @@ fun withFavoriteDelimiter(
 
 fun withoutMissingFavorites(
     preview: PinercPreview,
-    current: AccountSettings,
+    current: Settings,
     missing: Set<String>,
     phrases: PinercPhrases,
 ): PinercPreview {
@@ -743,7 +737,7 @@ fun withoutMissingFavorites(
 
 fun withoutCheckedFavorites(
     preview: PinercPreview,
-    current: AccountSettings,
+    current: Settings,
     phrases: PinercPhrases,
 ): PinercPreview {
     val fresh = newLeafMailboxes(preview.next.favorites, current.favorites)
@@ -1331,14 +1325,14 @@ private fun pinercTls(mode: TlsMode): String = when (mode) {
     TlsMode.None -> "notls"
 }
 
-private fun pinercInbox(settings: AccountSettings): String {
+private fun pinercInbox(settings: Settings): String {
     if (settings.imapHost.isEmpty()) return ""
     val user = if (settings.username.isEmpty()) "" else "/user=${quoteSpecValue(settings.username)}"
     val noval = if (settings.acceptInvalidCert) "/novalidate-cert" else ""
     return "{${settings.imapHost}:${settings.imapPort}/${pinercTls(settings.tlsMode)}$noval$user}INBOX"
 }
 
-private fun pinercSmtp(settings: AccountSettings): String {
+private fun pinercSmtp(settings: Settings): String {
     if (settings.smtpHost.isEmpty()) return ""
     val submit = if (settings.smtpPort == 587 && settings.smtpTlsMode == TlsMode.StartTls) "/submit" else ""
     val user = if (settings.smtpUsername.isNotEmpty() && settings.smtpUsername != settings.username) {
@@ -1349,7 +1343,7 @@ private fun pinercSmtp(settings: AccountSettings): String {
     return "{${settings.smtpHost}:${settings.smtpPort}/${pinercTls(settings.smtpTlsMode)}$submit$user}"
 }
 
-private fun pinercIncoming(settings: AccountSettings): String {
+private fun pinercIncoming(settings: Settings): String {
     val pieces = ArrayList<String>()
     for (favorite in settings.favorites) {
         if (favorite.node) continue
@@ -1415,7 +1409,7 @@ private fun pinercThreadStyle(style: ThreadIndexStyle): String = when (style) {
     ThreadIndexStyle.Collapsed -> "coll"
 }
 
-private fun pinercFeatures(settings: AccountSettings): String {
+private fun pinercFeatures(settings: Settings): String {
     val tokens = ArrayList<String>(6)
     tokens.add(if (settings.askBeforeExpunge) "no-expunge-without-confirm" else "expunge-without-confirm")
     tokens.add(if (settings.sigDashes) "enable-sigdashes" else "no-enable-sigdashes")
@@ -1466,8 +1460,8 @@ private fun parseSort(value: String): FolderView? {
 }
 
 private fun diffRows(
-    current: AccountSettings,
-    next: AccountSettings,
+    current: Settings,
+    next: Settings,
     phrases: PinercPhrases,
 ): List<String> {
     val rows = mutableListOf<String>()

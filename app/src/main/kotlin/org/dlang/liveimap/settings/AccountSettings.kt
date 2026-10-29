@@ -101,7 +101,7 @@ fun startRuleChoices(showRecent: Boolean, selected: StartRule): List<StartRule> 
     }
 }
 
-fun startRuleFor(mailbox: String, settings: AccountSettings): StartRule {
+fun startRuleFor(mailbox: String, settings: Settings): StartRule {
     settings.folderStarts[mailbox]?.let { return it }
     if (mailbox.equals("INBOX", ignoreCase = true)) return settings.inboxStart
     return settings.folderStart
@@ -117,7 +117,7 @@ enum class PinercStartDefault {
     AlpineDefault,
 }
 
-fun withFolderStart(settings: AccountSettings, mailbox: String, rule: StartRule?): AccountSettings {
+fun withFolderStart(settings: Settings, mailbox: String, rule: StartRule?): Settings {
     val starts = if (rule == null) {
         settings.folderStarts - mailbox
     } else {
@@ -237,6 +237,21 @@ enum class PreviewChoice { Auto, Density, None, Small, Large }
 
 enum class FolderPositionChoice { Auto, Beside, AboveList }
 
+/** Off, Auto, Beside, or Above the list. Replaces the separate pane and position settings. */
+enum class FolderPlace { Off, Auto, Beside, AboveList }
+
+fun layoutChoiceOf(place: FolderPlace): LayoutChoice = when (place) {
+    FolderPlace.Off -> LayoutChoice.Off
+    FolderPlace.Auto -> LayoutChoice.Auto
+    FolderPlace.Beside, FolderPlace.AboveList -> LayoutChoice.On
+}
+
+fun positionOf(place: FolderPlace): FolderPositionChoice = when (place) {
+    FolderPlace.AboveList -> FolderPositionChoice.AboveList
+    FolderPlace.Beside -> FolderPositionChoice.Beside
+    FolderPlace.Off, FolderPlace.Auto -> FolderPositionChoice.Auto
+}
+
 /** Anti-phishing display of non-ASCII in folder names, From and subjects (see ui/NonAsciiText). */
 enum class NonAsciiDisplay { Normal, HighlightSuspicious, HighlightAll, Warn, Escape }
 
@@ -293,10 +308,10 @@ fun defaultSmtpPort(mode: TlsMode): Int = when (mode) {
     TlsMode.Implicit -> 465
 }
 
-/** AccountStore still calls this. A new account is [AccountSettings], whose defaults are the tree. */
-fun newAccountSettings(): AccountSettings = AccountSettings()
+/** AccountStore still calls this. A new account is [Settings], whose defaults are the tree. */
+fun newAccountSettings(): Settings = Settings()
 
-fun AccountSettings.withTlsMode(mode: TlsMode): AccountSettings = copy(
+fun Settings.withTlsMode(mode: TlsMode): Settings = copy(
     tlsMode = mode,
     imapPort = if (imapPort == defaultImapPort(tlsMode)) defaultImapPort(mode) else imapPort,
     smtpPort = if (smtpPort == defaultSmtpPort(tlsMode)) defaultSmtpPort(mode) else smtpPort,
@@ -424,7 +439,7 @@ class SieveLogin(
     val password: String,
 )
 
-fun sieveTarget(settings: AccountSettings, inboundPassword: String?, sievePassword: String?): SieveLogin {
+fun sieveTarget(settings: Settings, inboundPassword: String?, sievePassword: String?): SieveLogin {
     val same = settings.sieveSameAsInbound
     val host = if (same) {
         if (settings.jmapFolders) {
@@ -452,19 +467,19 @@ internal fun parseSievePort(value: String): Int {
     return if (port in 1..65535) port else 4190
 }
 
-fun slowerClientSort(settings: AccountSettings): Boolean =
+fun slowerClientSort(settings: Settings): Boolean =
     settings.forceSlowerFallbacks || settings.clientSort
 
-fun slowerClientThread(settings: AccountSettings): Boolean =
+fun slowerClientThread(settings: Settings): Boolean =
     settings.forceSlowerFallbacks || settings.clientThread
 
-fun slowerPoll(settings: AccountSettings): Boolean =
+fun slowerPoll(settings: Settings): Boolean =
     settings.forceSlowerFallbacks || settings.pollForNewMail
 
-fun slowerStatusCounts(settings: AccountSettings): Boolean =
+fun slowerStatusCounts(settings: Settings): Boolean =
     settings.forceSlowerFallbacks || settings.statusVisibleCounts
 
-fun pollIntervalSeconds(settings: AccountSettings): Int = settings.pollSeconds
+fun pollIntervalSeconds(settings: Settings): Int = settings.pollSeconds
 
 internal fun encodeHiddenCapabilities(hidden: Set<String>): String =
     hidden.map { it.uppercase() }.distinct().sorted().joinToString(",") { percentEncode(it) }
@@ -671,7 +686,7 @@ internal fun decodeCompletionSources(value: String?): List<String> {
 }
 
 /** Every Alpine address book of this account: (mailbox, read-only), primary first, without duplicates. */
-fun AccountSettings.alpineBooks(): List<Pair<String, Boolean>> {
+fun Settings.alpineBooks(): List<Pair<String, Boolean>> {
     val out = ArrayList<Pair<String, Boolean>>()
     fun add(name: String, readOnly: Boolean) {
         if (name.isNotEmpty() && out.none { it.first == name }) out += name to readOnly
@@ -940,7 +955,7 @@ fun percentDecode(value: String): String {
 }
 
 /** This account's TLS relaxations, for the native session and ManageSieve. */
-fun AccountSettings.tlsPolicy(): org.dlang.liveimap.engine.TlsPolicy =
+fun Settings.tlsPolicy(): org.dlang.liveimap.engine.TlsPolicy =
     org.dlang.liveimap.engine.TlsPolicy(acceptInvalidCert = acceptInvalidCert, allowOldTls = allowOldTls)
 
 /** True when the fields the server check probes are unchanged. */
@@ -953,9 +968,9 @@ enum class ServerCheckStep { Rebase, Wait, Check, Nothing }
  * a server text field still has focus (host typed, port not yet) the check waits.
  */
 fun serverCheckStep(
-    baseline: AccountSettings?,
+    baseline: Settings?,
     baselineAccount: String?,
-    current: AccountSettings,
+    current: Settings,
     currentAccount: String?,
     userSaved: Boolean,
     editing: Boolean,
@@ -967,13 +982,13 @@ fun serverCheckStep(
     else -> ServerCheckStep.Check
 }
 
-fun sameServerSettings(a: AccountSettings, b: AccountSettings): Boolean =
+fun sameServerSettings(a: Settings, b: Settings): Boolean =
     a.imapHost == b.imapHost && a.imapPort == b.imapPort && a.tlsMode == b.tlsMode &&
         a.acceptInvalidCert == b.acceptInvalidCert && a.allowOldTls == b.allowOldTls &&
         a.allowPlaintextAuth == b.allowPlaintextAuth
 
 /** This account with the probed server fields taken from base (Revert in the server check). */
-fun AccountSettings.withServerOf(base: AccountSettings): AccountSettings = copy(
+fun Settings.withServerOf(base: Settings): Settings = copy(
     imapHost = base.imapHost,
     imapPort = base.imapPort,
     tlsMode = base.tlsMode,
@@ -998,7 +1013,7 @@ fun effectiveTextZoom(setting: Int, pinch: Float): Int {
 
 
 /** Warning text for an account without TLS (null when TLS is on); stronger when the password goes in clear. */
-fun noTlsWarning(settings: AccountSettings): Int? = when {
+fun noTlsWarning(settings: Settings): Int? = when {
     settings.tlsMode != TlsMode.None -> null
     settings.allowPlaintextAuth -> com.davidlang.liveimap.R.string.settings_no_tls_password_warning
     else -> com.davidlang.liveimap.R.string.settings_no_tls_warning

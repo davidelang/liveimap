@@ -22,17 +22,6 @@ private val Context.globalSettingsDataStore by preferencesDataStore(
 
 private val globalSettingsValue = stringPreferencesKey("value")
 
-object InstalledGlobals {
-    val maxRawViewBytes = AtomicInteger(SettingsDefaults.maxRawViewBytes.toInt())
-    val maxImageTrustBytes = AtomicInteger(SettingsDefaults.maxImageTrustBytes.toInt())
-    val indexPageSize = AtomicInteger(SettingsDefaults.indexPageSize)
-    val swipeThresholdPercent = AtomicInteger(SettingsDefaults.swipeThresholdPercent)
-    val moveChunk = AtomicInteger(SettingsDefaults.moveChunk)
-    val clientSortChunk = AtomicInteger(SettingsDefaults.clientSortChunk)
-    val reconnectDelaysSec = AtomicReference(listOf(2, 10, 60))
-}
-
-
 sealed class JsonValue {
     data class Obj(val fields: Map<String, JsonValue>) : JsonValue()
     data class Arr(val items: List<JsonValue>) : JsonValue()
@@ -208,83 +197,19 @@ fun sha256Hex(bytes: ByteArray): String {
 }
 
 suspend fun startupSettingsError(context: Context): String? {
-    val bytes = context.assets.open("settings-tree.json").use { it.readBytes() }
-    val hash = sha256Hex(bytes)
-    if (hash != SettingsTreeGenerated.fingerprint) {
-        return "settings-tree.json sha256 $hash does not match the built tree ${SettingsTreeGenerated.fingerprint}. Changing the tree takes a rebuild."
-    }
-    val text = bytes.toString(Charsets.UTF_8)
-    val errors = validateSettingsTree(text)
-    if (errors.isNotEmpty()) return errors.joinToString("\n")
-    val titles = groupTitles(parseSettingsTree(text))
-    if (titles.size != SettingsTreeGenerated.groupIds.size) {
-        return "settings tree group count ${titles.size} does not match the build. Changing the tree takes a rebuild."
-    }
-    installSettingsTree(text)
+    installGeneratedSettings()
     SettingsTreeGenerated.warm()
     return try {
-        val record = context.globalSettingsDataStore.data.first()[globalSettingsValue].orEmpty()
-        val error = globalRecordError(record)
-        if (error == null) {
-            installGlobals(record)
-            ToolbarStore.install(record)
-        }
-        error
+        SettingsHub.prepare(context)
+        ToolbarStore.install(SettingsHub.uiNow().toolbars)
+        null
     } catch (e: Exception) {
         e.message ?: "global_settings corrupt"
     }
 }
 
 internal fun installGlobals(record: String) {
-    val defaults = mapOf(
-        "maxRawViewBytes" to SettingsDefaults.maxRawViewBytes.toInt(),
-        "maxImageTrustBytes" to SettingsDefaults.maxImageTrustBytes.toInt(),
-        "indexPageSize" to SettingsDefaults.indexPageSize,
-        "swipeThresholdPercent" to SettingsDefaults.swipeThresholdPercent,
-        "moveChunk" to SettingsDefaults.moveChunk,
-        "clientSortChunk" to SettingsDefaults.clientSortChunk,
-    )
-    val values = defaults.toMutableMap()
-    var delays = listOf(2, 10, 60)
-    for (line in record.lines()) {
-        if (line.isEmpty()) continue
-        val eq = line.indexOf('=')
-        if (eq <= 0) continue
-        val key = line.substring(0, eq)
-        if (key !in uiKeysInstalled()) continue
-        val text = line.substring(eq + 1)
-        if (key == "reconnectDelaysSec") {
-            val parsed = ArrayList<Int>()
-            var bad = false
-            for (part in text.split(",")) {
-                val number = part.toIntOrNull()
-                if (number == null) {
-                    bad = true
-                    break
-                }
-                parsed.add(number)
-            }
-            if (bad || parsed.isEmpty()) {
-                android.util.Log.w("LiveIMAP", "unparseable global $line")
-                continue
-            }
-            delays = parsed
-            continue
-        }
-        val number = text.toIntOrNull()
-        if (number == null) {
-            android.util.Log.w("LiveIMAP", "unparseable global $line")
-            continue
-        }
-        if (key in values) values[key] = number
-    }
-    InstalledGlobals.maxRawViewBytes.set(values.getValue("maxRawViewBytes"))
-    InstalledGlobals.maxImageTrustBytes.set(values.getValue("maxImageTrustBytes"))
-    InstalledGlobals.indexPageSize.set(values.getValue("indexPageSize"))
-    InstalledGlobals.swipeThresholdPercent.set(values.getValue("swipeThresholdPercent"))
-    InstalledGlobals.moveChunk.set(values.getValue("moveChunk"))
-    InstalledGlobals.clientSortChunk.set(values.getValue("clientSortChunk"))
-    InstalledGlobals.reconnectDelaysSec.set(delays)
+    SettingsHub.adoptRecord(record)
 }
 
 fun readUiLine(record: String, key: String): String? {
@@ -322,6 +247,12 @@ fun updateGlobalRecord(record: String, key: String, text: String): String {
 
 internal suspend fun readGlobalRecord(context: Context): String =
     context.globalSettingsDataStore.data.first()[globalSettingsValue].orEmpty()
+
+internal suspend fun writeGlobalRecord(context: Context, record: String) {
+    context.globalSettingsDataStore.edit { prefs ->
+        prefs[globalSettingsValue] = record
+    }
+}
 
 suspend fun globalSettingsStoredKeys(context: Context): Set<String> =
     context.globalSettingsDataStore.data.first().asMap().keys.map { it.name }.toSet()

@@ -2,12 +2,12 @@ package org.dlang.liveimap.lab
 
 import android.content.Context
 import org.dlang.liveimap.accounts.AccountStore
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 /** A stored account the lab deletes in finally. */
 internal suspend fun createLabAccount(
     context: Context,
-    settings: AccountSettings,
+    settings: Settings,
     password: String,
     smtpPassword: String = "",
 ): String {

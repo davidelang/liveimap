@@ -6,9 +6,9 @@ import org.junit.Test
 class RulesSummaryTest {
     @Test
     fun neverBlank() {
-        assertEquals("liveimap", rulesSummaryWho(AccountSettings(username = "liveimap", imapHost = "10.2.3.133")))
-        assertEquals("10.2.3.133", rulesSummaryWho(AccountSettings(imapHost = "10.2.3.133")))
-        assertEquals("?", rulesSummaryWho(AccountSettings()))
-        assertEquals(true, rulesSummaryWho(AccountSettings(email = "a@x", username = "u")).contains("a@x"))
+        assertEquals("liveimap", rulesSummaryWho(Settings(username = "liveimap", imapHost = "10.2.3.133")))
+        assertEquals("10.2.3.133", rulesSummaryWho(Settings(imapHost = "10.2.3.133")))
+        assertEquals("?", rulesSummaryWho(Settings()))
+        assertEquals(true, rulesSummaryWho(Settings(email = "a@x", username = "u")).contains("a@x"))
     }
 }

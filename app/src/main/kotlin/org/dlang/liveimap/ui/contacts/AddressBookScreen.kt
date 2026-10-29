@@ -29,7 +29,7 @@ import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.ui.LocalScreenAccounts
@@ -59,7 +59,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
     val context = LocalContext.current
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
-    var settings by remember { mutableStateOf<AccountSettings?>(null) }
+    var settings by remember { mutableStateOf<Settings?>(null) }
     var book by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var state by remember { mutableStateOf<PineBookState?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }

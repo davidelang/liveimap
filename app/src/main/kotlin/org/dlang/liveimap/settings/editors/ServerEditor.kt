@@ -226,7 +226,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
                                 editor.settings.sieveConnectSeconds,
                                 editor.settings.sieveReadSeconds,
                             ) { fingerprint ->
-                                persistSievePin(sieveStore, sieveAccount, fingerprint)
+                                editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
                             }
                         },
                     )
@@ -252,17 +252,18 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
     val drafts = remember(editor.editingId, chosenAccount) { ServerDrafts() }
     walk.drafts = drafts
     val server = drafts.serverDraft ?: settings
-    DisposableEffect(drafts.hasDraft) {
-        UnsavedEdits.pending = drafts.hasDraft
+    val pagePending = drafts.hasDraft || editor.pageDirty
+    DisposableEffect(pagePending) {
+        UnsavedEdits.pending = pagePending
         UnsavedEdits.ask = { go -> drafts.leaveAfter = go; drafts.discardAsk = true }
         onDispose { UnsavedEdits.pending = false; UnsavedEdits.ask = null }
     }
-    LaunchedEffect(drafts.hasDraft, drafts.serverReview == null, drafts.serverChecking) {
-        if (!drafts.hasDraft && drafts.serverReview == null && !drafts.serverChecking) {
+    LaunchedEffect(pagePending, drafts.serverReview == null, drafts.serverChecking) {
+        if (!pagePending && drafts.serverReview == null && !drafts.serverChecking) {
             drafts.leaveAfter?.let { drafts.leaveAfter = null; it() }
         }
     }
-    BackHandler(enabled = drafts.hasDraft) { drafts.discardAsk = true }
+    BackHandler(enabled = pagePending) { drafts.discardAsk = true }
     drafts.serverReview?.let { review ->
         AlertDialog(
             onDismissRequest = {},
@@ -280,7 +281,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                     drafts.serverReview = null
                     drafts.serverDraft?.let { editor.persist(drafts.savedServer(editor, it)) }
                     drafts.commitPasswords(editor)
-                    if (editor.creating) editor.finishNewAccount()
+                    editor.ui.launch { editor.commitPageAwait() }
                     drafts.serverDraft = null
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
@@ -302,7 +303,11 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             dismissButton = {
                 androidx.compose.foundation.layout.Row {
                     TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
-                    TextButton(onClick = { drafts.discardAsk = false; drafts.discard() }) {
+                    TextButton(onClick = {
+                        drafts.discardAsk = false
+                        drafts.discard()
+                        editor.abandonPage()
+                    }) {
                         Text(stringResource(R.string.settings_discard))
                     }
                 }
@@ -346,9 +351,23 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                         drafts.probing = true
                         drafts.serverReport = emptyList()
                         editor.ui.launch {
-                            val id = editor.bound.chosenAccountId()
+                            val id = editor.editingId ?: "probe"
                             try {
-                                drafts.serverReport = if (id == null) emptyList() else testAccountLogins(candidate, testAccountProbes(id, candidate, drafts.passwordDraft ?: editor.password, drafts.smtpPasswordDraft ?: editor.smtpPassword))
+                                drafts.serverReport = testAccountLogins(
+                                    candidate,
+                                    testAccountProbes(
+                                        id,
+                                        candidate,
+                                        drafts.passwordDraft ?: editor.password,
+                                        drafts.smtpPasswordDraft ?: editor.smtpPassword,
+                                        onDraft = { next ->
+                                            editor.persist(editor.settings.copy(
+                                                certPin = next.certPin,
+                                                allowPlaintextAuth = next.allowPlaintextAuth,
+                                            ))
+                                        },
+                                    ),
+                                )
                             } finally {
                                 drafts.probing = false
                             }

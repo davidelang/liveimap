@@ -36,7 +36,7 @@ interface LongSearchLink {
  * server stops searching is not assumed either way. A result that arrives after Cancel is discarded. No retry:
  * a failure is reported once and the user decides.
  */
-class LongSearch(private val link: LongSearchLink, private val pollMs: Long = 250) {
+class LongSearch(private val link: LongSearchLink, private val pollMs: Long) {
     @Volatile private var cancelled = false
 
     fun cancel() {

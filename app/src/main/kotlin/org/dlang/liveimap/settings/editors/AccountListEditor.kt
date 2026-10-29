@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.davidlang.liveimap.R
+import org.dlang.liveimap.accounts.parseAccountId
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.TextButton
@@ -86,14 +87,12 @@ fun AccountListEditor(
 
 fun openingAccount(accounts: List<AccountChoice>, opensOn: String, lastEdited: String): AccountChoice? {
     if (accounts.isEmpty()) return null
-    if (accounts.size == 1) return accounts.first()
-    val drawer = accounts.firstOrNull { it.drawer } ?: accounts.first()
-    if (opensOn != "lastEdited") return drawer
-    if (lastEdited.isEmpty()) return drawer
-    val named = accounts.firstOrNull { it.id == lastEdited }
-    if (named == null) {
-        runCatching { Log.w("liveimap", "settingsLastEditedAccount missing $lastEdited") }
-        return drawer
+    if (accounts.size == 1) return accounts[0]
+    if (opensOn == "lastEdited") {
+        val id = parseAccountId(lastEdited)
+        val named = if (id == null) null else accounts.firstOrNull { it.id == id }
+        if (named != null) return named
+        if (id != null) runCatching { Log.w("liveimap", "settingsLastEditedAccount missing $id") }
     }
-    return named
+    return accounts.firstOrNull { it.drawer }
 }

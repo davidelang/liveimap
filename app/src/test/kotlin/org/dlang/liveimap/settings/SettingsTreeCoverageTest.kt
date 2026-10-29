@@ -25,7 +25,7 @@ class SettingsTreeCoverageTest {
         for (key in listOf(
             "indexPageSize", "swipeThresholdPercent", "reconnectDelaysSec",
             "maxRawViewBytes", "maxImageTrustBytes", "moveChunk", "clientSortChunk",
-            "indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar", "toolbarRows",
+            "toolbars",
         )) {
             assertEquals(key, "ui", byKey.getValue(key).scopeName)
         }

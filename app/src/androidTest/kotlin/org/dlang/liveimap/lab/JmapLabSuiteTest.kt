@@ -13,7 +13,7 @@ import org.dlang.liveimap.session.IndexRequest
 import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailboxChange
 import org.dlang.liveimap.session.OpenResult
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.tlsPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
@@ -42,7 +42,7 @@ class JmapLabSuiteTest {
         LabTestHooks.setLabHost(host)
         val ca = arg("labCa")
         if (ca.isNotEmpty()) LabTestHooks.setLabCa(android.util.Base64.decode(ca, android.util.Base64.DEFAULT))
-        val account = AccountSettings(imapHost = field, username = arg("labUser"), jmapFolders = true, logImapTraffic = true)
+        val account = Settings(imapHost = field, username = arg("labUser"), jmapFolders = true, logImapTraffic = true)
         val labId = createLabAccount(ctx, account, pass)
         fun session() = platformJmapMailSession(ctx, labId).also { it.setCertConfirmer { false } }
         val s = session()

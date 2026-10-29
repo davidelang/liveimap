@@ -8,7 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.davidlang.liveimap.R
 import kotlinx.coroutines.flow.first
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 
 internal object AccountRestoreReport {
     var text by mutableStateOf<String?>(null)
@@ -42,7 +42,7 @@ internal suspend fun restoreAccounts(context: Context) {
         val id = key.name
         if (id == selectedAccountIdKey || id in listed || id in pending) continue
         val text = value as? String ?: continue
-        val settings = runCatching { decodeAccountSettings(text) }.getOrNull() ?: continue
+        val settings = runCatching { decodeSettings(text) }.getOrNull() ?: continue
         val record = bytes["a:$id"]?.let { decodeBackupRecord(it) }
         store.restoreAccountEntry(
             id,

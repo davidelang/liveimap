@@ -12,7 +12,7 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
 import org.junit.Assert.assertEquals

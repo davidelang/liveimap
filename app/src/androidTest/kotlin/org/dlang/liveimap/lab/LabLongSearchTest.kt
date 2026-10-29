@@ -30,7 +30,7 @@ class LabLongSearchTest {
         val accounts = store.listAccounts()
         val original = accounts.firstOrNull { it.drawer }?.id
         try {
-            var account: org.dlang.liveimap.settings.AccountSettings? = null
+            var account: org.dlang.liveimap.settings.Settings? = null
             var matchedId = ""
             for (a in accounts) {
                 store.selectAccount(a.id)

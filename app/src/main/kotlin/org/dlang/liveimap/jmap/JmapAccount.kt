@@ -3,11 +3,11 @@ package org.dlang.liveimap.jmap
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
 import org.dlang.liveimap.engine.applyTlsPolicy
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.tlsPolicy
 
 fun offerForAccount(
-    account: AccountSettings,
+    account: Settings,
     open: (String) -> JmapHttpExchange,
     accountKey: String,
     traffic: org.dlang.liveimap.engine.TrafficWriter?,

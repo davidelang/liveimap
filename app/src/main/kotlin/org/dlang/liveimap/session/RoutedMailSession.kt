@@ -2,7 +2,7 @@ package org.dlang.liveimap.session
 
 import java.io.File
 import kotlinx.coroutines.flow.StateFlow
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 
@@ -19,8 +19,8 @@ class RoutedMailSession(
     @Volatile private var imap: MailSession? = null
     @Volatile private var jmap: MailSession? = null
     @Volatile private var useJmap = false
-    @Volatile private var lastAccount: AccountSettings? = null
-    @Volatile private var imapOpenFor: AccountSettings? = null
+    @Volatile private var lastAccount: Settings? = null
+    @Volatile private var imapOpenFor: Settings? = null
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
     private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
@@ -41,7 +41,7 @@ class RoutedMailSession(
     override val featureCaps: Capabilities get() = current().featureCaps
     override val connectionState: StateFlow<ConnectionState> get() = current().connectionState
 
-    override suspend fun open(account: AccountSettings): OpenResult {
+    override suspend fun open(account: Settings): OpenResult {
         val wantJmap = account.jmapFolders
         if (wantJmap != useJmap) {
             if (wantJmap) {
@@ -194,7 +194,7 @@ class RoutedMailSession(
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit): Unit = current().watch(mailbox, onChange)
 
     /** IMAP extra IDLE is the one-login watch. JMAP extra IDLE stays on that account's event source. */
-    override suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+    override suspend fun watchOnly(account: Settings, mailbox: String, onChange: (MailboxChange) -> Unit) {
         val side = if (account.jmapFolders) jmapSession() else imapSession()
         side.watchOnly(account, mailbox, onChange)
     }

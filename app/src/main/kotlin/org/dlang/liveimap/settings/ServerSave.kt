@@ -13,14 +13,14 @@ data class ServerSaveReview(
 }
 
 /** One review at Save: the TLS-off warning (once) plus the server check. A null check failed for IMAP; a JMAP draft skips that probe. */
-fun serverSaveReview(draft: AccountSettings, check: ServerCheck?): ServerSaveReview = ServerSaveReview(
+fun serverSaveReview(draft: Settings, check: ServerCheck?): ServerSaveReview = ServerSaveReview(
     tlsWarning = noTlsWarning(draft),
     unreachable = if (draft.jmapFolders) check?.reachable == false else check == null || !check.reachable,
     lines = check?.let { it.conflicts + it.notes }.orEmpty(),
 )
 
 /** True when [a] and [b] have the same server fields (a draft equal to the saved settings is not a draft). */
-fun sameServer(a: AccountSettings, b: AccountSettings): Boolean = a.withServerOf(b) == a
+fun sameServer(a: Settings, b: Settings): Boolean = a.withServerOf(b) == a
 
 /**
  * Set while a screen holds unsaved edits; the top-bar Up arrow then goes through Back so the screen can ask.

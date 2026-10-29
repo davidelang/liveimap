@@ -1,6 +1,6 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.pollIntervalSeconds
 import org.dlang.liveimap.settings.slowerPoll
 import org.junit.Assert.assertEquals
@@ -25,7 +25,7 @@ class IdleFallbackTest {
 
     @Test
     fun neitherFlagFallsBackToSixtySeconds() {
-        val settings = AccountSettings(
+        val settings = Settings(
             pollForNewMail = false,
             forceSlowerFallbacks = false,
             pollSeconds = 600,
@@ -40,10 +40,10 @@ class IdleFallbackTest {
 
     @Test
     fun forcedFallbackUsesTheAccountPollInterval() {
-        val polling = AccountSettings(pollForNewMail = true, pollSeconds = 300)
+        val polling = Settings(pollForNewMail = true, pollSeconds = 300)
         assertTrue(slowerPoll(polling))
         assertEquals(300, idleFallbackSeconds(slowerPoll(polling), pollIntervalSeconds(polling), 60))
-        val forced = AccountSettings(
+        val forced = Settings(
             forceSlowerFallbacks = true,
             pollForNewMail = false,
             pollSeconds = 300,

@@ -3941,3 +3941,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - A stale take keeps note order
 
 - Notes left for the next generation stay newest-first on the stack, so the new take still delivers them oldest first.
+
+## 2026-10-29 - settings published as one snapshot
+
+- Approved plan: sandbox/plans/settings-publish-20261029-1446-plan.md
+- One generated Settings snapshot; page drafts until Save; no account is not a filled snapshot; traffic stream stays open (S1–S6; S7 untouched)

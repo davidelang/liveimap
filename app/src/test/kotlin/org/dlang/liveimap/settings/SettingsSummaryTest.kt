@@ -22,7 +22,7 @@ class SettingsSummaryTest {
         }
         doc.pages.forEach { walk(it) }
         assertEquals(35, groups.size)
-        val fresh = AccountSettings()
+        val fresh = Settings()
         val account = groups.first { it.id == "account" }
         val piece = summaryPiece(account.summary, fresh, 2, 30) ?: error("account summary")
         val text = renderSummary(piece, { name, args -> if (args.isEmpty()) name else "$name:$args" }, { name, count -> "$name:$count" })

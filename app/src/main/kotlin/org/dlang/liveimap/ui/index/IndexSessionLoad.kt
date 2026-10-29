@@ -26,7 +26,7 @@ import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.idleDroppedByServer
 import org.dlang.liveimap.session.idleFallbackSeconds
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.FolderView
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.settings.SortKey
@@ -663,7 +663,7 @@ internal class IndexLoadHost {
                         } catch (_: Exception) {
                             null
                         }
-                        val settings = loaded ?: AccountSettings()
+                        val settings = loaded ?: Settings()
                         val pollSeconds = idleFallbackSeconds(
                             slowerPoll(settings),
                             pollIntervalSeconds(settings),

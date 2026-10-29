@@ -34,8 +34,8 @@ import org.dlang.liveimap.session.SearchEdge
 import org.dlang.liveimap.session.MessageOrder
 import org.dlang.liveimap.session.threadNodeOf
 import org.dlang.liveimap.session.ThreadNode
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.InstalledGlobals
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.overAskThreshold
 import org.dlang.liveimap.settings.Density
@@ -60,12 +60,12 @@ const val IndexPageSize = 60
 const val SwipeWidthPercent = 40
 
 fun indexPage(): Int {
-    val stored = InstalledGlobals.indexPageSize.get()
+    val stored = SettingsHub.uiNow().indexPageSize
     return if (stored >= 1) stored else IndexPageSize
 }
 
 fun swipeWidthPercent(): Int {
-    val stored = InstalledGlobals.swipeThresholdPercent.get()
+    val stored = SettingsHub.uiNow().swipeThresholdPercent
     return if (stored in 1..99) stored else SwipeWidthPercent
 }
 
@@ -392,7 +392,7 @@ fun previewLineCount(density: Density): Int = when (density) {
 }
 
 /** Preview lines for a row: the preview setting, else Density; Auto uses the planned size for this window. */
-fun previewLines(account: AccountSettings, planned: org.dlang.liveimap.settings.PreviewSize): Int = when (account.previewSize) {
+fun previewLines(account: Settings, planned: org.dlang.liveimap.settings.PreviewSize): Int = when (account.previewSize) {
     PreviewChoice.Density -> previewLineCount(account.density)
     PreviewChoice.None -> 0
     PreviewChoice.Small -> 2
@@ -405,7 +405,7 @@ fun previewLines(account: AccountSettings, planned: org.dlang.liveimap.settings.
 }
 
 /** Whether index fetches carry preview text (server PREVIEW when offered, else a capped body peek). */
-fun wantsPreview(account: AccountSettings): Boolean = when (account.previewSize) {
+fun wantsPreview(account: Settings): Boolean = when (account.previewSize) {
     PreviewChoice.Density -> account.density != Density.Compact
     PreviewChoice.None -> false
     else -> true
@@ -457,7 +457,7 @@ fun indexSwipeBinding(
     return swipeBindingForOffset(offsetPx, leftToRight, trailing, leading)
 }
 
-fun barMoveMailbox(settings: AccountSettings): String {
+fun barMoveMailbox(settings: Settings): String {
     return listOf(settings.swipeTrailing, settings.swipeLeading)
         .filter { it.action == SwipeAction.Move }
         .map { it.moveMailbox }
@@ -944,7 +944,7 @@ class IndexModel(
     private var pageFailures: String? = null
 
     /** Opens a side connection for a long search; set by the screen (null in tests: main session). */
-    var longSearchLinks: ((AccountSettings, String) -> LongSearchLink)? = null
+    var longSearchLinks: ((Settings, String) -> LongSearchLink)? = null
 
     /** Progress of a long search (null when none runs); called from a background thread. */
     var onSearchProgress: ((SearchProgress?) -> Unit)? = null
@@ -1113,10 +1113,10 @@ class IndexModel(
         publishOpen(messageOrder(openExpanded), byUid.values.toList())
     }
 
-    var account: AccountSettings = AccountSettings()
+    var account: Settings = Settings()
         private set
 
-    fun adoptAccount(next: AccountSettings) {
+    fun adoptAccount(next: Settings) {
         account = next
     }
 
@@ -2821,7 +2821,7 @@ class IndexModel(
      */
     suspend fun runLongSearch(text: String): List<Long> {
         val links = longSearchLinks ?: throw MailFailure("search failed")
-        val search = LongSearch(links(store.load(), mailbox))
+        val search = LongSearch(links(store.load(), mailbox), org.dlang.liveimap.settings.SettingsHub.uiNow().longSearchPollMs)
         runningSearch = search
         onSearchProgress?.invoke(SearchProgress(-1, -1, 0))
         try {
@@ -3208,12 +3208,12 @@ const val MoveChunk = 1000
 
 fun moveChunkSize(): Int {
     LabTestHooks.moveChunk()?.let { return it }
-    val stored = InstalledGlobals.moveChunk.get()
+    val stored = SettingsHub.uiNow().moveChunk
     return if (stored >= 1) stored else MoveChunk
 }
 
 /** Search kind for "Move entire folder": UNDELETED by default, ALL when the account includes \Deleted. */
-fun moveAllKind(settings: AccountSettings): String = if (settings.moveAllIncludesDeleted) "All" else "NotDeleted"
+fun moveAllKind(settings: Settings): String = if (settings.moveAllIncludesDeleted) "All" else "NotDeleted"
 
 data class ChunkedMove(val moved: List<Long>, val dest: List<Long>, val failure: MailFailure? = null)
 

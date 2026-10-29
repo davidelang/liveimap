@@ -1,7 +1,7 @@
 package org.dlang.liveimap.accounts
 
 import java.io.File
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,7 +9,7 @@ import org.junit.Test
 
 /** F32/F87: a moved server never inherits the old server's credentials or pins. */
 class RetargetCredentialsTest {
-    private val old = AccountSettings(imapHost = "mail.lang.hm", smtpHost = "mail.lang.hm", certPin = "AA", sieveCertPin = "BB", clientCertAlias = "me")
+    private val old = Settings(imapHost = "mail.lang.hm", smtpHost = "mail.lang.hm", certPin = "AA", sieveCertPin = "BB", clientCertAlias = "me")
 
     @Test
     fun imapHostChangeDropsPasswordPinsAndClientCert() {
@@ -45,7 +45,7 @@ class RetargetCredentialsTest {
     fun sameHostOrCaseOrFirstSetupKeepsEverything() {
         assertFalse(retargetCredentials(old, old.copy(imapHost = "MAIL.lang.hm")).dropImapPassword)
         assertFalse(retargetCredentials(old, old.copy(displayName = "David")).dropSmtpPassword)
-        assertFalse(retargetCredentials(AccountSettings(), old).dropImapPassword) // blank host before: first setup
+        assertFalse(retargetCredentials(Settings(), old).dropImapPassword) // blank host before: first setup
         assertFalse(retargetCredentials(null, old).dropImapPassword)
     }
 

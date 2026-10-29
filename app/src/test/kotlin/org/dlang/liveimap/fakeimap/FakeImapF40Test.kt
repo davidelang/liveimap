@@ -6,7 +6,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import org.dlang.liveimap.engine.ServerProbe
 import org.dlang.liveimap.engine.checkServer
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,7 +70,7 @@ class FakeImapF40Test {
                 val pre = caps.lines().first { it.startsWith("* CAPABILITY ") }.removePrefix("* CAPABILITY ").trim()
                 // What the native probe reports for this server, judged by the app's check.
                 val probe = ServerProbe.parse(arrayOf("pre=$pre", "starttls=absent"))
-                val verdict = checkServer(AccountSettings(tlsMode = TlsMode.StartTls), probe)
+                val verdict = checkServer(Settings(tlsMode = TlsMode.StartTls), probe)
                 assertTrue(verdict.conflicts.toString(), verdict.conflicts.any { it.contains("does not offer STARTTLS") })
             }
             // The exchange never carried a LOGIN.

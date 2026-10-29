@@ -1,8 +1,8 @@
 package org.dlang.liveimap.accounts
 
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.dlang.liveimap.settings.newAccountSettings
 import org.junit.Assert.assertEquals
@@ -13,19 +13,7 @@ import org.junit.Test
 
 class AccountDataTest {
     @Test
-    fun chooseAccountKeepsTheSelectedId() {
-        val only = ManagedAccount("one", mapOf(userAccountId to "one"), "")
-        assertEquals(only, chooseAccount(listOf(only), null))
-
-        val first = ManagedAccount("one", mapOf(userAccountId to "one"), "")
-        val second = ManagedAccount("two", mapOf(userAccountId to "two"), "")
-        assertEquals(second, chooseAccount(listOf(first, second), "two"))
-
-        val plainA = ManagedAccount("a", mapOf(userAccountId to "a"), "")
-        val plainB = ManagedAccount("b", mapOf(userAccountId to "b"), "")
-        assertEquals(plainA, chooseAccount(listOf(plainA, plainB), "missing"))
-
-        assertNull(chooseAccount(emptyList(), "missing"))
+    fun passwordSlotsKeepTheirNames() {
         assertEquals("smtpPasswordSlot", userSmtpPasswordSlot)
         assertEquals("sievePasswordSlot", userSievePasswordSlot)
     }
@@ -44,7 +32,7 @@ class AccountDataTest {
         assertEquals("a", removeB.selectedId)
         val removeA = accountRemoval(listOf(a, b), "a", "a")
         assertTrue(removeA.remove)
-        assertEquals("b", removeA.selectedId)
+        assertNull(removeA.selectedId)
 
         val blank = accountRemoval(listOf(a, b), "", "a")
         assertFalse(blank.remove)
@@ -61,14 +49,14 @@ class AccountDataTest {
         )
         val removeSelected = accountRemoval(listOf(c, migrated, a), "a", "a")
         assertTrue(removeSelected.remove)
-        assertEquals("c", removeSelected.selectedId) // first remaining; no migrated-account preference
+        assertNull(removeSelected.selectedId)
     }
 
     @Test
     fun addedAccountStartsFromNewDefaults() {
         val fresh = newAccountSettings()
         val userData = accountUserData("new", fresh, null)
-        val loaded = overlayAccountFields(decodeAccountSettings(fresh.encode()), userData)
+        val loaded = overlayAccountFields(decodeSettings(fresh.encode()), userData)
         assertEquals(fresh, loaded)
         assertEquals("", loaded.imapHost)
         assertEquals("", loaded.username)
@@ -96,7 +84,7 @@ class AccountDataTest {
         assertEquals("bea@example.com", plan.userData[userEmail])
         assertEquals("id1", plan.userData[userAccountId])
         // the engine's view (file overlaid with the record) is exactly what was saved
-        assertEquals(plan.settings, overlayAccountFields(decodeAccountSettings(plan.text), plan.userData))
+        assertEquals(plan.settings, overlayAccountFields(decodeSettings(plan.text), plan.userData))
         // a moved IMAP server does not keep the old password slot (F32)
         assertEquals("", plan.passwordSlot)
 
@@ -104,14 +92,14 @@ class AccountDataTest {
         val same = planAccountSave("id1", before, before, before.encode(), "slot")
         assertEquals(accountUserData("id1", before, null), same.userData)
         assertEquals("slot", same.passwordSlot)
-        assertEquals(before, overlayAccountFields(decodeAccountSettings(same.text), same.userData))
+        assertEquals(before, overlayAccountFields(decodeSettings(same.text), same.userData))
 
         // every record field except bookkeeping keys comes from the settings
         val bookkeeping = setOf(userAccountId, userSchema, userMigratedFrom)
         assertEquals(accountUserKeys.toSet() - bookkeeping, plan.userData.keys - bookkeeping)
     }
 
-    private fun sampleSettings(): AccountSettings = AccountSettings(
+    private fun sampleSettings(): Settings = Settings(
         imapHost = "imap.example.com",
         imapPort = 993,
         smtpHost = "smtp.example.com",

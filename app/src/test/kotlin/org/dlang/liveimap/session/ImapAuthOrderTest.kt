@@ -31,7 +31,7 @@ class ImapAuthOrderTest {
     }
 
     @Test fun plusFallbackStillSeesServerRejection() {
-        val tls = org.dlang.liveimap.settings.AccountSettings(imapHost = "h", tlsMode = org.dlang.liveimap.settings.TlsMode.StartTls)
+        val tls = org.dlang.liveimap.settings.Settings(imapHost = "h", tlsMode = org.dlang.liveimap.settings.TlsMode.StartTls)
         assertNotNull(plusFallback(tls, "login failed: no (server rejected SASL SCRAM-SHA-256-PLUS)"))
     }
 

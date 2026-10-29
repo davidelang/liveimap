@@ -7,7 +7,7 @@ import org.junit.Test
 class ScopeRoutingTest {
     @Before
     fun tree() {
-        installSettingsTree(settingsTreeText())
+        installGeneratedSettings()
     }
 
     @Test
@@ -17,7 +17,7 @@ class ScopeRoutingTest {
         assertEquals(SettingScope.Account, settingsRegistry.getValue("imapHost").scope)
         assertEquals(true, settingsRegistry.getValue("imapHost").server)
         assertEquals(SettingScope.Account, settingsRegistry.getValue("friendlyName").scope)
-        val account = AccountSettings(friendlyName = "Ada")
+        val account = Settings(friendlyName = "Ada")
         assertEquals("Ada", account.getSetting("friendlyName"))
         assertEquals("indexPageSize=40", updateGlobalRecord("", "indexPageSize", "40"))
     }

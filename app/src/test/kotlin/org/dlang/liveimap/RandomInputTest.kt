@@ -1,7 +1,7 @@
 package org.dlang.liveimap
 
 import kotlin.random.Random
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.ui.compose.addrSpec
 import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.ui.compose.splitAddresses
@@ -71,8 +71,8 @@ class RandomInputTest {
         "stripMetaRefresh" to { s -> stripMetaRefresh(s) },
         "checkLink" to { s -> checkLink(s.take(300), s); linkSafety(s.take(300)) },
         "sniff" to { s -> val b = s.toByteArray(Charsets.ISO_8859_1); sniffContent(b); typeMismatch("image/png", "x.png", b) },
-        "decodeAccountSettings" to { s ->
-            try { decodeAccountSettings(s) } catch (_: IllegalArgumentException) { /* documented rejection */ }
+        "decodeSettings" to { s ->
+            try { decodeSettings(s) } catch (_: IllegalArgumentException) { /* documented rejection */ }
         },
         "decodeImageTrust" to { s -> decodeImageTrust(s) },
         "parseAdvancedQuery" to { s -> parseAdvancedQuery(s) },

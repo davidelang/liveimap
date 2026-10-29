@@ -3,8 +3,8 @@ package org.dlang.liveimap.ui
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextDecoration
 import org.dlang.liveimap.settings.NonAsciiDisplay
-import org.dlang.liveimap.settings.AccountSettings
-import org.dlang.liveimap.settings.decodeAccountSettings
+import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,6 +63,6 @@ class NonAsciiTextTest {
     }
 
     @Test fun storedAccountsDefaultToHighlightSuspicious() {
-        assertEquals(NonAsciiDisplay.HighlightSuspicious, decodeAccountSettings(AccountSettings().encode().lines().filterNot { it.startsWith("nonAsciiDisplay=") }.joinToString("\n")).nonAsciiDisplay)
+        assertEquals(NonAsciiDisplay.HighlightSuspicious, decodeSettings(Settings().encode().lines().filterNot { it.startsWith("nonAsciiDisplay=") }.joinToString("\n")).nonAsciiDisplay)
     }
 }

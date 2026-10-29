@@ -22,7 +22,7 @@ import com.davidlang.liveimap.R
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.accounts.AccountStore
 import org.dlang.liveimap.accounts.PasswordStorage
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.testAccountLogins
@@ -31,7 +31,7 @@ import org.dlang.liveimap.ui.TextButton
 
 internal object PendingNewAccount {
     var active: Boolean = false
-    var settings: AccountSettings? = null
+    var settings: Settings? = null
     var password: String = ""
     var smtpPassword: String = ""
     var sievePassword: String = ""
@@ -51,7 +51,7 @@ internal object PendingNewAccount {
 fun SetupGuide(
     accountId: String? = null,
     onDone: () -> Unit = {},
-    onAdvanced: (AccountSettings, String, String) -> Unit = { _, _, _ -> },
+    onAdvanced: (Settings, String, String) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -66,7 +66,7 @@ fun SetupGuide(
     var smtpSame by remember { mutableStateOf(true) }
     var report by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var loadedAccount by remember { mutableStateOf<AccountSettings?>(null) }
+    var loadedAccount by remember { mutableStateOf<Settings?>(null) }
     val existing = accountId?.takeIf { it.isNotEmpty() }
     androidx.compose.runtime.LaunchedEffect(existing) {
         loadedAccount = null
@@ -169,7 +169,7 @@ private fun draftSettings(
     smtpHost: String,
     smtpPort: String,
     smtpSame: Boolean,
-): AccountSettings {
+): Settings {
     return newAccountSettings().copy(
         email = email.trim(),
         username = email.substringBefore('@').trim(),
@@ -183,13 +183,13 @@ private fun draftSettings(
 }
 
 /** An existing account's Finish waits until that account's record has loaded. A new account does not. */
-internal fun existingSetupReady(existing: String?, loaded: AccountSettings?): Boolean {
+internal fun existingSetupReady(existing: String?, loaded: Settings?): Boolean {
     if (existing == null) return true
     return loaded != null
 }
 
 /** Wizard fields written onto the loaded record. Every other field stays. */
-internal fun wizardOntoLoaded(loaded: AccountSettings, draft: AccountSettings): AccountSettings {
+internal fun wizardOntoLoaded(loaded: Settings, draft: Settings): Settings {
     return loaded.copy(
         email = draft.email,
         username = draft.username,
@@ -205,10 +205,10 @@ internal fun wizardOntoLoaded(loaded: AccountSettings, draft: AccountSettings): 
 private suspend fun finishSetup(
     context: Context,
     existing: String?,
-    settings: AccountSettings,
+    settings: Settings,
     password: String,
     smtpPassword: String,
-    loaded: AccountSettings?,
+    loaded: Settings?,
 ): Boolean {
     // A Finish before the load writes nothing: no record and neither password.
     if (!existingSetupReady(existing, loaded)) return false

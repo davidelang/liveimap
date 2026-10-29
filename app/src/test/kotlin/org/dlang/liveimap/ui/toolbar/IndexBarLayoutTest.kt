@@ -1,6 +1,6 @@
 package org.dlang.liveimap.ui.toolbar
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -350,11 +350,11 @@ class IndexBarLayoutTest {
         val previous = ToolbarStore.record
         try {
             ToolbarStore.replace(ToolbarRecord())
-            assertEquals(defaultReaderToolbar(), effectiveReaderToolbar(AccountSettings()))
+            assertEquals(defaultReaderToolbar(), effectiveReaderToolbar(Settings()))
             ToolbarStore.replace(ToolbarRecord(readerToolbar = layout))
-            assertEquals(layout, effectiveReaderToolbar(AccountSettings()))
+            assertEquals(layout, effectiveReaderToolbar(Settings()))
             ToolbarStore.replace(ToolbarRecord(readerToolbar = replyOnly))
-            assertEquals(replyOnly, effectiveReaderToolbar(AccountSettings()))
+            assertEquals(replyOnly, effectiveReaderToolbar(Settings()))
         } finally {
             ToolbarStore.replace(previous)
         }

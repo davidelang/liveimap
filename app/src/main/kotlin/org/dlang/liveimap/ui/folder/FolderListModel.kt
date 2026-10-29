@@ -9,7 +9,8 @@ import org.dlang.liveimap.session.extraWatchPlan
 import org.dlang.liveimap.settings.SettingsStore
 
 internal val CountFreshMillis: Long
-    get() = org.dlang.liveimap.settings.SettingsDefaults.folderCountFreshSeconds * 1000L
+    get() = (org.dlang.liveimap.settings.SettingsHub.openAccount()?.folderCountFreshSeconds
+        ?: org.dlang.liveimap.settings.Settings().folderCountFreshSeconds) * 1000L
 
 data class FolderRow(
     val mailbox: String,
@@ -141,7 +142,7 @@ class FolderListModel(
     private var unseenListBudget = 0
 
     suspend fun unseenFolderOrder(): List<Pair<String, Int?>> {
-        unseenListBudget = UnseenListLimit
+        unseenListBudget = org.dlang.liveimap.settings.SettingsHub.openAccount()?.unseenListLimit ?: UnseenListLimit
         val namespaces = session.namespaces()
         val personal = namespaces.filter { it.kind == NamespaceKind.Personal }
         val other = namespaces.filter { it.kind == NamespaceKind.Other }

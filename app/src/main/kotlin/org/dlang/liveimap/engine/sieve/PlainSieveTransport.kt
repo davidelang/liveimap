@@ -400,8 +400,8 @@ suspend fun openAndDeliverLiveimap(
     script: String,
     allowPlaintextAuth: Boolean,
     traffic: TrafficWriter?,
-    connectSeconds: Int = 30,
-    readSeconds: Int = 60,
+    connectSeconds: Int,
+    readSeconds: Int,
     consent: (suspend (LiveimapActivatePlan) -> Boolean)? = null,
 ): String {
     if (host.isBlank() || username.isBlank() || password.isBlank()) throw SieveFailure("sasl")
@@ -449,8 +449,8 @@ suspend fun greetSieve(
     pin: String,
     confirm: suspend (CertPrompt) -> Boolean,
     traffic: TrafficWriter?,
-    connectSeconds: Int = 30,
-    readSeconds: Int = 60,
+    connectSeconds: Int,
+    readSeconds: Int,
     save: suspend (String) -> Unit,
 ): SieveCapabilities {
     val connectTimeoutMs = connectSeconds * 1000

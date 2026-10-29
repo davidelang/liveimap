@@ -4,7 +4,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
 
@@ -48,7 +48,7 @@ interface MailSession {
         get() = connectedConnection
     suspend fun resume() {}
     suspend fun suspendConnections() {}
-    suspend fun open(account: AccountSettings): OpenResult
+    suspend fun open(account: Settings): OpenResult
 
     /**
      * Open with this account's own secrets rather than the selected account's: a sending rule routes the message
@@ -149,7 +149,7 @@ interface MailSession {
      * One extra IDLE folder: open this account, select [mailbox], and watch it. [LibetpanMailSession] logs in once
      * on the watch connection instead. The default is what a single-threaded fake already did.
      */
-    suspend fun watchOnly(account: AccountSettings, mailbox: String, onChange: (MailboxChange) -> Unit) {
+    suspend fun watchOnly(account: Settings, mailbox: String, onChange: (MailboxChange) -> Unit) {
         when (val result = open(account)) {
             OpenResult.Connected -> {
                 inFolder(FolderAt(mailbox)) { _, _ -> }

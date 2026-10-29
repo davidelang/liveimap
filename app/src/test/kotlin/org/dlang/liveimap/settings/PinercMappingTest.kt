@@ -7,7 +7,7 @@ import org.junit.Test
 class PinercMappingTest {
     @Test
     fun importReadsTheKeysExportWrites() {
-        val current = AccountSettings()
+        val current = Settings()
         val exported = encodePinerc(current)
         assertEquals(current, pinercPreview(exported, current, testPinercPhrases()).next)
         val saved = pinercPreview("default-saved-msg-folder=\"Archive\"\n", current, testPinercPhrases())

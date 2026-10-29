@@ -23,7 +23,7 @@ import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.TlsMode
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,7 +48,7 @@ class AcceptanceLabTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
         val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
-        val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
+        val account = Settings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
             tlsMode = TlsMode.valueOf(arg("labTls", "None")),
             logImapTraffic = true,
             // lab.smtp_args (smtp.tsv): the lab server's own SMTP port and a local lab recipient, as LabSuiteTest.
@@ -96,7 +96,7 @@ class AcceptanceLabTest {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
         val store = org.dlang.liveimap.accounts.AccountStore.shared(ctx)
         val recorded = store.listAccounts().firstOrNull { it.drawer }?.id
-        val account = AccountSettings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
+        val account = Settings(imapHost = host, imapPort = arg("labPort").toInt(), username = arg("labUser"),
             tlsMode = TlsMode.valueOf(arg("labTls", "None")), email = arg("labRcpt"),
             logImapTraffic = true,
             smtpHost = host, smtpPort = arg("labSmtpPort").toInt())

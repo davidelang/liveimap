@@ -251,7 +251,7 @@ internal fun setupCallerDecision(caller: String?, ownPackage: String, verifiedTo
 /** One-time, short-lived setup tokens, held only in this process. */
 internal object SetupTokens {
     const val EXTRA = "com.davidlang.liveimap.SETUP_TOKEN"
-    private const val LIFE_MS = 10 * 60 * 1000L
+    private fun lifeMs(): Long = org.dlang.liveimap.settings.SettingsHub.uiNow().authenticatorLifeMinutes.toLong() * 60L * 1000L
     private val issued = AtomicReference<Map<String, Long>>(emptyMap())
     private val random = java.security.SecureRandom()
     internal var clock: () -> Long = { System.currentTimeMillis() }
@@ -262,7 +262,7 @@ internal object SetupTokens {
         val now = clock()
         issued.updateAndGet { current ->
             val next = HashMap<String, Long>(current.size + 1)
-            for ((key, at) in current) if (now - at <= LIFE_MS) next[key] = at
+            for ((key, at) in current) if (now - at <= lifeMs()) next[key] = at
             next[token] = now
             java.util.Collections.unmodifiableMap(next)
         }
@@ -276,7 +276,7 @@ internal object SetupTokens {
             val next = HashMap<String, Long>(current.size - 1)
             for ((key, value) in current) if (key != token) next[key] = value
             if (issued.compareAndSet(current, java.util.Collections.unmodifiableMap(next))) {
-                return clock() - at <= LIFE_MS
+                return clock() - at <= lifeMs()
             }
         }
     }

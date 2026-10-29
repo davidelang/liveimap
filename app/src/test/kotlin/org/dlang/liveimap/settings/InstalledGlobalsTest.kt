@@ -8,8 +8,8 @@ class InstalledGlobalsTest {
     fun onlyTheSevenSlotsAreInstalled() {
         try {
             installGlobals("indexPageSize=70\ntoolbars=abc\nsettingsOpensOn=lastEdited\nsettingsLastEditedAccount=x\nswipeThresholdPercent=15")
-            assertEquals(70, InstalledGlobals.indexPageSize.get())
-            assertEquals(15, InstalledGlobals.swipeThresholdPercent.get())
+            assertEquals(70, SettingsHub.uiNow().indexPageSize)
+            assertEquals(15, SettingsHub.uiNow().swipeThresholdPercent)
             assertEquals(listOf(
                 "indexPageSize", "swipeThresholdPercent", "reconnectDelaysSec",
                 "maxRawViewBytes", "maxImageTrustBytes", "moveChunk", "clientSortChunk",

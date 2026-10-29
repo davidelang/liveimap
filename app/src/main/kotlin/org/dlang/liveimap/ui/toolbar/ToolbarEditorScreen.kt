@@ -25,6 +25,7 @@ import org.dlang.liveimap.settings.ToolbarRevision
 import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -59,7 +60,7 @@ import kotlinx.coroutines.launch
 import java.util.WeakHashMap
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
 enum class ToolbarScreen {
@@ -74,12 +75,20 @@ private class ToolbarSettings(
     private val appContext: android.content.Context,
     private val scope: CoroutineScope,
 ) {
+    var committed = false
+
     suspend fun load() = Unit
 
     private fun write(next: ToolbarRecord) {
         ToolbarStore.replace(next)
-        scope.launch { ToolbarStore.save(appContext) }
-        ToolbarRevision.bump()
+    }
+
+    fun save() {
+        scope.launch {
+            ToolbarStore.save(appContext)
+            committed = true
+            ToolbarRevision.bump()
+        }
     }
 
     fun persistIndex(next: IndexBarLayout) {
@@ -114,6 +123,13 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
     val scope = rememberCoroutineScope()
     val holder = remember(appContext, scope) { ToolbarSettings(appContext, scope) }
     LaunchedEffect(holder) { holder.load() }
+    DisposableEffect(holder) {
+        onDispose {
+            if (!holder.committed) {
+                ToolbarStore.install(org.dlang.liveimap.settings.SettingsHub.uiNow().toolbars)
+            }
+        }
+    }
     var announcement by remember { mutableStateOf("") }
     Column(
         modifier = Modifier
@@ -124,6 +140,9 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
             text = announcement,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
+        androidx.compose.material3.Button(onClick = { holder.save() }) {
+            Text(stringResource(com.davidlang.liveimap.R.string.settings_save))
+        }
         val loaded = ToolbarStore.record
         when (screen) {
         ToolbarScreen.Index -> SectionEditor(

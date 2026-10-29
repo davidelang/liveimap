@@ -1,6 +1,6 @@
 package org.dlang.liveimap.ui.toolbar
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 enum class IndexBarAction {
     Refresh,
@@ -461,7 +461,7 @@ fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
 
 fun resetReaderToolbar(): ReaderToolbarLayout = defaultReaderToolbar()
 
-fun effectiveReaderToolbar(settings: AccountSettings): ReaderToolbarLayout = effectiveReaderToolbar()
+fun effectiveReaderToolbar(settings: Settings): ReaderToolbarLayout = effectiveReaderToolbar()
 
 fun visibleReaderActions(
     actions: List<ReaderToolbarAction>,

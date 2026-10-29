@@ -1,6 +1,6 @@
 package org.dlang.liveimap.jmap
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.After

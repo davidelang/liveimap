@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.LiveImapApplication
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.encode
 
@@ -64,45 +64,64 @@ object TrafficLog {
         return File(File(cacheDir, "traffic"), "$accountId.log")
     }
 
-    /** Null when the id is refused or, once the application exists, logging is off for that account. */
-    fun writer(cacheDir: File, accountId: String): TrafficWriter? {
-        val dir = trafficLogDir(cacheDir, accountId) ?: return null
-        val app = LiveImapApplication.context ?: return null
-        val account = try {
-            runBlocking { DataStoreSettingsStore(app, accountId).load() }
-        } catch (_: Exception) {
-            return null
-        }
-        if (!account.logImapTraffic) return null
-        val roll = if (account.trafficLogSizeLimit) account.trafficLogMaxMb.toLong() * 1024L * 1024L / 4L else 0L
+    /** Never null. Logging off does not write. A closed or refused id reports and does not write. */
+    fun writer(cacheDir: File, accountId: String): TrafficWriter {
+        val id = org.dlang.liveimap.accounts.parseAccountId(accountId)
+        if (id == null || id in closedIds) return refusedWriter(accountId)
+        val account = org.dlang.liveimap.settings.SettingsHub.accountNow(id)
+        if (account == null || !account.logImapTraffic) return silentWriter
+        val roll = if (account.trafficLogMaxMb > 0) account.trafficLogMaxMb.toLong() * 1024L * 1024L else 0L
+        val dir = trafficLogDir(cacheDir, id) ?: return refusedWriter(accountId)
         return openWriter(dir, roll)
     }
 
-    /** Stops the Kotlin writer for [accountId]. The traffic files stay. */
+    /** Stops the Kotlin writer for [accountId]. Later records are refused. The traffic files stay. */
     fun close(accountId: String) {
-        if (accountId.isEmpty()) return
-        val marker = File.separator + "traffic" + File.separator + accountId
+        val id = org.dlang.liveimap.accounts.parseAccountId(accountId) ?: return
+        closedIds.add(id)
+        val marker = File.separator + "traffic" + File.separator + id
         for (key in actors.keys) {
-            if (key.endsWith(marker)) actors.remove(key)
+            if (key.endsWith(marker)) actors.remove(key)?.closeStream()
         }
+    }
+
+    fun currentNames(accountId: String): Set<String> {
+        val id = org.dlang.liveimap.accounts.parseAccountId(accountId) ?: return emptySet()
+        val marker = File.separator + "traffic" + File.separator + id
+        val names = HashSet<String>()
+        for ((key, writer) in actors) {
+            if (key.endsWith(marker)) writer.currentName()?.let { names.add(it) }
+        }
+        return names
     }
 
     /** Test and caller path that already decided the roll cap. 0 does not roll. */
-    internal fun writer(cacheDir: File, accountId: String, rollBytes: Long): TrafficWriter? {
-        val dir = trafficLogDir(cacheDir, accountId) ?: return null
+    internal fun writer(cacheDir: File, accountId: String, rollBytes: Long): TrafficWriter {
+        val id = org.dlang.liveimap.accounts.parseAccountId(accountId)
+        if (id == null || id in closedIds) return refusedWriter(accountId)
+        val dir = trafficLogDir(cacheDir, id) ?: return refusedWriter(accountId)
         return openWriter(dir, rollBytes)
     }
 
-    fun sweep(dir: File, maxBytes: Long, now: Long) {
+    fun sweep(
+        dir: File,
+        maxBytes: Long,
+        now: Long,
+        retainDays: Int = 30,
+        keepNames: Set<String> = emptySet(),
+    ) {
         val files = dir.listFiles()?.filter { it.isFile } ?: return
-        val cutoff = now - 30L * DAY_MS
+        val cutoff = now - retainDays.toLong() * DAY_MS
         for (file in files) {
+            if (file.name in keepNames) continue
             if (file.lastModified() < cutoff) file.delete()
         }
+        if (maxBytes <= 0L) return
         val left = dir.listFiles()?.filter { it.isFile }?.sortedBy { it.lastModified() } ?: return
         var total = left.sumOf { it.length() }
         for (file in left) {
             if (total <= maxBytes) break
+            if (file.name in keepNames) continue
             val n = file.length()
             if (file.delete()) total -= n
         }
@@ -155,7 +174,7 @@ object TrafficLog {
         versionCode: Int,
         androidVersion: String,
         device: String,
-        settings: AccountSettings,
+        settings: Settings,
         traffic: String,
     ): String {
         return buildString {
@@ -175,16 +194,14 @@ object TrafficLog {
         val dir = trafficLogDir(cache, accountId) ?: return
         val target = trafficLogFile(cache, accountId) ?: return
         val app = LiveImapApplication.context
-        val maxMb = if (app != null) {
-            try {
-                runBlocking { DataStoreSettingsStore(app, accountId).load().trafficLogMaxMb }
-            } catch (_: Exception) {
-                4
-            }
+        val account = org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)
+        val maxBytes = if (account != null && account.trafficLogMaxMb > 0) {
+            account.trafficLogMaxMb.toLong() * 1024L * 1024L
         } else {
-            4
+            0L
         }
-        if (dir.isDirectory) sweep(dir, maxMb.toLong() * 1024L * 1024L, System.currentTimeMillis())
+        val days = org.dlang.liveimap.settings.SettingsHub.uiNow().trafficRetentionDays
+        if (dir.isDirectory) sweep(dir, maxBytes, System.currentTimeMillis(), days, currentNames(accountId))
         writeOrdered(target, orderedRecords(dir))
         val uri = Uri.parse("content://$SHARE_AUTHORITY/${target.name}")
         val send = Intent(Intent.ACTION_SEND).apply {
@@ -199,6 +216,10 @@ object TrafficLog {
     }
 
     private val actors = ConcurrentHashMap<String, AccountTrafficWriter>()
+    private val closedIds = java.util.Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+    private val silentWriter = SilentTrafficWriter()
+
+    private fun refusedWriter(accountId: String): TrafficWriter = RefusedTrafficWriter(accountId)
 
     private fun openWriter(dir: File, rollBytes: Long): TrafficWriter {
         dir.mkdirs()
@@ -247,6 +268,24 @@ internal fun trafficIdOk(id: String): Boolean {
     return true
 }
 
+private class SilentTrafficWriter : TrafficWriter {
+    override fun record(conn: String, dir: Char, bytes: ByteArray) = Unit
+    override fun note(conn: String, text: String) {
+        if (text.isNotEmpty()) TrafficLog.status(text)
+    }
+    override fun sync() = Unit
+}
+
+private class RefusedTrafficWriter(private val accountId: String) : TrafficWriter {
+    override fun record(conn: String, dir: Char, bytes: ByteArray) {
+        TrafficLog.status("traffic refused for $accountId")
+    }
+    override fun note(conn: String, text: String) {
+        TrafficLog.status("traffic refused for $accountId")
+    }
+    override fun sync() = Unit
+}
+
 private class AccountTrafficWriter(
     private val dir: File,
     rollBytes: Long,
@@ -254,17 +293,42 @@ private class AccountTrafficWriter(
     private val rollLimit = AtomicLong(rollBytes)
     private val gate = Any()
     private var current: File? = null
+    private var stream: java.io.FileOutputStream? = null
+    private var size = 0L
 
     fun rollTo(n: Long) {
         rollLimit.set(n)
+    }
+
+    fun currentName(): String? = synchronized(gate) { current?.name }
+
+    fun closeStream() {
+        synchronized(gate) {
+            try {
+                stream?.close()
+            } catch (error: Exception) {
+                TrafficLog.status("traffic close failed: ${error.message ?: error.javaClass.simpleName}")
+            }
+            stream = null
+        }
     }
 
     override fun record(conn: String, dir: Char, bytes: ByteArray) {
         val payload = recordBytes(System.currentTimeMillis(), conn, dir, bytes)
         synchronized(gate) {
             try {
-                append(payload)
-            } catch (_: Exception) {
+                val file = fileFor(payload.size) ?: run {
+                    TrafficLog.status("traffic file name collision")
+                    return
+                }
+                val out = stream ?: java.io.FileOutputStream(file, true).also {
+                    stream = it
+                    size = file.length()
+                }
+                out.write(payload)
+                size += payload.size
+            } catch (error: Exception) {
+                TrafficLog.status("traffic write failed: ${error.message ?: error.javaClass.simpleName}")
             }
         }
     }
@@ -276,27 +340,36 @@ private class AccountTrafficWriter(
     }
 
     override fun sync() {
-        synchronized(gate) { }
-    }
-
-    private fun append(payload: ByteArray) {
-        val file = fileFor(payload.size) ?: return
-        file.appendBytes(payload)
+        synchronized(gate) {
+            try {
+                stream?.fd?.sync()
+            } catch (error: Exception) {
+                TrafficLog.status("traffic sync failed: ${error.message ?: error.javaClass.simpleName}")
+            }
+        }
     }
 
     /** A file that would pass the cap is not appended to. This record starts the next file. */
     private fun fileFor(add: Int): File? {
         val cap = rollLimit.get()
         val existing = current
-        if (existing != null && existing.isFile && (cap <= 0L || existing.length() + add <= cap)) {
-            return existing
+        if (existing != null && (cap <= 0L || size + add <= cap)) return existing
+        stream?.let {
+            try {
+                it.fd.sync()
+                it.close()
+            } catch (error: Exception) {
+                TrafficLog.status("traffic roll failed: ${error.message ?: error.javaClass.simpleName}")
+            }
+            stream = null
         }
         repeat(8) {
             val name = System.currentTimeMillis().toString() + "-app-" +
                 TrafficLogSerial.next().toString().padStart(6, '0') + ".log"
             val path = File(dir, name)
-            if (path.exists()) return@repeat
+            if (!path.createNewFile()) return@repeat
             current = path
+            size = 0L
             return path
         }
         return null
@@ -317,7 +390,7 @@ internal fun recordBytes(t: Long, conn: String, dir: Char, bytes: ByteArray): By
     return out
 }
 
-private fun accountBlock(settings: AccountSettings): String {
+private fun accountBlock(settings: Settings): String {
     return settings.encode().lineSequence().joinToString("\n") { line ->
         if (!settings.showUserInDebugReport && line.startsWith("username=")) {
             "username=<user>"

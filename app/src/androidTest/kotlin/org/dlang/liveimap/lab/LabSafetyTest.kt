@@ -10,7 +10,7 @@ import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.TrafficRecorder
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.usableTrashName
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.MoveMethod
 import org.dlang.liveimap.settings.TlsMode
@@ -59,7 +59,7 @@ class LabSafetyTest {
             if (ok == "fail") failed++
             steps.append(name).append('\t').append(ok).append('\t').append(detail.replace('\t', ' ').replace('\n', ' ').take(300)).append('\n')
         }
-        val account = AccountSettings(
+        val account = Settings(
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = TlsMode.None,
             logImapTraffic = true, authMechanism = "IMAP-LOGIN",
             autoExpunge = arg("labAutoExpunge") == "true",

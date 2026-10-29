@@ -5,7 +5,7 @@ import org.dlang.liveimap.session.IndexRow
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MessageOrder
 import org.dlang.liveimap.session.MessageRef
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DateFormat
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.SwipeAction
@@ -76,8 +76,8 @@ class IndexWindowTest {
         assertEquals(leading, indexSwipeBinding(-100f, 250f, leftToRight = false, multiSelect = false, trailing, leading))
         assertNull(indexSwipeBinding(-100f, 100f, leftToRight = true, multiSelect = true, trailing, leading))
         assertNull(indexSwipeBinding(-100f, 0f, leftToRight = true, multiSelect = false, trailing, leading))
-        assertEquals("", barMoveMailbox(AccountSettings()))
-        val move = AccountSettings(
+        assertEquals("", barMoveMailbox(Settings()))
+        val move = Settings(
             swipeTrailing = SwipeBinding(SwipeAction.Move, moveMailbox = ""),
             swipeLeading = SwipeBinding(SwipeAction.Move, moveMailbox = "Archive"),
         )

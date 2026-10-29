@@ -1,10 +1,10 @@
 package org.dlang.liveimap.session
 
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 
 fun sameImapIdentity(
-    current: AccountSettings,
-    next: AccountSettings,
+    current: Settings,
+    next: Settings,
     currentPassword: String,
     nextPassword: String,
 ): Boolean =

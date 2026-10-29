@@ -1,7 +1,7 @@
 package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.session.imapAuthOrder
-import org.dlang.liveimap.settings.AccountSettings
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 
 /** What the settings check saw: native probe lines (error=, pre=, post=, starttls=absent, tls=, trust=, accepted=). */
@@ -48,7 +48,7 @@ data class ServerCheck(
  * Judges a probe against the account's settings. oldTlsWorks is the result of a second probe with
  * allowOldTls on, made only when the first TLS attempt failed with the setting off (null when not tried).
  */
-fun checkServer(settings: AccountSettings, probe: ServerProbe, oldTlsWorks: Boolean? = null): ServerCheck {
+fun checkServer(settings: Settings, probe: ServerProbe, oldTlsWorks: Boolean? = null): ServerCheck {
     if (probe.error.isNotEmpty()) {
         return ServerCheck(reachable = false, conflicts = listOf("server not reachable: ${probe.error}"))
     }

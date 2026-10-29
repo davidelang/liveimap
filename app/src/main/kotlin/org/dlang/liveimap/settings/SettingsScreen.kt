@@ -65,6 +65,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -185,7 +186,7 @@ internal class EditorEpoch(val settings: Int, val password: Int, val smtp: Int)
 
 internal class EditorLoad(
     val editingId: String?,
-    val settings: AccountSettings,
+    val settings: Settings,
     val password: String,
     val smtpPassword: String,
     val accounts: List<AccountChoice>,
@@ -198,13 +199,23 @@ internal class SettingsEditor(
     val appContext: Context,
     val ui: CoroutineScope,
 ) {
-    val settingsState = mutableStateOf(AccountSettings())
-    private val settingsMirror = AtomicReference(AccountSettings())
+    val settingsState = mutableStateOf(Settings())
+    private val settingsMirror = AtomicReference(Settings())
     private val settingsEpoch = AtomicInteger(0)
     private val passwordEpoch = AtomicInteger(0)
     private val smtpEpoch = AtomicInteger(0)
     private val editingMirror = AtomicReference<String?>(null)
     private val editingIdState = mutableStateOf<String?>(null)
+    private val dirtyKeys = AtomicReference<Set<String>>(emptySet())
+    private val baselineMirror = AtomicReference(Settings())
+    private val saveGate = kotlinx.coroutines.sync.Mutex()
+    var pageDirty by mutableStateOf(false)
+    private var passwordDirty = false
+    private var smtpDirty = false
+    private var sieveDirty = false
+    private var baselinePassword = ""
+    private var baselineSmtp = ""
+    private var baselineSieve = ""
     val passwordState = mutableStateOf("")
     val smtpPasswordState = mutableStateOf("")
     val accountsState = mutableStateOf<List<AccountChoice>>(emptyList())
@@ -217,7 +228,7 @@ internal class SettingsEditor(
     var deleteStep by mutableStateOf<Int?>(null)
     var deleteFailedName by mutableStateOf<String?>(null)
     private var retryDeleteId: String? = null
-    var settings: AccountSettings
+    var settings: Settings
         get() = settingsState.value
         set(value) {
             settingsMirror.set(value)
@@ -237,7 +248,7 @@ internal class SettingsEditor(
     val bound: DataStoreSettingsStore
         get() = editingId?.let { store.forAccount(it) } ?: store
 
-    fun persist(next: AccountSettings) {
+    fun persist(next: Settings) {
         if (!ready) return
         val rejected = rejectedAccountSettings(next)
         if (rejected != null) {
@@ -257,27 +268,40 @@ internal class SettingsEditor(
             smtpMissing = false
         }
         if (retarget.dropSievePassword) sievePassword = ""
+        val previous = settings
         settingsEpoch.incrementAndGet()
         settings = retarget.settings
+        if (retarget.dropSievePassword) sieveDirty = true
         if (creating) {
             org.dlang.liveimap.settings.editors.PendingNewAccount.active = true
             org.dlang.liveimap.settings.editors.PendingNewAccount.settings = retarget.settings
             org.dlang.liveimap.settings.editors.PendingNewAccount.password = password
             org.dlang.liveimap.settings.editors.PendingNewAccount.smtpPassword = smtpPassword
             org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = sievePassword
+            pageDirty = true
             return
         }
-        if (retarget.dropSievePassword) {
-            val id = editingId
-            if (id != null) settingsIo.launch {
-                org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, null)
-            }
+        val changed = retarget.settings.changedKeysAgainst(previous)
+        val immediate = changed.filter { it in immediateSettingKeys }.toSet()
+        val page = changed.filter { it !in immediateSettingKeys }.toSet()
+        if (page.isNotEmpty()) {
+            dirtyKeys.updateAndGet { it + page }
+            pageDirty = dirtyKeys.get().isNotEmpty()
         }
-        val target = bound // F121: the account being edited now, even if another is picked before this runs
-        settingsSaveFailure.value = null
+        if (immediate.isEmpty()) return
+        val saving = retarget.settings
+        val target = bound
         settingsIo.launch {
-            target.update { settingsMirror.get() }
-            SettingsRevision.bump()
+            try {
+                target.commitKeys(saving, immediate)
+                var base = baselineMirror.get()
+                for (key in immediate) base = base.withSetting(key, SettingValue(saving.getSetting(key)))
+                baselineMirror.set(base)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                settingsSaveFailure.value = error.message ?: error.toString()
+            }
         }
     }
 
@@ -286,15 +310,13 @@ internal class SettingsEditor(
         passwordEpoch.incrementAndGet()
         password = value
         passwordMissing = false
+        passwordDirty = true
         if (creating) {
             org.dlang.liveimap.settings.editors.PendingNewAccount.password = value
+            pageDirty = true
             return
         }
-        val target = bound // F121: the account being edited now, even if another is picked before this runs
-        val saving = password
-        settingsIo.launch {
-            target.onAccount { target.setPassword(saving) }
-        }
+        pageDirty = true
     }
 
     fun persistSmtpPassword(value: String) {
@@ -302,15 +324,13 @@ internal class SettingsEditor(
         smtpEpoch.incrementAndGet()
         smtpPassword = value
         smtpMissing = false
+        smtpDirty = true
         if (creating) {
             org.dlang.liveimap.settings.editors.PendingNewAccount.smtpPassword = value
+            pageDirty = true
             return
         }
-        val target = bound // F121: the account being edited now, even if another is picked before this runs
-        val saving = smtpPassword
-        settingsIo.launch {
-            target.onAccount { target.setSmtpPassword(saving) }
-        }
+        pageDirty = true
     }
 
     fun beginNewAccount() {
@@ -383,7 +403,10 @@ internal class SettingsEditor(
                 editingId = id // F121: edit it; the active account is unchanged
                 applyReload(loaded, epoch, force = true)
             }) {
-                setUi_settingsLastEditedAccount(appContext, id)
+                val ui = SettingsHub.uiNow()
+                if (ui.settingsLastEditedAccount != id) {
+                    SettingsHub.saveUiKeys(appContext, ui.copy(settingsLastEditedAccount = id), setOf("settingsLastEditedAccount"))
+                }
                 computeReload(id)
             }
         }
@@ -403,9 +426,6 @@ internal class SettingsEditor(
                     return@launch
                 }
                 deleteName = null
-                if (readUiLine(readGlobalRecord(appContext), "settingsLastEditedAccount") == id) {
-                    setUi_settingsLastEditedAccount(appContext, "")
-                }
                 val current = editingMirror.get()
                 store.onAccount(publish = { loaded: EditorLoad ->
                     applyReload(loaded, epoch, force = true)
@@ -424,25 +444,34 @@ internal class SettingsEditor(
 
     private suspend fun computeReload(preferred: String?): EditorLoad {
         val listed = store.listAccounts()
-        val record = readGlobalRecord(appContext)
-        val opensOn = readUiLine(record, "settingsOpensOn") ?: "drawer"
-        val lastEdited = readUiLine(record, "settingsLastEditedAccount").orEmpty()
+        val ui = SettingsHub.uiNow()
+        val opensOn = ui.settingsOpensOn.ifEmpty { "drawer" }
+        val lastEdited = ui.settingsLastEditedAccount
         val editing = if (preferred != null && listed.any { it.id == preferred }) {
             preferred
         } else {
             openingAccount(listed, opensOn, lastEdited)?.id
         }
-        val boundStore = editing?.let { store.forAccount(it) } ?: store
-        val rawPassword = if (editing == null) "" else boundStore.password()
-        val rawSmtp = if (editing == null) "" else boundStore.smtpPassword()
+        if (editing == null) {
+            return EditorLoad(
+                editingId = null,
+                settings = ui,
+                password = "",
+                smtpPassword = "",
+                accounts = listed.map { it.copy(editing = false) },
+            )
+        }
+        val boundStore = store.forAccount(editing)
+        val rawPassword = boundStore.password()
+        val rawSmtp = boundStore.smtpPassword()
         return EditorLoad(
             editingId = editing,
-            settings = boundStore.load(),
+            settings = boundStore.load().withUiOf(ui),
             password = rawPassword ?: "",
             smtpPassword = rawSmtp ?: "",
             accounts = listed.map { it.copy(editing = it.id == editing) },
-            passwordMissing = editing != null && rawPassword == null,
-            smtpMissing = editing != null && rawSmtp == null,
+            passwordMissing = rawPassword == null,
+            smtpMissing = rawSmtp == null,
         )
     }
 
@@ -460,18 +489,134 @@ internal class SettingsEditor(
             smtpMissing = loaded.smtpMissing
         }
         accounts = loaded.accounts
+        if (force || settingsEpoch.get() == epoch.settings) {
+            baselineMirror.set(loaded.settings)
+            dirtyKeys.set(emptySet())
+            pageDirty = false
+            passwordDirty = false
+            smtpDirty = false
+            sieveDirty = false
+            baselinePassword = loaded.password
+            baselineSmtp = loaded.smtpPassword
+            baselineSieve = ""
+        }
         ready = true
     }
 
-    // The mirror is written on Main with the editor. Publish the write-back on the caller before the next command.
-    suspend fun saveAccount(target: DataStoreSettingsStore) {
-        target.onAccount(publish = { saved ->
-            settings = saved
-        }) {
-            target.update { settingsMirror.get() }
+    fun abandonPage() {
+        val base = baselineMirror.get()
+        var next = settings
+        for (key in dirtyKeys.get()) next = next.withSetting(key, SettingValue(base.getSetting(key)))
+        settingsEpoch.incrementAndGet()
+        settings = next
+        dirtyKeys.set(emptySet())
+        pageDirty = false
+        if (passwordDirty) {
+            passwordEpoch.incrementAndGet()
+            password = baselinePassword
+            passwordDirty = false
+        }
+        if (smtpDirty) {
+            smtpEpoch.incrementAndGet()
+            smtpPassword = baselineSmtp
+            smtpDirty = false
+        }
+        if (sieveDirty) {
+            sievePassword = baselineSieve
+            sieveDirty = false
         }
     }
+
+    fun commitPage() {
+        ui.launch { commitPageAwait() }
+    }
+
+    suspend fun commitPageAwait() {
+        saveGate.lock()
+        try {
+            settingsSaveFailure.value = null
+            if (creating) {
+                createAwait()
+                return
+            }
+            val keys = dirtyKeys.get()
+            val draft = settingsMirror.get()
+            val id = editingMirror.get()
+            val storeTarget = id?.let { store.forAccount(it) }
+            if (storeTarget != null && (keys.isNotEmpty() || passwordDirty || smtpDirty || sieveDirty)) {
+                if (keys.isNotEmpty()) storeTarget.commitKeys(draft, keys)
+                if (passwordDirty) storeTarget.setPassword(password)
+                if (smtpDirty) storeTarget.setSmtpPassword(smtpPassword)
+                val sieve = sievePassword
+                if (sieveDirty && id != null) {
+                    org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, sieve.ifEmpty { null })
+                }
+            } else if (storeTarget == null && keys.isNotEmpty()) {
+                SettingsHub.saveUiKeys(appContext, draft, keys)
+            }
+            baselineMirror.set(draft)
+            dirtyKeys.set(emptySet())
+            pageDirty = false
+            passwordDirty = false
+            smtpDirty = false
+            sieveDirty = false
+            baselinePassword = password
+            baselineSmtp = smtpPassword
+            baselineSieve = sievePassword
+            SettingsRevision.bump()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            settingsSaveFailure.value = error.message ?: error.toString()
+        } finally {
+            saveGate.unlock()
+        }
+    }
+
+    private suspend fun createAwait() {
+        val savingSettings = settingsMirror.get()
+        val savingPassword = password
+        val savingSmtp = smtpPassword
+        val savingSieve = sievePassword
+        val id = store.createAccount(savingSettings, savingPassword, savingSmtp)
+        if (savingSieve.isNotEmpty()) {
+            org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, savingSieve)
+        }
+        val created = org.dlang.liveimap.settings.editors.PendingNewAccount.onCreated
+        org.dlang.liveimap.settings.editors.PendingNewAccount.clear()
+        creating = false
+        pageDirty = false
+        dirtyKeys.set(emptySet())
+        passwordDirty = false
+        smtpDirty = false
+        sieveDirty = false
+        created?.invoke(id)
+        val epoch = captureEpochs()
+        store.onAccount(publish = { loaded: EditorLoad ->
+            applyReload(loaded, epoch, force = true)
+        }) {
+            computeReload(id)
+        }
+    }
+
+    suspend fun saveAccount(target: DataStoreSettingsStore) {
+        commitPageAwait()
+    }
 }
+
+private val immediateSettingKeys = setOf(
+    "favorites",
+    "expandedFolders",
+    "folderStarts",
+    "savedSearches",
+    "savedAdvanced",
+    "sortAskSkip",
+    "threadAskSkip",
+    "searchAskSkip",
+    "fallbackAskSkip",
+    "inboundRules",
+    "lastSaveMailbox",
+)
 
 
 /**
@@ -511,6 +656,68 @@ internal object LayoutApply {
     val fullScreenGeneration: Int get() = screen.intValue
     fun request() { panes.intValue = panes.intValue + 1 }
     fun noteFullScreen() { screen.intValue = screen.intValue + 1 }
+}
+
+@Composable
+internal fun LoadCheckDialog() {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val questions by SettingsHub.questions.collectAsState()
+    val notice by SettingsHub.notice.collectAsState()
+    val pending = questions
+    var picks by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(pending) {
+        val next = LinkedHashMap<String, String>()
+        pending?.moves?.forEach { move ->
+            move.options.firstOrNull()?.let { next[move.key] = it.value }
+        }
+        picks = next
+    }
+    if (pending != null && (pending.extras.isNotEmpty() || pending.moves.isNotEmpty())) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.settings_load_check_title)) },
+            text = {
+                Column {
+                    if (pending.warning.isNotEmpty()) Text(pending.warning)
+                    if (pending.extras.isNotEmpty()) {
+                        Text(stringResource(R.string.settings_extra_keys))
+                        Text(pending.extras.joinToString("\n") { extra -> extra.blob + " " + extra.key })
+                    }
+                    for (move in pending.moves) {
+                        Text(move.key)
+                        for (option in move.options) {
+                            TextButton(onClick = { picks = picks + (move.key to option.value) }) {
+                                val mark = if (picks[move.key] == option.value) "* " else ""
+                                Text(mark + option.label)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { scope.launch { SettingsHub.answer(context, true, picks) } }) {
+                    Text(stringResource(R.string.settings_remove_extras))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { scope.launch { SettingsHub.answer(context, false, picks) } }) {
+                    Text(stringResource(R.string.settings_keep_extras))
+                }
+            },
+        )
+    }
+    if (notice == "default-cleared") {
+        AlertDialog(
+            onDismissRequest = { SettingsHub.clearNotice() },
+            title = { Text(stringResource(R.string.settings_default_cleared)) },
+            confirmButton = {
+                TextButton(onClick = { SettingsHub.clearNotice() }) {
+                    Text(stringResource(R.string.settings_ok))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -635,6 +842,14 @@ fun SettingsTree(
             val saveFailure = settingsSaveFailure.value
             if (saveFailure != null) {
                 Text(saveFailure)
+            }
+            if (page != "accounts" && (editor.pageDirty || editor.creating)) {
+                Button(
+                    onClick = { editor.commitPage() },
+                    modifier = Modifier.testTag("settings-save"),
+                ) {
+                    Text(stringResource(R.string.settings_save))
+                }
             }
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
                 TextButton(onClick = { onNavigate("settings/setup?accountId=$accountId") }) {
@@ -762,7 +977,7 @@ internal class ServerDrafts {
     var checkingSieve by mutableStateOf(false)
     var sieveReport by mutableStateOf("")
     var serverChecking by mutableStateOf(false)
-    var serverDraft by mutableStateOf<AccountSettings?>(null)
+    var serverDraft by mutableStateOf<Settings?>(null)
     var passwordDraft by mutableStateOf<String?>(null)
     var smtpPasswordDraft by mutableStateOf<String?>(null)
     var serverReview by mutableStateOf<ServerSaveReview?>(null)
@@ -786,7 +1001,7 @@ internal class ServerDrafts {
     }
 
     // Server fields edit a draft; nothing is stored or checked until Save.
-    fun userServerSave(editor: SettingsEditor, next: AccountSettings) {
+    fun userServerSave(editor: SettingsEditor, next: Settings) {
         val settings = editor.settings
         if (!sameServer(next, settings)) {
             serverDraft = next
@@ -800,7 +1015,7 @@ internal class ServerDrafts {
         serverDraft = null
     }
 
-    fun savedServer(editor: SettingsEditor, chosen: AccountSettings): AccountSettings {
+    fun savedServer(editor: SettingsEditor, chosen: Settings): Settings {
         val merged = editor.settings.withServerOf(chosen)
         return if (chosen.withoutPreserved("tlsMode") == chosen) merged.withoutPreserved("tlsMode") else merged
     }
@@ -808,7 +1023,7 @@ internal class ServerDrafts {
     fun saveServer(editor: SettingsEditor) {
         val draft = serverDraft ?: run {
             commitPasswords(editor)
-            if (editor.creating) editor.finishNewAccount()
+            editor.commitPage()
             return
         }
         editor.ui.launch {
@@ -828,7 +1043,7 @@ internal class ServerDrafts {
             if (review.quiet) {
                 editor.persist(savedServer(editor, draft))
                 commitPasswords(editor)
-                if (editor.creating) editor.finishNewAccount()
+                editor.commitPageAwait()
                 serverDraft = null
             } else {
                 serverReview = review
@@ -1305,11 +1520,10 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "density" -> row_density(walk)
         "dateFormat" -> row_dateFormat(walk)
         "multiPane" -> row_multiPane(walk)
-        "folderPane" -> row_folderPane(walk)
+        "folderPlace" -> row_folderPlace(walk)
         "foldPosture" -> row_foldPosture(walk)
         "paneArrangement" -> row_paneArrangement(walk)
         "previewSize" -> row_previewSize(walk)
-        "folderPosition" -> row_folderPosition(walk)
         "clientSortCollation" -> row_clientSortCollation(key, walk)
         "settingsOpensOn" -> row_settingsOpensOn(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
@@ -1340,6 +1554,7 @@ internal fun NumberRow(key: String, walk: SettingsWalk) {
         "longSearchQuietSec" -> row_longSearchQuietSec(key, walk)
         "maxJmapResponseBytes" -> row_maxJmapResponseBytes(key, walk)
         "idleWakeSeconds" -> row_idleWakeSeconds(walk)
+        "trafficLogMaxMb" -> row_trafficLogMaxMb(walk)
         "toolbarRows" -> row_indexBar(walk)
         "maxResultUids" -> row_maxResultUids(key, walk)
         "maxRawViewBytes" -> row_maxRawViewBytes(key, walk)
@@ -1447,10 +1662,8 @@ internal fun SubscreenRow(key: String, walk: SettingsWalk) {
 
 @Composable
 internal fun row_settingsOpensOn(walk: SettingsWalk) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var current by remember { mutableStateOf("drawer") }
-    LaunchedEffect(Unit) { current = ui_settingsOpensOn(readGlobalRecord(context)) }
+    val editor = walk.editor
+    val current = editor.settings.settingsOpensOn.ifEmpty { "drawer" }
     ChoiceField(
         stringResource(R.string.setting_settingsOpensOn_title),
         listOf("drawer", "lastEdited"),
@@ -1462,8 +1675,7 @@ internal fun row_settingsOpensOn(walk: SettingsWalk) {
             )
         },
     ) { picked ->
-        current = picked
-        scope.launch { setUi_settingsOpensOn(context, picked) }
+        editor.persist(editor.settings.copy(settingsOpensOn = picked))
     }
 }
 
@@ -1997,11 +2209,7 @@ internal fun row_maxConnections(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        label = stringResource(
-            R.string.settings_max_connections,
-            org.dlang.liveimap.session.MinConnections,
-            org.dlang.liveimap.session.MaxConnectionsCeiling,
-        ),
+        label = stringResource(R.string.settings_max_connections),
         value = settings.maxConnections.toString(),
         ready = editor.ready,
         interpret = { draft, _ -> org.dlang.liveimap.session.maxConnectionsFromText(draft)?.toString() },
@@ -2409,21 +2617,14 @@ internal fun row_readerTextLayout(walk: SettingsWalk) {
 
 @Composable
 internal fun row_appTextZoom(walk: SettingsWalk) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var current by remember { mutableIntStateOf(100) }
-    LaunchedEffect(Unit) {
-        current = clampTextZoom(ui_appTextZoom(readGlobalRecord(context)).toIntOrNull() ?: 100)
-    }
+    val editor = walk.editor
     NumberLeaf(
         stringResource(R.string.setting_appTextZoom_title),
-        current,
-        walk.editor.ready,
+        editor.settings.appTextZoom,
+        editor.ready,
         { it in 50..300 },
     ) { number ->
-        val clamped = clampTextZoom(number)
-        current = clamped
-        scope.launch { setUi_appTextZoom(context, clamped.toString()) }
+        editor.persist(editor.settings.copy(appTextZoom = clampTextZoom(number)))
     }
 }
 
@@ -2859,18 +3060,25 @@ internal fun row_multiPane(walk: SettingsWalk) {
 }
 
 @Composable
-internal fun row_folderPane(walk: SettingsWalk) {
+internal fun row_folderPlace(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
     ChoiceField(
         stringResource(R.string.settings_folder_pane),
-        LayoutChoice.entries,
-        settings.folderPane,
-        { layoutChoiceName(it) },
+        FolderPlace.entries,
+        settings.folderPlace,
+        { place ->
+            stringResource(when (place) {
+                FolderPlace.Off -> R.string.settings_multi_pane_off
+                FolderPlace.Auto -> R.string.settings_pane_auto
+                FolderPlace.Beside -> R.string.settings_folder_beside
+                FolderPlace.AboveList -> R.string.settings_folder_above
+            })
+        },
         enabled = panesOn,
     ) {
-        if (panesOn) editor.persist(editor.settings.copy(folderPane = it))
+        if (panesOn) editor.persist(editor.settings.copy(folderPlace = it))
     }
 }
 
@@ -2940,23 +3148,18 @@ internal fun row_previewSize(walk: SettingsWalk) {
 }
 
 @Composable
-internal fun row_folderPosition(walk: SettingsWalk) {
+internal fun row_trafficLogMaxMb(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    ChoiceField(
-        stringResource(R.string.settings_folder_position),
-        FolderPositionChoice.entries,
-        settings.folderPosition,
-        { stringResource(when (it) {
-            FolderPositionChoice.Auto -> R.string.settings_pane_auto
-            FolderPositionChoice.Beside -> R.string.settings_folder_beside
-            FolderPositionChoice.AboveList -> R.string.settings_folder_above
-        }) },
-        enabled = panesOn,
-    ) {
-        if (panesOn) editor.persist(editor.settings.copy(folderPosition = it))
+    NumberLeaf(
+        stringResource(R.string.setting_trafficLogMaxMb_title),
+        settings.trafficLogMaxMb,
+        editor.ready,
+        { it in 0..64 },
+    ) { number ->
+        editor.persist(editor.settings.copy(trafficLogMaxMb = number))
     }
+    if (settings.trafficLogMaxMb == 0) Text(stringResource(R.string.settings_no_limit))
 }
 
 @Composable
@@ -3235,11 +3438,11 @@ internal fun row_maxRawViewBytes(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.maxRawViewBytes.get(),
+        editor.settings.maxRawViewBytes.toInt(),
         editor.ready,
         { it >= 1 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(maxRawViewBytes = number.toLong()))
     }
 }
 
@@ -3251,11 +3454,11 @@ internal fun row_maxImageTrustBytes(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.maxImageTrustBytes.get(),
+        editor.settings.maxImageTrustBytes.toInt(),
         editor.ready,
         { it >= 1 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(maxImageTrustBytes = number.toLong()))
     }
 }
 
@@ -3267,11 +3470,11 @@ internal fun row_indexPageSize(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.indexPageSize.get(),
+        editor.settings.indexPageSize,
         editor.ready,
         { it >= 1 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(indexPageSize = number))
     }
 }
 
@@ -3283,11 +3486,11 @@ internal fun row_swipeThresholdPercent(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.swipeThresholdPercent.get(),
+        editor.settings.swipeThresholdPercent,
         editor.ready,
         { it in 1..99 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(swipeThresholdPercent = number))
     }
 }
 
@@ -3299,11 +3502,11 @@ internal fun row_moveChunk(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.moveChunk.get(),
+        editor.settings.moveChunk,
         editor.ready,
         { it >= 1 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(moveChunk = number))
     }
 }
 
@@ -3315,11 +3518,11 @@ internal fun row_clientSortChunk(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     NumberLeaf(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.clientSortChunk.get(),
+        editor.settings.clientSortChunk,
         editor.ready,
         { it >= 1 },
     ) { number ->
-        scope.launch { saveGlobal(context, key, number.toString()) }
+        editor.persist(editor.settings.copy(clientSortChunk = number))
     }
 }
 
@@ -3331,7 +3534,7 @@ internal fun row_reconnectDelaysSec(key: String, walk: SettingsWalk) {
     val scope = rememberCoroutineScope()
     LineField(
         stringResource(SettingsTreeGenerated.regTitle(key)),
-        InstalledGlobals.reconnectDelaysSec.get().joinToString(", "),
+        editor.settings.reconnectDelaysSec.joinToString(", "),
         ready = editor.ready,
     ) { text ->
         val parts = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
@@ -3342,7 +3545,7 @@ internal fun row_reconnectDelaysSec(key: String, walk: SettingsWalk) {
             seconds.add(number)
         }
         if (seconds.isEmpty()) return@LineField
-        scope.launch { saveGlobal(context, "reconnectDelaysSec", seconds.joinToString(",")) }
+        editor.persist(editor.settings.copy(reconnectDelaysSec = seconds))
     }
 }
 
@@ -4124,7 +4327,7 @@ internal enum class MailboxPick {
     ReaderLeadingMove,
 }
 
-internal fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: String): AccountSettings {
+internal fun assignMailbox(base: Settings, field: MailboxPick, mailbox: String): Settings {
     return when (field) {
         MailboxPick.Sent -> base.copy(sentMailbox = mailbox)
         MailboxPick.Postponed -> base.copy(postponedMailbox = mailbox)
@@ -4152,7 +4355,7 @@ internal fun assignMailbox(base: AccountSettings, field: MailboxPick, mailbox: S
     }
 }
 
-internal const val PINERC_MAX_BYTES = 1024 * 1024
+internal fun pinercMaxBytes(): Int = SettingsHub.uiNow().pinercMaxBytes
 
 internal sealed class PinercRead {
     class Ok(val text: String) : PinercRead()
@@ -4164,14 +4367,14 @@ internal fun readPinercStream(resolver: ContentResolver, uri: Uri): PinercRead {
     return try {
         val input = resolver.openInputStream(uri) ?: return PinercRead.Bad
         input.use { stream ->
-            val buf = ByteArray(PINERC_MAX_BYTES + 1)
+            val buf = ByteArray(pinercMaxBytes() + 1)
             var total = 0
             while (total < buf.size) {
                 val n = stream.read(buf, total, buf.size - total)
                 if (n < 0) break
                 total += n
             }
-            if (total > PINERC_MAX_BYTES) return PinercRead.TooLarge
+            if (total > pinercMaxBytes()) return PinercRead.TooLarge
             val decoder = StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -4189,7 +4392,7 @@ internal fun readPinercStream(resolver: ContentResolver, uri: Uri): PinercRead {
 }
 
 /** Who the Sending rules summary names: From as composed, else the login, else the host. Never blank. */
-internal fun rulesSummaryWho(settings: AccountSettings): String =
+internal fun rulesSummaryWho(settings: Settings): String =
     formatMailbox(settings.displayName, settings.email).trim()
         .ifEmpty { settings.username.trim() }
         .ifEmpty { settings.imapHost.trim() }
@@ -4199,7 +4402,7 @@ internal fun rulesSummaryWho(settings: AccountSettings): String =
 internal enum class SpecialFolder { Sent, Postponed }
 
 /** The special folders a leave warning names: unset ones only. A warning, never a block (David's Sent rule d). */
-internal fun unsetSpecialFolders(settings: AccountSettings): List<SpecialFolder> = buildList {
+internal fun unsetSpecialFolders(settings: Settings): List<SpecialFolder> = buildList {
     if (settings.sentMailbox.isBlank()) add(SpecialFolder.Sent)
     if (settings.postponedMailbox.isBlank()) add(SpecialFolder.Postponed)
 }
