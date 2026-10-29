@@ -31,6 +31,19 @@ class KeepCopyUntilSubmittedTest {
     }
 
     @Test
+    fun deleteFailureAfterSendReturnsTheResult() {
+        var seen: java.io.IOException? = null
+        val r = keepCopyUntilSubmitted(
+            copy,
+            { true },
+            { throw java.io.IOException("id1.rfc822") },
+            { seen = it },
+        ) { "S2" }
+        assertEquals("S2", r)
+        assertEquals("id1.rfc822", seen?.message)
+    }
+
+    @Test
     fun failureKeepsAPlainUnsentCopyAndRethrows() {
         val writes = mutableListOf<Boolean>(); val deletes = mutableListOf<String>()
         try {

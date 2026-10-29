@@ -386,15 +386,37 @@ internal fun deleteUnsentAccount(filesDir: File, accountId: String) {
  * Written "may be sent" before [send] starts (so a process death keeps it); deleted on success; on failure kept as
  * a plain unsent copy (the Unsent list shows it like any failed send) and the failure is rethrown.
  * A false [write] throws [DeviceCopyNotSaved] and does not call [send] or [delete].
+ * An [java.io.IOException] from [delete] after [send] returns is reported and not rethrown: the send already completed.
  */
 internal class DeviceCopyNotSaved : Exception()
 
 internal fun jmapMaybeSent(failure: Throwable): Boolean = failure is org.dlang.liveimap.jmap.JmapMaybeSent
 
+/** File name from a delete [java.io.IOException], or [fallback] when the throw has no path. */
+internal fun ioFailureName(error: java.io.IOException, fallback: String): String {
+    val path = (error as? java.nio.file.FileSystemException)?.file
+    if (path.isNullOrEmpty()) return fallback
+    val cut = path.lastIndexOf('/')
+    return if (cut >= 0 && cut < path.length - 1) path.substring(cut + 1) else path
+}
+
+/** Non-empty notice lines, in order, without dropping an earlier line or repeating one. */
+internal fun joinedNotice(vararg parts: String?): String? {
+    val lines = ArrayList<String>()
+    for (part in parts) {
+        if (part.isNullOrEmpty()) continue
+        for (line in part.split('\n')) {
+            if (line.isNotEmpty() && line !in lines) lines.add(line)
+        }
+    }
+    return if (lines.isEmpty()) null else lines.joinToString("\n")
+}
+
 internal inline fun <T> keepCopyUntilSubmitted(
     copy: DeviceCopy,
     write: (DeviceCopy) -> Boolean,
     delete: (String) -> Unit,
+    onDeleteFailed: (java.io.IOException) -> Unit = {},
     send: () -> T,
 ): T {
     if (!write(copy.copyWith(uncertain = true))) throw DeviceCopyNotSaved()
@@ -405,6 +427,10 @@ internal inline fun <T> keepCopyUntilSubmitted(
         if (failure !is kotlinx.coroutines.CancellationException) write(copy.copyWith(uncertain = jmapMaybeSent(failure)))
         throw failure
     }
-    delete(copy.id)
+    try {
+        delete(copy.id)
+    } catch (error: java.io.IOException) {
+        onDeleteFailed(error)
+    }
     return result
 }

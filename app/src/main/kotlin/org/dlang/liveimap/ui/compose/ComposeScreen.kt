@@ -689,22 +689,35 @@ private fun ComposeForm(
         return if (reply) ComposeCopyOrigin.Reply else ComposeCopyOrigin.New
     }
 
-    fun applyAttachmentLife(life: ComposeAttachmentLife) {
+    fun deleteFailedText(error: java.io.IOException, fallback: String): String =
+        appContext.getString(R.string.error_delete_failed, ioFailureName(error, fallback))
+
+    /** Null when the copy is gone. A delete failure is the notice line, not a throw: the send already finished. */
+    fun notedDelete(id: String): String? {
+        try {
+            deleteCopy(appContext, id, accountId)
+        } catch (error: java.io.IOException) {
+            return deleteFailedText(error, id)
+        }
+        return null
+    }
+
+    fun applyAttachmentLife(life: ComposeAttachmentLife): String? {
         assembledCopyId = life.copyId
         reloadSuppressed = life.reloadSuppressed
         if (life.releaseHold) releasePickedHold()
-        if (life.closes) {
-            composeLeft = true
-            // The device-copy id is not this directory. A kept unsent copy uses the directory name.
-            if (life.disk != ComposeCopyDisk.Keep) deleteCopy(appContext, draftId, accountId)
-            closeCompose(draftId)
-        }
+        if (!life.closes) return null
+        composeLeft = true
+        // The device-copy id is not this directory. A kept unsent copy uses the directory name.
+        val failed = if (life.disk != ComposeCopyDisk.Keep) notedDelete(draftId) else null
+        closeCompose(draftId)
+        return failed
     }
 
-    fun clearShownCopy(deletedId: String) {
+    fun clearShownCopy(deletedId: String): String? {
         val shown = reloadCopyId(assembledCopyId, unsentId, reloadSuppressed)
-        if (deletedId.isEmpty() || deletedId != shown) return
-        applyAttachmentLife(
+        if (deletedId.isEmpty() || deletedId != shown) return null
+        return applyAttachmentLife(
             composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, deletedId, unsentId, assembledCopyId, false),
         )
     }
@@ -1292,7 +1305,7 @@ private fun ComposeForm(
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
-            notice = appContext.getString(R.string.compose_postponed_remains, box)
+            notice = joinedNotice(notice, appContext.getString(R.string.compose_postponed_remains, box))
         }
     }
 
@@ -1384,10 +1397,10 @@ private fun ComposeForm(
                     status = acceptedNotice
                     return false
                 }
-                deleteCopy(appContext, copy.id, accountId)
-                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, true))
+                val deleted = notedDelete(copy.id)
+                val draftDeleted = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, true))
                 if (held?.id == copy.id) held = null
-                notice = null
+                notice = joinedNotice(deleted, draftDeleted)
                 deliveryDone = true
                 status = sentStatus(statusLeaf(copy.mailbox))
                 removePostponedSource()
@@ -1419,10 +1432,10 @@ private fun ComposeForm(
                         return false
                     }
                 }
-                deleteCopy(appContext, copy.id, accountId)
-                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
+                val deleted = notedDelete(copy.id)
+                val draftDeleted = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
                 if (held?.id == copy.id) held = null
-                notice = null
+                notice = joinedNotice(deleted, draftDeleted)
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
                     sentStatus(statusLeaf(copy.mailbox))
@@ -1444,10 +1457,13 @@ private fun ComposeForm(
                     return false
                 }
                 var leftOver: String? = null
+                var deleteFailed: String? = null
                 try {
                     if (password == null) throw MailFailure("password missing")
                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
-                    keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
+                    keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }, { error ->
+                        deleteFailed = joinedNotice(deleteFailed, deleteFailedText(error, copy.id))
+                    }) { jmapSend(
                         offer,
                         copy.file,
                         account.email,
@@ -1494,9 +1510,9 @@ private fun ComposeForm(
                     return false
                 }
                 storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
-                applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
+                val draftDeleted = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, copy.id, unsentId, assembledCopyId, false))
                 if (held?.id == copy.id) held = null
-                notice = leftOver
+                notice = joinedNotice(leftOver, deleteFailed, draftDeleted)
                 deliveryDone = true
                 status = if (copy.mailbox.isNotEmpty()) {
                     sentStatus(statusLeaf(copy.mailbox))
@@ -1624,6 +1640,7 @@ private fun ComposeForm(
                 return@launchLocked false
             }
             val drafted = File.createTempFile("liveimap-", ".rfc822", appContext.cacheDir)
+            var deleteNote: String? = null
             try {
                 try {
                     assemble(account, drafted, eightBit = true)
@@ -1639,7 +1656,8 @@ private fun ComposeForm(
                             Files.delete(drafted.toPath())
                         } catch (_: java.io.IOException) {
                             val failed = appContext.getString(R.string.error_delete_failed, drafted.name)
-                            notice = if (notice.isNullOrEmpty()) failed else notice + "\n" + failed
+                            deleteNote = joinedNotice(deleteNote, failed)
+                            notice = joinedNotice(notice, failed)
                         }
                     }
                 }
@@ -1659,11 +1677,12 @@ private fun ComposeForm(
                 current?.appendOnly == true,
             )
             if (current != null && life.disk == ComposeCopyDisk.Delete) {
-                deleteCopy(appContext, current.id, accountId)
+                deleteNote = joinedNotice(deleteNote, notedDelete(current.id))
                 held = null
             }
-            applyAttachmentLife(life)
-            notice = null
+            deleteNote = joinedNotice(deleteNote, applyAttachmentLife(life))
+            notice = deleteNote
+            deliveryDone = true
             status = appContext.getString(R.string.compose_saved_to, statusLeaf(account.postponedMailbox))
             removePostponedSource()
             true
@@ -1875,9 +1894,9 @@ private fun ComposeForm(
                         return@launchLocked retryCopy(saved)
                     }
                     if (deliveryDone) {
-                        notice = null
+                        val failed = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
+                        notice = joinedNotice(notice, failed)
                         status = sentStatus(statusLeaf(account.sentMailbox))
-                        applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
                         return@launchLocked true
                     }
                     if (account.email.isEmpty()) {
@@ -1922,10 +1941,13 @@ private fun ComposeForm(
                         // "may be sent", and goes only once the submission is confirmed (keepCopyUntilSubmitted).
                         val sending = seededCopy(id, false, if (withoutCopy) "" else account.sentMailbox, built.recipients, messageFile, via = via)
                         var leftOver: String? = null
+                        var deleteFailed: String? = null
                         try {
                             if (password == null) throw MailFailure("password missing")
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapBasicAuthorization(account.username, password))
-                            keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }) { jmapSend(
+                            keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }, { error ->
+                                deleteFailed = joinedNotice(deleteFailed, deleteFailedText(error, sending.id))
+                            }) { jmapSend(
                                 offer,
                                 messageFile,
                                 account.email,
@@ -1941,7 +1963,7 @@ private fun ComposeForm(
                                 onNotice = { leftOver = appContext.getString(R.string.error_jmap_staging_left, it) },
                                 policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
-                            applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false))
+                            deleteFailed = joinedNotice(deleteFailed, applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false)))
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: DeviceCopyNotSaved) {
@@ -1963,7 +1985,7 @@ private fun ComposeForm(
                         storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
                         held = null
                         deliveryDone = true
-                        notice = leftOver
+                        notice = joinedNotice(leftOver, deleteFailed)
                         status = sentStatus(if (withoutCopy) null else statusLeaf(account.sentMailbox))
                         removePostponedSource()
                         return@launchLocked true
@@ -2008,11 +2030,11 @@ private fun ComposeForm(
                         status = acceptedNotice
                         return@launchLocked false
                     }
-                    deleteCopy(appContext, id, accountId)
-                    applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, id, unsentId, assembledCopyId, false))
+                    val deleted = notedDelete(id)
+                    val draftDeleted = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, id, unsentId, assembledCopyId, false))
                     held = null
                     deliveryDone = true
-                    notice = null
+                    notice = joinedNotice(deleted, draftDeleted)
                     status = sentStatus(statusLeaf(account.sentMailbox))
                     removePostponedSource()
                     true
@@ -2187,11 +2209,11 @@ private fun ComposeForm(
                 if (kept != null && kept.appendOnly) {
                     // Already sent; only the copy is dropped.
                     val life = composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendWithoutCopyDrop, kept.id, unsentId, assembledCopyId, true)
-                    if (life.disk == ComposeCopyDisk.Delete) deleteCopy(appContext, kept.id, accountId)
-                    applyAttachmentLife(life)
+                    val deleted = if (life.disk == ComposeCopyDisk.Delete) notedDelete(kept.id) else null
+                    val draftDeleted = applyAttachmentLife(life)
                     held = null
                     deliveryDone = true
-                    notice = null
+                    notice = joinedNotice(deleted, draftDeleted)
                     status = sentStatus(null)
                     scope.launch { removePostponedSource() }
                 } else if (kept != null && noCopyRetry) {
@@ -2292,6 +2314,7 @@ private fun ComposeForm(
                     val resentFrom = formatMailbox(account.displayName, account.email)
                     val alreadyAccepted = bounceAcceptedSet()
                     var stagingLeft: String? = null
+                    var deleteFailed: String? = null
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
                             for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
@@ -2326,8 +2349,7 @@ private fun ComposeForm(
                                 }
                                 storeAcceptedFlags(listOf(uid))
                                 if (!account.bounceFcc) {
-                                    deleteCopy(appContext, id, accountId)
-                                    clearShownCopy(id)
+                                    deleteFailed = joinedNotice(deleteFailed, notedDelete(id), clearShownCopy(id))
                                     addBounceAccepted(uid)
                                     continue
                                 }
@@ -2344,8 +2366,7 @@ private fun ComposeForm(
                                     addBounceAccepted(uid)
                                     return@launchLocked false
                                 }
-                                deleteCopy(appContext, id, accountId)
-                                clearShownCopy(id)
+                                deleteFailed = joinedNotice(deleteFailed, notedDelete(id), clearShownCopy(id))
                                 addBounceAccepted(uid)
                             }
                         }
@@ -2377,6 +2398,7 @@ private fun ComposeForm(
                                         bouncing,
                                         { writeCopy(appContext, it, accountId, account.unlabeledCharset) },
                                         { deleteCopy(appContext, it, accountId) },
+                                        { error -> deleteFailed = joinedNotice(deleteFailed, deleteFailedText(error, bouncing.id)) },
                                     ) { jmapSend(
                                         offer,
                                         file,
@@ -2394,7 +2416,7 @@ private fun ComposeForm(
                                         onNotice = { stagingLeft = appContext.getString(R.string.error_jmap_staging_left, it) },
                                         policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
-                                    clearShownCopy(id)
+                                    deleteFailed = joinedNotice(deleteFailed, clearShownCopy(id))
                                     storeAcceptedFlags(listOf(uid))
                                     addBounceAccepted(uid)
                                     continue
@@ -2411,9 +2433,9 @@ private fun ComposeForm(
                             }
                         }
                     }
-                    notice = stagingLeft
                     // The bounce copy id is not this draft, so clearShownCopy does not close it.
-                    applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
+                    val draftDeleted = applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
+                    notice = joinedNotice(stagingLeft, deleteFailed, draftDeleted)
                     deliveryDone = true
                     status = if (account.bounceFcc) {
                         sentStatus(statusLeaf(account.sentMailbox))
