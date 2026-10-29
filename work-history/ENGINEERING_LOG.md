@@ -3897,3 +3897,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-28 - Last account shows no account
 
 - Deleting the last account replaces the folder root with NoAccountYet after the AccountManager entry is gone. Setup finish writes the wizard fields onto the loaded record, and writes nothing before that load. Plan: sandbox/plans/last-account-setup-20261028-1714-plan.md
+
+## 2026-10-28 - Skip SMTP login says what On means
+
+- The SMTP choice labels On as no SMTP login and Off as login required. The password hint no longer says a blank password sends without AUTH.
