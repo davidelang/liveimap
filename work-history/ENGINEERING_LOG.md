@@ -3913,3 +3913,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-28 - Staging leftover stays visible
 
 - A successful send that leaves the staging copy still returns. The notice error_jmap_staging_left is toasted when compose closes, and a session send shows the same string.
+
+## 2026-10-29 - Delete failure after a confirmed send
+
+- A local delete that fails after the server accepts a message, or after postpone appends the draft, shows error_delete_failed and leaves that send or postpone done.
