@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -19,7 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.settings.clampTextZoom
-import org.dlang.liveimap.settings.readGlobalSettings
+import org.dlang.liveimap.settings.globalSettingsRecord
 import org.dlang.liveimap.settings.setUi_appTextZoom
 import org.dlang.liveimap.settings.ui_appTextZoom
 
@@ -46,8 +47,9 @@ fun AppTextZoom(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var zoom by remember { mutableIntStateOf(100) }
-    LaunchedEffect(Unit) {
-        zoom = clampTextZoom(ui_appTextZoom(readGlobalSettings(context)).toIntOrNull() ?: 100)
+    val record by globalSettingsRecord(context).collectAsState(initial = "")
+    LaunchedEffect(record) {
+        zoom = clampTextZoom(ui_appTextZoom(record).toIntOrNull() ?: 100)
     }
     val system = LocalDensity.current
     val scaled = Density(system.density, scaledFontScale(system.fontScale, zoom))

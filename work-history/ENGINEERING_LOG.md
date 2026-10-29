@@ -3905,3 +3905,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-28 - MIME reader compose and text size
 
 - Native decode reports the charset and a short read. Bodies stream to files. Compose and the reader split, and compose save, send, and postpone share one actor. Text size is appTextZoom.
+
+## 2026-10-28 - Staging destroy notice and live text size
+
+- A JMAP send whose staging copy stays raises MailFailure naming that copy and still returns the submission id. The notice is error_jmap_staging_left. appTextZoom and the reader follow a later settings write.

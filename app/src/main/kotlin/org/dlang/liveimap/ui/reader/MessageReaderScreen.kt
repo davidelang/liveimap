@@ -159,7 +159,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.ui_appTextZoom
-import org.dlang.liveimap.settings.readGlobalSettings
+import org.dlang.liveimap.settings.globalSettingsRecord
 import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.AccountSettings
@@ -661,8 +661,9 @@ private fun ReaderScreen(
     var originalColors by held.originalColorsState
     var pinchZoom by held.pinchZoomState
     var appTextZoom by remember { mutableIntStateOf(100) }
-    LaunchedEffect(Unit) {
-        appTextZoom = clampTextZoom(ui_appTextZoom(readGlobalSettings(context)).toIntOrNull() ?: 100)
+    val appZoomRecord by globalSettingsRecord(context).collectAsState(initial = "")
+    LaunchedEffect(appZoomRecord) {
+        appTextZoom = clampTextZoom(ui_appTextZoom(appZoomRecord).toIntOrNull() ?: 100)
     }
     val linkBridge = remember { LinkBridge() }
     val saveTarget = remember { SaveTarget() }

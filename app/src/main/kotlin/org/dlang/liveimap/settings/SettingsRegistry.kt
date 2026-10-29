@@ -8,7 +8,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.dlang.liveimap.ui.toolbar.ToolbarStore
 
 private val Context.globalSettingsDataStore by preferencesDataStore(
@@ -311,6 +313,12 @@ suspend fun globalSettingsStoredKeys(context: Context): Set<String> =
     context.globalSettingsDataStore.data.first().asMap().keys.map { it.name }.toSet()
 
 suspend fun readGlobalSettings(context: Context): String = readGlobalRecord(context)
+
+/** The stored UI record, including later edits to appTextZoom. */
+fun globalSettingsRecord(context: Context): Flow<String> =
+    context.applicationContext.globalSettingsDataStore.data.map { prefs ->
+        prefs[globalSettingsValue].orEmpty()
+    }
 
 suspend fun saveGlobal(context: Context, key: String, text: String) {
     var stored = ""

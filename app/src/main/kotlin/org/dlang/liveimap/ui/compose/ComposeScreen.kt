@@ -1461,7 +1461,7 @@ private fun ComposeForm(
                         sentName = copy.mailbox,
                         saveCopy = copy.mailbox.isNotEmpty(),
                         draftsName = account.postponedMailbox,
-                        onNotice = { leftOver = it },
+                        onNotice = { leftOver = appContext.getString(R.string.error_jmap_staging_left, it) },
                         policy = account.tlsPolicy(), accountKey = accountId,
                     ) }
                 } catch (error: CancellationException) {
@@ -1926,7 +1926,7 @@ private fun ComposeForm(
                                 sentName = account.sentMailbox,
                                 draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
-                                onNotice = { leftOver = it },
+                                onNotice = { leftOver = appContext.getString(R.string.error_jmap_staging_left, it) },
                                 policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
                             applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false))
@@ -2279,6 +2279,7 @@ private fun ComposeForm(
                     val resentTo = recipients.joinToString(", ")
                     val resentFrom = formatMailbox(account.displayName, account.email)
                     val alreadyAccepted = bounceAcceptedSet()
+                    var stagingLeft: String? = null
                     when (bounceDelivery(account.emailSubmission)) {
                         BounceDelivery.Smtp -> {
                             for (uid in bounceUidsStillToSend(seed.uids, alreadyAccepted)) {
@@ -2378,7 +2379,7 @@ private fun ComposeForm(
                                         sentName = savedMailbox,
                                         saveCopy = savedMailbox.isNotEmpty(),
                                         draftsName = account.postponedMailbox,
-                                        onNotice = { notice = it },
+                                        onNotice = { stagingLeft = appContext.getString(R.string.error_jmap_staging_left, it) },
                                         policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
                                     clearShownCopy(id)
@@ -2398,7 +2399,7 @@ private fun ComposeForm(
                             }
                         }
                     }
-                    notice = null
+                    notice = stagingLeft
                     // The bounce copy id is not this draft, so clearShownCopy does not close it.
                     applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, assembledCopyId, unsentId, assembledCopyId, false))
                     deliveryDone = true

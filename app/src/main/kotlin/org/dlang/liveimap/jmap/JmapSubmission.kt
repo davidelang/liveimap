@@ -175,7 +175,7 @@ fun jmapDeliver(
     val emailId = jmapImportedEmailId(imported.body)
     return sendImported(
         session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
-        destroyEmail, identityId, policy, accountKey, accountId, authorization,
+        destroyEmail, identityId, policy, accountKey, accountId, authorization, onNotice,
     )
 }
 
@@ -213,7 +213,7 @@ fun jmapDeliver(
     val emailId = jmapImportedEmailId(imported.body)
     return sendImported(
         session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
-        destroyEmail, identityId, policy, accountKey, accountId, authorization,
+        destroyEmail, identityId, policy, accountKey, accountId, authorization, onNotice,
     )
 }
 
@@ -234,33 +234,40 @@ private fun sendImported(
     accountKey: String,
     accountId: String,
     authorization: String,
+    onNotice: (String) -> Unit,
 ): String {
-    fun removeCopy() {
-        val gone = try {
-            jmapStagingDestroyed(
-                jmapCall(
-                    session.apiUrl,
-                    jmapDestroyRequest(accountId, emailId),
-                    authorization,
-                    pin,
-                    post,
-                    trust,
-                    policy,
-                    accountKey,
-                ).body,
-                emailId,
-            ) == true
-        } catch (_: JmapFailure) {
-            false
+    // A failed destroy names the staging copy. After a confirmed submission that is a notice, not a failed send.
+    fun destroyCopy(): Boolean = try {
+        jmapStagingDestroyed(
+            jmapCall(
+                session.apiUrl,
+                jmapDestroyRequest(accountId, emailId),
+                authorization,
+                pin,
+                post,
+                trust,
+                policy,
+                accountKey,
+            ).body,
+            emailId,
+        ) == true
+    } catch (_: JmapFailure) {
+        false
+    }
+    fun noticeIfLeft() {
+        if (destroyCopy()) return
+        try {
+            throw MailFailure(emailId)
+        } catch (left: MailFailure) {
+            onNotice(left.text)
         }
-        if (!gone) throw MailFailure("The staging copy $emailId could not be removed")
     }
     return try {
         val submitted = jmapSubmitAnswer(
             session, emailId, mailFrom, rcptTo, username, password, pin, post, trust,
             destroyEmail, identityId, policy, accountKey,
         )
-        if (destroyEmail && jmapStagingDestroyed(submitted.second, emailId) != true) removeCopy()
+        if (destroyEmail && jmapStagingDestroyed(submitted.second, emailId) != true) noticeIfLeft()
         submitted.first
     } catch (maybe: JmapMaybeSent) {
         val known = try {
@@ -282,16 +289,28 @@ private fun sendImported(
         when {
             known == null -> throw maybe
             known.isNotEmpty() -> {
-                if (destroyEmail) removeCopy()
+                if (destroyEmail) noticeIfLeft()
                 known.first()
             }
             else -> {
-                removeCopy()
+                destroyCopy()
                 throw JmapFailure("jmap submission was not created")
             }
         }
     } catch (failure: JmapFailure) {
-        removeCopy()
+        try {
+            jmapCall(
+                session.apiUrl,
+                jmapDestroyRequest(accountId, emailId),
+                authorization,
+                pin,
+                post,
+                trust,
+                policy,
+                accountKey,
+            )
+        } catch (_: JmapFailure) {
+        }
         throw failure
     }
 }
