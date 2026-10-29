@@ -5,34 +5,7 @@
     native <methods>;
 }
 
-# Classes the native layer looks up with FindClass and calls or constructs (GetMethodID/GetStaticMethodID/
-# NewObject, including @JvmStatic companion entry points). Keep the classes, all members, and companions.
-# Keep this list in sync with: grep -rhoE '"org/dlang/[^"]+"' app/src/main/cpp
--keep class org.dlang.liveimap.engine.KeyChainSigner** { *; }
--keep class org.dlang.liveimap.engine.LibetpanMailSession** { *; }
--keep class org.dlang.liveimap.engine.MailCharconv** { *; }
--keep class org.dlang.liveimap.engine.MailCharsetsKt { *; }
--keep class org.dlang.liveimap.engine.PeerTrust** { *; }
--keep class org.dlang.liveimap.session.ConnectionLost { *; }
--keep class org.dlang.liveimap.session.FolderEntry { *; }
--keep class org.dlang.liveimap.session.ImapAuthKt { *; }
--keep class org.dlang.liveimap.session.IndexRow { *; }
--keep class org.dlang.liveimap.session.MailFailure { *; }
--keep class org.dlang.liveimap.session.MessageRef { *; }
--keep class org.dlang.liveimap.session.MimePart { *; }
--keep class org.dlang.liveimap.session.Namespace { *; }
--keep enum org.dlang.liveimap.session.NamespaceKind { *; }
--keep class org.dlang.liveimap.session.SelectResult { *; }
--keep class org.dlang.liveimap.session.SortField { *; }
--keep class org.dlang.liveimap.session.ThreadHeader { *; }
--keep class org.dlang.liveimap.engine.SessionOpen { *; }
--keep class org.dlang.liveimap.engine.CopyMoveResult { *; }
--keep class org.dlang.liveimap.session.ClientFetch { *; }
--keep class org.dlang.liveimap.session.ClientHeaders { *; }
--keep class org.dlang.liveimap.session.ThreadFlat { *; }
--keep class org.dlang.liveimap.ui.reader.PartText** { *; }
--keep class org.dlang.liveimap.ui.compose.MimeDecodeException { *; }
--keep class org.dlang.liveimap.ui.reader.MimeTextResult { *; }
+# App classes C names are @Keep. JDK classes need no rule.
 
 # Reflection: BuildConfig.GIT_COMMIT is read with getField by the lab instrumentation (LabSuiteTest).
 -keep class com.davidlang.liveimap.BuildConfig { *; }

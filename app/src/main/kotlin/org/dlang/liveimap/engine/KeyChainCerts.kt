@@ -120,6 +120,7 @@ object KeyChainCerts {
  */
 class ImportedKeyStillPresent(val alias: String) : Exception(alias)
 
+@androidx.annotation.Keep
 object KeyChainSigner {
     const val RSA_PKCS1 = 0
     const val RSA_RAW = 1

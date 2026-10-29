@@ -19,6 +19,7 @@ import javax.net.ssl.SSLSessionContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
+@androidx.annotation.Keep
 object PeerTrust {
     @JvmStatic
     fun check(host: String, ders: List<ByteArray>, pin: String): String = peerVerdict(host, ders, pin)

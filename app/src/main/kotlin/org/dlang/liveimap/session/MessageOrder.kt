@@ -33,6 +33,7 @@ class MessageOrder(
 }
 
 /** Rows fetched for one client-sort chunk. A UID the server no longer has is absent. */
+@androidx.annotation.Keep
 class ClientFetch(
     val uids: LongArray,
     val numbers: LongArray,
@@ -41,6 +42,7 @@ class ClientFetch(
 )
 
 /** Headers for a client thread, one captured UID set. */
+@androidx.annotation.Keep
 class ClientHeaders(
     val uids: LongArray,
     val messageId: Array<String>,
@@ -51,6 +53,7 @@ class ClientHeaders(
 )
 
 /** Thread order as arrays: preorder [uids] and [depths]. A negative uid is a placeholder with no message. */
+@androidx.annotation.Keep
 class ThreadFlat(
     val uids: LongArray,
     val depths: ShortArray,

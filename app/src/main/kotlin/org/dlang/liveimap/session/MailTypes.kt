@@ -1,7 +1,11 @@
 package org.dlang.liveimap.session
 
+import androidx.annotation.Keep
+
+@Keep
 open class MailFailure(val text: String) : Exception(text)
 
+@Keep
 class ConnectionLost(text: String) : MailFailure(text)
 
 sealed interface ConnectionState {
@@ -153,6 +157,7 @@ sealed class MailboxChange {
     data object Reconnected : MailboxChange()
 }
 
+@Keep
 data class SelectResult(
     val uidValidity: Long,
     val uidNext: Long,

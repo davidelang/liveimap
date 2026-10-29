@@ -176,6 +176,7 @@ extern std::atomic<bool> gLabMaxTls12;
 std::string tlsFailureReason();
 
 extern thread_local JNIEnv * mimeEnv;
+bool resolveMimeJni(JNIEnv * env);
 
 thread_local uint64_t tlsMaxResultUids = 0;
 thread_local bool tlsResultUidCap = false;
@@ -245,13 +246,17 @@ struct SecretWipe {
     ~SecretWipe() { wipeSecret(secret); }
 };
 
-// One IDLE event held until nativeWatch publishes that generation or clears it.
+// One IDLE note on the session's lock-free stack (newest at noteHead). The take reverses to FIFO.
 struct WatchNote {
+    WatchNote * next = nullptr;
+    uint64_t generation = 0;
     int kind = 0;
     int exists = 0;
     jlong uid = 0;
     std::vector<std::string> flags;
 };
+
+const int kNoteCap = 1024;
 
 
 struct TrafficFile {
@@ -451,6 +456,14 @@ struct LiveSession {
     ~LiveSession() {
         int fd = jobFd.exchange(-1);
         if (fd >= 0) close(fd);
+        int notes = noteFd.exchange(-1);
+        if (notes >= 0) close(notes);
+        WatchNote * left = noteHead.exchange(nullptr);
+        while (left != nullptr) {
+            WatchNote * nxt = left->next;
+            delete left;
+            left = nxt;
+        }
         JNIEnv * env = nullptr;
         if (keyChainKey != nullptr && gVm != nullptr
             && gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_OK && env != nullptr) {
@@ -486,6 +499,13 @@ struct LiveSession {
     mailimap * stagedReady = nullptr;
     std::thread owner;
     std::atomic<int> jobFd{-1};
+    std::atomic<int> noteFd{-1};
+    std::atomic<WatchNote *> noteHead{nullptr};
+    std::atomic<int> noteCount{0};
+    std::atomic<bool> noteOverflow{false};
+    std::atomic<bool> noteStop{false};
+    // One nativeWatchTake at a time. Not a lock on the note list.
+    std::atomic<int> noteTaker{0};
     std::atomic<OwnerJob *> jobHead{nullptr};
     std::atomic<int> jobKick{0};
     std::atomic<bool> ownerStop{false};
@@ -497,12 +517,10 @@ struct LiveSession {
     std::atomic<int> watchPhase{0};
     int startState = 0;
     std::string startError;
-    // 0 queue, 1 deliver to the published generation, 2 drop. Owner thread only.
-    int watchGate = 0;
-    std::vector<WatchNote> watchQueue;
+    // Set once nativeWatch has returned this generation to Kotlin. A WatchLost before that is not a live IDLE.
+    bool watchArmed = false;
     bool watchLostBeforePublish = false;
     bool watchEnded = false;
-    jobject selfGlobal = nullptr;
     uint32_t watchUidValidity = 0;
     int watchExists = 0;
     // At most one ShownFlags (kind 5) per network IDLE wake.
@@ -529,43 +547,33 @@ int (* gKeepUnselect)(mailimap *) = mailimap_unselect;
 struct JniCache {
     jclass mailFailure = nullptr;
     jclass connectionLost = nullptr;
-    jclass indexRow = nullptr;
-    jclass folderEntry = nullptr;
-    jclass ns = nullptr;
-    jclass nsKind = nullptr;
     jclass selectResult = nullptr;
-    jclass mimePart = nullptr;
     jclass mimeTextResult = nullptr;
-    jclass messageRef = nullptr;
     jclass arrayList = nullptr;
-    jclass hashSet = nullptr;
-    jclass longCls = nullptr;
-    jclass integerCls = nullptr;
+    jclass string = nullptr;
+    jclass objectClass = nullptr;
+    jclass byteArray = nullptr;
     jclass sessionOpen = nullptr;
     jclass copyMove = nullptr;
-    jmethodID indexRowInit = nullptr;
-    jmethodID folderInit = nullptr;
-    jmethodID nsInit = nullptr;
+    jclass clientFetch = nullptr;
+    jclass clientHeaders = nullptr;
+    jclass threadFlat = nullptr;
+    jclass peerTrust = nullptr;
+    jclass imapAuth = nullptr;
+    jclass mimeDecodeEx = nullptr;
     jmethodID selectInit = nullptr;
-    jmethodID mimeInit = nullptr;
     jmethodID mimeTextResultInit = nullptr;
-    jmethodID messageRefInit = nullptr;
     jmethodID listInit = nullptr;
     jmethodID listAdd = nullptr;
-    jmethodID listSize = nullptr;
-    jmethodID listGet = nullptr;
-    jmethodID setInit = nullptr;
-    jmethodID setAdd = nullptr;
-    jmethodID longValueOf = nullptr;
-    jmethodID integerValueOf = nullptr;
     jmethodID sessionOpenInit = nullptr;
     jmethodID copyMoveInit = nullptr;
-    jmethodID onWatch = nullptr;
-    jmethodID publishWatch = nullptr;
-    jmethodID clearPublishedWatch = nullptr;
-    jfieldID personal = nullptr;
-    jfieldID other = nullptr;
-    jfieldID shared = nullptr;
+    jmethodID clientFetchInit = nullptr;
+    jmethodID clientHeadersInit = nullptr;
+    jmethodID threadFlatInit = nullptr;
+    jmethodID peerCheck = nullptr;
+    jmethodID peerOffer = nullptr;
+    jmethodID imapAuthOrder = nullptr;
+    jmethodID chooseImapAuth = nullptr;
 };
 
 JniCache gJni;
@@ -892,77 +900,47 @@ static bool requireStatic(JNIEnv * env, jmethodID * slot, jclass cls, const char
     return *slot != nullptr;
 }
 
-static bool requireField(JNIEnv * env, jfieldID * slot, jclass cls, const char * name, const char * sig) {
-    *slot = env->GetStaticFieldID(cls, name, sig);
-    return *slot != nullptr;
-}
-
 // Every id used from native code. A failed FindClass, GetMethodID, or GetFieldID leaves its exception
 // pending (the class or member name) and JNI_OnLoad returns JNI_ERR.
 bool resolveJni(JNIEnv * env) {
     if (!requireClass(env, &gJni.mailFailure, "org/dlang/liveimap/session/MailFailure")) return false;
     if (!requireClass(env, &gJni.connectionLost, "org/dlang/liveimap/session/ConnectionLost")) return false;
-    if (!requireClass(env, &gJni.indexRow, "org/dlang/liveimap/session/IndexRow")) return false;
-    if (!requireClass(env, &gJni.folderEntry, "org/dlang/liveimap/session/FolderEntry")) return false;
-    if (!requireClass(env, &gJni.ns, "org/dlang/liveimap/session/Namespace")) return false;
-    if (!requireClass(env, &gJni.nsKind, "org/dlang/liveimap/session/NamespaceKind")) return false;
     if (!requireClass(env, &gJni.selectResult, "org/dlang/liveimap/session/SelectResult")) return false;
-    if (!requireClass(env, &gJni.mimePart, "org/dlang/liveimap/session/MimePart")) return false;
     if (!requireClass(env, &gJni.mimeTextResult, "org/dlang/liveimap/ui/reader/MimeTextResult")) return false;
-    if (!requireClass(env, &gJni.messageRef, "org/dlang/liveimap/session/MessageRef")) return false;
     if (!requireClass(env, &gJni.arrayList, "java/util/ArrayList")) return false;
-    if (!requireClass(env, &gJni.hashSet, "java/util/HashSet")) return false;
-    if (!requireClass(env, &gJni.longCls, "java/lang/Long")) return false;
-    if (!requireClass(env, &gJni.integerCls, "java/lang/Integer")) return false;
+    if (!requireClass(env, &gJni.string, "java/lang/String")) return false;
+    if (!requireClass(env, &gJni.objectClass, "java/lang/Object")) return false;
+    if (!requireClass(env, &gJni.byteArray, "[B")) return false;
     if (!requireClass(env, &gJni.sessionOpen, "org/dlang/liveimap/engine/SessionOpen")) return false;
     if (!requireClass(env, &gJni.copyMove, "org/dlang/liveimap/engine/CopyMoveResult")) return false;
+    if (!requireClass(env, &gJni.clientFetch, "org/dlang/liveimap/session/ClientFetch")) return false;
+    if (!requireClass(env, &gJni.clientHeaders, "org/dlang/liveimap/session/ClientHeaders")) return false;
+    if (!requireClass(env, &gJni.threadFlat, "org/dlang/liveimap/session/ThreadFlat")) return false;
+    if (!requireClass(env, &gJni.peerTrust, "org/dlang/liveimap/engine/PeerTrust")) return false;
+    if (!requireClass(env, &gJni.imapAuth, "org/dlang/liveimap/session/ImapAuthNative")) return false;
+    if (!requireClass(env, &gJni.mimeDecodeEx, "org/dlang/liveimap/ui/compose/MimeDecodeException")) return false;
 
-    if (!requireMethod(env, &gJni.indexRowInit, gJni.indexRow, "<init>",
-        "(Lorg/dlang/liveimap/session/MessageRef;ILjava/util/Set;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZLjava/lang/String;Ljava/lang/String;Z)V")) return false;
-    if (!requireMethod(env, &gJni.folderInit, gJni.folderEntry, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;ZCLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V")) return false;
-    if (!requireMethod(env, &gJni.nsInit, gJni.ns, "<init>",
-        "(Ljava/lang/String;CLorg/dlang/liveimap/session/NamespaceKind;)V")) return false;
     if (!requireMethod(env, &gJni.selectInit, gJni.selectResult, "<init>", "(JJI)V")) return false;
-    if (!requireMethod(env, &gJni.mimeInit, gJni.mimePart, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V")) return false;
     if (!requireMethod(env, &gJni.mimeTextResultInit, gJni.mimeTextResult, "<init>",
         "(ZLjava/lang/String;Ljava/lang/String;ZZ)V")) return false;
-    if (!requireMethod(env, &gJni.messageRefInit, gJni.messageRef, "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;JJ)V")) return false;
     if (!requireMethod(env, &gJni.listInit, gJni.arrayList, "<init>", "()V")) return false;
     if (!requireMethod(env, &gJni.listAdd, gJni.arrayList, "add", "(Ljava/lang/Object;)Z")) return false;
-    if (!requireMethod(env, &gJni.listSize, gJni.arrayList, "size", "()I")) return false;
-    if (!requireMethod(env, &gJni.listGet, gJni.arrayList, "get", "(I)Ljava/lang/Object;")) return false;
-    if (!requireMethod(env, &gJni.setInit, gJni.hashSet, "<init>", "()V")) return false;
-    if (!requireMethod(env, &gJni.setAdd, gJni.hashSet, "add", "(Ljava/lang/Object;)Z")) return false;
-    if (!requireStatic(env, &gJni.longValueOf, gJni.longCls, "valueOf", "(J)Ljava/lang/Long;")) return false;
-    if (!requireStatic(env, &gJni.integerValueOf, gJni.integerCls, "valueOf", "(I)Ljava/lang/Integer;")) return false;
     if (!requireMethod(env, &gJni.sessionOpenInit, gJni.sessionOpen, "<init>",
         "(JLjava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V")) return false;
     if (!requireMethod(env, &gJni.copyMoveInit, gJni.copyMove, "<init>", "([JJ)V")) return false;
-    if (!requireField(env, &gJni.personal, gJni.nsKind, "Personal",
-        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
-    if (!requireField(env, &gJni.other, gJni.nsKind, "Other",
-        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
-    if (!requireField(env, &gJni.shared, gJni.nsKind, "Shared",
-        "Lorg/dlang/liveimap/session/NamespaceKind;")) return false;
-    jclass sessionCls = env->FindClass("org/dlang/liveimap/engine/LibetpanMailSession");
-    if (sessionCls == nullptr) return false;
-    if (!requireMethod(env, &gJni.onWatch, sessionCls, "onNativeWatch", "(JIIJ[Ljava/lang/String;)V")) {
-        env->DeleteLocalRef(sessionCls);
-        return false;
-    }
-    if (!requireMethod(env, &gJni.publishWatch, sessionCls, "publishWatch", "(JLjava/lang/Object;)V")) {
-        env->DeleteLocalRef(sessionCls);
-        return false;
-    }
-    if (!requireMethod(env, &gJni.clearPublishedWatch, sessionCls, "clearPublishedWatch", "(J)V")) {
-        env->DeleteLocalRef(sessionCls);
-        return false;
-    }
-    env->DeleteLocalRef(sessionCls);
-    return true;
+    if (!requireMethod(env, &gJni.clientFetchInit, gJni.clientFetch, "<init>", "([J[J[Z[Ljava/lang/String;)V")) return false;
+    if (!requireMethod(env, &gJni.clientHeadersInit, gJni.clientHeaders, "<init>",
+        "([J[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)V")) return false;
+    if (!requireMethod(env, &gJni.threadFlatInit, gJni.threadFlat, "<init>", "([J[S)V")) return false;
+    if (!requireStatic(env, &gJni.peerCheck, gJni.peerTrust, "check",
+        "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;")) return false;
+    if (!requireStatic(env, &gJni.peerOffer, gJni.peerTrust, "offer",
+        "(Ljava/util/List;)[Ljava/lang/String;")) return false;
+    if (!requireStatic(env, &gJni.imapAuthOrder, gJni.imapAuth, "imapAuthOrderLine",
+        "(Ljava/lang/String;ZZZLjava/lang/String;Z)Ljava/lang/String;")) return false;
+    if (!requireStatic(env, &gJni.chooseImapAuth, gJni.imapAuth, "chooseImapAuth",
+        "(Ljava/lang/String;ZZZLjava/lang/String;Z)Ljava/lang/String;")) return false;
+    return resolveMimeJni(env);
 }
 
 /* Standard UTF-8 (not JNI modified UTF-8) because these strings go on the wire (F41): a supplementary character
@@ -1278,8 +1256,12 @@ void ownerLoop(std::shared_ptr<LiveSession> session) {
     session.reset();
 }
 
+void ensureNoteFd(LiveSession * session);
+void kickNotes(LiveSession * session);
+
 void startOwner(const std::shared_ptr<LiveSession> & session) {
     if (session->jobFd.load() < 0) session->jobFd.store(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK));
+    ensureNoteFd(session.get());
     session->owner = std::thread(ownerLoop, session);
 }
 
@@ -1930,29 +1912,87 @@ std::string partEncoding(struct mailimap_body_fields * fields) {
 // nativeFetchStructureAt (the next 64 levels from there). Nothing is dropped.
 const int kMaxMimeDepth = 64;
 
-jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section, int depth = 0);
+// Big-endian bytes, same layout as mimePartOf. filename null is u16 0xFFFF.
+struct MimeWire {
+    std::string section;
+    std::string type;
+    std::string subtype;
+    std::string disposition;
+    bool hasFilename = false;
+    std::string filename;
+    int size = 0;
+    std::string charset;
+    std::string encoding;
+    std::string format;
+    bool delSp = false;
+    std::vector<MimeWire> children;
+};
 
-jobject tooDeepPart(JNIEnv * env, const std::string & section) {
-    jobject children = newList(env);
-    jstring jSection = newString(env, section.c_str());
-    jstring jType = newString(env, "application");
-    jstring jSubtype = newString(env, "x-liveimap-too-deep");
-    jstring jDisp = newString(env, "attachment");
-    jstring jFile = newString(env, "nested part");
-    jstring jEmpty = newString(env, "");
-    jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
-        jEmpty, jEmpty, jEmpty, JNI_FALSE);
-    env->DeleteLocalRef(jSection);
-    env->DeleteLocalRef(jType);
-    env->DeleteLocalRef(jSubtype);
-    env->DeleteLocalRef(jDisp);
-    env->DeleteLocalRef(jFile);
-    env->DeleteLocalRef(jEmpty);
-    env->DeleteLocalRef(children);
-    return obj;
+void putU16(std::string * out, uint16_t v) {
+    out->push_back(static_cast<char>(v >> 8));
+    out->push_back(static_cast<char>(v));
 }
 
-jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const std::string & section, int depth) {
+void putI32(std::string * out, int32_t v) {
+    uint32_t u = static_cast<uint32_t>(v);
+    out->push_back(static_cast<char>(u >> 24));
+    out->push_back(static_cast<char>(u >> 16));
+    out->push_back(static_cast<char>(u >> 8));
+    out->push_back(static_cast<char>(u));
+}
+
+void putStr(std::string * out, const std::string & s) {
+    uint16_t n = s.size() > 65535 ? 65535 : static_cast<uint16_t>(s.size());
+    putU16(out, n);
+    out->append(s.data(), n);
+}
+
+void appendMime(std::string * out, const MimeWire & part) {
+    putStr(out, part.section);
+    putStr(out, part.type);
+    putStr(out, part.subtype);
+    putStr(out, part.disposition);
+    if (!part.hasFilename) putU16(out, 0xFFFF);
+    else {
+        // 0xFFFF is the null filename. A longer name is cut so it cannot look null.
+        uint16_t n = part.filename.size() > 65534 ? 65534 : static_cast<uint16_t>(part.filename.size());
+        putU16(out, n);
+        out->append(part.filename.data(), n);
+    }
+    putI32(out, part.size);
+    putStr(out, part.charset);
+    putStr(out, part.encoding);
+    putStr(out, part.format);
+    out->push_back(part.delSp ? 1 : 0);
+    uint16_t n = part.children.size() > 65535 ? 65535 : static_cast<uint16_t>(part.children.size());
+    putU16(out, n);
+    for (uint16_t i = 0; i < n; ++i) appendMime(out, part.children[i]);
+}
+
+jbyteArray mimeBytes(JNIEnv * env, const MimeWire & part) {
+    std::string raw;
+    appendMime(&raw, part);
+    if (raw.size() > static_cast<size_t>(INT_MAX)) return nullptr;
+    jbyteArray arr = env->NewByteArray(static_cast<jsize>(raw.size()));
+    if (arr == nullptr) return nullptr;
+    if (!raw.empty()) env->SetByteArrayRegion(arr, 0, static_cast<jsize>(raw.size()), reinterpret_cast<const jbyte *>(raw.data()));
+    return arr;
+}
+
+bool mimeFromBody(struct mailimap_body * body, const std::string & section, int depth, MimeWire * out);
+
+MimeWire tooDeepPart(const std::string & section) {
+    MimeWire part;
+    part.section = section;
+    part.type = "application";
+    part.subtype = "x-liveimap-too-deep";
+    part.disposition = "attachment";
+    part.hasFilename = true;
+    part.filename = "nested part";
+    return part;
+}
+
+bool mimeFrom1(struct mailimap_body_type_1part * part, const std::string & section, int depth, MimeWire * out) {
     std::string type;
     std::string subtype;
     describe1(part, &type, &subtype);
@@ -1961,91 +2001,63 @@ jobject mimeFrom1(JNIEnv * env, struct mailimap_body_type_1part * part, const st
         ? part->bd_ext_1part->bd_disposition : nullptr;
     const char * dispType = disp != nullptr ? disp->dsp_type : "";
     const char * filename = filenameOf(fields, disp);
-    int size = fields != nullptr ? static_cast<int>(fields->bd_size) : 0;
-    jobject children = newList(env);
+    out->section = section;
+    out->type = type;
+    out->subtype = subtype;
+    out->disposition = dispType != nullptr ? dispType : "";
+    out->hasFilename = filename != nullptr;
+    if (filename != nullptr) out->filename = filename;
+    out->size = fields != nullptr ? static_cast<int>(fields->bd_size) : 0;
+    out->charset = partCharset(fields);
+    out->encoding = partEncoding(fields);
+    // RFC 3676: format=flowed and DelSp=yes, so the reader can unwrap flowed text.
+    const char * format = fields != nullptr ? paramValue(fields->bd_parameter, "format") : nullptr;
+    const char * delsp = fields != nullptr ? paramValue(fields->bd_parameter, "delsp") : nullptr;
+    out->format = format != nullptr ? format : "";
+    out->delSp = delsp != nullptr && strcasecmp(delsp, "yes") == 0;
     if (part != nullptr && part->bd_type == MAILIMAP_BODY_TYPE_1PART_MSG && part->bd_data.bd_type_msg != nullptr
         && part->bd_data.bd_type_msg->bd_body != nullptr) {
         struct mailimap_body * inner = part->bd_data.bd_type_msg->bd_body;
         // F112 (RFC 3501 6.4.5): a multipart body of message/rfc822 has no number of its own; its children are
         // <section>.1, <section>.2 ... Only a single-part body is <section>.1 (as findPreferred does).
         const std::string innerSection = inner->bd_type == MAILIMAP_BODY_MPART ? section : section + ".1";
-        jobject child = mimeFromBody(env, inner, innerSection, depth + 1);
-        if (child != nullptr) {
-            listAdd(env, children, child);
-            env->DeleteLocalRef(child);
-        }
+        MimeWire child;
+        if (mimeFromBody(inner, innerSection, depth + 1, &child)) out->children.push_back(std::move(child));
     }
-    jstring jSection = newString(env, section.c_str());
-    jstring jType = newString(env, type.c_str());
-    jstring jSubtype = newString(env, subtype.c_str());
-    jstring jDisp = newString(env, dispType != nullptr ? dispType : "");
-    jstring jFile = filename != nullptr ? newString(env, filename) : nullptr;
-    jstring jCharset = newString(env, partCharset(fields).c_str());
-    jstring jEncoding = newString(env, partEncoding(fields).c_str());
-    // RFC 3676: format=flowed and DelSp=yes, so the reader can unwrap flowed text.
-    const char * format = fields != nullptr ? paramValue(fields->bd_parameter, "format") : nullptr;
-    const char * delsp = fields != nullptr ? paramValue(fields->bd_parameter, "delsp") : nullptr;
-    jstring jFormat = newString(env, format != nullptr ? format : "");
-    jboolean jDelSp = delsp != nullptr && strcasecmp(delsp, "yes") == 0 ? JNI_TRUE : JNI_FALSE;
-    jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, size, children,
-        jCharset, jEncoding, jFormat, jDelSp);
-    env->DeleteLocalRef(jFormat);
-    env->DeleteLocalRef(jSection);
-    env->DeleteLocalRef(jType);
-    env->DeleteLocalRef(jSubtype);
-    env->DeleteLocalRef(jDisp);
-    if (jFile != nullptr) env->DeleteLocalRef(jFile);
-    env->DeleteLocalRef(jCharset);
-    env->DeleteLocalRef(jEncoding);
-    env->DeleteLocalRef(children);
-    return obj;
+    return true;
 }
 
-jobject mimeFromBody(JNIEnv * env, struct mailimap_body * body, const std::string & section, int depth) {
-    if (body == nullptr) {
-        return nullptr;
-    }
+bool mimeFromBody(struct mailimap_body * body, const std::string & section, int depth, MimeWire * out) {
+    if (body == nullptr || out == nullptr) return false;
     if (depth >= kMaxMimeDepth) {
-        return tooDeepPart(env, section.empty() ? "1" : section);
+        *out = tooDeepPart(section.empty() ? "1" : section);
+        return true;
     }
     if (body->bd_type == MAILIMAP_BODY_MPART && body->bd_data.bd_body_mpart != nullptr) {
         struct mailimap_body_type_mpart * mpart = body->bd_data.bd_body_mpart;
         struct mailimap_body_fld_dsp * disp = mpart->bd_ext_mpart != nullptr ? mpart->bd_ext_mpart->bd_disposition : nullptr;
         const char * filename = disp != nullptr ? paramValue(disp->dsp_attributes, "filename") : nullptr;
-        jobject children = newList(env);
+        out->section = section;
+        out->type = "multipart";
+        out->subtype = mpart->bd_media_subtype != nullptr ? mpart->bd_media_subtype : "mixed";
+        out->disposition = disp != nullptr && disp->dsp_type != nullptr ? disp->dsp_type : "";
+        out->hasFilename = filename != nullptr;
+        if (filename != nullptr) out->filename = filename;
+        out->size = 0;
         int index = 1;
         if (mpart->bd_list != nullptr) {
             for (clistiter * cur = clist_begin(mpart->bd_list); cur != nullptr; cur = clist_next(cur), ++index) {
                 std::string childSection = section.empty() ? std::to_string(index) : section + "." + std::to_string(index);
-                jobject child = mimeFromBody(env, static_cast<struct mailimap_body *>(clist_content(cur)), childSection,
-                    depth + 1);
-                if (child != nullptr) {
-                    listAdd(env, children, child);
-                    env->DeleteLocalRef(child);
+                MimeWire child;
+                if (mimeFromBody(static_cast<struct mailimap_body *>(clist_content(cur)), childSection, depth + 1, &child)) {
+                    out->children.push_back(std::move(child));
                 }
             }
         }
-        jstring jSection = newString(env, section.c_str());
-        jstring jType = newString(env, "multipart");
-        jstring jSubtype = newString(env, mpart->bd_media_subtype != nullptr ? mpart->bd_media_subtype : "mixed");
-        jstring jDisp = newString(env, disp != nullptr && disp->dsp_type != nullptr ? disp->dsp_type : "");
-        jstring jFile = filename != nullptr ? newString(env, filename) : nullptr;
-        jstring jCharset = newString(env, "");
-        jstring jEncoding = newString(env, "");
-        jobject obj = env->NewObject(gJni.mimePart, gJni.mimeInit, jSection, jType, jSubtype, jDisp, jFile, 0, children,
-            jCharset, jEncoding, jCharset, JNI_FALSE);
-        env->DeleteLocalRef(jSection);
-        env->DeleteLocalRef(jType);
-        env->DeleteLocalRef(jSubtype);
-        env->DeleteLocalRef(jDisp);
-        if (jFile != nullptr) env->DeleteLocalRef(jFile);
-        env->DeleteLocalRef(jCharset);
-        env->DeleteLocalRef(jEncoding);
-        env->DeleteLocalRef(children);
-        return obj;
+        return true;
     }
     std::string sec = section.empty() ? "1" : section;
-    return mimeFrom1(env, body->bd_data.bd_body_1part, sec, depth);
+    return mimeFrom1(body->bd_data.bd_body_1part, sec, depth, out);
 }
 
 struct Row {
@@ -2324,39 +2336,120 @@ int fetchRows(mailimap * imap, struct mailimap_set * set, bool uidFetch, bool wi
     return r;
 }
 
-jobject rowObject(JNIEnv * env, const Row & row, const std::string & preview, bool hasPreview,
-    jstring accountId, const char * mailbox, jlong uidValidity) {
-    jobject flags = env->NewObject(gJni.hashSet, gJni.setInit);
-    for (const std::string & flag : row.flags) {
-        jstring js = newString(env, flag.c_str());
-        env->CallBooleanMethod(flags, gJni.setAdd, js);
-        env->DeleteLocalRef(js);
+void releaseOwned(JNIEnv * env, jobject * refs, int n) {
+    for (int i = 0; i < n; ++i) {
+        if (refs[i] != nullptr) env->DeleteLocalRef(refs[i]);
     }
-    jstring from = newString(env, row.from.c_str());
-    jstring subject = newString(env, row.subject.c_str());
-    jstring date = newString(env, row.date.c_str());
-    jstring prev = hasPreview ? newString(env, preview.c_str()) : nullptr;
-    jstring recipients = newString(env, row.recipients.c_str());
+}
+
+jobjectArray packColumns(JNIEnv * env, jobject * cols, int n) {
+    for (int i = 0; i < n; ++i) {
+        if (cols[i] == nullptr) {
+            releaseOwned(env, cols, n);
+            return nullptr;
+        }
+    }
+    jobjectArray out = env->NewObjectArray(n, gJni.objectClass, nullptr);
+    if (out == nullptr) {
+        releaseOwned(env, cols, n);
+        return nullptr;
+    }
+    for (int i = 0; i < n; ++i) {
+        env->SetObjectArrayElement(out, i, cols[i]);
+        env->DeleteLocalRef(cols[i]);
+        cols[i] = nullptr;
+        if (env->ExceptionCheck()) {
+            env->DeleteLocalRef(out);
+            releaseOwned(env, cols, n);
+            return nullptr;
+        }
+    }
+    return out;
+}
+
+jlongArray longColumn(JNIEnv * env, const std::vector<jlong> & values) {
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(values.size()));
+    if (arr != nullptr && !values.empty()) env->SetLongArrayRegion(arr, 0, static_cast<jsize>(values.size()), values.data());
+    return arr;
+}
+
+jintArray intColumn(JNIEnv * env, const std::vector<jint> & values) {
+    jintArray arr = env->NewIntArray(static_cast<jsize>(values.size()));
+    if (arr != nullptr && !values.empty()) env->SetIntArrayRegion(arr, 0, static_cast<jsize>(values.size()), values.data());
+    return arr;
+}
+
+bool setStringAt(JNIEnv * env, jobjectArray col, jsize i, const char * text) {
+    jstring js = newString(env, text != nullptr ? text : "");
+    if (js == nullptr) return false;
+    env->SetObjectArrayElement(col, i, js);
+    env->DeleteLocalRef(js);
+    return !env->ExceptionCheck();
+}
+
+jobjectArray indexColumns(JNIEnv * env, const std::vector<Row> & rows, jstring accountId, const char * mailbox,
+    jlong uidValidity) {
+    const jsize n = static_cast<jsize>(rows.size());
+    std::vector<jlong> uids(static_cast<size_t>(n)), valids(static_cast<size_t>(n)), epochs(static_cast<size_t>(n));
+    std::vector<jint> seq(static_cast<size_t>(n)), sizes(static_cast<size_t>(n)), toMe(static_cast<size_t>(n));
+    std::vector<jint> attachment(static_cast<size_t>(n)), failed(static_cast<size_t>(n));
+    for (jsize i = 0; i < n; ++i) {
+        const Row & row = rows[static_cast<size_t>(i)];
+        uids[static_cast<size_t>(i)] = static_cast<jlong>(row.uid);
+        valids[static_cast<size_t>(i)] = uidValidity;
+        epochs[static_cast<size_t>(i)] = row.epoch;
+        seq[static_cast<size_t>(i)] = static_cast<jint>(row.sequence);
+        sizes[static_cast<size_t>(i)] = row.size;
+        toMe[static_cast<size_t>(i)] = row.toMe ? 1 : 0;
+        attachment[static_cast<size_t>(i)] = row.hasAttachment ? 1 : 0;
+        failed[static_cast<size_t>(i)] = row.previewFailed ? 1 : 0;
+    }
+    jobject cols[17];
+    cols[0] = longColumn(env, uids);
+    cols[1] = longColumn(env, valids);
+    cols[2] = longColumn(env, epochs);
+    cols[3] = intColumn(env, seq);
+    cols[4] = intColumn(env, sizes);
+    cols[5] = intColumn(env, toMe);
+    cols[6] = intColumn(env, attachment);
+    cols[7] = intColumn(env, failed);
+    cols[8] = env->NewObjectArray(n, gJni.string, accountId);
     jstring box = newString(env, mailbox != nullptr ? mailbox : "");
-    jstring headerNote = newString(env, row.headerNote.c_str());
-    jobject ref = env->NewObject(gJni.messageRef, gJni.messageRefInit, accountId, box, uidValidity,
-        static_cast<jlong>(row.uid));
-    jobject obj = ref == nullptr ? nullptr : env->NewObject(gJni.indexRow, gJni.indexRowInit,
-        ref, static_cast<jint>(row.sequence), flags,
-        static_cast<jlong>(row.epoch), static_cast<jint>(row.size),
-        from, subject, date, prev,
-        static_cast<jboolean>(row.toMe), static_cast<jboolean>(row.hasAttachment),
-        recipients, headerNote, static_cast<jboolean>(row.previewFailed));
-    if (ref != nullptr) env->DeleteLocalRef(ref);
-    env->DeleteLocalRef(flags);
-    env->DeleteLocalRef(from);
-    env->DeleteLocalRef(subject);
-    env->DeleteLocalRef(date);
-    if (prev != nullptr) env->DeleteLocalRef(prev);
-    if (recipients != nullptr) env->DeleteLocalRef(recipients);
+    cols[9] = box != nullptr ? env->NewObjectArray(n, gJni.string, box) : nullptr;
     if (box != nullptr) env->DeleteLocalRef(box);
-    if (headerNote != nullptr) env->DeleteLocalRef(headerNote);
-    return obj;
+    cols[10] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[11] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[12] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[13] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[14] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[15] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[16] = env->NewObjectArray(n, gJni.string, nullptr);
+    bool ok = true;
+    for (int c = 0; c < 17; ++c) if (cols[c] == nullptr) ok = false;
+    if (ok) {
+        for (jsize i = 0; i < n && ok; ++i) {
+            const Row & row = rows[static_cast<size_t>(i)];
+            std::string flags;
+            for (size_t f = 0; f < row.flags.size(); ++f) {
+                if (f != 0) flags.push_back('\0');
+                flags += row.flags[f];
+            }
+            ok = setStringAt(env, static_cast<jobjectArray>(cols[10]), i, row.from.c_str())
+                && setStringAt(env, static_cast<jobjectArray>(cols[11]), i, row.subject.c_str())
+                && setStringAt(env, static_cast<jobjectArray>(cols[12]), i, row.date.c_str())
+                && setStringAt(env, static_cast<jobjectArray>(cols[14]), i, row.recipients.c_str())
+                && setStringAt(env, static_cast<jobjectArray>(cols[15]), i, row.headerNote.c_str())
+                && setStringAt(env, static_cast<jobjectArray>(cols[16]), i, flags.c_str());
+            if (ok && row.hasPreview) {
+                ok = setStringAt(env, static_cast<jobjectArray>(cols[13]), i, row.preview.c_str());
+            }
+        }
+    }
+    if (!ok) {
+        releaseOwned(env, cols, 17);
+        return nullptr;
+    }
+    return packColumns(env, cols, 17);
 }
 
 void releaseRow(Row & row) {
@@ -2373,24 +2466,6 @@ void releaseRow(Row & row) {
     wipe(row.recipients);
     wipe(row.headerNote);
     row.structure = nullptr;
-}
-
-jobjectArray indexRowsToArray(JNIEnv * env, jobject list) {
-    jint n = env->CallIntMethod(list, gJni.listSize);
-    if (env->ExceptionCheck()) return nullptr;
-    jobjectArray arr = env->NewObjectArray(n, gJni.indexRow, nullptr);
-    if (arr == nullptr) return nullptr;
-    for (jint i = 0; i < n; ++i) {
-        jobject row = env->CallObjectMethod(list, gJni.listGet, i);
-        if (row == nullptr || env->ExceptionCheck()) {
-            env->DeleteLocalRef(arr);
-            if (row != nullptr) env->DeleteLocalRef(row);
-            return nullptr;
-        }
-        env->SetObjectArrayElement(arr, i, row);
-        env->DeleteLocalRef(row);
-    }
-    return arr;
 }
 
 int selectFullCapture(mailimap * imap, const char * mailbox, uint64_t * modseq, const char * command, bool condstore = false);
@@ -2809,13 +2884,97 @@ bool watchSetupSuperseded(bool closed, uint64_t currentGeneration, uint64_t setu
 }
 
 // Process-wide, so a reconnect's new LiveSession never reuses a generation at or below the floor the Kotlin
-// session kept from the old handle (publishWatch would drop it and every event of that watch).
+// session kept from the old handle (a take of the old generation returns null and drops that generation's notes).
 std::atomic<uint64_t> gWatchGenerationSeq{0};
+
+void ensureNoteFd(LiveSession * session) {
+    if (session == nullptr || session->noteFd.load() >= 0) return;
+    int fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    int expected = -1;
+    if (!session->noteFd.compare_exchange_strong(expected, fd)) {
+        if (fd >= 0) close(fd);
+    }
+}
+
+void kickNotes(LiveSession * session) {
+    if (session == nullptr) return;
+    ensureNoteFd(session);
+    int fd = session->noteFd.load();
+    if (fd >= 0) {
+        uint64_t one = 1;
+        ssize_t ignored = write(fd, &one, sizeof(one));
+        (void)ignored;
+    }
+}
 
 uint64_t bumpWatchGeneration(LiveSession * session) {
     uint64_t next = gWatchGenerationSeq.fetch_add(1) + 1;
     session->watchGeneration.store(next);
+    kickNotes(session);
     return next;
+}
+
+void putI64(std::string * out, int64_t v) {
+    uint64_t u = static_cast<uint64_t>(v);
+    for (int shift = 56; shift >= 0; shift -= 8) out->push_back(static_cast<char>(u >> shift));
+}
+
+void appendNoteBytes(std::string * out, int kind, int exists, jlong uid, const std::vector<std::string> & flags) {
+    out->push_back(static_cast<char>(kind & 0xFF));
+    putI32(out, exists);
+    putI64(out, static_cast<int64_t>(uid));
+    uint16_t n = flags.size() > 65535 ? 65535 : static_cast<uint16_t>(flags.size());
+    putU16(out, n);
+    for (uint16_t i = 0; i < n; ++i) putStr(out, flags[i]);
+}
+
+jbyteArray noteBytes(JNIEnv * env, const std::string & raw) {
+    if (raw.size() > static_cast<size_t>(INT_MAX)) return nullptr;
+    jbyteArray arr = env->NewByteArray(static_cast<jsize>(raw.size()));
+    if (arr == nullptr) return nullptr;
+    if (!raw.empty()) env->SetByteArrayRegion(arr, 0, static_cast<jsize>(raw.size()), reinterpret_cast<const jbyte *>(raw.data()));
+    return arr;
+}
+
+WatchNote * stealNotes(LiveSession * session) {
+    WatchNote * head = session->noteHead.exchange(nullptr);
+    int n = 0;
+    for (WatchNote * p = head; p != nullptr; p = p->next) n++;
+    if (n > 0) session->noteCount.fetch_sub(n);
+    return head;
+}
+
+void deleteNotes(WatchNote * head) {
+    while (head != nullptr) {
+        WatchNote * nxt = head->next;
+        delete head;
+        head = nxt;
+    }
+}
+
+// notes is newest-first. Producer only prepends, so the tail of the live stack stays stable.
+void relinkTail(LiveSession * session, WatchNote * notes) {
+    if (notes == nullptr) return;
+    int n = 1;
+    WatchNote * tail = notes;
+    while (tail->next != nullptr) {
+        tail = tail->next;
+        n++;
+    }
+    session->noteCount.fetch_add(n);
+    WatchNote * live = nullptr;
+    if (session->noteHead.compare_exchange_strong(live, notes)) return;
+    for (;;) {
+        live = session->noteHead.load();
+        if (live == nullptr) {
+            if (session->noteHead.compare_exchange_weak(live, notes)) return;
+            continue;
+        }
+        WatchNote * end = live;
+        while (end->next != nullptr) end = end->next;
+        end->next = notes;
+        return;
+    }
 }
 
 // Owner thread. Leaves IDLE, frees the watch connection, and publishes phase 0.
@@ -2834,11 +2993,6 @@ void finishIdleStop(LiveSession * session) {
         trafficClose(&session->watchTraffic);
         ERR_clear_error();
     }
-    JNIEnv * env = tlsOwnerEnv;
-    if (session->selfGlobal != nullptr && env != nullptr) {
-        env->DeleteGlobalRef(session->selfGlobal);
-        session->selfGlobal = nullptr;
-    }
     session->watchStop.store(false);
     session->watchLost = false;
     session->watchPollFd = -1;
@@ -2849,89 +3003,40 @@ void finishIdleStop(LiveSession * session) {
     else session->watchPhase.notify_all();
 }
 
-void emitWatch(LiveSession * session, int kind, int exists, jlong uid, jobjectArray flags, jlong generation) {
-    if (session->watchPhase.load() != 2) return;
-    if (gVm == nullptr || session->selfGlobal == nullptr) {
-        return;
-    }
-    JNIEnv * env = nullptr;
-    bool attached = false;
-    jint got = gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-    if (got == JNI_EDETACHED) {
-        if (gVm->AttachCurrentThread(&env, nullptr) != 0) {
-            return;
-        }
-        attached = true;
-    }
-    if (env == nullptr) {
-        return;
-    }
-    env->CallVoidMethod(session->selfGlobal, gJni.onWatch, generation, kind, exists, uid, flags);
-    if (env->ExceptionCheck()) {
-        env->ExceptionClear();
-        signalWatchStop(session);
-    }
-    if (flags != nullptr) {
-        env->DeleteLocalRef(flags);
-    }
-    if (attached) {
-        gVm->DetachCurrentThread();
-    }
-}
-
-jobjectArray flagsArray(JNIEnv * env, const std::vector<std::string> & flags);
-
-void flushQueuedWatch(LiveSession * session, jlong generation, const std::vector<WatchNote> & ready) {
-    for (const WatchNote & note : ready) {
-        jobjectArray flags = nullptr;
-        if (note.kind == 2 && gVm != nullptr) {
-            JNIEnv * env = nullptr;
-            gVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
-            if (env != nullptr) flags = flagsArray(env, note.flags);
-        }
-        emitWatch(session, note.kind, note.exists, note.uid, flags, generation);
-    }
-}
-
-// Queue while nativeWatch has not published this generation. Drop after a clear. Deliver after a publish.
+// The owner thread is the only producer. The take prepends nothing; it exchanges the stack.
 void watchTraceQueued(LiveSession * session, int kind, int exists);
 
 void queueWatch(LiveSession * session, int kind, int exists, jlong uid, std::vector<std::string> flags, jlong generation) {
-    std::vector<WatchNote> ready;
-    // Trace before the queue: the note calls into Kotlin.
     if (kind == 0 || kind == 4) watchTraceQueued(session, kind, exists);
-    if (session->watchGate == 2) return;
-    if (session->watchGate == 0) {
-        if (kind == 4) session->watchLostBeforePublish = true;
-        session->watchQueue.push_back(WatchNote{kind, exists, uid, std::move(flags)});
+    if (kind == 4 && !session->watchArmed) session->watchLostBeforePublish = true;
+    auto * note = new WatchNote();
+    note->generation = static_cast<uint64_t>(generation);
+    note->kind = kind;
+    note->exists = exists;
+    note->uid = uid;
+    note->flags = std::move(flags);
+    if (session->noteOverflow.load()) {
+        delete note;
+        kickNotes(session);
         return;
     }
-    ready.swap(session->watchQueue);
-    ready.push_back(WatchNote{kind, exists, uid, std::move(flags)});
-    flushQueuedWatch(session, generation, ready);
-}
-
-void drainWatchQueue(LiveSession * session, jlong generation) {
-    if (session->watchGate != 1 || session->watchQueue.empty()) return;
-    std::vector<WatchNote> ready;
-    ready.swap(session->watchQueue);
-    flushQueuedWatch(session, generation, ready);
+    int prev = session->noteCount.fetch_add(1);
+    if (prev >= kNoteCap) {
+        session->noteCount.fetch_sub(1);
+        session->noteOverflow.store(true);
+        delete note;
+        kickNotes(session);
+        return;
+    }
+    WatchNote * head = session->noteHead.load();
+    do {
+        note->next = head;
+    } while (!session->noteHead.compare_exchange_weak(head, note));
+    kickNotes(session);
 }
 
 void markWatchEnded(LiveSession * session) {
     session->watchEnded = true;
-}
-
-jobjectArray flagsArray(JNIEnv * env, const std::vector<std::string> & flags) {
-    jclass stringCls = env->FindClass("java/lang/String");
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(flags.size()), stringCls, nullptr);
-    env->DeleteLocalRef(stringCls);
-    for (jsize i = 0; i < static_cast<jsize>(flags.size()); ++i) {
-        jstring js = newString(env, flags[static_cast<size_t>(i)].c_str());
-        env->SetObjectArrayElement(arr, i, js);
-        env->DeleteLocalRef(js);
-    }
-    return arr;
 }
 
 void handleUntagged(LiveSession * session, struct mailimap_response_data * data, jlong generation) {
@@ -3076,7 +3181,6 @@ bool watchStep(LiveSession * session) {
         return false;
     }
     jlong generation = static_cast<jlong>(session->watchGeneration.load());
-    drainWatchQueue(session, generation);
     long idleAge = (long) std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - session->watchIdleSince).count();
     if (!session->watchStop.load() &&
@@ -3556,13 +3660,9 @@ bool promptableTrust(const std::string & text) {
     return text == "certificate untrusted" || text == "certificate changed";
 }
 
-bool storePeerOffer(JNIEnv * env, jclass cls, jobject list, std::vector<std::string> * offer) {
-    jmethodID method = env->GetStaticMethodID(cls, "offer", "(Ljava/util/List;)[Ljava/lang/String;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return false;
-    }
-    jobject result = env->CallStaticObjectMethod(cls, method, list);
+bool storePeerOffer(JNIEnv * env, jobject list, std::vector<std::string> * offer) {
+    if (gJni.peerOffer == nullptr) return false;
+    jobject result = env->CallStaticObjectMethod(gJni.peerTrust, gJni.peerOffer, list);
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
         if (result != nullptr) env->DeleteLocalRef(result);
@@ -3608,29 +3708,16 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
     } gate{publish, false, offer, {}};
     if (env == nullptr) return "certificate rejected";
     if (env->ExceptionCheck()) env->ExceptionClear();
-    jclass cls = env->FindClass("org/dlang/liveimap/engine/PeerTrust");
-    if (cls == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        return "certificate rejected";
-    }
-    jmethodID method = env->GetStaticMethodID(
-        cls, "check", "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
-        return "certificate rejected";
-    }
+    if (gJni.peerTrust == nullptr || gJni.peerCheck == nullptr) return "certificate rejected";
     jobject list = newList(env);
     if (list == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         if (list != nullptr) env->DeleteLocalRef(list);
-        env->DeleteLocalRef(cls);
         return "certificate rejected";
     }
     for (const std::vector<unsigned char> & der : ders) {
         if (der.size() > static_cast<size_t>(INT_MAX)) {
             env->DeleteLocalRef(list);
-            env->DeleteLocalRef(cls);
             return "certificate rejected";
         }
         jbyteArray bytes = env->NewByteArray(static_cast<jsize>(der.size()));
@@ -3638,7 +3725,6 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
             env->ExceptionClear();
             if (bytes != nullptr) env->DeleteLocalRef(bytes);
             env->DeleteLocalRef(list);
-            env->DeleteLocalRef(cls);
             return "certificate rejected";
         }
         if (!der.empty()) {
@@ -3650,7 +3736,6 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         if (env->ExceptionCheck()) {
             env->ExceptionClear();
             env->DeleteLocalRef(list);
-            env->DeleteLocalRef(cls);
             return "certificate rejected";
         }
     }
@@ -3659,7 +3744,6 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         env->ExceptionClear();
         if (jhost != nullptr) env->DeleteLocalRef(jhost);
         env->DeleteLocalRef(list);
-        env->DeleteLocalRef(cls);
         return "certificate rejected";
     }
     jstring jpin = newString(env, pin != nullptr ? pin : "");
@@ -3668,10 +3752,9 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         if (jpin != nullptr) env->DeleteLocalRef(jpin);
         env->DeleteLocalRef(jhost);
         env->DeleteLocalRef(list);
-        env->DeleteLocalRef(cls);
         return "certificate rejected";
     }
-    jobject result = env->CallStaticObjectMethod(cls, method, jhost, list, jpin);
+    jobject result = env->CallStaticObjectMethod(gJni.peerTrust, gJni.peerCheck, jhost, list, jpin);
     std::string text = "certificate rejected";
     if (env->ExceptionCheck() || result == nullptr) {
         env->ExceptionClear();
@@ -3681,12 +3764,11 @@ std::string peerTrustCheck(JNIEnv * env, const char * host, const std::vector<st
         if (got) text = std::move(*got);
     }
     if (gate.publish && promptableTrust(text)) {
-        gate.keep = storePeerOffer(env, cls, list, &gate.pending);
+        gate.keep = storePeerOffer(env, list, &gate.pending);
     }
     env->DeleteLocalRef(jpin);
     env->DeleteLocalRef(jhost);
     env->DeleteLocalRef(list);
-    env->DeleteLocalRef(cls);
     return text;
 }
 
@@ -3819,18 +3901,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         fillTlsChannelBinding(imap->imap_stream, binding, &bindingLen, &bindingName);
         if (tlsOut != nullptr) *tlsOut = negotiatedTls(imap->imap_stream, bindingName);
     }
-    jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
-    if (cls == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        if (cls != nullptr) env->DeleteLocalRef(cls);
-        *error = "auth choice failed";
-        return false;
-    }
-    jmethodID method = env->GetStaticMethodID(cls, "imapAuthOrderLine",
-        "(Ljava/lang/String;ZZZLjava/lang/String;Z)Ljava/lang/String;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
+    if (gJni.imapAuth == nullptr || gJni.imapAuthOrder == nullptr) {
         *error = "auth choice failed";
         return false;
     }
@@ -3838,7 +3909,6 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (jline == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         if (jline != nullptr) env->DeleteLocalRef(jline);
-        env->DeleteLocalRef(cls);
         *error = "auth choice failed";
         return false;
     }
@@ -3851,10 +3921,9 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     args[3].z = bindingLen > 0 ? JNI_TRUE : JNI_FALSE;
     args[4].l = jclient;
     args[5].z = tls && gClientCertLoaded ? JNI_TRUE : JNI_FALSE;
-    jobject result = env->CallStaticObjectMethodA(cls, method, args);
+    jobject result = env->CallStaticObjectMethodA(gJni.imapAuth, gJni.imapAuthOrder, args);
     env->DeleteLocalRef(jline);
     if (jclient != nullptr) env->DeleteLocalRef(jclient);
-    env->DeleteLocalRef(cls);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (result != nullptr) env->DeleteLocalRef(result);
@@ -4177,6 +4246,8 @@ void freeSession(LiveSession * session, JNIEnv *) {
     enterReclaim();
     bool removed = unlinkSession(session);
     session->closed.store(true);
+    session->noteStop.store(true);
+    kickNotes(session);
     leaveReclaim();
     if (!removed) return;
     shutdownMainSocket(session);
@@ -5241,44 +5312,37 @@ clist * takeScopeHits(mailimap * imap) {
 }
 
 jobjectArray scopeUidArray(JNIEnv * env, clist * hits, jstring accountId) {
-    size_t n = 0;
-    if (hits != nullptr) {
-        for (clistiter * cur = clist_begin(hits); cur != nullptr; cur = clist_next(cur)) {
-            auto * hit = static_cast<LiveScopeHit *>(clist_content(cur));
-            if (hit == nullptr || hit->mailbox == nullptr || !hit->hasAll || hit->uids == nullptr) continue;
-            n += hit->uids->uids.size();
-        }
-    }
-    if (n > static_cast<size_t>(INT32_MAX)) return nullptr;
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(n), gJni.messageRef, nullptr);
-    if (arr == nullptr) return nullptr;
-    jsize at = 0;
+    std::vector<std::string> boxes;
+    std::vector<jlong> epochs;
+    std::vector<jlong> uids;
     if (hits != nullptr) {
         for (clistiter * cur = clist_begin(hits); cur != nullptr; cur = clist_next(cur)) {
             auto * hit = static_cast<LiveScopeHit *>(clist_content(cur));
             if (hit == nullptr || hit->mailbox == nullptr || !hit->hasAll || hit->uids == nullptr) continue;
             jlong epoch = hit->hasValidity ? static_cast<jlong>(hit->uidValidity) : 0;
             for (uint32_t uid : hit->uids->uids) {
-                jstring box = newString(env, hit->mailbox);
-                jobject ref = env->NewObject(gJni.messageRef, gJni.messageRefInit, accountId, box, epoch,
-                    static_cast<jlong>(uid));
-                if (box != nullptr) env->DeleteLocalRef(box);
-                if (env->ExceptionCheck() || ref == nullptr) {
-                    if (ref != nullptr) env->DeleteLocalRef(ref);
-                    env->DeleteLocalRef(arr);
-                    return nullptr;
-                }
-                env->SetObjectArrayElement(arr, at, ref);
-                env->DeleteLocalRef(ref);
-                if (env->ExceptionCheck()) {
-                    env->DeleteLocalRef(arr);
-                    return nullptr;
-                }
-                ++at;
+                boxes.emplace_back(hit->mailbox);
+                epochs.push_back(epoch);
+                uids.push_back(static_cast<jlong>(uid));
             }
         }
     }
-    return arr;
+    if (boxes.size() > static_cast<size_t>(INT32_MAX)) return nullptr;
+    const jsize n = static_cast<jsize>(boxes.size());
+    jobject cols[4];
+    cols[0] = env->NewObjectArray(n, gJni.string, accountId);
+    cols[1] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[2] = longColumn(env, epochs);
+    cols[3] = longColumn(env, uids);
+    bool ok = cols[0] != nullptr && cols[1] != nullptr && cols[2] != nullptr && cols[3] != nullptr;
+    for (jsize i = 0; ok && i < n; ++i) {
+        ok = setStringAt(env, static_cast<jobjectArray>(cols[1]), i, boxes[static_cast<size_t>(i)].c_str());
+    }
+    if (!ok) {
+        releaseOwned(env, cols, 4);
+        return nullptr;
+    }
+    return packColumns(env, cols, 4);
 }
 
 jlong scopeCountOf(clist * hits) {
@@ -5303,7 +5367,7 @@ bool scopeSendable(const char * scope, const char * home) {
 
 jobjectArray runScopeSearch(JNIEnv * env, LiveSession * session, const char * scope, const char * home,
     struct mailimap_search_key * key, jboolean withCharset, jboolean fuzzy, jstring accountId) {
-    if (key == nullptr || !scopeSendable(scope, home) || gJni.messageRef == nullptr || accountId == nullptr) {
+    if (key == nullptr || !scopeSendable(scope, home) || accountId == nullptr) {
         if (key != nullptr) mailimap_search_key_free(key);
         throwFailure(env, "search failed");
         unlockSession(session);
@@ -5632,8 +5696,9 @@ int sendUidSortChoice(mailimap * imap, const char * keyName, bool reverse, bool 
     return finishParsed(imap, response);
 }
 
-jobjectArray emptyArray(JNIEnv * env, jclass cls) {
-    return env->NewObjectArray(0, cls, nullptr);
+jobjectArray emptyIndexColumns(JNIEnv * env) {
+    std::vector<Row> none;
+    return indexColumns(env, none, nullptr, "", 0);
 }
 
 // libetpan has no mailimap_search_key_new_new; the type constant is that key.
@@ -6449,9 +6514,7 @@ static std::string bytesOf(JNIEnv * env, jbyteArray array) {
 }
 
 static jobjectArray stringTriple(JNIEnv * env, const char * a, const char * b, const char * c) {
-    jclass cls = env->FindClass("java/lang/String");
-    jobjectArray arr = cls != nullptr ? env->NewObjectArray(3, cls, nullptr) : nullptr;
-    if (cls != nullptr) env->DeleteLocalRef(cls);
+    jobjectArray arr = env->NewObjectArray(3, gJni.string, nullptr);
     if (arr == nullptr) return nullptr;
     jstring s0 = newString(env, a != nullptr ? a : "");
     jstring s1 = newString(env, b != nullptr ? b : "");
@@ -6538,11 +6601,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_streamClose(JNIEnv *, jclass, jlong
 }
 
 static void throwMimeDecode(JNIEnv * env, const char * text) {
-    jclass ex = env->FindClass("org/dlang/liveimap/ui/compose/MimeDecodeException");
-    if (ex != nullptr) {
-        env->ThrowNew(ex, text);
-        env->DeleteLocalRef(ex);
-    }
+    if (gJni.mimeDecodeEx != nullptr) env->ThrowNew(gJni.mimeDecodeEx, text);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -6560,9 +6619,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_multipartParts(JNIEnv * env, jclass
     clist * list = mime->mm_data.mm_multipart.mm_mp_list;
     int count = 0;
     for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) count++;
-    jclass bytesClass = env->FindClass("[B");
-    jobjectArray out = bytesClass != nullptr ? env->NewObjectArray(count, bytesClass, nullptr) : nullptr;
-    if (bytesClass != nullptr) env->DeleteLocalRef(bytesClass);
+    jobjectArray out = env->NewObjectArray(count, gJni.byteArray, nullptr);
     if (out == nullptr) {
         mailmime_free(mime);
         return nullptr;
@@ -6631,7 +6688,7 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_phrases(JNIEnv * env, jclass, jobje
     auto fallbackUtf = utf8FromJava(env, fallback);
     const char * from = fallbackUtf && !fallbackUtf->empty() ? fallbackUtf->c_str() : "ISO-8859-1";
     const jsize n = env->GetArrayLength(values);
-    jobjectArray out = env->NewObjectArray(n, env->FindClass("java/lang/String"), nullptr);
+    jobjectArray out = env->NewObjectArray(n, gJni.string, nullptr);
     if (out == nullptr) return nullptr;
     for (jsize i = 0; i < n; ++i) {
         if (env->PushLocalFrame(16) < 0) {
@@ -6713,16 +6770,10 @@ Java_org_dlang_liveimap_ui_reader_MimeDecode_headers(JNIEnv * env, jclass, jbyte
     int count = 0;
     if (mime_parse_headers(in.data(), in.size(), &rows, &count, from) != 0 || count < 0) {
         mime_headers_free(rows, count);
-        jclass ex = env->FindClass("org/dlang/liveimap/ui/compose/MimeDecodeException");
-        if (ex != nullptr) {
-            env->ThrowNew(ex, "could not parse these headers");
-            env->DeleteLocalRef(ex);
-        }
+        throwMimeDecode(env, "could not parse these headers");
         return nullptr;
     }
-    jclass cls = env->FindClass("java/lang/String");
-    jobjectArray arr = cls != nullptr ? env->NewObjectArray(count * 3, cls, nullptr) : nullptr;
-    if (cls != nullptr) env->DeleteLocalRef(cls);
+    jobjectArray arr = env->NewObjectArray(count * 3, gJni.string, nullptr);
     if (arr == nullptr) {
         mime_headers_free(rows, count);
         return nullptr;
@@ -7086,13 +7137,13 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
         unlockSession(session);
         return nullptr;
     }
-    struct Item { struct mailimap_namespace_item * item; jfieldID kind; };
+    struct Item { struct mailimap_namespace_item * item; jint kind; };
     Item items[3] = {
-        {data->ns_personal, gJni.personal},
-        {data->ns_other, gJni.other},
-        {data->ns_shared, gJni.shared},
+        {data->ns_personal, 0},
+        {data->ns_other, 1},
+        {data->ns_shared, 2},
     };
-    struct NsRow { std::string prefix; jchar delim; jfieldID kind; };
+    struct NsRow { std::string prefix; jint delim; jint kind; };
     std::vector<NsRow> rows;
     for (Item item : items) {
         if (item.item == nullptr || item.item->ns_data_list == nullptr) continue;
@@ -7101,31 +7152,31 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeNamespaces(JNIEnv * env
             if (info == nullptr) continue;
             const char * prefix = info->ns_prefix != nullptr ? info->ns_prefix : "";
             session->delims[prefix] = info->ns_delimiter;
-            rows.push_back(NsRow{prefix, static_cast<jchar>(info->ns_delimiter), item.kind});
+            rows.push_back(NsRow{prefix, static_cast<jint>(static_cast<jchar>(info->ns_delimiter)), item.kind});
         }
     }
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), gJni.ns, nullptr);
-    if (arr == nullptr) {
-        mailimap_namespace_data_free(data);
+    const jsize n = static_cast<jsize>(rows.size());
+    jobject cols[3];
+    cols[0] = env->NewObjectArray(n, gJni.string, nullptr);
+    std::vector<jint> delims(static_cast<size_t>(n));
+    std::vector<jint> kinds(static_cast<size_t>(n));
+    for (jsize i = 0; i < n; ++i) {
+        delims[static_cast<size_t>(i)] = rows[static_cast<size_t>(i)].delim;
+        kinds[static_cast<size_t>(i)] = rows[static_cast<size_t>(i)].kind;
+    }
+    cols[1] = intColumn(env, delims);
+    cols[2] = intColumn(env, kinds);
+    bool ok = cols[0] != nullptr && cols[1] != nullptr && cols[2] != nullptr;
+    for (jsize i = 0; ok && i < n; ++i) {
+        ok = setStringAt(env, static_cast<jobjectArray>(cols[0]), i, rows[static_cast<size_t>(i)].prefix.c_str());
+    }
+    mailimap_namespace_data_free(data);
+    if (!ok) {
+        releaseOwned(env, cols, 3);
         unlockSession(session);
         return nullptr;
     }
-    for (jsize i = 0; i < static_cast<jsize>(rows.size()); ++i) {
-        jobject kind = env->GetStaticObjectField(gJni.nsKind, rows[static_cast<size_t>(i)].kind);
-        jstring jp = newString(env, rows[static_cast<size_t>(i)].prefix.c_str());
-        jobject ns = env->NewObject(gJni.ns, gJni.nsInit, jp, rows[static_cast<size_t>(i)].delim, kind);
-        if (ns != nullptr) env->SetObjectArrayElement(arr, i, ns);
-        if (jp != nullptr) env->DeleteLocalRef(jp);
-        if (kind != nullptr) env->DeleteLocalRef(kind);
-        if (ns != nullptr) env->DeleteLocalRef(ns);
-        if (env->ExceptionCheck() || ns == nullptr) {
-            env->DeleteLocalRef(arr);
-            mailimap_namespace_data_free(data);
-            unlockSession(session);
-            return nullptr;
-        }
-    }
-    mailimap_namespace_data_free(data);
+    jobjectArray arr = packColumns(env, cols, 3);
     unlockSession(session);
     return arr;
     });
@@ -7171,12 +7222,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeHierarchyDelimiter(JNIE
     });
 }
 
-extern "C" JNIEXPORT jobject JNICALL
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv * env, jobject, jlong handle,
     jobjectArray mailboxes) {
     jobjectArray g_mailboxes = mailboxes != nullptr ? static_cast<jobjectArray>(env->NewGlobalRef(mailboxes)) : nullptr;
     struct OwnerRefs { JNIEnv * e; jobjectArray p0; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); } } ownerRefs{env, g_mailboxes};
-    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobject {
+    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobjectArray {
         jobjectArray mailboxes = g_mailboxes;
 
     LiveSession * session = lockImapSession(env, handle);
@@ -7210,41 +7261,30 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStatusMessages(JNIEnv *
         releaseBurstFailure(env, session, r, "status failed");
         return nullptr;
     }
-    jclass mapClass = env->FindClass("java/util/HashMap");
-    if (mapClass == nullptr) {
-        unlockSession(session);
-        return nullptr;
-    }
-    jmethodID init = env->GetMethodID(mapClass, "<init>", "()V");
-    jmethodID put = env->GetMethodID(mapClass, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    if (init == nullptr || put == nullptr) {
-        env->DeleteLocalRef(mapClass);
-        unlockSession(session);
-        return nullptr;
-    }
-    jobject map = env->NewObject(mapClass, init);
-    if (map == nullptr) {
-        env->DeleteLocalRef(mapClass);
-        unlockSession(session);
-        return nullptr;
-    }
+    const jsize n = static_cast<jsize>(counts.size());
+    jobject cols[2];
+    cols[0] = env->NewObjectArray(n, gJni.string, nullptr);
+    std::vector<jint> values(static_cast<size_t>(n));
+    jsize i = 0;
     for (const auto & entry : counts) {
-        jstring key = newString(env, entry.first.c_str());
-        jobject value = env->CallStaticObjectMethod(gJni.integerCls, gJni.integerValueOf, entry.second);
-        jobject previous = env->CallObjectMethod(map, put, key, value);
-        if (previous != nullptr) env->DeleteLocalRef(previous);
-        if (key != nullptr) env->DeleteLocalRef(key);
-        if (value != nullptr) env->DeleteLocalRef(value);
-        if (env->ExceptionCheck()) {
-            env->DeleteLocalRef(map);
-            env->DeleteLocalRef(mapClass);
-            unlockSession(session);
-            return nullptr;
-        }
+        values[static_cast<size_t>(i)] = entry.second;
+        ++i;
     }
-    env->DeleteLocalRef(mapClass);
+    cols[1] = intColumn(env, values);
+    bool ok = cols[0] != nullptr && cols[1] != nullptr;
+    i = 0;
+    for (const auto & entry : counts) {
+        if (ok) ok = setStringAt(env, static_cast<jobjectArray>(cols[0]), i, entry.first.c_str());
+        ++i;
+    }
+    if (!ok) {
+        releaseOwned(env, cols, 2);
+        unlockSession(session);
+        return nullptr;
+    }
+    jobjectArray arr = packColumns(env, cols, 2);
     unlockSession(session);
-    return map;
+    return arr;
     });
 }
 
@@ -7329,40 +7369,40 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeListLevel(JNIEnv * env,
         }
         mailimap_list_result_free(list);
     }
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), gJni.folderEntry, nullptr);
-    if (arr == nullptr) {
+    const jsize n = static_cast<jsize>(rows.size());
+    jobject cols[7];
+    cols[0] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[1] = env->NewObjectArray(n, gJni.string, nullptr);
+    cols[2] = env->NewObjectArray(n, gJni.string, nullptr);
+    std::vector<jint> children(static_cast<size_t>(n)), delims(static_cast<size_t>(n));
+    std::vector<jint> messages(static_cast<size_t>(n)), unseen(static_cast<size_t>(n));
+    for (jsize i = 0; i < n; ++i) {
+        const Listed & row = rows[static_cast<size_t>(i)];
+        children[static_cast<size_t>(i)] = row.children ? 1 : 0;
+        delims[static_cast<size_t>(i)] = static_cast<jint>(static_cast<jchar>(row.delim));
+        messages[static_cast<size_t>(i)] = row.hasMessages ? row.messages : -1;
+        unseen[static_cast<size_t>(i)] = row.hasUnseen ? row.unseen : -1;
+    }
+    cols[3] = intColumn(env, children);
+    cols[4] = intColumn(env, delims);
+    cols[5] = intColumn(env, messages);
+    cols[6] = intColumn(env, unseen);
+    bool ok = true;
+    for (int c = 0; c < 7; ++c) if (cols[c] == nullptr) ok = false;
+    for (jsize i = 0; ok && i < n; ++i) {
+        const Listed & row = rows[static_cast<size_t>(i)];
+        ok = setStringAt(env, static_cast<jobjectArray>(cols[0]), i, row.mailbox.c_str())
+            && setStringAt(env, static_cast<jobjectArray>(cols[1]), i, row.leaf.c_str());
+        if (ok && !row.use.empty()) {
+            ok = setStringAt(env, static_cast<jobjectArray>(cols[2]), i, row.use.c_str());
+        }
+    }
+    if (!ok) {
+        releaseOwned(env, cols, 7);
         unlockSession(session);
         return nullptr;
     }
-    for (jsize i = 0; i < static_cast<jsize>(rows.size()); ++i) {
-        const Listed & row = rows[static_cast<size_t>(i)];
-        jstring jmb = newString(env, row.mailbox.c_str());
-        jstring jleaf = newString(env, row.leaf.c_str());
-        jstring juse = row.use.empty() ? nullptr : newString(env, row.use.c_str());
-        jobject jmessages = nullptr;
-        jobject junseen = nullptr;
-        if (row.hasMessages) {
-            jmessages = env->CallStaticObjectMethod(gJni.integerCls, gJni.integerValueOf, row.messages);
-        }
-        if (row.hasUnseen) {
-            junseen = env->CallStaticObjectMethod(gJni.integerCls, gJni.integerValueOf, row.unseen);
-        }
-        jobject entry = env->NewObject(gJni.folderEntry, gJni.folderInit, jmb, jleaf,
-            static_cast<jboolean>(row.children), static_cast<jchar>(row.delim),
-            juse, jmessages, junseen);
-        if (entry != nullptr) env->SetObjectArrayElement(arr, i, entry);
-        if (jmb != nullptr) env->DeleteLocalRef(jmb);
-        if (jleaf != nullptr) env->DeleteLocalRef(jleaf);
-        if (juse != nullptr) env->DeleteLocalRef(juse);
-        if (jmessages != nullptr) env->DeleteLocalRef(jmessages);
-        if (junseen != nullptr) env->DeleteLocalRef(junseen);
-        if (entry != nullptr) env->DeleteLocalRef(entry);
-        if (env->ExceptionCheck() || entry == nullptr) {
-            env->DeleteLocalRef(arr);
-            unlockSession(session);
-            return nullptr;
-        }
-    }
+    jobjectArray arr = packColumns(env, cols, 7);
     unlockSession(session);
     return arr;
     });
@@ -7442,14 +7482,12 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSubscribedMailboxes(JNI
         }
         mailimap_list_result_free(list);
     }
-    jclass stringClass = env->FindClass("java/lang/String");
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(names.size()), stringClass, nullptr);
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(names.size()), gJni.string, nullptr);
     for (jsize i = 0; i < static_cast<jsize>(names.size()); ++i) {
         jstring name = newString(env, names[static_cast<size_t>(i)].c_str());
         env->SetObjectArrayElement(arr, i, name);
         if (name != nullptr) env->DeleteLocalRef(name);
     }
-    if (stringClass != nullptr) env->DeleteLocalRef(stringClass);
     unlockSession(session);
     return arr;
     });
@@ -7522,11 +7560,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeCloseMailbox(JNIEnv * e
 }
 
 
-// One row at a time: the Java list gains the row, then that row's native strings are released
-// before the next FETCH item is read. The C++ rows and the Java array are not both full.
-bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
+// Kept rows stay here until the column arrays are built. The FETCH list is freed before that.
+bool emitIndexRow(JNIEnv * env, LiveSession * session, std::vector<Row> * out, Row & row,
     bool serverPreview, bool bodyPreview, int peekLimit, jboolean preferHtml, jboolean showDeleted,
-    int * envelopeRows, const char * unlabeled, jstring accountId, const char * mailbox, jlong uidValidity) {
+    int * envelopeRows, const char * unlabeled) {
     // F113: only answers to our FETCH (they carry ENVELOPE).
     if (row.uid != 0 && row.hasEnvelope) {
         *envelopeRows += 1;
@@ -7566,30 +7603,33 @@ bool emitIndexRow(JNIEnv * env, LiveSession * session, jobject out, Row & row,
         }
     }
     bool keep = !(showDeleted == JNI_FALSE && row.deleted);
-    jobject obj = keep ? rowObject(env, row, preview, hasPreview, accountId, mailbox, uidValidity) : nullptr;
-    preview.clear();
-    preview.shrink_to_fit();
-    releaseRow(row);
-    if (!keep) return !env->ExceptionCheck();
-    if (obj == nullptr || env->ExceptionCheck()) {
-        if (obj != nullptr) env->DeleteLocalRef(obj);
-        return false;
+    if (!keep) {
+        preview.clear();
+        preview.shrink_to_fit();
+        releaseRow(row);
+        return !env->ExceptionCheck();
     }
-    env->CallBooleanMethod(out, gJni.listAdd, obj);
-    env->DeleteLocalRef(obj);
+    row.preview = std::move(preview);
+    row.hasPreview = hasPreview;
+    out->push_back(std::move(row));
     return !env->ExceptionCheck();
 }
 
-bool consumeIndexList(JNIEnv * env, LiveSession * session, jobject out, clist * list,
+void releaseRows(std::vector<Row> * rows) {
+    if (rows == nullptr) return;
+    for (Row & row : *rows) releaseRow(row);
+    rows->clear();
+}
+
+bool consumeIndexList(JNIEnv * env, LiveSession * session, std::vector<Row> * out, clist * list,
     const char * accountEmail, const char * altSpecs, bool serverPreview, bool bodyPreview,
-    int peekLimit, jboolean preferHtml, jboolean showDeleted, int * envelopeRows, const char * unlabeled,
-    jstring accountId, const char * mailbox, jlong uidValidity) {
+    int peekLimit, jboolean preferHtml, jboolean showDeleted, int * envelopeRows, const char * unlabeled) {
     if (list == nullptr) return true;
     for (clistiter * cur = clist_begin(list); cur != nullptr; cur = clist_next(cur)) {
         Row row;
         readAtt(static_cast<struct mailimap_msg_att *>(clist_content(cur)), &row, accountEmail, altSpecs, unlabeled);
         if (!emitIndexRow(env, session, out, row, serverPreview, bodyPreview, peekLimit, preferHtml,
-                showDeleted, envelopeRows, unlabeled, accountId, mailbox, uidValidity)) {
+                showDeleted, envelopeRows, unlabeled)) {
             return false;
         }
     }
@@ -7643,7 +7683,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         if (count < 0) count = 0;
         if (exists == 0 || count == 0) {
             unlockSession(session);
-            return emptyArray(env, gJni.indexRow);
+            return emptyIndexColumns(env);
         }
         uint32_t first = 1;
         uint32_t last = exists;
@@ -7675,30 +7715,24 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             unlockSession(session);
             return nullptr;
         }
-        jobject rowsOut = newList(env);
-        if (rowsOut == nullptr) {
-            if (list != nullptr) mailimap_fetch_list_free(list);
-            unlockSession(session);
-            return nullptr;
-        }
+        std::vector<Row> rowsOut;
         int envelopeRows = 0;
-        if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
-                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled,
-                accountId, mb.c(), uidValidity)) {
+        if (!consumeIndexList(env, session, &rowsOut, list, accountEmailChars.c(), altChars.c(),
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled)) {
             if (list != nullptr) mailimap_fetch_list_free(list);
-            env->DeleteLocalRef(rowsOut);
+            releaseRows(&rowsOut);
             unlockSession(session);
             return nullptr;
         }
         noteParsedRows(session, static_cast<size_t>(envelopeRows));
         if (exists > 0 && first <= last && envelopeRows == 0) {
-            env->DeleteLocalRef(rowsOut);
+            releaseRows(&rowsOut);
             abortEmptyIndexFetch(env, session, list);
             return nullptr;
         }
         if (list != nullptr) mailimap_fetch_list_free(list);
-        jobjectArray arr = indexRowsToArray(env, rowsOut);
-        env->DeleteLocalRef(rowsOut);
+        jobjectArray arr = indexColumns(env, rowsOut, accountId, mb.c(), uidValidity);
+        releaseRows(&rowsOut);
         unlockSession(session);
         return arr;
     }
@@ -7716,11 +7750,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
             all.push_back(static_cast<uint32_t>(value));
         }
     }
-    jobject rowsOut = newList(env);
-    if (rowsOut == nullptr) {
-        unlockSession(session);
-        return nullptr;
-    }
+    std::vector<Row> rowsOut;
     const size_t pageSize = 60;
     for (size_t off = 0; off < all.size(); off += pageSize) {
         size_t end = std::min(all.size(), off + pageSize);
@@ -7731,30 +7761,29 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchIndex(JNIEnv * env
         if (set != nullptr) mailimap_set_free(set);
         if (!cmdOk(r)) {
             if (list != nullptr) mailimap_fetch_list_free(list);
-            env->DeleteLocalRef(rowsOut);
+            releaseRows(&rowsOut);
             throwImap(env, session, r, "fetch failed");
             unlockSession(session);
             return nullptr;
         }
         int envelopeRows = 0;
-        if (!consumeIndexList(env, session, rowsOut, list, accountEmailChars.c(), altChars.c(),
-                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled,
-                accountId, mb.c(), uidValidity)) {
+        if (!consumeIndexList(env, session, &rowsOut, list, accountEmailChars.c(), altChars.c(),
+                serverPreview, bodyPreview, peekLimit, preferHtml, showDeleted, &envelopeRows, unlabeled)) {
             if (list != nullptr) mailimap_fetch_list_free(list);
-            env->DeleteLocalRef(rowsOut);
+            releaseRows(&rowsOut);
             unlockSession(session);
             return nullptr;
         }
         noteParsedRows(session, static_cast<size_t>(envelopeRows));
         if (exists > 0 && !page.empty() && envelopeRows == 0) {
-            env->DeleteLocalRef(rowsOut);
+            releaseRows(&rowsOut);
             abortEmptyIndexFetch(env, session, list);
             return nullptr;
         }
         if (list != nullptr) mailimap_fetch_list_free(list);
     }
-    jobjectArray arr = indexRowsToArray(env, rowsOut);
-    env->DeleteLocalRef(rowsOut);
+    jobjectArray arr = indexColumns(env, rowsOut, accountId, mb.c(), uidValidity);
+    releaseRows(&rowsOut);
     unlockSession(session);
     return arr;
     });
@@ -7805,14 +7834,14 @@ struct mailimap_body * bodyAtSection(struct mailimap_body * body, const std::str
     return nullptr;
 }
 
-jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start);
+jbyteArray fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start);
 
-extern "C" JNIEXPORT jobject JNICALL
+extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructureAt(JNIEnv * env, jobject, jlong handle,
     jlong uid, jstring jSection) {
     jstring g_jSection = jSection != nullptr ? static_cast<jstring>(env->NewGlobalRef(jSection)) : nullptr;
     struct OwnerRefs { JNIEnv * e; jstring p0; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); } } ownerRefs{env, g_jSection};
-    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobject {
+    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jbyteArray {
         jstring jSection = g_jSection;
         JChars section(env, jSection);
         std::string start = section.c();
@@ -7820,14 +7849,14 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructureAt(JNIEnv
     });
 }
 
-extern "C" JNIEXPORT jobject JNICALL
+extern "C" JNIEXPORT jbyteArray JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeFetchStructure(JNIEnv * env, jobject, jlong handle, jlong uid) {
-    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jobject {
+    return withOwnerCall(env, handle, [&](JNIEnv * env) -> jbyteArray {
         return fetchStructureFrom(env, handle, uid, "");
     });
 }
 
-jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start) {
+jbyteArray fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::string & start) {
     LiveSession * session = lockImapSession(env, handle);
     if (session == nullptr) return nullptr;
     if (uid <= 0 || uid > static_cast<jlong>(UINT32_MAX)) {
@@ -7855,14 +7884,17 @@ jobject fetchStructureFrom(JNIEnv * env, jlong handle, jlong uid, const std::str
             body = row.structure;
         }
     }
-    jobject obj = nullptr;
+    jbyteArray obj = nullptr;
+    MimeWire wire;
+    bool built = false;
     if (start.empty()) {
-        obj = mimeFromBody(env, body, "");
+        built = mimeFromBody(body, "", 0, &wire);
     } else {
         std::string found;
         struct mailimap_body * at = bodyAtSection(body, start, &found);
-        if (at != nullptr) obj = mimeFromBody(env, at, found);
+        if (at != nullptr) built = mimeFromBody(at, found, 0, &wire);
     }
+    if (built) obj = mimeBytes(env, wire);
     if (list != nullptr) mailimap_fetch_list_free(list);
     if (obj == nullptr && !env->ExceptionCheck()) {
         throwImap(env, session, r, "fetch failed");
@@ -9210,10 +9242,7 @@ jlongArray longsOf(JNIEnv * env, const std::vector<int64_t> & data) {
 }
 
 jobjectArray stringsOf(JNIEnv * env, const std::vector<std::string> & rows) {
-    jclass cls = env->FindClass("java/lang/String");
-    if (cls == nullptr) return nullptr;
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), cls, nullptr);
-    env->DeleteLocalRef(cls);
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(rows.size()), gJni.string, nullptr);
     if (arr == nullptr) return nullptr;
     for (size_t i = 0; i < rows.size(); ++i) {
         if (env->PushLocalFrame(4) < 0) return nullptr;
@@ -9297,13 +9326,9 @@ bool takeStrings(JNIEnv * env, jobjectArray arr, int n, std::vector<std::string>
 }
 
 jobject newClientFetch(JNIEnv * env, const CoFetch & rows) {
-    jclass cls = env->FindClass("org/dlang/liveimap/session/ClientFetch");
-    if (cls == nullptr) return nullptr;
-    jmethodID init = env->GetMethodID(cls, "<init>", "([J[J[Z[Ljava/lang/String;)V");
-    if (init == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
+    jclass cls = gJni.clientFetch;
+    jmethodID init = gJni.clientFetchInit;
+    if (cls == nullptr || init == nullptr) return nullptr;
     jlongArray uids = longsOf(env, rows.uids);
     jlongArray numbers = longsOf(env, rows.numbers);
     jbooleanArray blanks = env->NewBooleanArray(static_cast<jsize>(rows.blank.size()));
@@ -9313,24 +9338,14 @@ jobject newClientFetch(JNIEnv * env, const CoFetch & rows) {
         for (size_t i = 0; i < rows.blank.size(); ++i) flags[i] = rows.blank[i] ? JNI_TRUE : JNI_FALSE;
         if (!flags.empty()) env->SetBooleanArrayRegion(blanks, 0, static_cast<jsize>(flags.size()), flags.data());
     }
-    if (uids == nullptr || numbers == nullptr || blanks == nullptr || texts == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
-    jobject obj = env->NewObject(cls, init, uids, numbers, blanks, texts);
-    env->DeleteLocalRef(cls);
-    return obj;
+    if (uids == nullptr || numbers == nullptr || blanks == nullptr || texts == nullptr) return nullptr;
+    return env->NewObject(cls, init, uids, numbers, blanks, texts);
 }
 
 jobject newClientHeaders(JNIEnv * env, const CoHeaders & rows) {
-    jclass cls = env->FindClass("org/dlang/liveimap/session/ClientHeaders");
-    if (cls == nullptr) return nullptr;
-    jmethodID init = env->GetMethodID(cls, "<init>",
-        "([J[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;[Ljava/lang/String;)V");
-    if (init == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
+    jclass cls = gJni.clientHeaders;
+    jmethodID init = gJni.clientHeadersInit;
+    if (cls == nullptr || init == nullptr) return nullptr;
     jlongArray uids = longsOf(env, rows.uids);
     jobjectArray messageId = stringsOf(env, rows.messageId);
     jobjectArray references = stringsOf(env, rows.references);
@@ -9338,37 +9353,23 @@ jobject newClientHeaders(JNIEnv * env, const CoHeaders & rows) {
     jobjectArray subject = stringsOf(env, rows.subject);
     jobjectArray date = stringsOf(env, rows.date);
     if (uids == nullptr || messageId == nullptr || references == nullptr || inReplyTo == nullptr || subject == nullptr
-        || date == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
-    jobject obj = env->NewObject(cls, init, uids, messageId, references, inReplyTo, subject, date);
-    env->DeleteLocalRef(cls);
-    return obj;
+        || date == nullptr) return nullptr;
+    return env->NewObject(cls, init, uids, messageId, references, inReplyTo, subject, date);
 }
 
 jobject newThreadFlat(JNIEnv * env, const CoFlat & flat) {
-    jclass cls = env->FindClass("org/dlang/liveimap/session/ThreadFlat");
-    if (cls == nullptr) return nullptr;
-    jmethodID init = env->GetMethodID(cls, "<init>", "([J[S)V");
-    if (init == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
+    jclass cls = gJni.threadFlat;
+    jmethodID init = gJni.threadFlatInit;
+    if (cls == nullptr || init == nullptr) return nullptr;
     jlongArray uids = longsOf(env, flat.uids);
     jshortArray depths = env->NewShortArray(static_cast<jsize>(flat.depths.size()));
-    if (uids == nullptr || depths == nullptr) {
-        env->DeleteLocalRef(cls);
-        return nullptr;
-    }
+    if (uids == nullptr || depths == nullptr) return nullptr;
     if (!flat.depths.empty()) {
         std::vector<jshort> tmp(flat.depths.size());
         for (size_t i = 0; i < flat.depths.size(); ++i) tmp[i] = static_cast<jshort>(flat.depths[i]);
         env->SetShortArrayRegion(depths, 0, static_cast<jsize>(tmp.size()), tmp.data());
     }
-    jobject obj = env->NewObject(cls, init, uids, depths);
-    env->DeleteLocalRef(cls);
-    return obj;
+    return env->NewObject(cls, init, uids, depths);
 }
 
 std::vector<uint32_t> asUids(const std::vector<int64_t> & uids) {
@@ -10035,16 +10036,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUseStagedImap(JNIEnv * 
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject thiz, jlong handle, jstring mailbox,
-    jobject callback) {
-    jobject g_thiz = thiz != nullptr ? static_cast<jobject>(env->NewGlobalRef(thiz)) : nullptr;
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, jobject, jlong handle, jstring mailbox) {
     jstring g_mailbox = mailbox != nullptr ? static_cast<jstring>(env->NewGlobalRef(mailbox)) : nullptr;
-    jobject g_callback = callback != nullptr ? static_cast<jobject>(env->NewGlobalRef(callback)) : nullptr;
-    struct OwnerRefs { JNIEnv * e; jobject p0; jstring p1; jobject p2; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); if (p1) e->DeleteGlobalRef(p1); if (p2) e->DeleteGlobalRef(p2); } } ownerRefs{env, g_thiz, g_mailbox, g_callback};
+    struct OwnerRefs { JNIEnv * e; jstring p0; ~OwnerRefs() { if (p0) e->DeleteGlobalRef(p0); } } ownerRefs{env, g_mailbox};
     return withOwnerCall(env, handle, [&](JNIEnv * env) -> jlong {
-        jobject thiz = g_thiz;
         jstring mailbox = g_mailbox;
-        jobject callback = g_callback;
 
     LiveSession * session = lockSession(env, handle);
     if (session == nullptr) return 0;
@@ -10095,13 +10091,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     owned.connectTimeoutSec = session->connectTimeoutSec;
     owned.readTimeoutSec = session->readTimeoutSec;
     const uint64_t generation = bumpWatchGeneration(session);
-    // A 0 return must not leave this generation's callback published. Older publishes are cleared too,
-    // unless a newer generation has already replaced them.
-    auto clearThisWatch = [&]() {
-        if (gJni.clearPublishedWatch == nullptr || env->ExceptionCheck()) return;
-        env->CallVoidMethod(thiz, gJni.clearPublishedWatch, static_cast<jlong>(generation));
-        if (env->ExceptionCheck()) env->ExceptionClear();
-    };
+    session->watchArmed = false;
+    // A stop leaves noteStop set. Clear it only while this generation is still the current one.
+    if (session->watchGeneration.load() == generation && !session->closed.load()) session->noteStop.store(false);
     mailimap * prepared = nullptr;
     if (session->stagedWatch && session->stagedReady != nullptr) {
         prepared = session->stagedReady;
@@ -10118,12 +10110,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     if (watchSetupSuperseded(session->closed.load(), session->watchGeneration.load(), generation, session->watch != nullptr)) {
         // closed, or a newer watch/stop ran while this one connected: drop this connection quietly.
         if (watch != nullptr) mailimap_free(watch);
-        clearThisWatch();
         unlockSession(session);
         return 0;
     }
     if (watch == nullptr) {
-        clearThisWatch();
         throwFailure(env, error);
         unlockSession(session);
         return 0;
@@ -10145,12 +10135,10 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
         : mailimap_examine(watch, mailboxName.c_str());
     if (watchSetupSuperseded(session->closed.load(), session->watchGeneration.load(), generation, session->watch != nullptr)) {
         if (watch != nullptr) mailimap_free(watch);
-        clearThisWatch();
         unlockSession(session);
         return 0;
     }
     if (!cmdOk(r)) {
-        clearThisWatch();
         if (r == MAILIMAP_ERROR_STREAM || r == MAILIMAP_ERROR_PARSE) {
             mailimap_free(watch);
             throwImap(env, session, r, "select failed");
@@ -10168,54 +10156,33 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     session->watchStop.store(false);
     session->startState = 0;
     session->startError.clear();
-    session->watchGate = 0;
-    session->watchQueue.clear();
     session->watchLostBeforePublish = false;
     session->watchEnded = false;
     if (watch->imap_selection_info != nullptr) {
         session->watchUidValidity = watch->imap_selection_info->sel_uidvalidity;
         session->watchExists = static_cast<int>(watch->imap_selection_info->sel_exists);
     }
-    if (session->selfGlobal != nullptr) env->DeleteGlobalRef(session->selfGlobal);
-    session->selfGlobal = env->NewGlobalRef(thiz);
     if (session->watchWakeFd < 0) session->watchWakeFd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     int started = beginWatchIdle(session) ? 1 : -1;
     if (session->watchStop.load() || session->closed.load() || session->watchGeneration.load() != generation) started = 0;
     const bool superseded = watchSetupSuperseded(session->closed.load(), session->watchGeneration.load(), generation, false);
     bool lostEarly = session->watchLostBeforePublish || session->watchEnded;
-    // Publish only after IDLE has started. A dead IDLE is not published. A newer publish wins in Kotlin.
-    if (started > 0 && !superseded && !lostEarly) {
-        if (gJni.publishWatch != nullptr && callback != nullptr) {
-            env->CallVoidMethod(thiz, gJni.publishWatch, static_cast<jlong>(generation), callback);
-            if (env->ExceptionCheck()) env->ExceptionClear();
-        }
+    // Arm only after IDLE has started. A stop during setup leaves noteStop set and this returns 0.
+    bool armed = false;
+    if (started > 0 && !superseded && !lostEarly && session->watchGeneration.load() == generation
+        && !session->closed.load() && !session->noteStop.load()) {
+        session->watchArmed = true;
+        armed = true;
     }
-    bool deliver = false;
     bool lost = session->watchLostBeforePublish || session->watchEnded;
-    if (superseded || started <= 0 || lost) {
-        session->watchGate = 2;
-        session->watchQueue.clear();
-    } else {
-        session->watchGate = 1;
-        deliver = true;
-    }
-    if (deliver && session->watchWakeFd >= 0) {
-        uint64_t one = 1;
-        ssize_t ignored = write(session->watchWakeFd, &one, sizeof(one));
-        (void)ignored;
-    }
-    // This generation is not a live IDLE. Clear it. A stop bumps the generation, so a newer publish stays.
-    // An early WatchLost or a thread that already ended is joined and freed like a failed start, without throwFailure.
-    if (!deliver) {
+    if (!armed) {
         if (!superseded && (started < 0 || lost)) {
             std::string why = session->startError;
             finishIdleStop(session);
-            clearThisWatch();
             if (started < 0) throwFailure(env, why);
             unlockSession(session);
             return 0;
         }
-        clearThisWatch();
         unlockSession(session);
         return 0;
     }
@@ -10224,9 +10191,95 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatch(JNIEnv * env, job
     });
 }
 
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeWatchTake(JNIEnv * env, jobject, jlong handle, jlong generation) {
+    auto * raw = reinterpret_cast<LiveSession *>(handle);
+    std::shared_ptr<LiveSession> kept = retainSession(raw);
+    if (!kept) return nullptr;
+    for (;;) {
+        int cur = 0;
+        if (raw->noteTaker.compare_exchange_weak(cur, 1)) break;
+        raw->noteTaker.wait(cur);
+    }
+    struct TakeGuard {
+        LiveSession * s;
+        ~TakeGuard() {
+            s->noteTaker.store(0);
+            s->noteTaker.notify_one();
+            releaseUsers(s);
+        }
+    } guard{raw};
+    const uint64_t want = static_cast<uint64_t>(generation);
+    ensureNoteFd(raw);
+    for (;;) {
+        if (raw->watchGeneration.load() != want) {
+            WatchNote * head = stealNotes(raw);
+            WatchNote * mine = nullptr;
+            WatchNote * other = nullptr;
+            while (head != nullptr) {
+                WatchNote * nxt = head->next;
+                if (head->generation == want) {
+                    head->next = mine;
+                    mine = head;
+                } else {
+                    head->next = other;
+                    other = head;
+                }
+                head = nxt;
+            }
+            deleteNotes(mine);
+            relinkTail(raw, other);
+            return nullptr;
+        }
+        if (raw->noteOverflow.load()) {
+            do {
+                deleteNotes(stealNotes(raw));
+            } while (raw->noteOverflow.exchange(false));
+            deleteNotes(stealNotes(raw));
+            std::string encoded;
+            appendNoteBytes(&encoded, 3, raw->watchExists, 0, {});
+            return noteBytes(env, encoded);
+        }
+        WatchNote * head = stealNotes(raw);
+        std::vector<WatchNote *> fifo;
+        while (head != nullptr) {
+            WatchNote * nxt = head->next;
+            if (head->generation == want) fifo.push_back(head);
+            else delete head;
+            head = nxt;
+        }
+        if (!fifo.empty()) {
+            std::reverse(fifo.begin(), fifo.end());
+            std::string encoded;
+            for (WatchNote * note : fifo) {
+                appendNoteBytes(&encoded, note->kind, note->exists, note->uid, note->flags);
+                delete note;
+            }
+            return noteBytes(env, encoded);
+        }
+        if (raw->noteStop.load() || raw->closed.load()) return nullptr;
+        int fd = raw->noteFd.load();
+        if (fd < 0) return nullptr;
+        struct pollfd pfd{};
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+        int pr = poll(&pfd, 1, -1);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            return nullptr;
+        }
+        if ((pfd.revents & (POLLNVAL | POLLHUP | POLLERR)) != 0) return nullptr;
+        uint64_t drained = 0;
+        ssize_t ignored = read(fd, &drained, sizeof(drained));
+        (void)ignored;
+    }
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv *, jobject, jlong handle) {
     if (tlsOwner != nullptr && reinterpret_cast<jlong>(tlsOwner) == handle) {
+        tlsOwner->noteStop.store(true);
+        kickNotes(tlsOwner);
         tlsOwner->watchPhase.store(3);
         signalWatchStop(tlsOwner);
         kickOwner(tlsOwner);
@@ -10235,6 +10288,8 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStopWatch(JNIEnv *, job
     auto * session = reinterpret_cast<LiveSession *>(handle);
     std::shared_ptr<LiveSession> kept = retainSession(session);
     if (!kept) return 0;
+    session->noteStop.store(true);
+    kickNotes(session);
     const uint64_t generation = bumpWatchGeneration(session);
     session->watchPhase.store(3);
     signalWatchStop(session);
@@ -10374,24 +10429,14 @@ int smtpAuthExternal(mailsmtp * smtp) {
 bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool plaintextOk,
     bool channelBinding, bool clientCert, std::string * mechanism) {
     mechanism->clear();
-    jclass cls = env->FindClass("org/dlang/liveimap/session/ImapAuthKt");
-    if (cls == nullptr || env->ExceptionCheck()) {
+    if (gJni.imapAuth == nullptr || gJni.chooseImapAuth == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
-        if (cls != nullptr) env->DeleteLocalRef(cls);
-        return false;
-    }
-    jmethodID method = env->GetStaticMethodID(cls, "chooseImapAuth",
-        "(Ljava/lang/String;ZZZLjava/lang/String;Z)Ljava/lang/String;");
-    if (method == nullptr || env->ExceptionCheck()) {
-        env->ExceptionClear();
-        env->DeleteLocalRef(cls);
         return false;
     }
     jstring jline = newString(env, offered.c_str());
     if (jline == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         if (jline != nullptr) env->DeleteLocalRef(jline);
-        env->DeleteLocalRef(cls);
         return false;
     }
     jstring jclient = newString(env, saslClientMechs().c_str());
@@ -10403,10 +10448,9 @@ bool chooseSmtpAuth(JNIEnv * env, const std::string & offered, bool tls, bool pl
     args[4].l = jclient;  // was missing: an uninitialized jobject aborted the VM on the first SMTP AUTH
     // A client certificate went out on this TLS connection: EXTERNAL first (sent directly, smtpAuthExternal).
     args[5].z = tls && clientCert ? JNI_TRUE : JNI_FALSE;
-    jobject result = env->CallStaticObjectMethodA(cls, method, args);
+    jobject result = env->CallStaticObjectMethodA(gJni.imapAuth, gJni.chooseImapAuth, args);
     env->DeleteLocalRef(jline);
     if (jclient != nullptr) env->DeleteLocalRef(jclient);
-    env->DeleteLocalRef(cls);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         if (result != nullptr) env->DeleteLocalRef(result);
@@ -11083,13 +11127,11 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeProbe(JNIEnv * env, jcl
         lines.push_back("post=" + probeCaps(imap));
     }
     if (imap != nullptr) rejectImap(imap);
-    jclass stringCls = env->FindClass("java/lang/String");
-    if (stringCls == nullptr || env->ExceptionCheck()) {
+    if (gJni.string == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         return nullptr;
     }
-    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(lines.size()), stringCls, nullptr);
-    env->DeleteLocalRef(stringCls);
+    jobjectArray arr = env->NewObjectArray(static_cast<jsize>(lines.size()), gJni.string, nullptr);
     if (arr == nullptr || env->ExceptionCheck()) {
         env->ExceptionClear();
         return nullptr;

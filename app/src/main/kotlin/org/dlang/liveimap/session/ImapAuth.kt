@@ -21,7 +21,7 @@ fun chooseImapAuth(
     clientCert: Boolean = false,
 ): String? = imapAuthOrder(capabilities, tls, plaintextOk, channelBinding, clientMechanisms, clientCert).firstOrNull()
 
-/** For the native login: [imapAuthOrder] as one space-separated line. */
+/** For the native login: [imapAuthOrder] as one space-separated line. C calls [ImapAuthNative]. */
 fun imapAuthOrderLine(
     capabilities: String,
     tls: Boolean,
@@ -75,4 +75,32 @@ fun imapAuthOrder(
         if (plaintextOk) order += plaintextImapAuth.filter { it in offered }
     }
     return order
+}
+
+/** Native login and SMTP AUTH call these. The names and the string arguments stay. */
+@androidx.annotation.Keep
+object ImapAuthNative {
+    @JvmStatic
+    fun imapAuthOrderLine(
+        capabilities: String,
+        tls: Boolean,
+        plaintextOk: Boolean,
+        channelBinding: Boolean,
+        clientMechanisms: String,
+        clientCert: Boolean,
+    ): String = org.dlang.liveimap.session.imapAuthOrderLine(
+        capabilities, tls, plaintextOk, channelBinding, clientMechanisms, clientCert,
+    )
+
+    @JvmStatic
+    fun chooseImapAuth(
+        capabilities: String,
+        tls: Boolean,
+        plaintextOk: Boolean,
+        channelBinding: Boolean,
+        clientMechanisms: String,
+        clientCert: Boolean,
+    ): String? = org.dlang.liveimap.session.chooseImapAuth(
+        capabilities, tls, plaintextOk, channelBinding, clientMechanisms, clientCert,
+    )
 }

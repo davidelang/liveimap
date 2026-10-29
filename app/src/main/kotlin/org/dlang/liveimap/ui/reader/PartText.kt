@@ -3,6 +3,7 @@ package org.dlang.liveimap.ui.reader
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** One decode from [MimeDecode.text] or [MimeDecode.streamTake]. */
+@androidx.annotation.Keep
 class MimeTextResult(
     val ok: Boolean,
     val text: String,

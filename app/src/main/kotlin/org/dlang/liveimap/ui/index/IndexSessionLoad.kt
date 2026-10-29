@@ -562,7 +562,7 @@ internal class IndexLoadHost {
         fun deliverMailboxChange(change: MailboxChange) {
             when (change) {
                 MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
-                // Called on the native IDLE thread: hop to the screen scope first (F25).
+                // Called on the watch take coroutine: hop to the screen scope first (F25).
                 MailboxChange.WatchLost -> scope.launch { watchRecovery.onWatchLost(scope, session) }
                 else -> enqueueModel {
                     when (change) {

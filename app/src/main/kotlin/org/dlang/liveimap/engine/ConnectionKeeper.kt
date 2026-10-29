@@ -35,7 +35,7 @@ class ConnectionKeeper(
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Connected)
     val connectionState: StateFlow<ConnectionState> = state
 
-    // Written from the native IDLE thread too (markWatchLost via onNativeWatch, F25).
+    // Written from the watch take coroutine too (markWatchLost, F25).
     @Volatile private var lastUsed = nowMs()
     @Volatile private var lastSelect: SelectResult? = null
     @Volatile private var broken = false

@@ -9753,14 +9753,99 @@ static bool jni_threw(JNIEnv * env) {
     return true;
 }
 
+struct MimeJniIds {
+    jclass stringClass = nullptr;
+    jmethodID stringGetBytes = nullptr;
+    jmethodID stringCtor = nullptr;
+    jclass charset = nullptr;
+    jmethodID forName = nullptr;
+    jmethodID charsetDecode = nullptr;
+    jmethodID newDecoder = nullptr;
+    jclass byteBuffer = nullptr;
+    jmethodID wrap = nullptr;
+    jobject replace = nullptr;
+    jclass decoder = nullptr;
+    jmethodID onMal = nullptr;
+    jmethodID onUnm = nullptr;
+    jmethodID reset = nullptr;
+    jmethodID decode3 = nullptr;
+    jclass buffer = nullptr;
+    jmethodID rewind = nullptr;
+    jclass charBuffer = nullptr;
+    jmethodID allocate = nullptr;
+    jmethodID flip = nullptr;
+    jmethodID cbToString = nullptr;
+    jclass coderResult = nullptr;
+    jmethodID isOverflow = nullptr;
+    jmethodID isError = nullptr;
+};
+
+static MimeJniIds gMime;
+
+static bool mimeClass(JNIEnv * env, jclass * slot, const char * name) {
+    jclass local = env->FindClass(name);
+    if (local == nullptr) return false;
+    *slot = static_cast<jclass>(env->NewGlobalRef(local));
+    env->DeleteLocalRef(local);
+    return *slot != nullptr;
+}
+
+bool resolveMimeJni(JNIEnv * env) {
+    if (!mimeClass(env, &gMime.stringClass, "java/lang/String")) return false;
+    if (!mimeClass(env, &gMime.charset, "java/nio/charset/Charset")) return false;
+    if (!mimeClass(env, &gMime.byteBuffer, "java/nio/ByteBuffer")) return false;
+    if (!mimeClass(env, &gMime.decoder, "java/nio/charset/CharsetDecoder")) return false;
+    if (!mimeClass(env, &gMime.buffer, "java/nio/Buffer")) return false;
+    if (!mimeClass(env, &gMime.charBuffer, "java/nio/CharBuffer")) return false;
+    if (!mimeClass(env, &gMime.coderResult, "java/nio/charset/CoderResult")) return false;
+    jclass action = nullptr;
+    if (!mimeClass(env, &action, "java/nio/charset/CodingErrorAction")) return false;
+    gMime.stringGetBytes = env->GetMethodID(gMime.stringClass, "getBytes", "(Ljava/lang/String;)[B");
+    if (gMime.stringGetBytes == nullptr) return false;
+    gMime.stringCtor = env->GetMethodID(gMime.stringClass, "<init>", "([BLjava/lang/String;)V");
+    if (gMime.stringCtor == nullptr) return false;
+    gMime.forName = env->GetStaticMethodID(gMime.charset, "forName", "(Ljava/lang/String;)Ljava/nio/charset/Charset;");
+    if (gMime.forName == nullptr) return false;
+    gMime.charsetDecode = env->GetMethodID(gMime.charset, "decode", "(Ljava/nio/ByteBuffer;)Ljava/nio/CharBuffer;");
+    if (gMime.charsetDecode == nullptr) return false;
+    gMime.newDecoder = env->GetMethodID(gMime.charset, "newDecoder", "()Ljava/nio/charset/CharsetDecoder;");
+    if (gMime.newDecoder == nullptr) return false;
+    gMime.wrap = env->GetStaticMethodID(gMime.byteBuffer, "wrap", "([B)Ljava/nio/ByteBuffer;");
+    if (gMime.wrap == nullptr) return false;
+    jfieldID replaceId = env->GetStaticFieldID(action, "REPLACE", "Ljava/nio/charset/CodingErrorAction;");
+    if (replaceId == nullptr) return false;
+    jobject replaceLocal = env->GetStaticObjectField(action, replaceId);
+    if (replaceLocal == nullptr) return false;
+    gMime.replace = env->NewGlobalRef(replaceLocal);
+    env->DeleteLocalRef(replaceLocal);
+    if (gMime.replace == nullptr) return false;
+    gMime.onMal = env->GetMethodID(gMime.decoder, "onMalformedInput", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;");
+    if (gMime.onMal == nullptr) return false;
+    gMime.onUnm = env->GetMethodID(gMime.decoder, "onUnmappableCharacter", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;");
+    if (gMime.onUnm == nullptr) return false;
+    gMime.reset = env->GetMethodID(gMime.decoder, "reset", "()Ljava/nio/charset/CharsetDecoder;");
+    if (gMime.reset == nullptr) return false;
+    gMime.decode3 = env->GetMethodID(gMime.decoder, "decode", "(Ljava/nio/ByteBuffer;Ljava/nio/CharBuffer;Z)Ljava/nio/charset/CoderResult;");
+    if (gMime.decode3 == nullptr) return false;
+    gMime.rewind = env->GetMethodID(gMime.buffer, "rewind", "()Ljava/nio/Buffer;");
+    if (gMime.rewind == nullptr) return false;
+    gMime.allocate = env->GetStaticMethodID(gMime.charBuffer, "allocate", "(I)Ljava/nio/CharBuffer;");
+    if (gMime.allocate == nullptr) return false;
+    gMime.flip = env->GetMethodID(gMime.charBuffer, "flip", "()Ljava/nio/Buffer;");
+    if (gMime.flip == nullptr) return false;
+    gMime.cbToString = env->GetMethodID(gMime.charBuffer, "toString", "()Ljava/lang/String;");
+    if (gMime.cbToString == nullptr) return false;
+    gMime.isOverflow = env->GetMethodID(gMime.coderResult, "isOverflow", "()Z");
+    if (gMime.isOverflow == nullptr) return false;
+    gMime.isError = env->GetMethodID(gMime.coderResult, "isError", "()Z");
+    return gMime.isError != nullptr;
+}
+
 static int java_copy_utf8(JNIEnv * env, jstring text, std::string * utf8) {
-    if (text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
-    jclass stringClass = env->FindClass("java/lang/String");
-    if (stringClass == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-    jmethodID getBytes = env->GetMethodID(stringClass, "getBytes", "(Ljava/lang/String;)[B");
+    if (text == nullptr || gMime.stringGetBytes == nullptr) return MAIL_CHARCONV_ERROR_CONV;
     jstring utf8Name = env->NewStringUTF("UTF-8");
-    if (getBytes == nullptr || utf8Name == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-    jobject raw = env->CallObjectMethod(text, getBytes, utf8Name);
+    if (utf8Name == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jobject raw = env->CallObjectMethod(text, gMime.stringGetBytes, utf8Name);
     if (jni_threw(env) || raw == nullptr) return MAIL_CHARCONV_ERROR_CONV;
     jsize n = env->GetArrayLength(static_cast<jbyteArray>(raw));
     if (jni_threw(env) || n < 0) return MAIL_CHARCONV_ERROR_CONV;
@@ -9775,12 +9860,10 @@ static int java_copy_utf8(JNIEnv * env, jstring text, std::string * utf8) {
 static int java_for_name(JNIEnv * env, const char * name, jobject * charset) {
     std::string label = java_charset_label(name);
     if (label.empty()) return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
-    jclass cls = env->FindClass("java/nio/charset/Charset");
-    if (cls == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-    jmethodID forName = env->GetStaticMethodID(cls, "forName", "(Ljava/lang/String;)Ljava/nio/charset/Charset;");
+    if (gMime.charset == nullptr || gMime.forName == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
     jstring jname = env->NewStringUTF(label.c_str());
-    if (forName == nullptr || jname == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-    jobject cs = env->CallStaticObjectMethod(cls, forName, jname);
+    if (jname == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    jobject cs = env->CallStaticObjectMethod(gMime.charset, gMime.forName, jname);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         return MAIL_CHARCONV_ERROR_UNKNOWN_CHARSET;
@@ -9814,23 +9897,17 @@ static int java_charset_decode(const char * name, const char * bytes, size_t len
     jobject cs = nullptr;
     int named = java_for_name(env, name, &cs);
     if (named != MAIL_CHARCONV_NO_ERROR) return named;
-    jclass csClass = env->FindClass("java/nio/charset/Charset");
-    jmethodID decode = csClass != nullptr ? env->GetMethodID(csClass, "decode", "(Ljava/nio/ByteBuffer;)Ljava/nio/CharBuffer;") : nullptr;
     jbyteArray raw = env->NewByteArray(static_cast<jsize>(len));
-    jclass bbClass = env->FindClass("java/nio/ByteBuffer");
-    jmethodID wrap = bbClass != nullptr ? env->GetStaticMethodID(bbClass, "wrap", "([B)Ljava/nio/ByteBuffer;") : nullptr;
-    if (decode == nullptr || raw == nullptr || wrap == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+    if (gMime.charsetDecode == nullptr || raw == nullptr || gMime.wrap == nullptr || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
     if (len > 0) {
         env->SetByteArrayRegion(raw, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(bytes));
         if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
     }
-    jobject bb = env->CallStaticObjectMethod(bbClass, wrap, raw);
+    jobject bb = env->CallStaticObjectMethod(gMime.byteBuffer, gMime.wrap, raw);
     if (jni_threw(env) || bb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
-    jobject cb = env->CallObjectMethod(cs, decode, bb);
+    jobject cb = env->CallObjectMethod(cs, gMime.charsetDecode, bb);
     if (jni_threw(env) || cb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
-    jclass cbClass = env->GetObjectClass(cb);
-    jmethodID toString = cbClass != nullptr ? env->GetMethodID(cbClass, "toString", "()Ljava/lang/String;") : nullptr;
-    jobject text = toString != nullptr ? env->CallObjectMethod(cb, toString) : nullptr;
+    jobject text = gMime.cbToString != nullptr ? env->CallObjectMethod(cb, gMime.cbToString) : nullptr;
     if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
     return java_copy_utf8(env, static_cast<jstring>(text), utf8);
 }
@@ -9849,60 +9926,41 @@ static int java_charset_prefix(const char * name, const char * bytes, size_t len
     jobject cs = nullptr;
     int named = java_for_name(env, name, &cs);
     if (named != MAIL_CHARCONV_NO_ERROR) return named;
-    jclass csClass = env->FindClass("java/nio/charset/Charset");
-    jmethodID newDecoder = csClass != nullptr ? env->GetMethodID(csClass, "newDecoder", "()Ljava/nio/charset/CharsetDecoder;") : nullptr;
-    jobject dec = newDecoder != nullptr ? env->CallObjectMethod(cs, newDecoder) : nullptr;
-    jclass actionClass = env->FindClass("java/nio/charset/CodingErrorAction");
-    jfieldID replaceId = actionClass != nullptr ? env->GetStaticFieldID(actionClass, "REPLACE", "Ljava/nio/charset/CodingErrorAction;") : nullptr;
-    jobject replace = replaceId != nullptr ? env->GetStaticObjectField(actionClass, replaceId) : nullptr;
-    jclass decClass = env->FindClass("java/nio/charset/CharsetDecoder");
-    jmethodID onMal = decClass != nullptr ? env->GetMethodID(decClass, "onMalformedInput", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;") : nullptr;
-    jmethodID onUnm = decClass != nullptr ? env->GetMethodID(decClass, "onUnmappableCharacter", "(Ljava/nio/charset/CodingErrorAction;)Ljava/nio/charset/CharsetDecoder;") : nullptr;
-    jmethodID reset = decClass != nullptr ? env->GetMethodID(decClass, "reset", "()Ljava/nio/charset/CharsetDecoder;") : nullptr;
-    jmethodID decode3 = decClass != nullptr ? env->GetMethodID(decClass, "decode", "(Ljava/nio/ByteBuffer;Ljava/nio/CharBuffer;Z)Ljava/nio/charset/CoderResult;") : nullptr;
+    jobject dec = gMime.newDecoder != nullptr ? env->CallObjectMethod(cs, gMime.newDecoder) : nullptr;
+    jobject replace = gMime.replace;
     jbyteArray raw = env->NewByteArray(static_cast<jsize>(len));
-    jclass bbClass = env->FindClass("java/nio/ByteBuffer");
-    jmethodID wrap = bbClass != nullptr ? env->GetStaticMethodID(bbClass, "wrap", "([B)Ljava/nio/ByteBuffer;") : nullptr;
-    jclass bufferClass = env->FindClass("java/nio/Buffer");
-    jmethodID rewind = bufferClass != nullptr ? env->GetMethodID(bufferClass, "rewind", "()Ljava/nio/Buffer;") : nullptr;
-    jclass cbClass = env->FindClass("java/nio/CharBuffer");
-    jmethodID allocate = cbClass != nullptr ? env->GetStaticMethodID(cbClass, "allocate", "(I)Ljava/nio/CharBuffer;") : nullptr;
-    jmethodID flip = cbClass != nullptr ? env->GetMethodID(cbClass, "flip", "()Ljava/nio/Buffer;") : nullptr;
-    jclass crClass = env->FindClass("java/nio/charset/CoderResult");
-    jmethodID isOverflow = crClass != nullptr ? env->GetMethodID(crClass, "isOverflow", "()Z") : nullptr;
-    jmethodID isError = crClass != nullptr ? env->GetMethodID(crClass, "isError", "()Z") : nullptr;
-    if (dec == nullptr || replace == nullptr || onMal == nullptr || onUnm == nullptr || reset == nullptr || decode3 == nullptr ||
-        raw == nullptr || wrap == nullptr || rewind == nullptr || allocate == nullptr || flip == nullptr || isOverflow == nullptr ||
-        isError == nullptr || jni_threw(env)) {
+    if (dec == nullptr || replace == nullptr || gMime.onMal == nullptr || gMime.onUnm == nullptr || gMime.reset == nullptr
+        || gMime.decode3 == nullptr || raw == nullptr || gMime.wrap == nullptr || gMime.rewind == nullptr
+        || gMime.allocate == nullptr || gMime.flip == nullptr || gMime.isOverflow == nullptr || gMime.isError == nullptr
+        || jni_threw(env)) {
         return MAIL_CHARCONV_ERROR_CONV;
     }
     env->SetByteArrayRegion(raw, 0, static_cast<jsize>(len), reinterpret_cast<const jbyte *>(bytes));
     if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-    jobject bb = env->CallStaticObjectMethod(bbClass, wrap, raw);
-    env->CallObjectMethod(dec, onMal, replace);
-    env->CallObjectMethod(dec, onUnm, replace);
+    jobject bb = env->CallStaticObjectMethod(gMime.byteBuffer, gMime.wrap, raw);
+    env->CallObjectMethod(dec, gMime.onMal, replace);
+    env->CallObjectMethod(dec, gMime.onUnm, replace);
     if (jni_threw(env) || bb == nullptr) return MAIL_CHARCONV_ERROR_CONV;
     jint cap = static_cast<jint>(len);
     if (cap < 1) cap = 1;
     for (int spins = 0; spins < 4; ++spins) {
-        env->CallObjectMethod(dec, reset);
-        env->CallObjectMethod(bb, rewind);
+        env->CallObjectMethod(dec, gMime.reset);
+        env->CallObjectMethod(bb, gMime.rewind);
         if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-        jobject outBuf = env->CallStaticObjectMethod(cbClass, allocate, cap);
+        jobject outBuf = env->CallStaticObjectMethod(gMime.charBuffer, gMime.allocate, cap);
         if (jni_threw(env) || outBuf == nullptr) return MAIL_CHARCONV_ERROR_MEMORY;
-        jobject result = env->CallObjectMethod(dec, decode3, bb, outBuf, JNI_FALSE);
+        jobject result = env->CallObjectMethod(dec, gMime.decode3, bb, outBuf, JNI_FALSE);
         if (jni_threw(env) || result == nullptr) return MAIL_CHARCONV_ERROR_CONV;
-        if (env->CallBooleanMethod(result, isError) == JNI_TRUE || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-        if (env->CallBooleanMethod(result, isOverflow) == JNI_TRUE) {
+        if (env->CallBooleanMethod(result, gMime.isError) == JNI_TRUE || jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
+        if (env->CallBooleanMethod(result, gMime.isOverflow) == JNI_TRUE) {
             if (cap > (INT_MAX / 2)) return MAIL_CHARCONV_ERROR_MEMORY;
             cap *= 2;
             continue;
         }
         if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-        env->CallObjectMethod(outBuf, flip);
+        env->CallObjectMethod(outBuf, gMime.flip);
         if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
-        jmethodID toString = env->GetMethodID(cbClass, "toString", "()Ljava/lang/String;");
-        jobject text = toString != nullptr ? env->CallObjectMethod(outBuf, toString) : nullptr;
+        jobject text = gMime.cbToString != nullptr ? env->CallObjectMethod(outBuf, gMime.cbToString) : nullptr;
         if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
         return java_copy_utf8(env, static_cast<jstring>(text), utf8);
     }
@@ -9940,22 +9998,20 @@ static int java_charset_encode(const char * name, const std::string & utf8, std:
     if (named != MAIL_CHARCONV_NO_ERROR) return named;
     (void)cs;
     std::string label = java_charset_label(name);
-    jclass stringClass = env->FindClass("java/lang/String");
-    jmethodID ctor = stringClass != nullptr ? env->GetMethodID(stringClass, "<init>", "([BLjava/lang/String;)V") : nullptr;
-    jmethodID getBytes = stringClass != nullptr ? env->GetMethodID(stringClass, "getBytes", "(Ljava/lang/String;)[B") : nullptr;
     jstring utf8Name = env->NewStringUTF("UTF-8");
     jstring csName = env->NewStringUTF(label.c_str());
     jbyteArray raw = env->NewByteArray(static_cast<jsize>(utf8.size()));
-    if (ctor == nullptr || getBytes == nullptr || utf8Name == nullptr || csName == nullptr || raw == nullptr || jni_threw(env)) {
+    if (gMime.stringCtor == nullptr || gMime.stringGetBytes == nullptr || utf8Name == nullptr || csName == nullptr
+        || raw == nullptr || jni_threw(env)) {
         return MAIL_CHARCONV_ERROR_CONV;
     }
     if (!utf8.empty()) {
         env->SetByteArrayRegion(raw, 0, static_cast<jsize>(utf8.size()), reinterpret_cast<const jbyte *>(utf8.data()));
         if (jni_threw(env)) return MAIL_CHARCONV_ERROR_CONV;
     }
-    jobject text = env->NewObject(stringClass, ctor, raw, utf8Name);
+    jobject text = env->NewObject(gMime.stringClass, gMime.stringCtor, raw, utf8Name);
     if (jni_threw(env) || text == nullptr) return MAIL_CHARCONV_ERROR_CONV;
-    jobject encoded = env->CallObjectMethod(text, getBytes, csName);
+    jobject encoded = env->CallObjectMethod(text, gMime.stringGetBytes, csName);
     if (env->ExceptionCheck()) {
         env->ExceptionClear();
         return MAIL_CHARCONV_ERROR_CONV;

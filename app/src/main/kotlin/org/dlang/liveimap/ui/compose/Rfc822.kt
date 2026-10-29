@@ -854,6 +854,7 @@ internal fun decodeHeaderPhrases(values: Array<String>, fallback: String): Array
     return MimeDecode.phrases(values, fallback)
 }
 
+@androidx.annotation.Keep
 internal class MimeDecodeException(message: String) : MailFailure(message)
 
 internal fun decodeTransfer(bytes: ByteArray, encoding: String): ByteArray =

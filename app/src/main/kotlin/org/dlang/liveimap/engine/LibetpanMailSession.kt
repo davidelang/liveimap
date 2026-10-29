@@ -5,7 +5,12 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
@@ -102,6 +107,7 @@ internal class SmtpProbeMaterial(
 )
 
 /** One open or stage: the handle, the TLS line, and the failure, together. */
+@androidx.annotation.Keep
 internal class SessionOpen(
     @JvmField val handle: Long,
     @JvmField val tls: String,
@@ -115,12 +121,13 @@ internal class SessionOpen(
 )
 
 /** UIDs created by one copy or move, and the target mailbox epoch. */
+@androidx.annotation.Keep
 internal class CopyMoveResult(
     @JvmField val copiedUids: LongArray,
     @JvmField val targetEpoch: Long,
 )
 
-/** Mailbox and callback from the last watch request. [clearPublishedWatch] does not drop this. */
+/** Mailbox and callback from the last watch request. A failed start does not drop this. */
 internal class WatchTarget(
     val mailbox: String,
     val onChange: (MailboxChange) -> Unit,
@@ -193,27 +200,19 @@ class LibetpanMailSession(
     @Volatile
     private var sequencesStale = false
 
-    @Volatile
-    private var watchCallback: ((MailboxChange) -> Unit)? = null
+    /** One snapshot for the take coroutine and [SessionLink.emit]. */
+    private val activeWatch = AtomicReference<WatchTarget?>(null)
 
-    @Volatile
-    private var watchMailbox: String? = null
-
-    private val publishedWatch = AtomicReference<PublishedWatch?>(null)
-
-    /** Last watch or rewatch target. Survives a cleared publish so rewatch can start it. */
+    /** Last watch or rewatch target. Survives a failed start so rewatch can start it. */
     @Volatile
     private var requestedWatch: WatchTarget? = null
 
-    private class WatchOffer(
-        val mailbox: String,
-        val onChange: (MailboxChange) -> Unit,
-    )
+    private val watchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val watchJob = AtomicReference<Job?>(null)
+    private val watchThread = AtomicReference<Thread?>(null)
 
-    private class PublishedWatch(
-        val generation: Long,
-        val offer: WatchOffer?,
-    )
+    @Volatile
+    private var stoppingWatch = false
 
     @Volatile
     private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
@@ -225,7 +224,7 @@ class LibetpanMailSession(
     @Volatile
     private var plaintextConfirmer: (suspend () -> Boolean)? = null
 
-    // Concurrent: onNativeWatch prunes it from the native IDLE thread while the lane reads it (F25).
+    // Concurrent: the watch take coroutine prunes it while the lane reads it (F25).
     // One MessageOrder per command for the selected folder. No Any cast.
     private val cache = java.util.concurrent.ConcurrentHashMap<String, MessageOrder>()
     private val threadHeaders = java.util.concurrent.ConcurrentHashMap<String, ClientHeaders>()
@@ -599,6 +598,7 @@ class LibetpanMailSession(
     }
 
     private fun closeLiveSession() {
+        stoppingWatch = true
         val h = handle
         if (h != 0L) {
             try {
@@ -607,6 +607,7 @@ class LibetpanMailSession(
             }
             // F101: suspend/reconnect is not a user leave, so no CLOSE (it would expunge behind a pending Undo).
         }
+        joinWatchTake()
         closeSockets()
         trashListed = false
         listedTrash = ""
@@ -683,7 +684,7 @@ class LibetpanMailSession(
             return@read list
         }
         val rows = nativeNamespaces(requireHandle()) ?: throw MailFailure("namespace failed")
-        val list = rows.toList()
+        val list = namespacesOf(rows)
         namespaceList = list
         list
     }
@@ -699,7 +700,7 @@ class LibetpanMailSession(
             parentMailbox?.let(::wire),
             featureCaps.listKind(unreadCounts),
         ) ?: throw MailFailure("list failed")
-        rows.toList()
+        foldersOf(rows)
     }
 
     override suspend fun mailboxListed(name: String): Boolean = keeper.read("list") {
@@ -709,7 +710,10 @@ class LibetpanMailSession(
     override suspend fun statusMessages(mailboxes: List<String>): Map<String, Int> {
         if (mailboxes.isEmpty()) return emptyMap()
         return keeper.read("status") {
-            nativeStatusMessages(requireHandle(), mailboxes.map(::wire).toTypedArray())
+            statusCountsOf(
+                nativeStatusMessages(requireHandle(), mailboxes.map(::wire).toTypedArray())
+                    ?: throw MailFailure("status failed"),
+            )
         }
     }
 
@@ -773,7 +777,7 @@ class LibetpanMailSession(
                 settings.unlabeledCharset,
                 accountId,
             ) ?: throw MailFailure("fetch failed")
-            fetched.toList()
+            indexRowsOf(fetched)
         }
         return rows
     }
@@ -807,11 +811,11 @@ class LibetpanMailSession(
     }
 
     override suspend fun fetchStructure(uid: Long): MimePart = keeper.read("fetch") {
-        nativeFetchStructure(requireHandle(), uid) ?: throw MailFailure("fetch failed")
+        mimePartOf(nativeFetchStructure(requireHandle(), uid) ?: throw MailFailure("fetch failed"))
     }
 
     override suspend fun fetchStructureAt(uid: Long, section: String): MimePart = keeper.read("fetch") {
-        nativeFetchStructureAt(requireHandle(), uid, section) ?: throw MailFailure("fetch failed")
+        mimePartOf(nativeFetchStructureAt(requireHandle(), uid, section) ?: throw MailFailure("fetch failed"))
     }
 
     override suspend fun peekPart(uid: Long, section: String, offset: Int, length: Int): ByteArray =
@@ -1015,7 +1019,7 @@ class LibetpanMailSession(
             parsed.fuzzy,
             accountId,
         ) ?: throw MailFailure("search failed")
-        rows.toList()
+        messageRefsOf(rows)
     }
 
     override suspend fun searchScopeCount(
@@ -1852,7 +1856,13 @@ class LibetpanMailSession(
                         close()
                         return
                     }
-                    nativeWatch(requireHandle(), wire(mailbox), WatchOffer(mailbox, onChange))
+                    val started = nativeWatch(requireHandle(), wire(mailbox))
+                    if (started == 0L) {
+                        keeper.markWatchLost()
+                        return
+                    }
+                    activeWatch.set(WatchTarget(mailbox, onChange))
+                    replaceWatchTake(started)
                     noteTraffic("Idling")
                 } catch (failure: Throwable) {
                     close()
@@ -1869,67 +1879,67 @@ class LibetpanMailSession(
         if (!featureCaps.idle) return
         // F136: not through the keeper. The watch is its own connection and runs beside the main one (off the
         // session lane); a reconnect of the main connection from here would race the lane's commands.
-        // The callback is stored only for the generation nativeWatch publishes, not before it returns.
-        val offer = WatchOffer(mailbox, onChange)
+        // The callback is stored only after nativeWatch returns a generation, not before.
         requestedWatch = WatchTarget(mailbox, onChange)
-        val started = nativeWatch(requireHandle(), wire(mailbox), offer)
+        val started = nativeWatch(requireHandle(), wire(mailbox))
         if (started == 0L) {
             keeper.markWatchLost()
-            val cur = publishedWatch.get()
-            if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+            val cur = activeWatch.get()
+            if (cur != null && cur.onChange === onChange && cur.mailbox == mailbox) activeWatch.compareAndSet(cur, null)
             return
         }
+        activeWatch.set(WatchTarget(mailbox, onChange))
+        replaceWatchTake(started)
         noteTraffic("Idling")
     }
 
-    fun publishWatch(generation: Long, offer: Any?) {
-        val pending = offer as? WatchOffer ?: return
-        if (generation == 0L) return
-        val next = PublishedWatch(generation, pending)
-        while (true) {
-            val cur = publishedWatch.get()
-            if (cur != null && generation < cur.generation) return
-            if (!publishedWatch.compareAndSet(cur, next)) continue
-            watchMailbox = pending.mailbox
-            watchCallback = pending.onChange
-            val now = publishedWatch.get()
-            if (now !== next) {
-                val kept = now?.offer
-                if (kept == null) {
-                    watchCallback = null
-                    watchMailbox = null
-                } else {
-                    watchMailbox = kept.mailbox
-                    watchCallback = kept.onChange
-                }
-            }
-            return
-        }
-    }
-
     override suspend fun stopWatch() {
+        stoppingWatch = true
         val h = handle
-        val stopped = if (h != 0L) nativeStopWatch(h) else 0L
-        clearPublishedWatch(stopped)
+        if (h != 0L) nativeStopWatch(h)
+        activeWatch.set(null)
         requestedWatch = null
+        joinWatchTake()
     }
 
-    private fun clearPublishedWatch(stoppedGeneration: Long) {
-        if (stoppedGeneration == 0L) return
-        val floor = PublishedWatch(stoppedGeneration, null)
-        while (true) {
-            val cur = publishedWatch.get()
-            if (cur != null && cur.generation > stoppedGeneration) return
-            if (!publishedWatch.compareAndSet(cur, floor)) continue
-            watchCallback = null
-            watchMailbox = null
-            val kept = publishedWatch.get()?.offer
-            if (kept != null) {
-                watchMailbox = kept.mailbox
-                watchCallback = kept.onChange
-            }
-            return
+    private fun replaceWatchTake(generation: Long) {
+        val previous = watchJob.get()
+        if (previous != null && Thread.currentThread() != watchThread.get()) {
+            runBlocking { previous.join() }
         }
+        stoppingWatch = false
+        val job = watchScope.launch {
+            watchThread.set(Thread.currentThread())
+            try {
+                val h = handle
+                while (!stoppingWatch && h != 0L) {
+                    val bytes = nativeWatchTake(h, generation) ?: break
+                    for (note in decodeWatchNotes(bytes)) deliverWatchNote(note)
+                }
+            } finally {
+                watchThread.compareAndSet(Thread.currentThread(), null)
+            }
+        }
+        watchJob.set(job)
+    }
+
+    private fun joinWatchTake() {
+        val job = watchJob.get() ?: return
+        if (Thread.currentThread() == watchThread.get()) return
+        runBlocking { job.join() }
+    }
+
+    private fun deliverWatchNote(note: DecodedWatchNote) {
+        val target = activeWatch.get() ?: return
+        val change = if (note.kind == 4) {
+            keeper.markWatchLost()
+            MailboxChange.WatchLost
+        } else {
+            watchChangeOf(note.kind, note.exists, note.uid, note.flags)
+        }
+        dropCached(target.mailbox, keepClient = true)
+        sequencesStale = true
+        target.onChange.invoke(change)
     }
 
     override suspend fun noop() {
@@ -2150,34 +2160,10 @@ class LibetpanMailSession(
         selectedMailbox = null
         selectedReadWrite = false
         sequencesStale = false
-        publishedWatch.set(null)
-        watchCallback = null
-        watchMailbox = null
+        activeWatch.set(null)
         requestedWatch = null
         clearOrderCache()
         keeper.onSessionClosed()
-    }
-
-    fun onNativeWatch(generation: Long, kind: Int, exists: Int, uid: Long, flags: Array<String>?) {
-        val target = publishedWatch.get() ?: return
-        val pending = target.offer ?: return
-        if (target.generation != generation) return
-        val mailbox = pending.mailbox
-        val callback = pending.onChange
-        val change: MailboxChange = when (kind) {
-            0 -> MailboxChange.Exists(exists)
-            1 -> MailboxChange.Expunge(exists)
-            2 -> MailboxChange.Flags(uid, flags?.toSet() ?: emptySet())
-            5 -> MailboxChange.ShownFlags
-            4 -> {
-                keeper.markWatchLost()
-                MailboxChange.WatchLost
-            }
-            else -> MailboxChange.UidValidityReset
-        }
-        dropCached(mailbox, keepClient = true)
-        sequencesStale = true
-        callback.invoke(change)
     }
 
     private inner class SessionLink : Link {
@@ -2223,22 +2209,27 @@ class LibetpanMailSession(
 
         override fun rewatch() {
             if (account == null) throw MailFailure("no account")
-            val publishedOffer = publishedWatch.get()?.offer
-            val published = publishedOffer?.let { WatchTarget(it.mailbox, it.onChange) }
-            var offer: WatchOffer? = null
+            var started: WatchTarget? = null
             val running = runRewatch(
-                published,
+                activeWatch.get(),
                 requestedWatch,
                 start = { target ->
                     requestedWatch = WatchTarget(target.mailbox, target.onChange)
-                    val next = WatchOffer(target.mailbox, target.onChange)
-                    offer = next
-                    nativeWatch(requireHandle(), wire(next.mailbox), next)
+                    started = target
+                    val gen = nativeWatch(requireHandle(), wire(target.mailbox))
+                    if (gen != 0L) {
+                        activeWatch.set(WatchTarget(target.mailbox, target.onChange))
+                        replaceWatchTake(gen)
+                    }
+                    gen
                 },
                 markLost = { keeper.markWatchLost() },
                 clearOffer = {
-                    val cur = publishedWatch.get()
-                    if (cur != null && cur.offer === offer) clearPublishedWatch(cur.generation)
+                    val cur = activeWatch.get()
+                    val offer = started
+                    if (cur != null && offer != null && cur.onChange === offer.onChange && cur.mailbox == offer.mailbox) {
+                        activeWatch.compareAndSet(cur, null)
+                    }
                 },
             )
             if (!running) return
@@ -2257,8 +2248,8 @@ class LibetpanMailSession(
             }
             // F144: these changes describe the main connection's selected folder; the index's watcher gets them
             // only when that is the folder it watches, never another folder's counts or epoch.
-            // One publishedWatch snapshot, same as onNativeWatch and rewatch. The two volatiles can cross.
-            val pending = publishedWatch.get()?.offer
+            // One activeWatch snapshot, same as the take coroutine and rewatch.
+            val pending = activeWatch.get()
             if (pending != null && reconnectChangeReachesWatcher(selectedMailbox, pending.mailbox)) {
                 pending.onChange.invoke(change)
             }
@@ -2431,15 +2422,21 @@ class LibetpanMailSession(
         requireWireText(if (utf8Names) org.dlang.liveimap.ui.compose.Mutf7.savedForUtf8(name) else name)
     private external fun nativeCompress(handle: Long)
     private external fun nativeClose(handle: Long)
-    private external fun nativeNamespaces(handle: Long): Array<Namespace>?
+    // Columns: 0 prefix Array<String?>, 1 delimiter IntArray, 2 kind IntArray (0 Personal, 1 Other, 2 Shared).
+    private external fun nativeNamespaces(handle: Long): Array<Any>?
     private external fun nativeHierarchyDelimiter(handle: Long): Char
-    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<FolderEntry>?
+    // Columns: 0 mailbox, 1 leaf, 2 specialUse (null if none) Array<String?>; 3 hasChildren, 4 delimiter, 5 messages (-1 if absent), 6 unseen (-1 if absent) IntArray.
+    private external fun nativeListLevel(handle: Long, prefix: String, parent: String?, listKind: String): Array<Any>?
     private external fun nativeMailboxListed(handle: Long, name: String): Boolean
     private external fun nativeSubscribedMailboxes(handle: Long, extended: Boolean): Array<String>?
-    private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Map<String, Int>
+    // Columns: 0 mailbox Array<String?>, 1 messages IntArray.
+    private external fun nativeStatusMessages(handle: Long, mailboxes: Array<String>): Array<Any>?
     private external fun nativeSelect(handle: Long, mailbox: String, readWrite: Boolean): SelectResult?
     private external fun nativeUnselect(handle: Long)
     private external fun nativeCloseMailbox(handle: Long)
+    // Columns: 0 uid, 1 uidValidity, 2 epoch LongArray; 3 sequence, 4 size, 5 toMe, 6 hasAttachment,
+    // 7 previewFailed IntArray; 8 accountId, 9 mailbox, 10 from, 11 subject, 12 envelopeDate,
+    // 13 preview (null if absent), 14 recipients, 15 headerNote, 16 flags (NUL-separated) Array<String?>.
     private external fun nativeFetchIndex(
         handle: Long,
         mailbox: String,
@@ -2458,10 +2455,13 @@ class LibetpanMailSession(
         altAddresses: String,
         unlabeledCharset: String,
         accountId: String,
-    ): Array<IndexRow>?
+    ): Array<Any>?
 
-    private external fun nativeFetchStructure(handle: Long, uid: Long): MimePart?
-    private external fun nativeFetchStructureAt(handle: Long, uid: Long, section: String): MimePart?
+    // One MimePart, big-endian. Each part: u16 length + UTF-8 for section, type, subtype, disposition;
+    // filename u16 0xFFFF if null else length + UTF-8; size i32; charset, encoding, format as u16 length + UTF-8;
+    // delSp u8; child count u16; then that many children.
+    private external fun nativeFetchStructure(handle: Long, uid: Long): ByteArray?
+    private external fun nativeFetchStructureAt(handle: Long, uid: Long, section: String): ByteArray?
     private external fun nativePeekPart(
         handle: Long,
         uid: Long,
@@ -2515,6 +2515,7 @@ class LibetpanMailSession(
         fuzzy: Boolean,
     ): Long
 
+    // Columns: 0 accountId, 1 mailbox Array<String?>, 2 uidValidity LongArray, 3 uid LongArray.
     private external fun nativeSearchScope(
         handle: Long,
         scope: String,
@@ -2526,7 +2527,7 @@ class LibetpanMailSession(
         withCharset: Boolean,
         fuzzy: Boolean,
         accountId: String,
-    ): Array<MessageRef>?
+    ): Array<Any>?
 
     private external fun nativeSearchScopeCount(
         handle: Long,
@@ -2630,7 +2631,11 @@ class LibetpanMailSession(
     ): ThreadFlat?
     private external fun nativeThread(handle: Long, algorithm: String, criteria: String?): ThreadFlat?
     private external fun nativeWatchLogin(handle: Long): String?
-    private external fun nativeWatch(handle: Long, mailbox: String, offer: Any): Long
+    private external fun nativeWatch(handle: Long, mailbox: String): Long
+
+    // One blocking take. Null ends the loop (stop or the session closed, and the queue had nothing for this generation).
+    // Bytes are the big-endian notes decodeWatchNotes reads, oldest first.
+    private external fun nativeWatchTake(handle: Long, generation: Long): ByteArray?
     private external fun nativeStopWatch(handle: Long): Long
     private external fun nativeSmtp(
         handle: Long,

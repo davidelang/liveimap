@@ -196,7 +196,7 @@ androidComponents {
     beforeVariants(selector().withFlavor("abi" to "play").withBuildType("debug")) { it.enable = false }
 }
 
-// Same org/dlang FindClass literals as ProguardKeepSyncTest, plus BuildConfig, must survive arm64 R8.
+// org/dlang FindClass literals, plus BuildConfig, must survive arm64 R8.
 tasks.register("checkArm64ReleaseKeeps") {
     dependsOn("assembleArm64Release")
     doLast {
