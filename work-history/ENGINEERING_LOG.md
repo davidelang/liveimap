@@ -3973,3 +3973,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Work: the three comments in WatchedFolders.kt no longer name extraIdleLock. The generation counter is unchanged: readGeneration still only reads it, bumpGeneration still increments it on the caller, and a stop that bumps it still keeps a later apply from opening
 - No new mutex. No install
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-30 - Whole HTML part, or plain text when it exists
+
+- The HTML view and HTML as text decode the entire text/html part before display. Text, Flowed, and Monospaced show text/plain, otherwise that HTML as text. There is no text part only when the structure has neither.
