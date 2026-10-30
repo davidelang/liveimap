@@ -107,7 +107,21 @@ class TextDisplayTest {
         assertEquals(BodyView.PlainOrError, bodyViewOf(ReaderDisplay.Flowed, BodyView.PlainOrHtml))
         assertEquals(BodyView.PlainOrError, bodyViewOf(ReaderDisplay.Monospaced, BodyView.PlainOrHtml))
         assertEquals(TextLayout.Flowed, textLayoutOf(ReaderDisplay.Html, TextLayout.Flowed))
+        assertEquals(TextLayout.Text, textLayoutOf(ReaderDisplay.Text, TextLayout.Flowed))
         assertEquals(TextLayout.Monospaced, textLayoutOf(ReaderDisplay.Monospaced, TextLayout.Text))
+    }
+
+    @Test fun binaryPeekNumericSectionDropsTransferEncoding() {
+        assertEquals("", fetchedTransferEncoding("BinaryPeek", "1", "quoted-printable"))
+        assertEquals("", fetchedTransferEncoding("BinaryPeek", "1.2", "base64"))
+        assertFalse(fetchedTransferEncoding("BinaryPeek", "1", "base64").equals("base64", ignoreCase = true))
+        assertEquals("quoted-printable", fetchedTransferEncoding("BodyPeek", "1", "quoted-printable"))
+        assertEquals("quoted-printable", fetchedTransferEncoding("BinaryPeek", "HEADER", "quoted-printable"))
+        assertEquals("base64", fetchedTransferEncoding("BinaryPeek", "*", "base64"))
+        assertEquals("", fetchedTransferEncoding("BodyPeek", "1", ""))
+        assertFalse(serverStrippedTransferEncoding("BodyPeek", "1"))
+        assertFalse(serverStrippedTransferEncoding("BinaryPeek", "*"))
+        assertTrue(serverStrippedTransferEncoding("BinaryPeek", "2.1"))
     }
 
     @Test fun nChunksCostLinearLines() {
