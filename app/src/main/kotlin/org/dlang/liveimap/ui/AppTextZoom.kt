@@ -40,6 +40,12 @@ class AppZoomSession(private val start: Int) {
         if (consumed) return null
         return clampTextZoom(Math.round(start * factor).toInt())
     }
+
+    /** Settings still writes when the scrolling column consumed the gesture. */
+    fun commitForSettings(pinched: Boolean): Int? {
+        if (!pinched) return null
+        return clampTextZoom(Math.round(start * factor).toInt())
+    }
 }
 
 @Composable

@@ -91,6 +91,8 @@ class DataStoreSettingsStore(
 
     override suspend fun listAccounts(): List<AccountChoice> = store.listAccounts()
 
+    suspend fun accountFields(accountId: String): Map<String, String>? = store.accountFields(accountId)
+
     override suspend fun listDrawerAccounts(): List<DrawerAccount> = store.listDrawerAccounts()
 
     override suspend fun chosenAccountId(): String? {

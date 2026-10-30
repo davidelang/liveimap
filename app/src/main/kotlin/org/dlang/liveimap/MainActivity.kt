@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import com.davidlang.liveimap.BuildConfig
+import org.dlang.liveimap.accounts.NoAccountSelected
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.applyExtraIdle
 import org.dlang.liveimap.session.launchExtraIdleStop
@@ -61,14 +62,20 @@ class MainActivity : ComponentActivity() {
             var fullScreen by remember { mutableStateOf(false) }
             LaunchedEffect(store) {
                 store.theme().collect {
-                    val loaded = store.load()
-                    theme = loaded.theme
-                    dynamicColor = loaded.dynamicColor
-                    fullScreen = loaded.fullScreen
+                    try {
+                        val loaded = store.load()
+                        theme = loaded.theme
+                        dynamicColor = loaded.dynamicColor
+                        fullScreen = loaded.fullScreen
+                    } catch (_: NoAccountSelected) {
+                    }
                 }
             }
             LaunchedEffect(LayoutApply.fullScreenGeneration) {
-                fullScreen = store.load().fullScreen
+                try {
+                    fullScreen = store.load().fullScreen
+                } catch (_: NoAccountSelected) {
+                }
             }
             val dark = when (theme) {
                 ThemeMode.Dark -> true
@@ -113,6 +120,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         applyExtraIdle(store.forAccount(choice.id).load(), choice.id)
                     } catch (_: MailFailure) {
+                    } catch (_: NoAccountSelected) {
                     }
                 }
             }

@@ -1167,7 +1167,7 @@
 {"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "A(z) %1$s nem törölhető"},
 {"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Az ideiglenes másolat (%1$s) nem távolítható el"},
 {"key": "setting_bodyFetchChunk_title", "source": "Bytes per body fetch", "text": "Bytes per body fetch"},
-{"key": "setting_appTextZoom_title", "source": "App text size", "text": "App text size"},
+{"key": "setting_appTextZoom_title", "source": "Font size", "text": "Betűméret"},
 {"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "A képek megbízhatósága nem tölthető be"},
 {"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "A képek megbízhatósága nem menthető"},
 {"key": "settings_no_limit", "source": "No limit", "text": "No limit"},

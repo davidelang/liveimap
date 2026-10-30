@@ -34,4 +34,21 @@ class AppTextZoomTest {
         session.zoomBy(1.5f)
         assertNull(session.commit(consumed = true))
     }
+
+    @Test
+    fun settingsPinchWritesClampedWhenScrollConsumes() {
+        val session = AppZoomSession(100)
+        session.zoomBy(1.5f)
+        assertNull(session.commit(consumed = true))
+        assertEquals(150, session.commitForSettings(pinched = true))
+        val high = AppZoomSession(250)
+        high.zoomBy(2f)
+        assertEquals(MaxTextZoom, high.commitForSettings(pinched = true))
+        val low = AppZoomSession(60)
+        low.zoomBy(0.5f)
+        assertEquals(MinTextZoom, low.commitForSettings(pinched = true))
+        val scroll = AppZoomSession(100)
+        scroll.zoomBy(1.2f)
+        assertNull(scroll.commitForSettings(pinched = false))
+    }
 }

@@ -282,7 +282,7 @@
     <string name="error_delete_failed">Could not delete %1$s</string>
     <string name="error_jmap_staging_left">The staging copy %1$s could not be removed</string>
     <string name="setting_bodyFetchChunk_title">Bytes per body fetch</string>
-    <string name="setting_appTextZoom_title">App text size</string>
+    <string name="setting_appTextZoom_title">Font size</string>
     <string name="image_trust_load_failed">Could not load image trust</string>
     <string name="image_trust_save_failed">Could not save image trust</string>
     <string name="reader_original_colors">Original colors</string>

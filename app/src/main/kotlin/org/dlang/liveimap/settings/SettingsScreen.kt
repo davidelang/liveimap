@@ -8,6 +8,8 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import org.dlang.liveimap.accounts.NoAccountSelected
+import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.settings.editors.AccountListEditor
 import org.dlang.liveimap.settings.editors.*
 import org.dlang.liveimap.settings.editors.openingAccount
@@ -16,6 +18,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,6 +95,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -334,6 +341,23 @@ internal class SettingsEditor(
         pageDirty = true
     }
 
+    /** Pinch writes appTextZoom now and does not leave that key dirty. */
+    fun applySettingsPinch(next: Int): Boolean {
+        if (!ready) return false
+        val clamped = clampTextZoom(next)
+        val wasDirty = "appTextZoom" in dirtyKeys.get()
+        if (!wasDirty && settings.appTextZoom == clamped) return false
+        settingsEpoch.incrementAndGet()
+        settings = settings.copy(appTextZoom = clamped)
+        dirtyKeys.updateAndGet { it - "appTextZoom" }
+        baselineMirror.set(baselineMirror.get().copy(appTextZoom = clamped))
+        pageDirty = dirtyKeys.get().isNotEmpty() || passwordDirty || smtpDirty || sieveDirty
+        if (creating) {
+            org.dlang.liveimap.settings.editors.PendingNewAccount.settings = settings
+        }
+        return true
+    }
+
     fun beginNewAccount() {
         val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
         val fresh = pending.settings ?: newAccountSettings()
@@ -462,18 +486,35 @@ internal class SettingsEditor(
                 accounts = listed.map { it.copy(editing = false) },
             )
         }
+        val choice = listed.firstOrNull { it.id == editing }
+        if (choice?.corrupt == true) {
+            return missingBlobEditor(listed, editing, null, ui, "", "", false, false)
+        }
         val boundStore = store.forAccount(editing)
         val rawPassword = boundStore.password()
         val rawSmtp = boundStore.smtpPassword()
-        return EditorLoad(
-            editingId = editing,
-            settings = boundStore.load().withUiOf(ui),
-            password = rawPassword ?: "",
-            smtpPassword = rawSmtp ?: "",
-            accounts = listed.map { it.copy(editing = it.id == editing) },
-            passwordMissing = rawPassword == null,
-            smtpMissing = rawSmtp == null,
-        )
+        return try {
+            EditorLoad(
+                editingId = editing,
+                settings = boundStore.load().withUiOf(ui),
+                password = rawPassword ?: "",
+                smtpPassword = rawSmtp ?: "",
+                accounts = listed.map { it.copy(editing = it.id == editing) },
+                passwordMissing = rawPassword == null,
+                smtpMissing = rawSmtp == null,
+            )
+        } catch (_: NoAccountSelected) {
+            missingBlobEditor(
+                listed,
+                editing,
+                store.accountFields(editing),
+                ui,
+                rawPassword ?: "",
+                rawSmtp ?: "",
+                rawPassword == null,
+                rawSmtp == null,
+            )
+        }
     }
 
     private fun applyReload(loaded: EditorLoad, epoch: EditorEpoch, force: Boolean) {
@@ -603,6 +644,43 @@ internal class SettingsEditor(
     suspend fun saveAccount(target: DataStoreSettingsStore) {
         commitPageAwait()
     }
+}
+
+/** A missing settings blob. A corrupt row, or userData overlay cannot read, stays listed and shows the UI snapshot. */
+internal fun missingBlobEditor(
+    listed: List<AccountChoice>,
+    editing: String,
+    userData: Map<String, String>?,
+    ui: Settings,
+    password: String,
+    smtpPassword: String,
+    passwordMissing: Boolean,
+    smtpMissing: Boolean,
+): EditorLoad {
+    val choice = listed.firstOrNull { it.id == editing }
+    val overlaid = if (choice == null || choice.corrupt || userData == null) {
+        null
+    } else {
+        runCatching { overlayAccountFields(newAccountSettings(), userData) }.getOrNull()
+    }
+    if (overlaid == null) {
+        return EditorLoad(
+            editingId = null,
+            settings = ui,
+            password = "",
+            smtpPassword = "",
+            accounts = listed.map { it.copy(editing = false) },
+        )
+    }
+    return EditorLoad(
+        editingId = editing,
+        settings = overlaid.withUiOf(ui),
+        password = password,
+        smtpPassword = smtpPassword,
+        accounts = listed.map { it.copy(editing = it.id == editing) },
+        passwordMissing = passwordMissing,
+        smtpMissing = smtpMissing,
+    )
 }
 
 private val immediateSettingKeys = setOf(
@@ -848,6 +926,31 @@ fun SettingsTree(
                 notePaneScroll(scroll, bounds.top, bounds.bottom)
             }
             .verticalScroll(scroll)
+            .pointerInput(editor) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+                    val session = org.dlang.liveimap.ui.AppZoomSession(editor.settings.appTextZoom)
+                    var pinched = false
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        if (event.changes.count { it.pressed } >= 2) {
+                            val step = event.calculateZoom()
+                            session.zoomBy(step)
+                            if (!step.isNaN() && step != 1f) pinched = true
+                        }
+                    } while (event.changes.any { it.pressed })
+                    val next = session.commitForSettings(pinched) ?: return@awaitEachGesture
+                    if (!editor.applySettingsPinch(next)) return@awaitEachGesture
+                    settingsIo.launch {
+                        val current = SettingsHub.uiNow()
+                        SettingsHub.saveUiKeys(
+                            editor.appContext,
+                            current.withSetting("appTextZoom", SettingValue(next.toString())),
+                            setOf("appTextZoom"),
+                        )
+                    }
+                }
+            }
             .padding(16.dp)
             .testTag("smoke-settings"),
     ) {

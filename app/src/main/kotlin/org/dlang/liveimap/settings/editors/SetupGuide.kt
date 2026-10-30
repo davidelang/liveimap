@@ -21,9 +21,12 @@ import androidx.compose.ui.unit.dp
 import com.davidlang.liveimap.R
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.accounts.AccountStore
+import org.dlang.liveimap.accounts.NoAccountSelected
 import org.dlang.liveimap.accounts.PasswordStorage
+import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.testAccountLogins
 import org.dlang.liveimap.settings.testAccountProbes
@@ -58,6 +61,9 @@ fun SetupGuide(
     var step by remember { mutableIntStateOf(0) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var smtpPasswordText by remember { mutableStateOf("") }
+    var sievePasswordText by remember { mutableStateOf("") }
     var inboundJmap by remember { mutableStateOf(false) }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("993") }
@@ -67,20 +73,40 @@ fun SetupGuide(
     var report by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var loadedAccount by remember { mutableStateOf<Settings?>(null) }
+    var missingBlob by remember { mutableStateOf(false) }
     val existing = accountId?.takeIf { it.isNotEmpty() }
     androidx.compose.runtime.LaunchedEffect(existing) {
         loadedAccount = null
+        missingBlob = false
+        username = ""
+        smtpPasswordText = ""
+        sievePasswordText = ""
         val id = existing ?: return@LaunchedEffect
         val bound = DataStoreSettingsStore(context, id)
-        val loaded = bound.load()
+        var missing = false
+        val loaded = try {
+            bound.load()
+        } catch (_: NoAccountSelected) {
+            val fields = AccountStore.shared(context).accountFields(id)
+            val overlaid = fields?.let { data ->
+                runCatching { overlayAccountFields(newAccountSettings(), data).withUiOf(SettingsHub.uiNow()) }.getOrNull()
+            }
+            if (overlaid == null) return@LaunchedEffect
+            missing = true
+            overlaid
+        }
         email = loaded.email.ifBlank { loaded.username }
+        username = loaded.username
         host = loaded.imapHost
         port = loaded.imapPort.toString()
         inboundJmap = loaded.jmapFolders
         smtpHost = loaded.smtpHost
         smtpPort = loaded.smtpPort.toString()
         smtpSame = loaded.smtpSameAsImap
-        password = bound.password().orEmpty()
+        password = readSlot { bound.password() }
+        smtpPasswordText = readSlot { bound.smtpPassword() }
+        sievePasswordText = readSlot { AccountStore.shared(context).sievePassword(id) }
+        missingBlob = missing
         loadedAccount = loaded
     }
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -88,8 +114,20 @@ fun SetupGuide(
         if (step == 0) {
             Text(stringResource(R.string.setup_email))
             androidx.compose.material3.OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), singleLine = true)
+            if (missingBlob && username.isNotEmpty()) {
+                Text(stringResource(R.string.settings_username))
+                Text(username)
+            }
             Text(stringResource(R.string.setup_password))
             androidx.compose.material3.OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true)
+            if (missingBlob && smtpPasswordText.isNotEmpty()) {
+                Text(stringResource(R.string.settings_smtp_password))
+                Text(smtpPasswordText)
+            }
+            if (missingBlob && sievePasswordText.isNotEmpty()) {
+                Text(stringResource(R.string.settings_sieve_password))
+                Text(sievePasswordText)
+            }
             TextButton(onClick = {
                 val activity = context.findActivity() ?: return@TextButton
                 scope.launch {
@@ -141,6 +179,7 @@ fun SetupGuide(
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
                 val loaded = loadedAccount
+                val blobMissing = missingBlob
                 scope.launch {
                     val saved = finishSetup(
                         context,
@@ -149,6 +188,7 @@ fun SetupGuide(
                         password,
                         if (smtpSame) password else "",
                         loaded,
+                        blobMissing,
                     )
                     if (saved) onDone() else report = context.getString(R.string.setup_failed)
                 }
@@ -188,6 +228,39 @@ internal fun existingSetupReady(existing: String?, loaded: Settings?): Boolean {
     return loaded != null
 }
 
+internal enum class SetupFinishKind {
+    Nothing,
+    SaveOverlaid,
+    SaveLoaded,
+    Create,
+}
+
+internal data class SetupFinishPlan(
+    val kind: SetupFinishKind,
+    val accountId: String?,
+    val settings: Settings?,
+    val rewritePasswords: Boolean,
+)
+
+/** Four Finish decisions: still loading, missing blob, loaded record, or a new account. */
+internal fun planSetupFinish(
+    existing: String?,
+    loaded: Settings?,
+    draft: Settings,
+    missingBlob: Boolean,
+): SetupFinishPlan {
+    if (!existingSetupReady(existing, loaded)) {
+        return SetupFinishPlan(SetupFinishKind.Nothing, null, null, false)
+    }
+    if (existing == null) {
+        return SetupFinishPlan(SetupFinishKind.Create, null, draft, true)
+    }
+    if (missingBlob) {
+        return SetupFinishPlan(SetupFinishKind.SaveOverlaid, existing, loaded, false)
+    }
+    return SetupFinishPlan(SetupFinishKind.SaveLoaded, existing, wizardOntoLoaded(loaded!!, draft), true)
+}
+
 /** Wizard fields written onto the loaded record. Every other field stays. */
 internal fun wizardOntoLoaded(loaded: Settings, draft: Settings): Settings {
     return loaded.copy(
@@ -209,25 +282,28 @@ private suspend fun finishSetup(
     password: String,
     smtpPassword: String,
     loaded: Settings?,
+    missingBlob: Boolean,
 ): Boolean {
+    val plan = planSetupFinish(existing, loaded, settings, missingBlob)
     // A Finish before the load writes nothing: no record and neither password.
-    if (!existingSetupReady(existing, loaded)) return false
+    if (plan.kind == SetupFinishKind.Nothing) return false
     return try {
         val store = AccountStore.shared(context)
-        val written = if (existing == null) {
-            settings
-        } else {
-            val base = loaded ?: return false
-            wizardOntoLoaded(base, settings)
-        }
-        val id = if (existing == null) {
-            store.createAccount(written, password, smtpPassword)
-        } else {
-            val bound = DataStoreSettingsStore(context, existing)
-            bound.save(written)
-            bound.setPassword(password)
-            bound.setSmtpPassword(smtpPassword)
-            existing
+        val written = plan.settings ?: return false
+        val id = when (plan.kind) {
+            SetupFinishKind.Create -> store.createAccount(written, password, smtpPassword)
+            SetupFinishKind.SaveOverlaid, SetupFinishKind.SaveLoaded -> {
+                val accountId = plan.accountId ?: return false
+                val bound = DataStoreSettingsStore(context, accountId)
+                bound.save(written)
+                // A missing blob keeps the IMAP slot (save) and does not replace SMTP or Sieve.
+                if (plan.rewritePasswords) {
+                    bound.setPassword(password)
+                    bound.setSmtpPassword(smtpPassword)
+                }
+                accountId
+            }
+            SetupFinishKind.Nothing -> return false
         }
         if (written.passwordStorage == org.dlang.liveimap.settings.PasswordStorageChoice.passwordManager) {
             context.findActivity()?.let { PasswordStorage.savePassword(it, written.username, password) }
@@ -235,6 +311,16 @@ private suspend fun finishSetup(
         id.isNotEmpty()
     } catch (_: Exception) {
         false
+    }
+}
+
+private suspend fun readSlot(read: suspend () -> String?): String {
+    return try {
+        read().orEmpty()
+    } catch (error: kotlinx.coroutines.CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        ""
     }
 }
 

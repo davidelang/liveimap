@@ -351,6 +351,16 @@ class AccountStore private constructor(private val context: Context) {
         }
     }
 
+    /** Account Manager fields for [accountId]. The settings blob is not read. */
+    suspend fun accountFields(accountId: String): Map<String, String>? {
+        val id = parseAccountId(accountId) ?: return null
+        return onAccount {
+            withContext(Dispatchers.IO) {
+                readAccounts().firstOrNull { it.userData[userAccountId] == id }?.userData?.toMap()
+            }
+        }
+    }
+
     suspend fun listAccounts(): List<AccountChoice> {
         return onAccount {
             withContext(Dispatchers.IO) {

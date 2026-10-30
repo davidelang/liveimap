@@ -1167,7 +1167,7 @@
 {"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "%1$s মচিব পৰা নগ'ল"},
 {"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "অস্থায়ী প্ৰতিলিপি %1$s আঁতৰাব পৰা নগ'ল"},
 {"key": "setting_bodyFetchChunk_title", "source": "Bytes per body fetch", "text": "Bytes per body fetch"},
-{"key": "setting_appTextZoom_title", "source": "App text size", "text": "App text size"},
+{"key": "setting_appTextZoom_title", "source": "Font size", "text": "ফণ্টৰ আকাৰ"},
 {"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "ছবিৰ বিশ্বাস ল'ব পৰা নগ'ল"},
 {"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "ছবিৰ বিশ্বাস সাঁচিব পৰা নগ'ল"},
 {"key": "settings_no_limit", "source": "No limit", "text": "No limit"},

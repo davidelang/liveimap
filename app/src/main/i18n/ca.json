@@ -1167,7 +1167,7 @@
 {"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "No s'ha pogut suprimir %1$s"},
 {"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "No s'ha pogut eliminar la còpia temporal %1$s"},
 {"key": "setting_bodyFetchChunk_title", "source": "Bytes per body fetch", "text": "Bytes per body fetch"},
-{"key": "setting_appTextZoom_title", "source": "App text size", "text": "App text size"},
+{"key": "setting_appTextZoom_title", "source": "Font size", "text": "Mida de la lletra"},
 {"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "No s'ha pogut carregar la confiança d'imatges"},
 {"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "No s'ha pogut desar la confiança d'imatges"},
 {"key": "settings_no_limit", "source": "No limit", "text": "No limit"},

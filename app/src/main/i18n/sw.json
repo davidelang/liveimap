@@ -1167,7 +1167,7 @@
 {"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Haikuweza kufuta %1$s"},
 {"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Nakala ya muda %1$s haikuweza kuondolewa"},
 {"key": "setting_bodyFetchChunk_title", "source": "Bytes per body fetch", "text": "Bytes per body fetch"},
-{"key": "setting_appTextZoom_title", "source": "App text size", "text": "App text size"},
+{"key": "setting_appTextZoom_title", "source": "Font size", "text": "Ukubwa wa fonti"},
 {"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Imani ya picha haikupakiwa"},
 {"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Imani ya picha haikuhifadhiwa"},
 {"key": "settings_no_limit", "source": "No limit", "text": "No limit"},

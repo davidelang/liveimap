@@ -1167,7 +1167,7 @@
 {"key": "error_delete_failed", "source": "Could not delete %1$s", "text": "Nu s-a putut șterge %1$s"},
 {"key": "error_jmap_staging_left", "source": "The staging copy %1$s could not be removed", "text": "Copia temporară %1$s nu a putut fi eliminată"},
 {"key": "setting_bodyFetchChunk_title", "source": "Bytes per body fetch", "text": "Bytes per body fetch"},
-{"key": "setting_appTextZoom_title", "source": "App text size", "text": "App text size"},
+{"key": "setting_appTextZoom_title", "source": "Font size", "text": "Dimensiune font"},
 {"key": "image_trust_load_failed", "source": "Could not load image trust", "text": "Încrederea imaginilor nu a putut fi încărcată"},
 {"key": "image_trust_save_failed", "source": "Could not save image trust", "text": "Încrederea imaginilor nu a putut fi salvată"},
 {"key": "settings_no_limit", "source": "No limit", "text": "No limit"},

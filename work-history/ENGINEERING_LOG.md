@@ -3977,3 +3977,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-30 - Whole HTML part, or plain text when it exists
 
 - The HTML view and HTML as text decode the entire text/html part before display. Text, Flowed, and Monospaced show text/plain, otherwise that HTML as text. There is no text part only when the structure has neither.
+
+## 2026-10-30 - Start with no settings record, and font size
+
+- Approved plan: sandbox/plans/start-and-font-20261030-0702-plan.md
+- Work: a missing settings blob no longer stops startup; the editor and setup Finish use the account-manager fields on that same id; the font-size row is named Font size and a pinch on settings writes appTextZoom
+- First action per standard-plan-compliance-block.md; commits stay on master
