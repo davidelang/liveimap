@@ -1146,7 +1146,7 @@ private fun ReaderScreen(
             BodyView.PlainOrError, BodyView.PlainOrText -> when {
                 plain != null -> showPlain(plain)
                 html != null -> showHtml(html, asText = true)
-                else -> showMissing(noTextPartText, noText = true, offerHtml = html != null)
+                else -> showMissing(noTextPartText, noText = true, offerHtml = false)
             }
             BodyView.PlainOrHtml -> {
                 if (html == null) showMissing(noHtmlPartText) else showHtml(html, asText = false)
