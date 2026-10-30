@@ -28,6 +28,7 @@ import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.newAccountSettings
+import org.dlang.liveimap.settings.withUiOf
 import org.dlang.liveimap.settings.testAccountLogins
 import org.dlang.liveimap.settings.testAccountProbes
 import org.dlang.liveimap.ui.TextButton
@@ -88,7 +89,7 @@ fun SetupGuide(
             bound.load()
         } catch (_: NoAccountSelected) {
             val fields = AccountStore.shared(context).accountFields(id)
-            val overlaid = fields?.let { data ->
+            val overlaid = fields?.let { data: Map<String, String> ->
                 runCatching { overlayAccountFields(newAccountSettings(), data).withUiOf(SettingsHub.uiNow()) }.getOrNull()
             }
             if (overlaid == null) return@LaunchedEffect
