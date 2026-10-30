@@ -3958,3 +3958,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - HTML view skips a second transfer decode
 
 - A BINARY.PEEK numeric section is already decoded, so the reader and forward path treat that encoding as identity. The Text display is HTML as text.
+
+## 2026-10-29 - A finished BINARY.PEEK stops at the decoded length
+
+- The HTML end and truncation checks no longer use the encoded BODYSTRUCTURE size after the transfer encoding was already removed.

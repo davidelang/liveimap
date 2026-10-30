@@ -81,6 +81,29 @@ internal fun serverStrippedTransferEncoding(fetchKind: String, section: String):
 internal fun fetchedTransferEncoding(fetchKind: String, section: String, partEncoding: String): String =
     if (serverStrippedTransferEncoding(fetchKind, section)) "" else partEncoding
 
+/**
+ * A BINARY.PEEK that ended under [cap] is the whole decoded part. [partSize] is the encoded
+ * BODYSTRUCTURE size and does not truncate that part.
+ */
+internal fun transferStrippedTruncated(stripped: Boolean, partSize: Int, cap: Int, hitCap: Boolean): Boolean {
+    if (hitCap) return true
+    if (stripped) return false
+    return partSize > cap
+}
+
+/** More bytes only while the decoded read is short of its end. A finished BINARY.PEEK is not more. */
+internal fun transferStrippedHasMore(
+    stripped: Boolean,
+    partSize: Int,
+    decodedOffset: Int,
+    cap: Int,
+    truncated: Boolean,
+): Boolean {
+    if (decodedOffset >= cap) return false
+    if (stripped) return truncated
+    return partSize > 0 && decodedOffset < partSize
+}
+
 fun decodePart(bytes: ByteArray, charset: String, encoding: String, fallback: String): DecodedPart {
     val row = MimeDecode.text(bytes, charset, fallback, encoding)
     if (!row.ok) {

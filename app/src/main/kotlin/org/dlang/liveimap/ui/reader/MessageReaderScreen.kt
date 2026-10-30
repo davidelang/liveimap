@@ -1068,8 +1068,8 @@ private fun ReaderScreen(
         val plain = textPart(root, "plain")
         val html = textPart(root, "html")
         suspend fun pullHtml(part: MimePart, markSeen: Boolean): HtmlPull? {
-            var truncated = part.size > RawViewCapBytes
             var wireRead = 0
+            val stripped = serverStrippedTransferEncoding(session.featureCaps.fetchKind(), part.section)
             val transfer = fetchedTransferEncoding(session.featureCaps.fetchKind(), part.section, part.encoding)
             val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
             try {
@@ -1079,8 +1079,8 @@ private fun ReaderScreen(
                     wireRead += chunk.size
                 }
                 if (stopped == null) return null
-                if (stopped) truncated = true
-                else if (!truncated) built.append(decoder.finish())
+                val truncated = transferStrippedTruncated(stripped, part.size, RawViewCapBytes, stopped)
+                if (!truncated) built.append(decoder.finish())
                 val note = if (decoder.unknownCharset) {
                     appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
                 } else {
@@ -1599,7 +1599,9 @@ private fun ReaderScreen(
                 if (!renderedHtml) return@launch
                 val root = structure ?: return@launch
                 val part = textPart(root, "html") ?: return@launch
-                if (part.section == bodySection && part.size > 0 && bodyOffset < part.size && bodyOffset < RawViewCapBytes) {
+                if (part.section != bodySection) return@launch
+                val stripped = serverStrippedTransferEncoding(session.featureCaps.fetchKind(), part.section)
+                if (transferStrippedHasMore(stripped, part.size, bodyOffset, RawViewCapBytes, bodyTruncated)) {
                     pullBody(part, reset = false, markSeen = false, token)
                 }
         }

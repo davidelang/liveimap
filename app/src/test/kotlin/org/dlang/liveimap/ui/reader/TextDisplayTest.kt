@@ -125,6 +125,18 @@ class TextDisplayTest {
         assertTrue(serverStrippedTransferEncoding("BinaryPeek", "2.1"))
     }
 
+    @Test fun binaryPeekEndUsesDecodedLength() {
+        val cap = RawViewCapBytes
+        assertFalse(transferStrippedTruncated(stripped = true, partSize = cap + 1, cap = cap, hitCap = false))
+        assertTrue(transferStrippedTruncated(stripped = true, partSize = cap + 1, cap = cap, hitCap = true))
+        assertTrue(transferStrippedTruncated(stripped = false, partSize = cap + 1, cap = cap, hitCap = false))
+        assertFalse(transferStrippedTruncated(stripped = false, partSize = cap, cap = cap, hitCap = false))
+        assertFalse(transferStrippedHasMore(stripped = true, partSize = cap + 1, decodedOffset = 400, cap = cap, truncated = false))
+        assertFalse(transferStrippedHasMore(stripped = true, partSize = cap + 1, decodedOffset = cap, cap = cap, truncated = true))
+        assertTrue(transferStrippedHasMore(stripped = false, partSize = cap + 1, decodedOffset = 400, cap = cap, truncated = false))
+        assertFalse(transferStrippedHasMore(stripped = false, partSize = 400, decodedOffset = 400, cap = cap, truncated = false))
+    }
+
     @Test fun nChunksCostLinearLines() {
         val stream = FlowedStream()
         val chunks = 1000
