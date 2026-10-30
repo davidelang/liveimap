@@ -25,14 +25,24 @@ fun textLayoutOf(display: ReaderDisplay, current: TextLayout): TextLayout = when
 /** The body view a selector position asks for, given the view now shown. */
 fun bodyViewOf(display: ReaderDisplay, current: BodyView): BodyView = when (display) {
     ReaderDisplay.Html -> BodyView.PlainOrHtml
-    // Text is the lynx path: HTML as text. Headers and Raw are not a text layout of that part.
+    // Text, Flowed, and Monospaced are the text path (plain, or HTML as text). Headers and Raw stay.
     ReaderDisplay.Text -> when (current) {
         BodyView.Headers, BodyView.Raw -> current
         else -> BodyView.PlainOrText
     }
-    ReaderDisplay.Flowed, ReaderDisplay.Monospaced ->
-        if (current == BodyView.PlainOrHtml || current == BodyView.PlainOrText) BodyView.PlainOrError else current
+    ReaderDisplay.Flowed, ReaderDisplay.Monospaced -> when (current) {
+        BodyView.Headers, BodyView.Raw -> current
+        BodyView.PlainOrHtml, BodyView.PlainOrText -> BodyView.PlainOrText
+        else -> current
+    }
 }
+
+/**
+ * Characters for the HTML view or HTML as text. Null when the read stopped short of the part
+ * ([truncated]): a short read is not a finished body, and nothing is shown.
+ */
+internal fun finishedHtmlBody(decoded: String, truncated: Boolean): String? =
+    if (truncated) null else decoded
 
 /**
  * Lines to show for [lines] in [layout]. Text and Monospaced keep the original breaks. Flowed joins RFC 3676

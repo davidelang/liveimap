@@ -1072,117 +1072,84 @@ private fun ReaderScreen(
             val stripped = serverStrippedTransferEncoding(session.featureCaps.fetchKind(), part.section)
             val transfer = fetchedTransferEncoding(session.featureCaps.fetchKind(), part.section, part.encoding)
             val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
+            // The whole part. maxRawViewBytes caps Raw and Headers, not this view.
+            val cap = if (part.size > 0) part.size else Int.MAX_VALUE
             try {
                 val built = StringBuilder()
-                val stopped = readPart(part, markSeen, RawViewCapBytes) { chunk ->
+                val stopped = readPart(part, markSeen, cap) { chunk ->
                     built.append(decoder.take(chunk))
                     wireRead += chunk.size
                 }
                 if (stopped == null) return null
-                val truncated = transferStrippedTruncated(stripped, part.size, RawViewCapBytes, stopped)
-                if (!truncated) built.append(decoder.finish())
+                val truncated = transferStrippedTruncated(stripped, part.size, cap, stopped)
+                built.append(decoder.finish())
+                val text = finishedHtmlBody(built.toString(), truncated) ?: return null
                 val note = if (decoder.unknownCharset) {
                     appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
                 } else {
                     null
                 }
-                return HtmlPull(built.toString(), note, truncated, wireRead)
+                return HtmlPull(text, note, truncated, wireRead)
             } finally {
                 decoder.close()
             }
         }
+        suspend fun showPlain(part: MimePart) {
+            showHtmlButton = false
+            noTextPart = false
+            missing = null
+            renderedHtml = false
+            bodyTruncated = false
+            plainFlowed = part.format.equals("flowed", ignoreCase = true)
+            plainDelSp = part.delSp
+            pullBody(part, reset = true, markSeen = !seenStored, token)
+        }
+        suspend fun showHtml(part: MimePart, asText: Boolean) {
+            showHtmlButton = false
+            noTextPart = false
+            missing = null
+            renderedHtml = !asText
+            bodyText = ""
+            clearBodyLines()
+            bodyTruncated = false
+            bodySection = part.section
+            bodyOffset = 0
+            bodySize = part.size
+            charsetNote = null
+            if (asText) {
+                plainFlowed = false
+                plainDelSp = false
+            }
+            carry.pending = ByteArray(0)
+            carry.closeDecoder()
+            carry.clearText()
+            val pulled = try {
+                pullHtml(part, !seenStored)
+            } catch (error: MimeDecodeException) {
+                if (token != bodyGeneration) return
+                showMissing(error.text)
+                return
+            }
+            if (pulled == null || token != bodyGeneration) return
+            val text = if (asText) htmlAsText(pulled.text) else pulled.text
+            bodyOffset = pulled.wireRead
+            charsetNote = pulled.note
+            bodyText = text
+            clearBodyLines()
+            bodyLines.addAll(readerLines(text))
+            bodyComplete = true
+            bodyTruncated = pulled.truncated
+            // No plain part: the card keeps Show HTML. The words "no text part" stay off while HTML is shown as text.
+            if (asText) showHtmlButton = true
+        }
         when (view) {
-            BodyView.PlainOrError -> {
-                if (plain == null) {
-                    showMissing(noTextPartText, noText = true, offerHtml = html != null)
-                    return
-                }
-                showHtmlButton = false
-                noTextPart = false
-                missing = null
-                renderedHtml = false
-                bodyTruncated = false
-                plainFlowed = plain.format.equals("flowed", ignoreCase = true)
-                plainDelSp = plain.delSp
-                pullBody(plain, reset = true, markSeen = !seenStored, token)
+            BodyView.PlainOrError, BodyView.PlainOrText -> when {
+                plain != null -> showPlain(plain)
+                html != null -> showHtml(html, asText = true)
+                else -> showMissing(noTextPartText, noText = true, offerHtml = html != null)
             }
             BodyView.PlainOrHtml -> {
-                if (html == null) {
-                    showMissing(noHtmlPartText)
-                } else {
-                    showHtmlButton = false
-                    noTextPart = false
-                    missing = null
-                    renderedHtml = true
-                    bodyText = ""
-                    clearBodyLines()
-                    bodyTruncated = false
-                    bodySection = html.section
-                    bodyOffset = 0
-                    bodySize = html.size
-                    charsetNote = null
-                    carry.pending = ByteArray(0)
-                    carry.closeDecoder()
-                    carry.clearText()
-                    val pulled = try {
-                        pullHtml(html, !seenStored)
-                    } catch (error: MimeDecodeException) {
-                        if (token != bodyGeneration) return
-                        showMissing(error.text)
-                        return
-                    }
-                    if (pulled == null || token != bodyGeneration) return
-                    val text = pulled.text
-                    val note = pulled.note
-                    val truncated = pulled.truncated
-                    val wireRead = pulled.wireRead
-                    bodyOffset = wireRead
-                    charsetNote = note
-                    bodyText = text
-                    clearBodyLines()
-                    bodyLines.addAll(readerLines(text))
-                    bodyComplete = true
-                    bodyTruncated = truncated
-                }
-            }
-            BodyView.PlainOrText -> {
-                if (html == null) {
-                    showMissing(noHtmlPartText)
-                } else {
-                    renderedHtml = false
-                    showHtmlButton = false
-                    noTextPart = false
-                    missing = null
-                    bodyText = ""
-                    clearBodyLines()
-                    bodyTruncated = false
-                    bodySection = html.section
-                    bodyOffset = 0
-                    bodySize = html.size
-                    charsetNote = null
-                    carry.pending = ByteArray(0)
-                    carry.closeDecoder()
-                    carry.clearText()
-                    val pulled = try {
-                        pullHtml(html, !seenStored)
-                    } catch (error: MimeDecodeException) {
-                        if (token != bodyGeneration) return
-                        showMissing(error.text)
-                        return
-                    }
-                    if (pulled == null || token != bodyGeneration) return
-                    val text = pulled.text
-                    val note = pulled.note
-                    val truncated = pulled.truncated
-                    val wireRead = pulled.wireRead
-                    bodyOffset = wireRead
-                    charsetNote = note
-                    bodyText = htmlAsText(text)
-                    clearBodyLines()
-                    bodyLines.addAll(readerLines(bodyText))
-                    bodyComplete = true
-                    bodyTruncated = truncated
-                }
+                if (html == null) showMissing(noHtmlPartText) else showHtml(html, asText = false)
             }
             BodyView.Headers, BodyView.Raw -> Unit
         }
@@ -2764,6 +2731,18 @@ private fun ReaderScreen(
                         )
                     }
                     absent == null -> {
+                        Column(Modifier.weight(1f).fillMaxWidth()) {
+                        if (showHtmlButton) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                            ) {
+                                TextButton(onClick = { requestView(BodyView.PlainOrHtml) }) {
+                                    Text(stringResource(R.string.reader_show_html))
+                                }
+                            }
+                        }
                         Column(
                             Modifier
                                 .weight(1f)
@@ -2800,6 +2779,7 @@ private fun ReaderScreen(
                                 }
                             }
                           }
+                        }
                         }
                     }
                     else -> {

@@ -105,11 +105,26 @@ class TextDisplayTest {
         assertEquals(BodyView.PlainOrText, bodyViewOf(ReaderDisplay.Text, BodyView.PlainOrText))
         assertEquals(BodyView.Raw, bodyViewOf(ReaderDisplay.Text, BodyView.Raw))
         assertEquals(BodyView.Headers, bodyViewOf(ReaderDisplay.Text, BodyView.Headers))
-        assertEquals(BodyView.PlainOrError, bodyViewOf(ReaderDisplay.Flowed, BodyView.PlainOrHtml))
-        assertEquals(BodyView.PlainOrError, bodyViewOf(ReaderDisplay.Monospaced, BodyView.PlainOrHtml))
+        assertEquals(BodyView.PlainOrText, bodyViewOf(ReaderDisplay.Flowed, BodyView.PlainOrHtml))
+        assertEquals(BodyView.PlainOrText, bodyViewOf(ReaderDisplay.Flowed, BodyView.PlainOrText))
+        assertEquals(BodyView.PlainOrText, bodyViewOf(ReaderDisplay.Monospaced, BodyView.PlainOrHtml))
+        assertEquals(BodyView.PlainOrText, bodyViewOf(ReaderDisplay.Monospaced, BodyView.PlainOrText))
+        assertEquals(BodyView.Headers, bodyViewOf(ReaderDisplay.Flowed, BodyView.Headers))
+        assertEquals(BodyView.Raw, bodyViewOf(ReaderDisplay.Flowed, BodyView.Raw))
+        assertEquals(BodyView.Headers, bodyViewOf(ReaderDisplay.Monospaced, BodyView.Headers))
+        assertEquals(BodyView.Raw, bodyViewOf(ReaderDisplay.Monospaced, BodyView.Raw))
+        assertEquals(BodyView.PlainOrError, bodyViewOf(ReaderDisplay.Flowed, BodyView.PlainOrError))
         assertEquals(TextLayout.Flowed, textLayoutOf(ReaderDisplay.Html, TextLayout.Flowed))
         assertEquals(TextLayout.Text, textLayoutOf(ReaderDisplay.Text, TextLayout.Flowed))
         assertEquals(TextLayout.Monospaced, textLayoutOf(ReaderDisplay.Monospaced, TextLayout.Text))
+    }
+
+    @Test fun shortReadOfALargerHtmlPartIsNotAFinishedBody() {
+        val cap = RawViewCapBytes
+        val partial = "<p>partial"
+        assertEquals(null, finishedHtmlBody(partial, transferStrippedTruncated(false, cap + 1, cap, hitCap = true)))
+        assertEquals(null, finishedHtmlBody(partial, transferStrippedTruncated(false, cap + 1, cap, hitCap = false)))
+        assertEquals("<p>whole</p>", finishedHtmlBody("<p>whole</p>", transferStrippedTruncated(false, 12, cap, hitCap = false)))
     }
 
     @Test fun binaryPeekNumericSectionDropsTransferEncoding() {

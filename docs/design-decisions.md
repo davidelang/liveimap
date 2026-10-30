@@ -168,19 +168,23 @@ David, 2026-10-12. Code: `settings/PaneLayout.kt` (model), `settings/PaneLayoutE
 
 ## Reading
 
-* Opening a message fetches its `BODYSTRUCTURE`, then a `BODY.PEEK` of the
-  chosen part: 4096 bytes first, and more as the user scrolls. An attachment is
+* Opening a message fetches its `BODYSTRUCTURE`, then the chosen part. Plain
+  text may still grow as the reader scrolls: 4096 bytes first, and more as it
+  scrolls. The HTML view and HTML as text wait for the whole `text/html` part,
+  decoded through to the end, before anything is shown. An attachment is
   fetched only after a tap, in 65536-byte slices.
-* **View modes.** A body is shown in one of three modes:
-  * **Plain**: the `text/plain` part.
+* **View modes.** A body is shown in one of these modes:
+  * **Text**, **Flowed**, and **Monospaced**: the `text/plain` part when the
+    structure has one, and otherwise the HTML part as text, in that layout.
   * **HTML**: the `text/html` part, rendered.
   * **HTML as text**: the `text/html` part rendered the way a text-mode browser
     (lynx, links) would: paragraphs, lists, headings, quoted blocks and links
     kept as text, with no styling.
 
-  The default is Plain, with a setting for what to show when there is no
-  `text/plain` part. Any message can be switched to another mode. Headers and
-  Raw source are inspection views, not body modes.
+  "There is no text part" is shown only when the structure has neither a
+  `text/plain` nor a `text/html` part. That card offers Show HTML when an HTML
+  part exists. Any message can be switched to another mode. Headers and Raw
+  source are inspection views, not body modes.
 * HTML as text is also used for the index preview when a message has no
   `text/plain` part.
 * HTML as text is produced by parsing with jsoup and rendering the parsed
