@@ -3962,3 +3962,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - A finished BINARY.PEEK stops at the decoded length
 
 - The HTML end and truncation checks no longer use the encoded BODYSTRUCTURE size after the transfer encoding was already removed.
+
+## 2026-10-29 - a failed save leaves the account
+
+- A page save that also writes UI keys changes the account only after that UI write. A throw puts back the AccountManager record, password slots, settings text, and a backup this save already uploaded, and does not publish.

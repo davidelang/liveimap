@@ -179,7 +179,7 @@ class AccountStore private constructor(private val context: Context) {
 
     /**
      * Overlays [keys] from [draft] onto the blob stored now. UI keys go to the global record.
-     * A throw leaves the stored blobs as they were and does not publish.
+     * A throw leaves the stored account as it was and does not publish.
      */
     suspend fun commitKeys(draft: org.dlang.liveimap.settings.Settings, keys: Set<String>): org.dlang.liveimap.settings.Settings {
         if (keys.isEmpty()) return draft
@@ -190,9 +190,36 @@ class AccountStore private constructor(private val context: Context) {
             scope != null && scope != org.dlang.liveimap.settings.SettingScope.Ui
         }.toSet()
         var published = draft
-        var writtenId: String? = null
-        var previousText: String? = null
-        if (accountKeys.isNotEmpty()) {
+        val mixed = uiKeys.isNotEmpty() && accountKeys.isNotEmpty()
+        if (accountKeys.isNotEmpty() && !mixed) {
+            onAccount {
+                var writtenId: String? = null
+                val writePreferences = withContext(Dispatchers.IO) {
+                    var current = loadLocked()
+                    for (key in accountKeys) {
+                        current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
+                    }
+                    published = current
+                    writtenId = parseAccountId(coroutineContext[AccountTarget]?.accountId)
+                        ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
+                        ?: throw NoAccountSelected()
+                    stageSave(current, current.encode())
+                }
+                writePreferences()
+                org.dlang.liveimap.settings.SettingsHub.replaceAccount(writtenId ?: return@onAccount, published)
+            }
+        }
+        if (uiKeys.isEmpty()) return published
+        val previousUi = if (mixed) org.dlang.liveimap.settings.readGlobalRecord(context) else null
+        try {
+            org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
+        } catch (error: Throwable) {
+            if (previousUi != null) restoreUiRecord(previousUi, error)
+            throw error
+        }
+        if (!mixed) return published
+        var stored: StoredAccount? = null
+        try {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) {
                     var current = loadLocked()
@@ -203,31 +230,35 @@ class AccountStore private constructor(private val context: Context) {
                     val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
                         ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
                         ?: throw NoAccountSelected()
-                    writtenId = id
-                    previousText = storedPreference(id)
+                    stored = captureStoredAccount(id)
                     stageSave(current, current.encode())
                 }
                 writePreferences()
-                if (uiKeys.isEmpty()) {
-                    org.dlang.liveimap.settings.SettingsHub.replaceAccount(writtenId ?: return@onAccount, published)
+            }
+            val id = stored?.accountId ?: throw NoAccountSelected()
+            org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
+        } catch (error: Throwable) {
+            val saved = stored
+            if (saved != null) {
+                try {
+                    onAccount { withContext(Dispatchers.IO) { restoreStoredAccount(saved) } }
+                } catch (restoreError: Throwable) {
+                    error.addSuppressed(restoreError)
                 }
             }
-        }
-        if (uiKeys.isNotEmpty()) {
-            try {
-                org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
-            } catch (error: Throwable) {
-                val id = writtenId
-                val previous = previousText
-                if (id != null && previous != null) {
-                    onAccount { withContext(Dispatchers.IO) { writePreference(id, previous) } }
-                }
-                throw error
-            }
-            val id = writtenId
-            if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
+            if (previousUi != null) restoreUiRecord(previousUi, error)
+            throw error
         }
         return published
+    }
+
+    private suspend fun restoreUiRecord(text: String, error: Throwable) {
+        try {
+            org.dlang.liveimap.settings.writeGlobalRecord(context, text)
+            org.dlang.liveimap.settings.SettingsHub.adoptRecord(text)
+        } catch (restoreError: Throwable) {
+            error.addSuppressed(restoreError)
+        }
     }
 
     suspend fun password(): String? {
@@ -562,7 +593,6 @@ class AccountStore private constructor(private val context: Context) {
             overlayAccountFields(decodeSettings(storedText), existing.userData)
         }
         val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
-        if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
         val name = nameFor(existing, plan.settings, accountId)
         // Every settings-file save rewrites the AccountManager record first: the engine connects from it.
         writeAccount(name, plan.userData, plan.passwordSlot)
@@ -578,7 +608,66 @@ class AccountStore private constructor(private val context: Context) {
                 PasswordStorage.movedOffGoogleRestore(context, accountId, previousChoice, nextChoice)
             }
             refreshBackup(accountId, null)
+            if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
         }
+    }
+
+    private data class StoredAccount(
+        val accountId: String,
+        val name: String,
+        val userData: Map<String, String>,
+        val passwordSlot: String,
+        val smtpSlot: String?,
+        val sieveSlot: String?,
+        val preference: String?,
+    )
+
+    private suspend fun captureStoredAccount(accountId: String): StoredAccount {
+        val account = readAccounts().firstOrNull { it.userData[userAccountId] == accountId }
+            ?: throw AccountGone(accountId)
+        return StoredAccount(
+            accountId,
+            account.name,
+            account.userData.toMap(),
+            account.passwordSlot.orEmpty(),
+            rawUserData(accountId, userSmtpPasswordSlot),
+            rawUserData(accountId, userSievePasswordSlot),
+            storedPreference(accountId),
+        )
+    }
+
+    /** Puts back the account [stageSave] changes, including a backup this save already uploaded. */
+    private suspend fun restoreStoredAccount(saved: StoredAccount) {
+        val accountId = saved.accountId
+        writeAccount(saved.name, saved.userData, saved.passwordSlot)
+        putRawUserData(accountId, userSmtpPasswordSlot, saved.smtpSlot)
+        putRawUserData(accountId, userSievePasswordSlot, saved.sieveSlot)
+        context.accountSettingsDataStore.edit { prefs ->
+            val key = stringPreferencesKey(accountId)
+            val preference = saved.preference
+            if (preference == null) prefs.remove(key) else prefs[key] = preference
+        }
+        val settings = saved.preference?.let { runCatching { decodeSettings(it) }.getOrNull() }
+        if (settings?.passwordStorage == org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore) {
+            refreshBackup(accountId, null)
+        } else {
+            PasswordStorage.movedOffGoogleRestore(
+                context,
+                accountId,
+                org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore.name,
+                org.dlang.liveimap.settings.PasswordStorageChoice.none.name,
+            )
+        }
+    }
+
+    private fun rawUserData(accountId: String, key: String): String? {
+        val account = findAccount(accountId) ?: return null
+        return AccountManager.get(context).getUserData(account, key)
+    }
+
+    private fun putRawUserData(accountId: String, key: String, value: String?) {
+        val account = findAccount(accountId) ?: return
+        AccountManager.get(context).setUserData(account, key, value)
     }
 
     private suspend fun refreshBackup(accountId: String, imap: String?) {
