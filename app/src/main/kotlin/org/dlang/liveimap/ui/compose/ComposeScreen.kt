@@ -89,6 +89,8 @@ import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.pinnedJmapUploadFile
 import org.dlang.liveimap.session.fetchPartFile
 import org.dlang.liveimap.ui.reader.WireTextDecoder
+import org.dlang.liveimap.ui.reader.fetchedTransferEncoding
+import org.dlang.liveimap.ui.reader.serverStrippedTransferEncoding
 import org.dlang.liveimap.session.ComposeKind
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.session.MailFailure
@@ -881,17 +883,20 @@ private fun ComposeForm(
         suspend fun decodedQuote(part: MimePart, html: Boolean): String {
             val box = seed.mailbox ?: throw MailFailure("message reference is incomplete; reload the list")
             val chunk = account.bodyFetchChunk
-            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
+            val kind = session.featureCaps.fetchKind()
+            val transfer = fetchedTransferEncoding(kind, part.section, part.encoding)
+            val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
             val text = try {
                 val built = StringBuilder()
                 var offset = 0
-                val base64 = part.encoding.equals("base64", ignoreCase = true)
+                val base64 = transfer.equals("base64", ignoreCase = true)
+                val stripped = serverStrippedTransferEncoding(kind, part.section)
                 while (part.size <= 0 || offset < part.size) {
                     val length = if (part.size <= 0) chunk else nextWireCount(offset, part.size, chunk, base64)
                     if (length <= 0) break
                     val piece = inBox(box) { s -> s.peekPart(uid, part.section, offset, length) }
                     if (piece.isEmpty()) {
-                        if (offset == 0 && part.size > 0) throw MailFailure("part ended early")
+                        if (offset == 0 && part.size > 0 && !stripped) throw MailFailure("part ended early")
                         break
                     }
                     built.append(decoder.take(piece))
@@ -1138,7 +1143,10 @@ private fun ComposeForm(
     }
 
     suspend fun streamPartFile(stored: File, uid: Long, source: String, row: ForwardRow, step: Int) {
-        val base64 = row.encoding?.equals("base64", ignoreCase = true) == true
+        val kind = session.featureCaps.fetchKind()
+        val stripped = serverStrippedTransferEncoding(kind, row.section)
+        val transfer = if (row.encoding == null) null else fetchedTransferEncoding(kind, row.section, row.encoding)
+        val base64 = transfer?.equals("base64", ignoreCase = true) == true
         java.io.FileOutputStream(stored).use { out ->
             if (row.size <= 0) {
                 out.write(inBox(source) { s -> s.peekPart(uid, row.section, 0, step) })
@@ -1148,7 +1156,10 @@ private fun ComposeForm(
                     val length = nextWireCount(offset, row.size, step, base64)
                     if (length <= 0) break
                     val piece = inBox(source) { s -> s.peekPart(uid, row.section, offset, length) }
-                    if (piece.isEmpty()) throw MailFailure("part ended early")
+                    if (piece.isEmpty()) {
+                        if (!stripped) throw MailFailure("part ended early")
+                        break
+                    }
                     out.write(piece)
                     offset += piece.size
                 }
@@ -1197,7 +1208,12 @@ private fun ComposeForm(
             types.add("$type; $nameParam")
             dispositions.add("attachment; $dispositionParam")
             names.add(file)
-            encodings.add(outgoingPartEncoding(row.encoding, row.wireBase64))
+            val writerEncoding = if (serverStrippedTransferEncoding(session.featureCaps.fetchKind(), row.section)) {
+                outgoingPartEncoding("", false)
+            } else {
+                outgoingPartEncoding(row.encoding, row.wireBase64)
+            }
+            encodings.add(writerEncoding)
         }
         val message = PlainMessage(
             fromName = settings.displayName,

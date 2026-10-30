@@ -23,10 +23,15 @@ fun textLayoutOf(display: ReaderDisplay, current: TextLayout): TextLayout = when
 }
 
 /** The body view a selector position asks for, given the view now shown. */
-fun bodyViewOf(display: ReaderDisplay, current: BodyView): BodyView = when {
-    display == ReaderDisplay.Html -> BodyView.PlainOrHtml
-    current == BodyView.PlainOrHtml || current == BodyView.PlainOrText -> BodyView.PlainOrError
-    else -> current
+fun bodyViewOf(display: ReaderDisplay, current: BodyView): BodyView = when (display) {
+    ReaderDisplay.Html -> BodyView.PlainOrHtml
+    // Text is the lynx path: HTML as text. Headers and Raw are not a text layout of that part.
+    ReaderDisplay.Text -> when (current) {
+        BodyView.Headers, BodyView.Raw -> current
+        else -> BodyView.PlainOrText
+    }
+    ReaderDisplay.Flowed, ReaderDisplay.Monospaced ->
+        if (current == BodyView.PlainOrHtml || current == BodyView.PlainOrText) BodyView.PlainOrError else current
 }
 
 /**

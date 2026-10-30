@@ -2,8 +2,10 @@ package org.dlang.liveimap.ui.reader
 
 import java.nio.charset.Charset
 import java.util.Base64
+import org.dlang.liveimap.ui.compose.MimeDecodeException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,6 +19,27 @@ class PartTextTest {
         assertEquals("あ", decodeNamed("Shift_JIS", "あ"))
         assertEquals("あ", decodeNamed("ISO-2022-JP", "あ"))
         assertEquals("Ж", decodeNamed("KOI8-R", "Ж"))
+    }
+
+    @Test
+    fun binaryPeekSkipsASecondQuotedPrintablePass() {
+        val wire = "lang=3D\"en\"".toByteArray(Charsets.US_ASCII)
+        assertEquals("lang=\"en\"", decodePart(wire, "utf-8", "quoted-printable", "ISO-8859-1").text)
+        assertEquals("", fetchedTransferEncoding("BinaryPeek", "1", "quoted-printable"))
+        assertEquals("", fetchedTransferEncoding("BinaryPeek", "1.2", "base64"))
+        assertFalse(fetchedTransferEncoding("BinaryPeek", "1", "base64").equals("base64", ignoreCase = true))
+        val already = "lang=\"en\"".toByteArray(Charsets.US_ASCII)
+        val identity = fetchedTransferEncoding("BinaryPeek", "1", "quoted-printable")
+        assertEquals("lang=\"en\"", decodePart(already, "utf-8", identity, "ISO-8859-1").text)
+        assertThrows(MimeDecodeException::class.java) {
+            decodePart(already, "utf-8", "quoted-printable", "ISO-8859-1")
+        }
+        assertEquals("quoted-printable", fetchedTransferEncoding("BodyPeek", "1", "quoted-printable"))
+        assertEquals("quoted-printable", fetchedTransferEncoding("BinaryPeek", "HEADER", "quoted-printable"))
+        assertEquals("base64", fetchedTransferEncoding("BinaryPeek", "*", "base64"))
+        assertEquals("", fetchedTransferEncoding("BodyPeek", "1", ""))
+        assertFalse(serverStrippedTransferEncoding("BodyPeek", "1"))
+        assertTrue(serverStrippedTransferEncoding("BinaryPeek", "2.1"))
     }
 
     @Test

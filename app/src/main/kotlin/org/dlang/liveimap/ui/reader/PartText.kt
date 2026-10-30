@@ -62,6 +62,25 @@ internal object MimeDecode {
     external fun multipartParts(bytes: ByteArray): Array<ByteArray>
 }
 
+/** Digits and dots, matching nativePeekPart: HEADER and * are not numeric sections. */
+internal fun imapNumericSection(section: String): Boolean {
+    if (section.isEmpty()) return false
+    var digit = false
+    for (c in section) {
+        if (c in '0'..'9') digit = true
+        else if (c != '.') return false
+    }
+    return digit
+}
+
+/** BINARY.PEEK of a numeric section already removed the transfer encoding. */
+internal fun serverStrippedTransferEncoding(fetchKind: String, section: String): Boolean =
+    fetchKind == "BinaryPeek" && imapNumericSection(section)
+
+/** Encoding to hand to [WireTextDecoder] or [MimeDecode.xferOpen]. Empty is identity. */
+internal fun fetchedTransferEncoding(fetchKind: String, section: String, partEncoding: String): String =
+    if (serverStrippedTransferEncoding(fetchKind, section)) "" else partEncoding
+
 fun decodePart(bytes: ByteArray, charset: String, encoding: String, fallback: String): DecodedPart {
     val row = MimeDecode.text(bytes, charset, fallback, encoding)
     if (!row.ok) {

@@ -840,6 +840,8 @@ private fun ReaderScreen(
 
     suspend fun pullBody(part: MimePart, reset: Boolean, markSeen: Boolean, token: Int) {
         if (token != bodyGeneration) return
+        val transfer = fetchedTransferEncoding(session.featureCaps.fetchKind(), part.section, part.encoding)
+        val stripped = serverStrippedTransferEncoding(session.featureCaps.fetchKind(), part.section)
         if (reset) {
             pageGeneration = token
             bodyText = ""
@@ -850,7 +852,7 @@ private fun ReaderScreen(
             carry.pending = ByteArray(0)
             carry.closeDecoder()
             carry.clearText()
-            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
+            val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
             carry.decoder = decoder
             charsetNote = if (decoder.unknownCharset) appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed) else null
         }
@@ -858,7 +860,7 @@ private fun ReaderScreen(
         if (part.size > 0 && bodyOffset >= part.size) return
         val step = account.bodyFetchChunk
         val length = if (part.size > 0) {
-            nextWireCount(bodyOffset, part.size, step, part.encoding.equals("base64", ignoreCase = true))
+            nextWireCount(bodyOffset, part.size, step, transfer.equals("base64", ignoreCase = true))
         } else if (bodyOffset == 0) {
             step
         } else {
@@ -877,7 +879,7 @@ private fun ReaderScreen(
         if (token != bodyGeneration) return
         noteSeen(markSeen)
         if (token != bodyGeneration) return
-        val decoder = carry.decoder ?: WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset).also { carry.decoder = it }
+        val decoder = carry.decoder ?: WireTextDecoder(part.charset, transfer, account.unlabeledCharset).also { carry.decoder = it }
         try {
             if (chunk.isEmpty()) {
                 bodyOffset = if (part.size > 0) part.size else bodyOffset + length
@@ -885,6 +887,8 @@ private fun ReaderScreen(
                 return
             }
             bodyOffset += chunk.size
+            // Decoded BINARY.PEEK is shorter than the BODYSTRUCTURE size. A short read is the end.
+            if (stripped && chunk.size < length && part.size > 0) bodyOffset = part.size
             val finished = part.size <= 0 || bodyOffset >= part.size
             if (finished) {
                 publishDecoded(decoder.take(chunk))
@@ -1059,7 +1063,8 @@ private fun ReaderScreen(
         suspend fun pullHtml(part: MimePart, markSeen: Boolean): HtmlPull? {
             var truncated = part.size > RawViewCapBytes
             var wireRead = 0
-            val decoder = WireTextDecoder(part.charset, part.encoding, account.unlabeledCharset)
+            val transfer = fetchedTransferEncoding(session.featureCaps.fetchKind(), part.section, part.encoding)
+            val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
             try {
                 val built = StringBuilder()
                 val stopped = readPart(part, markSeen, RawViewCapBytes) { chunk ->
@@ -1249,10 +1254,11 @@ private fun ReaderScreen(
                 markAttachment(current.section, current.fetched, done = false, busy = true)
                 val dest = File(appContext.cacheDir, attachmentCacheName(accountId, cacheToken, readerEpoch, uid, current.section))
                 val tmp = File(dest.parentFile, dest.name + ".part")
-                val handle = MimeDecode.xferOpen(current.encoding)
+                val transfer = fetchedTransferEncoding(session.featureCaps.fetchKind(), current.section, current.encoding)
+                val handle = MimeDecode.xferOpen(transfer)
                 try {
                     var offset = 0
-                    val base64 = current.encoding.equals("base64", ignoreCase = true)
+                    val base64 = transfer.equals("base64", ignoreCase = true)
                     FileOutputStream(tmp).use { out ->
                         while (true) {
                             val finished = current.size > 0 && offset >= current.size
