@@ -3966,3 +3966,10 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - a failed save leaves the account
 
 - A page save that also writes UI keys changes the account only after that UI write. A throw puts back the AccountManager record, password slots, settings text, and a backup this save already uploaded, and does not publish.
+
+## 2026-10-29 - Generation comments no longer name extraIdleLock
+
+- Approved plan: sandbox/plans/extra-idle-comments-20261029-1947-plan.md
+- Work: the three comments in WatchedFolders.kt no longer name extraIdleLock. The generation counter is unchanged: readGeneration still only reads it, bumpGeneration still increments it on the caller, and a stop that bumps it still keeps a later apply from opening
+- No new mutex. No install
+- First action per standard-plan-compliance-block.md; commits stay on master

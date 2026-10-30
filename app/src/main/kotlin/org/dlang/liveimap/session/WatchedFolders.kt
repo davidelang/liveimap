@@ -100,7 +100,7 @@ fun maxConnectionsFromText(text: String): Int? =
     text.trim().takeIf { it.matches(connectionDigits) }?.toInt()?.takeIf { it in MinConnections..MaxConnectionsCeiling }
 
 /** Retries each extra IDLE slot, including a folder the last apply left on STATUS. Over-budget names are not opened.
- *  [seenGeneration] is the value read before extraIdleLock. A stop that bumped it does not open. */
+ *  [seenGeneration] is the generation counter read before this apply. A stop that bumped it does not open. */
 suspend fun applyStoredIdle(
     sessions: ExtraIdleSessions,
     account: Settings,
@@ -220,10 +220,10 @@ class ExtraIdleSessions(private val factory: (String) -> MailSession) {
 
     fun openNames(): List<String> = open.map { it.name }
 
-    /** Read this before waiting for extraIdleLock. */
+    /** Read the generation counter. Takes no lock. */
     fun readGeneration(): Int = generation.get()
 
-    /** launchExtraIdleStop bumps this on the calling thread, before its coroutine waits for extraIdleLock. Not a lock. */
+    /** launchExtraIdleStop increments the generation counter on the caller. Not a lock. */
     fun bumpGeneration() {
         generation.incrementAndGet()
     }
