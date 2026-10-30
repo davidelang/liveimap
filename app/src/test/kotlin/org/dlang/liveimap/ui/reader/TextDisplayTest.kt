@@ -3,6 +3,7 @@ package org.dlang.liveimap.ui.reader
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.TextLayout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
