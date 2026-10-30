@@ -3954,3 +3954,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-29 - load check keeps rules, saves, and the warning
 
 - Inbound-rule lines stay one key. A failed UI save restores the account blob and does not publish. A repair warning is shown on its own. An account value is not copied onto an account that omitted the key. Logging off does not open a traffic file. Save waits until the write finishes.
+
+## 2026-10-29 - HTML view skips a second transfer decode
+
+- A BINARY.PEEK numeric section is already decoded, so the reader and forward path treat that encoding as identity. The Text display is HTML as text.

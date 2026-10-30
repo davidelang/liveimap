@@ -988,11 +988,16 @@ private fun ReaderScreen(
         }
         if (part.size > 0) {
             val limit = minOf(part.size, cap)
+            val stripped = serverStrippedTransferEncoding(session.featureCaps.fetchKind(), part.section)
+            var endedEarly = false
             while (offset < limit && wire < cap) {
                 val length = nextWireCount(offset, limit, account.bodyFetchChunk, false)
                 if (length <= 0) break
                 val chunk = take(length) ?: return null
-                if (chunk.isEmpty()) break
+                if (chunk.isEmpty()) {
+                    endedEarly = true
+                    break
+                }
                 val room = cap - wire
                 if (chunk.size > room) {
                     onChunk(chunk.copyOf(room))
@@ -1003,6 +1008,8 @@ private fun ReaderScreen(
                 wire += chunk.size
                 offset += chunk.size
             }
+            // BODYSTRUCTURE size is the encoded size. A short BINARY.PEEK is the whole decoded part.
+            if (stripped && endedEarly && wire < cap) return false
             return part.size > cap
         }
         while (wire < cap) {
