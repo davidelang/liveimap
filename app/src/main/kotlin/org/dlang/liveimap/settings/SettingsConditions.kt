@@ -77,10 +77,8 @@ private fun requireConditionKeys(keys: Set<String>, allowed: Set<String>, path: 
     if (keys != allowed) throw SettingsTreeParseException("$path condition")
 }
 
-private fun isEmptyText(actual: String): Boolean {
-    if (actual.isEmpty()) return true
-    return decodeWatchedFolders(actual).isEmpty() && actual.contains(",")
-}
+/** Stored text, not a percent-encoded list. `@` and spaces are not empty and must not be decoded. */
+private fun isEmptyText(actual: String): Boolean = actual.isEmpty()
 
 private fun sameValue(expected: JsonValue, actual: String): Boolean = when (expected) {
     is JsonValue.Bool -> actual == expected.value.toString()

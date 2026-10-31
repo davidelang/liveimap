@@ -23,7 +23,25 @@ internal object AccountRestoreReport {
     }
 }
 
+/** True after [restoreAccounts] has returned, including a skipped backup. */
+internal object AccountRestoreGate {
+    var finished by mutableStateOf(false)
+        private set
+
+    fun markFinished() {
+        finished = true
+    }
+}
+
 internal suspend fun restoreAccounts(context: Context) {
+    try {
+        restoreSavedAccounts(context)
+    } finally {
+        AccountRestoreGate.markFinished()
+    }
+}
+
+private suspend fun restoreSavedAccounts(context: Context) {
     val availability = BlockStorePasswords.available()
     if (availability is BackupAvailability.Unavailable) {
         Log.w("LiveIMAP", "backup restore skipped ${availability.reason}")

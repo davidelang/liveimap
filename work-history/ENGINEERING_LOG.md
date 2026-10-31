@@ -3983,3 +3983,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/start-and-font-20261030-0702-plan.md
 - Work: a missing settings blob no longer stops startup; the editor and setup Finish use the account-manager fields on that same id; the font-size row is named Font size and a pinch on settings writes appTextZoom
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-10-31 - Account settings draw the email, and setup waits for restore

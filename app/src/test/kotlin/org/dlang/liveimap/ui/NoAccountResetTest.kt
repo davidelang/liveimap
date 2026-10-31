@@ -1,6 +1,8 @@
 package org.dlang.liveimap.ui
 
 import org.dlang.liveimap.settings.AccountChoice
+import org.dlang.liveimap.ui.folder.FolderAccountBody
+import org.dlang.liveimap.ui.folder.folderAccountBody
 import org.dlang.liveimap.ui.folder.folderScreenAccountId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,5 +24,13 @@ class NoAccountResetTest {
         assertNull(folderScreenAccountId("gone", emptySet(), null))
         assertEquals("b", folderScreenAccountId(null, setOf("b"), "b"))
         assertNull(folderScreenAccountId(null, emptySet(), null))
+    }
+
+    @Test
+    fun createAccountOnlyAfterRestoreFinishesEmpty() {
+        assertEquals(FolderAccountBody.Pending, folderAccountBody(false, emptySet()))
+        assertEquals(FolderAccountBody.Account, folderAccountBody(false, setOf("a")))
+        assertEquals(FolderAccountBody.Account, folderAccountBody(true, setOf("a")))
+        assertEquals(FolderAccountBody.Create, folderAccountBody(true, emptySet()))
     }
 }

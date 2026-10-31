@@ -105,11 +105,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
+import org.dlang.liveimap.accounts.AccountRestoreGate
 import org.dlang.liveimap.session.ComposeSeed
 import org.dlang.liveimap.ui.LocalScreenAccounts
 import org.dlang.liveimap.session.MailFailure
@@ -221,6 +223,15 @@ private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
     FolderBarAction.ResetDefault -> R.string.folders_reset_default
 }
 
+/** Create-account only after restore has finished and the list is still empty. */
+internal enum class FolderAccountBody { Pending, Create, Account }
+
+internal fun folderAccountBody(restoreFinished: Boolean, accountIds: Set<String>): FolderAccountBody = when {
+    accountIds.isNotEmpty() -> FolderAccountBody.Account
+    restoreFinished -> FolderAccountBody.Create
+    else -> FolderAccountBody.Pending
+}
+
 /** A saved id that is not in [accountIds] is dropped. A saved id that is still an account is kept. */
 internal fun folderScreenAccountId(saved: String?, accountIds: Set<String>, chosen: String?): String? {
     if (saved != null && saved in accountIds) return saved
@@ -250,12 +261,15 @@ fun FolderListScreen(
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }
     var accountChecked by remember { mutableStateOf(false) }
     var noAccounts by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    val restoreFinished = AccountRestoreGate.finished
+    LaunchedEffect(restoreFinished) {
         val listed = store.listAccounts().map { it.id }.toSet()
-        noAccounts = listed.isEmpty()
+        ensureActive()
+        val body = folderAccountBody(restoreFinished, listed)
+        noAccounts = body == FolderAccountBody.Create
         accountId = folderScreenAccountId(accountId, listed, store.chosenAccountId())
-        accountChecked = true
-        if (!noAccounts && accountId == null) onOpenDrawer?.invoke()
+        accountChecked = body != FolderAccountBody.Pending
+        if (body == FolderAccountBody.Account && accountId == null) onOpenDrawer?.invoke()
     }
     val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val id = accountId
