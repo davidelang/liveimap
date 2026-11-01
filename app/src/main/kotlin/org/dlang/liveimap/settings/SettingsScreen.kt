@@ -159,7 +159,6 @@ import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.FavoriteEditDialog
 import org.dlang.liveimap.ui.FavoriteWhere
-import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.paneControlsEnabled
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
@@ -1003,20 +1002,25 @@ fun SettingsTree(
             }
         }
         val drafts = walk.drafts
-        if (page != "accounts" && (editor.pageDirty || editor.creating || drafts?.hasDraft == true)) {
+        val pendingLine = PendingLines.pending()
+        if (settingsSaveShown(page == "accounts", editor.creating, editor.pageDirty, drafts?.hasDraft == true, pendingLine)) {
             Button(
-                onClick = {
-                    if (drafts != null && drafts.hasDraft) drafts.saveServer(editor)
-                    else editor.commitPage()
-                },
-                enabled = drafts?.serverChecking != true,
+                onClick = { saveSettingsPage(editor, drafts) },
+                enabled = settingsSaveEnabled(
+                    page == "accounts",
+                    editor.creating,
+                    editor.pageDirty,
+                    drafts?.hasDraft == true,
+                    pendingLine,
+                    drafts?.serverChecking == true,
+                ),
                 modifier = Modifier.padding(16.dp).testTag("settings-save"),
             ) {
                 Text(stringResource(R.string.settings_save))
             }
         }
     }
-    MailboxPickDialog(editor, picking.value) { picking.value = it }
+    MailboxPickDialog(editor, picking.value, { walk.drafts }) { picking.value = it }
     val editing = editingFavorite
     if (editing != null) {
         FavoriteEditDialog(
@@ -1173,6 +1177,12 @@ internal class ServerDrafts {
             }
         }
     }
+}
+
+internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?) {
+    PendingLines.commitAll()
+    if (drafts != null && drafts.hasDraft) drafts.saveServer(editor)
+    else editor.commitPage()
 }
 
 internal class SettingsWalk(
@@ -1893,14 +1903,14 @@ internal fun row_imapHost(walk: SettingsWalk) {
     val server = drafts?.serverDraft ?: settings
     if (settings.jmapFolders) {
         LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
-            if (drafts != null) drafts.userServerSave(editor, server.copy(imapHost = it))
+            if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapHost = it))
         }
         if (server.imapHost.trim().startsWith("http://", ignoreCase = true)) {
             Text(stringResource(R.string.settings_jmap_plain_http_warning), color = MaterialTheme.colorScheme.error)
         }
     } else {
         LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
-            if (drafts != null) drafts.userServerSave(editor, server.copy(imapHost = it))
+            if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapHost = it))
         }
     }
 }
@@ -1913,7 +1923,7 @@ internal fun row_imapPort(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
-        if (drafts != null) drafts.userServerSave(editor, server.copy(imapPort = it))
+        if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapPort = it))
     }
 }
 
@@ -2477,7 +2487,7 @@ internal fun row_expandedFolders(walk: SettingsWalk) {
 
     val editor = walk.editor
     Text(stringResource(R.string.settings_expanded_folders))
-    ExpandedFoldersBody(editor)
+    ExpandedFoldersBody(editor) { walk.drafts }
 }
 
 @Composable
@@ -2503,7 +2513,7 @@ internal fun row_folderViews(walk: SettingsWalk) {
 
     val editor = walk.editor
     Text(stringResource(R.string.settings_folder_views))
-    FolderViewsBody(editor)
+    FolderViewsBody(editor) { walk.drafts }
 }
 
 @Composable
@@ -3706,6 +3716,7 @@ internal fun row_sieveReadSeconds(key: String, walk: SettingsWalk) {
 internal fun MailboxPickDialog(
     editor: SettingsEditor,
     picking: MailboxPick?,
+    drafts: () -> ServerDrafts?,
     onPicking: (MailboxPick?) -> Unit,
 ) {
     val field = picking ?: return
@@ -3724,21 +3735,13 @@ internal fun MailboxPickDialog(
         MailboxPick.Spam -> "\\Junk"
         else -> ""
     }
-    MailboxChooser(
+    SettingsFolderChooser(
+        editor = editor,
+        drafts = drafts,
         suggestUse = suggestUse,
-        store = editor.bound,
-        onStored = { loaded ->
-            editor.settings = editor.settings.copy(expandedFolders = loaded.expandedFolders)
-        },
         onPick = { mailbox ->
-            settingsIo.launch {
-                editor.bound.onAccount(publish = { saved ->
-                    editor.settings = saved
-                }) {
-                    editor.bound.update { assignMailbox(it, field, mailbox) }
-                }
-                onPicking(null)
-            }
+            editor.persist(assignMailbox(editor.settings, field, mailbox))
+            onPicking(null)
         },
         onDismiss = { onPicking(null) },
     )
@@ -3814,6 +3817,32 @@ internal fun OpenRow(title: String, onOpen: () -> Unit) {
 
 
 
+internal object PendingLines {
+    private val lines = ArrayList<LineCommitter>()
+    var stamp by mutableStateOf(0)
+        private set
+
+    fun add(line: LineCommitter) {
+        if (line in lines) return
+        lines.add(line)
+        stamp++
+    }
+
+    fun remove(line: LineCommitter) {
+        if (lines.remove(line)) stamp++
+    }
+
+    fun note() {
+        stamp++
+    }
+
+    fun pending(): Boolean = stamp.let { _ -> lines.any { line -> line.pendingText() } }
+
+    fun commitAll() {
+        for (line in lines.toList()) line.commit()
+    }
+}
+
 internal class LineCommitter {
     var ready: Boolean = true
     var commitOnLeave: Boolean = true
@@ -3834,16 +3863,23 @@ internal class LineCommitter {
                 draft.value = base
                 onDraft?.invoke(base)
             }
+            PendingLines.note()
             return
         }
         baseline.value = written
         if (draft.value != written) draft.value = written
         onCommit(written)
+        PendingLines.note()
     }
 
     fun commitFromDispose() {
         if (!commitOnLeave || !ready || skipLeave()) return
         commit()
+    }
+
+    fun pendingText(): Boolean {
+        if (!::draft.isInitialized || !::baseline.isInitialized) return false
+        return draft.value != baseline.value
     }
 }
 
@@ -3893,7 +3929,11 @@ internal fun LineField(
         SideEffect { onDraft(draftState.value) }
     }
     DisposableEffect(committer) {
-        onDispose { committer.commitFromDispose() }
+        PendingLines.add(committer)
+        onDispose {
+            committer.commitFromDispose()
+            PendingLines.remove(committer)
+        }
     }
     var hadFocus by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -3917,6 +3957,7 @@ internal fun LineField(
                 if (!accept(next)) return@OutlinedTextField
                 draftState.value = next
                 onDraft?.invoke(next)
+                PendingLines.note()
             },
             enabled = rowEnabled,
             label = { Text(label) },

@@ -247,12 +247,10 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
 internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) {
     val editor = walk.editor
     val sections = walk.sections
-    val settings = editor.settings
     val chosenAccount = editor.accounts.firstOrNull { it.editing }?.id
     val drafts = remember(editor.editingId, chosenAccount) { ServerDrafts() }
     walk.drafts = drafts
-    val server = drafts.serverDraft ?: settings
-    val pagePending = drafts.hasDraft || editor.pageDirty
+    val pagePending = drafts.hasDraft || editor.pageDirty || PendingLines.pending()
     DisposableEffect(pagePending) {
         UnsavedEdits.pending = pagePending
         UnsavedEdits.ask = { go -> drafts.leaveAfter = go; drafts.discardAsk = true }
@@ -296,7 +294,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(stringResource(R.string.settings_unsaved_title)) },
             confirmButton = {
-                androidx.compose.material3.Button(onClick = { drafts.discardAsk = false; drafts.saveServer(editor) }) {
+                androidx.compose.material3.Button(onClick = { drafts.discardAsk = false; saveSettingsPage(editor, drafts) }) {
                     Text(stringResource(R.string.settings_save))
                 }
             },
@@ -340,18 +338,28 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             androidx.compose.material3.Button(
-                onClick = { drafts.saveServer(editor) },
-                enabled = drafts.hasDraft && !drafts.serverChecking,
+                onClick = { saveSettingsPage(editor, drafts) },
+                enabled = settingsSaveEnabled(
+                    accountsPage = false,
+                    creating = editor.creating,
+                    pageDirty = editor.pageDirty,
+                    hasDraft = drafts.hasDraft,
+                    pendingLine = PendingLines.pending(),
+                    serverChecking = drafts.serverChecking,
+                ),
                 modifier = Modifier.testTag("account-save"),
             ) { Text(stringResource(R.string.settings_save)) }
             TextButton(
                 onClick = {
                     if (!drafts.probing) {
-                        val candidate = drafts.savedServer(editor, server)
+                        PendingLines.commitAll()
+                        val chosen = drafts.serverDraft ?: editor.settings
+                        val candidate = drafts.savedServer(editor, chosen)
+                        val account = settingsFolderAccount(editor.editingId, candidate, "")
                         drafts.probing = true
                         drafts.serverReport = emptyList()
                         editor.ui.launch {
-                            val id = editor.editingId ?: "probe"
+                            val id = settingsFolderProbeId(account)
                             try {
                                 drafts.serverReport = testAccountLogins(
                                     candidate,

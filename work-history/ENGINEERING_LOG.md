@@ -4009,3 +4009,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - ManageSieve check off the main thread
 
 - The sieve check and the filter upload run on Dispatchers.IO with the account TLS policy still in context. A dirty settings page keeps Save on screen, and a server draft still goes through the server check.
+
+## 2026-11-01 - Special folders and Save use the account on screen
+
+- Approved plan: sandbox/plans/special-folders-save-gate-20261101-1435-plan.md
+- Work: Save turns on for text still in a field. Save and Test commit that line, then save or log in with the on-screen server. Special-folder and folder-list pickers use a throwaway login for the account being edited, or the unsaved draft, and keep the pick on that draft.
+- First action per standard-plan-compliance-block.md; commits stay on master

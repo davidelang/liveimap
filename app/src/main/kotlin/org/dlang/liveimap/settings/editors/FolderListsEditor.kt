@@ -150,7 +150,6 @@ import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.FavoriteEditDialog
 import org.dlang.liveimap.ui.FavoriteWhere
-import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.paneControlsEnabled
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
@@ -165,7 +164,7 @@ fun ExpandedFoldersScreen() {
     }
 }
 @Composable
-internal fun ExpandedFoldersBody(editor: SettingsEditor) {
+internal fun ExpandedFoldersBody(editor: SettingsEditor, drafts: () -> ServerDrafts? = { null }) {
     var picking by remember { mutableStateOf(false) }
     val settings = editor.settings
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,9 +181,9 @@ internal fun ExpandedFoldersBody(editor: SettingsEditor) {
         TextButton(onClick = { picking = true }) { Text(stringResource(R.string.settings_add)) }
     }
     if (picking) {
-        MailboxChooser(
-            store = editor.bound,
-            onStored = { _ -> },
+        SettingsFolderChooser(
+            editor = editor,
+            drafts = drafts,
             onPick = { mailbox ->
                 if (mailbox.isNotEmpty()) {
                     editor.persist(
@@ -206,7 +205,7 @@ fun FolderViewsScreen() {
     }
 }
 @Composable
-internal fun FolderViewsBody(editor: SettingsEditor) {
+internal fun FolderViewsBody(editor: SettingsEditor, drafts: () -> ServerDrafts? = { null }) {
     var picking by remember { mutableStateOf(false) }
     var draftSort by remember { mutableStateOf(SortKey.Arrival) }
     var draftNewest by remember { mutableStateOf(true) }
@@ -242,9 +241,9 @@ internal fun FolderViewsBody(editor: SettingsEditor) {
         TextButton(onClick = { picking = true }) { Text(stringResource(R.string.settings_add)) }
     }
     if (picking) {
-        MailboxChooser(
-            store = editor.bound,
-            onStored = { _ -> },
+        SettingsFolderChooser(
+            editor = editor,
+            drafts = drafts,
             onPick = { mailbox ->
                 if (mailbox.isNotEmpty()) {
                     editor.persist(
