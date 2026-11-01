@@ -286,7 +286,7 @@ private suspend fun openJmapFolderSource(
     }
 }
 
-internal suspend fun openSettingsFolderSource(
+private suspend fun openSettingsFolderSource(
     login: ScreenLogin,
     cacheDir: File,
     onDraft: (Settings) -> Unit,
