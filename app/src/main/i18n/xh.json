@@ -528,7 +528,7 @@
 {"key": "settings_include_attachments", "source": "When forwarding inline, include the original's attachments", "text": "Xa uthumela ngo-inline, bandakanya ezona zincamatheleyo zentsusa"},
 {"key": "settings_forward_attachment", "source": "Forward as attachment", "text": "Dlulisa phambili njengoncamathiselo"},
 {"key": "settings_fcc", "source": "Fcc", "text": "Fcc"},
-{"key": "settings_bounce_fcc_on", "source": "Bounce Fcc on", "text": "Bounce Fcc on"},
+{"key": "settings_bounce_fcc_on", "source": "Bounce Fcc on", "text": "Gqama Fcc Vula"},
 {"key": "settings_bounce_fcc_off", "source": "Bounce Fcc off", "text": "Bounce Fcc icinyiwe"},
 {"key": "settings_bounce_fcc", "source": "Bounce Fcc", "text": "Bounce Fcc"},
 {"key": "settings_completion", "source": "Address completion", "text": "Ukugqitywa kwedilesi"},

@@ -823,7 +823,7 @@
 {"key": "pinerc_favorite", "source": "Favorite", "text": "Halaýan"},
 {"key": "settings_wrap_column", "source": "Wrap column", "text": "Sütüni dolamak"},
 {"key": "settings_flowed_text", "source": "Flowed text", "text": "Akymly tekst"},
-{"key": "settings_flowed_text_note", "source": "Off sends fixed lines.", "text": "Ýapyk durnukly setirleri iberýär."},
+{"key": "settings_flowed_text_note", "source": "Off sends fixed lines.", "text": "Öçürilen durnukly setirleri iberýär."},
 {"key": "reader_collapse_header", "source": "Collapse header", "text": "erazgy sözbaşy"},
 {"key": "reader_expand_header", "source": "Expand header", "text": "Sözbaşy giňeltmek"},
 {"key": "reader_next", "source": "Next", "text": "Indiki"},

@@ -378,7 +378,7 @@
 {"key": "compose_flags_not_stored", "source": "Sent, but the original was not marked answered/forwarded: %1$s", "text": "Gipadala, apan ang orihinal wala gimarkahan nga gitubag/gipasa: %1$s"},
 {"key": "compose_postponed_remains", "source": "Postponed copy is still in %1$s", "text": "Ang gi-postpone nga kopya anaa gihapon sa %1$s"},
 {"key": "compose_fetch_failed", "source": "fetch failed", "text": "napakyas ang pagkuha"},
-{"key": "compose_quote_header", "source": "From: %1$s\nDate: %2$s\nSubject: %3$s", "text": "Gikan sa: %1$s\nPetsa: %2$s\nUsa: %3$s"},
+{"key": "compose_quote_header", "source": "From: %1$s\nDate: %2$s\nSubject: %3$s", "text": "Gikan sa: %1$s\nPetsa: %2$s\nHilisgutan: %3$s"},
 {"key": "settings_account", "source": "Account", "text": "Akawnt"},
 {"key": "settings_accounts", "source": "Accounts", "text": "Mga Account"},
 {"key": "settings_add_account", "source": "Add account", "text": "Idugang ang account"},
