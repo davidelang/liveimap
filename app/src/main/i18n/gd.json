@@ -976,7 +976,7 @@
 {"key": "help_menu_help_title", "source": "Opens help.", "text": "A’ fosgladh cuideachadh."},
 {"key": "help_menu_about_title", "source": "Opens About.", "text": "A’ fosgladh mu dheidhinn."},
 {"key": "help_menu_index_select_all", "source": "Selects every message in the list.", "text": "A’ taghadh a h-uile teachdaireachd san liosta."},
-{"key": "help_menu_index_mark_answered", "source": "Marks the selection answered.", "text": "A’ comharrachadh fhreagair an taghadh.\nFhreagair"},
+{"key": "help_menu_index_mark_answered", "source": "Marks the selection answered.", "text": "Comharraich air a fhreagairt air an taghadh."},
 {"key": "help_menu_index_mark_unanswered", "source": "Clears answered on the selection.", "text": "Glan air a fhreagairt air an taghadh."},
 {"key": "help_menu_index_undelete", "source": "Clears deleted on the selection.", "text": "Glan air a sguabadh às air an taghadh."},
 {"key": "help_menu_index_bounce", "source": "Bounces the selected message.", "text": "A’ breabadh an teachdaireachd taghte."},
