@@ -72,7 +72,7 @@
 {"key": "filter_uploaded", "source": "Uploaded", "text": "ilayishiwe"},
 {"key": "filter_uploaded_not_active", "source": "Not active: the server will not run these rules until the liveimap script is included or made active.", "text": "Ayisebenzi: umncedisi akasayi kuqhuba le migaqo de ibandakanywe iscript seliveimap okanye senziwe sisebenze."},
 {"key": "filter_activate_title", "source": "Turn on these rules?", "text": "Vula le migaqo?"},
-{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Yongeza umgca uquka :imephu yobuqu \"liveimap\"; kwisikripthi sakho esisebenzayo \"%1$s\"? Ayikho enye into etshintshayo."},
+{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Yongeza umgca include :personal \"liveimap\"; kwisikripthi sakho esisebenzayo \"%1$s\"? Ayikho enye into etshintshayo."},
 {"key": "filter_activate_setactive", "source": "Make the liveimap script the active one? The server runs only one active script; any other script stops running.", "text": "Yenza umbhalo weimaphu ephilayo ube osebenzayo? Umncedisi uqhuba kuphela umbhalo osebenzayo omnye; Nasiphi na esinye isikripthi siyayeka ukusebenza."},
 {"key": "filter_activate_yes", "source": "Turn on", "text": "Layita"},
 {"key": "filter_activate_no", "source": "Not now", "text": "Hayi ngoku"},

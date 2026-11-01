@@ -72,7 +72,7 @@
 {"key": "filter_uploaded", "source": "Uploaded", "text": "Йөкләнде"},
 {"key": "filter_uploaded_not_active", "source": "Not active: the server will not run these rules until the liveimap script is included or made active.", "text": "Актив түгел: сервер бу кагыйдәләрне liveimap скрипты кертелгәнче яки актив булмаганчы эшләмәячәк."},
 {"key": "filter_activate_title", "source": "Turn on these rules?", "text": "Бу кагыйдәләрне кабызыгыз?"},
-{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Сызыкны өстәгез: шәхси \"liveimap\"; сезнең актив сценарийга \"%1$s\"? Анда башка бернәрсә дә үзгәрми."},
+{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Сызыкны өстәгез include :personal \"liveimap\"; сезнең актив сценарийга \"%1$s\"? Анда башка бернәрсә дә үзгәрми."},
 {"key": "filter_activate_setactive", "source": "Make the liveimap script the active one? The server runs only one active script; any other script stops running.", "text": "Liveimap сценарийын актив ит? Сервер бер генә актив сценарий эшли; бүтән сценарийлар эшләүне туктата."},
 {"key": "filter_activate_yes", "source": "Turn on", "text": "кабызыгыз"},
 {"key": "filter_activate_no", "source": "Not now", "text": "Хәзер түгел"},

@@ -72,7 +72,7 @@
 {"key": "filter_uploaded", "source": "Uploaded", "text": "Gi-upload"},
 {"key": "filter_uploaded_not_active", "source": "Not active: the server will not run these rules until the liveimap script is included or made active.", "text": "Dili aktibo: ang server dili modagan niini nga mga lagda hangtud nga ang liveimap script maapil o himoong aktibo."},
 {"key": "filter_activate_title", "source": "Turn on these rules?", "text": "I-on kini nga mga lagda?"},
-{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Idugang ang linya naglakip sa :personal nga \"liveimap\"; sa imong aktibong script \"%1$s\"? Wala nay laing nausab niini."},
+{"key": "filter_activate_include", "source": "Add the line include :personal \"liveimap\"; to your active script \"%1$s\"? Nothing else in it changes.", "text": "Idugang ang linya include :personal \"liveimap\"; sa imong aktibong script \"%1$s\"? Wala nay laing nausab niini."},
 {"key": "filter_activate_setactive", "source": "Make the liveimap script the active one? The server runs only one active script; any other script stops running.", "text": "Himoa nga aktibo ang script sa liveimap? Ang server nagpadagan lamang sa usa ka aktibo nga script; bisan unsang ubang script mihunong sa pagdagan."},
 {"key": "filter_activate_yes", "source": "Turn on", "text": "I-on"},
 {"key": "filter_activate_no", "source": "Not now", "text": "Dili karon"},
