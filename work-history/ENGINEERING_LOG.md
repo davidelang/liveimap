@@ -3997,3 +3997,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-31 - Standard build drops two experimental warnings
 
 - The experimental Kotlin source-set opt-out and the aapt2 Maven override are gone, and the armv7 APK stays 32-bit only.
+
+## 2026-11-01 - Constant conditions are gone
+
+- Each compiler-constant check now keeps only the branch it already selected. Account save, traffic notes, the settings commit, the ui-key check, pane layout, HTML text, and toolbar edits are unchanged.

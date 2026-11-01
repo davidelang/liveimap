@@ -37,8 +37,7 @@ fun htmlAsText(html: String): String {
     document.select("script, style").remove()
     val state = HtmlRender()
     val numbers = HashMap<Element, Int>()
-    val body = document.body()
-    if (body != null) renderNode(body, state, numbers)
+    renderNode(document.body(), state, numbers)
     return finishHtmlText(state)
 }
 

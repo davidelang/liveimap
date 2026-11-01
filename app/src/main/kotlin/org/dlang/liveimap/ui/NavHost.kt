@@ -457,7 +457,7 @@ private fun LiveImapNavHostReady() {
         val decoded = decodePaneLayout(account.customLayout)
         val problem = decoded?.let { paneLayoutProblem(it) }
         customTree = if (problem == null) decoded else null
-        layoutProblem = if (problem == null || decoded == null) {
+        layoutProblem = if (problem == null) {
             null
         } else {
             appContext.getString(

@@ -590,7 +590,7 @@ internal class SettingsEditor(
                 if (passwordDirty) storeTarget.setPassword(password)
                 if (smtpDirty) storeTarget.setSmtpPassword(smtpPassword)
                 val sieve = sievePassword
-                if (sieveDirty && id != null) {
+                if (sieveDirty) {
                     org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, sieve.ifEmpty { null })
                 }
             } else if (storeTarget == null && keys.isNotEmpty()) {

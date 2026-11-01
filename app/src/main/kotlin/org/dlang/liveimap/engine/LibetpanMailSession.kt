@@ -2318,7 +2318,7 @@ class LibetpanMailSession(
 
         override fun note(text: String) {
             val writer = accountWriter(account)
-            if (writer != null) writer.note("imap", text) else TrafficLog.status(text)
+            writer.note("imap", text)
         }
     }
 

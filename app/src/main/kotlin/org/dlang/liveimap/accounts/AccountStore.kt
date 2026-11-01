@@ -596,13 +596,13 @@ class AccountStore private constructor(private val context: Context) {
         val accountId = existing.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
         // F32/F87: a moved server never inherits the old server's password, pin or client certificate.
         // A stored row that does not decode throws here, before any write.
-        val storedText = if (existing == null) null else storedPreference(accountId)
-        val previous = if (existing == null || storedText == null) {
+        val storedText = storedPreference(accountId)
+        val previous = if (storedText == null) {
             null
         } else {
             overlayAccountFields(decodeSettings(storedText), existing.userData)
         }
-        val plan = planAccountSave(accountId, previous, settings, encoded, existing?.passwordSlot ?: "")
+        val plan = planAccountSave(accountId, previous, settings, encoded, existing.passwordSlot ?: "")
         val name = nameFor(existing, plan.settings, accountId)
         // Every settings-file save rewrites the AccountManager record first: the engine connects from it.
         writeAccount(name, plan.userData, plan.passwordSlot)
@@ -618,7 +618,7 @@ class AccountStore private constructor(private val context: Context) {
                 PasswordStorage.movedOffGoogleRestore(context, accountId, previousChoice, nextChoice)
             }
             refreshBackup(accountId, null)
-            if (existing != null) dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
+            dropHttpAllowUnlessPlain(accountId, plan.settings.imapHost)
         }
     }
 

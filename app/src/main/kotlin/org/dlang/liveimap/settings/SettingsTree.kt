@@ -412,7 +412,7 @@ fun validateSettingsTree(text: String, complete: Boolean = true): List<String> {
     if (complete) {
         for (key in uiRequired) {
             val leaf = findLeaf(doc.pages, key) ?: doc.stored.firstOrNull { it.setting == key }
-            if (leaf == null || (leaf is TreeLeaf && leaf.scopeName != "ui")) {
+            if (leaf == null || leaf.scopeName != "ui") {
                 errors.add("settings-tree.json $key is not ui")
             }
         }
