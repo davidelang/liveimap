@@ -486,7 +486,12 @@ private fun LiveImapNavHostReady() {
             drawerAccounts = store.listDrawerAccounts()
             accounts = store.listAccounts()
             header = ""
-            if (accounts.isNotEmpty()) drawerState.open()
+            val showing = navController.currentBackStackEntry?.destination?.route
+            if (openDrawerOnNoAccount(showing, accounts)) {
+                drawerState.open()
+            } else if (accounts.isNotEmpty()) {
+                drawerState.close()
+            }
             return
         }
         val drawers = store.listDrawerAccounts()
@@ -603,6 +608,8 @@ private fun LiveImapNavHostReady() {
                         onCompose = { seed -> openCompose(seed) },
                         onOpenUnsent = { navController.navigate("unsent") },
                         onOpenHelp = { navController.navigate("help") },
+                        onOpenAbout = { navController.navigate("about") },
+                        onOpenSettings = { navController.navigate("settings") },
                         onCustomize = { openToolbar("folders") },
                         focusMailbox = focusMailbox.value,
                         focusToken = focusToken.value,
@@ -626,6 +633,7 @@ private fun LiveImapNavHostReady() {
                     onOpenDrawer = openDrawerState.value,
                     onAddAccount = { navController.navigate("settings/setup") },
                     onOpenAbout = { navController.navigate("about") },
+                    onOpenSettings = { navController.navigate("settings") },
                 )
             }
             composable(
@@ -1174,8 +1182,8 @@ private fun LiveImapNavHostReady() {
 
     fun navigateFromDrawer(go: suspend () -> Unit) {
         scope.launch {
-            drawerState.close()
             go()
+            drawerState.close()
         }
     }
 
@@ -2206,6 +2214,15 @@ private fun AxisSplit(
 }
 
 internal fun resetToNoAccount(accounts: List<org.dlang.liveimap.settings.AccountChoice>): Boolean = accounts.isEmpty()
+
+/** Whether a missing open account should open the drawer over [route]. Read at the moment it would open. */
+internal fun openDrawerOnNoAccount(route: String?, accounts: List<AccountChoice>): Boolean {
+    if (accounts.isEmpty()) return false
+    val showing = route.orEmpty()
+    if (showing == "settings" || showing.startsWith("settings/")) return false
+    if (showing == "help" || showing == "about" || showing == "about/licenses") return false
+    return true
+}
 
 internal fun drawerBlocks(rows: List<DrawerAccount>): List<DrawerAccount> {
     if (rows.size < 2) return emptyList()

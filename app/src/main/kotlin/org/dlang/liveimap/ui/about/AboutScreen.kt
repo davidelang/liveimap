@@ -8,31 +8,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
-import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.TlsMode
 import org.dlang.liveimap.ui.help.PRIVACY_URL
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
@@ -44,29 +33,11 @@ internal fun aboutLibraryLines(): List<Int> = listOf(
     R.string.about_cyrus_sasl,
 )
 
-internal fun aboutConnectionNotice(host: String, mode: TlsMode): Int? {
-    if (host.isBlank()) return null
-    return when (mode) {
-        TlsMode.None -> R.string.about_plaintext
-        TlsMode.StartTls -> R.string.about_starttls
-        TlsMode.Implicit -> R.string.about_implicit_tls
-    }
-}
-
 @Composable
 fun AboutScreen(onOpenLicenses: () -> Unit) {
     val context = LocalContext.current
-    val store = remember { DataStoreSettingsStore(context.applicationContext) }
-    var imapHost by remember { mutableStateOf("") }
-    var tlsMode by remember { mutableStateOf(TlsMode.None) }
-    LaunchedEffect(store) {
-        val loaded = store.load()
-        imapHost = loaded.imapHost
-        tlsMode = loaded.tlsMode
-    }
     val appName = stringResource(R.string.app_name)
     val versionLine = stringResource(R.string.about_version, BuildConfig.VERSION_NAME)
-    val notice = aboutConnectionNotice(imapHost, tlsMode)?.let { stringResource(it) }
     val support = stringResource(R.string.about_support)
     val libraries = stringResource(R.string.about_libraries)
     val privacy = stringResource(R.string.about_privacy)
@@ -83,14 +54,6 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
     ) {
         Text(appName)
         Text(versionLine)
-        if (notice != null) {
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Text(
-                    notice,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-        }
         Text(
             text = libraries,
             style = MaterialTheme.typography.titleMedium,

@@ -18,6 +18,33 @@ class NoAccountResetTest {
     }
 
     @Test
+    fun drawerStaysOffSettingsHelpAndAbout() {
+        val accounts = listOf(AccountChoice("a", "A", drawer = true))
+        val hidden = listOf(
+            "settings",
+            "settings/setup",
+            "settings/global",
+            "settings/accounts",
+            "help",
+            "about",
+            "about/licenses",
+        )
+        for (route in hidden) {
+            assertFalse(openDrawerOnNoAccount(route, accounts))
+            assertFalse(openDrawerOnNoAccount(route, emptyList()))
+        }
+    }
+
+    @Test
+    fun folderListOpensOnlyWhenAnAccountExists() {
+        val accounts = listOf(AccountChoice("a", "A", drawer = true))
+        assertTrue(openDrawerOnNoAccount("folders", accounts))
+        assertFalse(openDrawerOnNoAccount("folders", emptyList()))
+        assertTrue(openDrawerOnNoAccount("index/{mailbox}", accounts))
+        assertFalse(openDrawerOnNoAccount("index/{mailbox}", emptyList()))
+    }
+
+    @Test
     fun savedAccountIdAbsentFromTheListIsDropped() {
         assertEquals("a", folderScreenAccountId("a", setOf("a", "b"), "b"))
         assertEquals("b", folderScreenAccountId("gone", setOf("b"), "b"))

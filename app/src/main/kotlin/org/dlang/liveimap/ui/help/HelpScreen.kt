@@ -35,10 +35,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
 import com.davidlang.liveimap.R
+import android.widget.Toast
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.trafficText
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.ui.debug.DebugReportReview
+import org.dlang.liveimap.settings.SettingsHub
 
 const val HELP_ISSUES_URL = "https://github.com/davidelang/liveimap/issues"
 
@@ -57,7 +58,6 @@ fun HelpScreen() {
     var gettingStarted by remember { mutableStateOf<String?>(null) }
     var reporting by remember { mutableStateOf<String?>(null) }
     var missing by remember { mutableStateOf(false) }
-    var reportLines by remember { mutableStateOf<List<String>?>(null) }
     LaunchedEffect(assets) {
         val loaded = withContext(Dispatchers.IO) { readHelpAssets(assets) }
         if (loaded == null) {
@@ -110,19 +110,33 @@ fun HelpScreen() {
             }) { Text(stringResource(R.string.about_privacy)) }
             TextButton(onClick = {
                 scope.launch {
-                    val settings = store.load()
-                    val id = store.chosenAccountId().orEmpty()
-                    val device = listOf(Build.MANUFACTURER, Build.MODEL)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" ")
-                    reportLines = TrafficLog.debugReport(
-                        versionName = BuildConfig.VERSION_NAME,
-                        versionCode = BuildConfig.VERSION_CODE,
-                        androidVersion = Build.VERSION.RELEASE,
-                        device = device,
-                        settings = settings,
-                        traffic = trafficText(appContext.cacheDir, id),
-                    ).lines()
+                    try {
+                        val id = try {
+                            store.chosenAccountId()
+                        } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
+                            null
+                        }
+                        val device = listOf(Build.MANUFACTURER, Build.MODEL)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" ")
+                        val report = TrafficLog.debugReport(
+                            versionName = BuildConfig.VERSION_NAME,
+                            versionCode = BuildConfig.VERSION_CODE,
+                            androidVersion = Build.VERSION.RELEASE,
+                            device = device,
+                            settings = SettingsHub.uiNow(),
+                            traffic = if (id != null) trafficText(appContext.cacheDir, id) else "",
+                        )
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, report)
+                        }
+                        val chooser = Intent.createChooser(send, context.getString(R.string.debug_share_title))
+                        if (!org.dlang.liveimap.ui.startExternal(context, chooser)) {
+                            Toast.makeText(context, context.getString(R.string.about_no_email), Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
+                    }
                 }
             }) { Text(copyReport) }
             Text(
@@ -135,14 +149,6 @@ fun HelpScreen() {
                 Text(stringResource(R.string.support_tip))
             }
         }
-    }
-    val shownReport = reportLines
-    if (shownReport != null) {
-        DebugReportReview(
-            lines = shownReport,
-            onLines = { reportLines = it },
-            onDismiss = { reportLines = null },
-        )
     }
 }
 
