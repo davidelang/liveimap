@@ -724,7 +724,7 @@
 {"key": "index_fallback_title", "source": "Download for every message?", "text": "Unduh pikeun unggal pesen?"},
 {"key": "index_fallback_body", "source": {"one": "This folder has %d message. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.", "other": "This folder has %d messages. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message."}, "text": {"other": "Polder ieu gaduh pesen %d. Polder ageung naroskeun sateuacan LiveIMAP ngaunduh kolom sortir atanapi header threading pikeun unggal pesen."}},
 {"key": "settings_auto_expunge", "source": "Auto-expunge", "text": "Hapus otomatis"},
-{"key": "settings_auto_expunge_note", "source": "Leaving a folder expunges deleted messages. Off sends no CLOSE.", "text": "Ninggalkeun polder ngahapus pesen anu dihapus. Pareum ngirim euweuh TUTUP."},
+{"key": "settings_auto_expunge_note", "source": "Leaving a folder expunges deleted messages. Off sends no CLOSE.", "text": "Ninggalkeun polder ngahapus pesen anu dihapus. Pareum teu ngirim CLOSE."},
 {"key": "settings_delete_button", "source": "Delete button", "text": "Tombol Hapus"},
 {"key": "settings_mark_deleted", "source": "Mark as deleted", "text": "Tandaan dihapus"},
 {"key": "settings_move_to_trash", "source": "Move to Trash", "text": "Pindahkeun ka Jarian"},

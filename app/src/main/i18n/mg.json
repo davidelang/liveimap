@@ -814,7 +814,7 @@
 {"key": "reader_address_exists", "source": "Already in the address book", "text": "Efa ao amin'ny bokin'ny adiresy"},
 {"key": "index_mark_all_read", "source": "Mark all read", "text": "Mariho fa namaky daholo"},
 {"key": "index_mark_all_read_body", "source": "Mark every message in this folder read?", "text": "Mariho fa voavaky ny hafatra rehetra ato amin'ity lahatahiry ity?"},
-{"key": "index_mark_all_read_go", "source": "Mark", "text": "Marka"},
+{"key": "index_mark_all_read_go", "source": "Mark", "text": "Mariho"},
 {"key": "settings_import_auto_expunge", "source": "Also turn on Auto-expunge?", "text": "Alefa koa ny Auto-expunge?"},
 {"key": "pinerc_other_host", "source": "%1$s is a different server", "text": "%1$s dia mpizara hafa"},
 {"key": "pinerc_inbox_braces", "source": "inbox-path needs a server in braces", "text": "inbox-path dia mila mpizara amin'ny braces"},
