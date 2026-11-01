@@ -898,7 +898,7 @@
 {"key": "settings_compression_off", "source": "Off", "text": "Wehe"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Karekau te tūmau e tuku COMPRESS=DEFLATE."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Nuku kōpaki katoa kei roto nga karere kua mukua"},
-{"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Weto: ko nga karere kua tohua kua mukua ka noho ki muri (KORERO TE UID SEARCH)."},
+{"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Weto: ko nga karere kua tohua kua mukua ka noho ki muri (UID SEARCH UNDELETED)."},
 {"key": "folders_no_account", "source": "No mail account yet", "text": "Kaore ano he kaute mēra"},
 {"key": "reader_all_headers", "source": "All headers", "text": "Nga upoko katoa"},
 {"key": "reader_short_headers", "source": "Short header", "text": "Pane poto"},

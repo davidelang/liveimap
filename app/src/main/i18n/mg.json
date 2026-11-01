@@ -898,7 +898,7 @@
 {"key": "settings_compression_off", "source": "Off", "text": "Miala"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Tsy manolotra COMPRESS=DEFLATE ny mpizara."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Afindrao ny lahatahiry manontolo dia misy hafatra voafafa"},
-{"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Mandeha: hafatra efa voamarika fa voafafa dia mijanona ao aoriana (EFA NATAO NY FIKARAHANA UID)."},
+{"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Mandeha: hafatra efa voamarika fa voafafa dia mijanona ao aoriana (UID SEARCH UNDELETED)."},
 {"key": "folders_no_account", "source": "No mail account yet", "text": "Tsy mbola misy kaonty mailaka"},
 {"key": "reader_all_headers", "source": "All headers", "text": "Lohateny rehetra"},
 {"key": "reader_short_headers", "source": "Short header", "text": "Lohateny fohy"},
