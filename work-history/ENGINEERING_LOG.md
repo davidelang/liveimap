@@ -3993,3 +3993,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-10-31 - Retranslated so, ha, ig, and ku
 
 - This pass retranslated so, ha, ig, and ku. Still pending, left as they were: or, rw, su, tg, tk, tt, uz, xh, yo, zu, b+sr+Latn, fy, fo, qu. Uncertain strings: so index_filter_on, compose_resent_to, filter_list_id, settings_jmap_server_note; ha index_filter_on, copy_merge_conflicts, setting_keepAliveMinutes_title; ig index_filter_on, settings_save_from, copy_merge_conflicts; ku index_filter_on, settings_opens_at, copy_merge_conflicts.
+
+## 2026-10-31 - Standard build drops two experimental warnings
+
+- The experimental Kotlin source-set opt-out and the aapt2 Maven override are gone, and the armv7 APK stays 32-bit only.

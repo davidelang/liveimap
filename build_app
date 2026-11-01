@@ -888,7 +888,6 @@ else
   ve_resolve_orch "$_BA_HERE" || exit 1
   ve_setup_worktree_build_homes "$_BA_HERE" || exit 1
 fi
-_AAPT2=$(ve_aapt2_from_sdk "$_BA_HERE") || exit 1
 # Extracted Maven aapt2 copies lose +x (see ve_aapt2_from_sdk); restore it where missing.
 # A copy this user cannot chmod stops the build with chmod's own error.
 if [ -n "${GRADLE_USER_HOME:-}" ] && [ -d "$GRADLE_USER_HOME" ]; then
@@ -951,7 +950,6 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 GRADLE_BASE=( ./gradlew --daemon "${DAEMON_PROPS[@]}" --no-configuration-cache
-  -Pandroid.aapt2FromMavenOverride="$_AAPT2"
   -Pkotlin.compiler.execution.strategy=in-process
   -Dkotlin.compiler.execution.strategy=in-process )
 
