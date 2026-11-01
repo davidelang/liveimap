@@ -3,10 +3,19 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// en stays res/values/strings.xml. These 87 locales are the committed i18n set.
+// en stays res/values/strings.xml. These 106 locales are the committed i18n set.
 val i18nLocales = listOf(
+    "af",
+    "am",
+    "as",
+    "az",
+    "b+ceb",
+    "b+en+001",
+    "b+es+419",
+    "b+sr+Latn",
     "be",
     "bg",
+    "bn",
     "bs",
     "ca",
     "cs",
@@ -23,74 +32,84 @@ val i18nLocales = listOf(
     "et",
     "eu",
     "fi",
+    "fo",
     "fr",
     "fr-rCA",
+    "fy",
     "ga",
+    "gd",
     "gl",
+    "gu",
+    "ha",
+    "hi",
     "hr",
     "hu",
+    "hy",
+    "ig",
+    "in",
     "is",
     "it",
+    "ja",
+    "jv",
+    "ka",
+    "kk",
+    "km",
+    "kn",
+    "ko",
+    "ku",
+    "ky",
     "lb",
+    "lo",
     "lt",
     "lv",
+    "mg",
+    "mi",
     "mk",
+    "ml",
+    "mn",
+    "mr",
+    "ms",
     "mt",
+    "my",
     "nb",
+    "ne",
     "nl",
+    "nn",
+    "or",
+    "pa",
     "pl",
     "pt",
     "pt-rPT",
+    "qu",
     "ro",
+    "rm",
     "ru",
+    "rw",
+    "si",
     "sk",
     "sl",
+    "so",
     "sq",
-    "b+sr+Latn",
     "sr",
+    "su",
     "sv",
-    "uk",
-    "hy",
-    "ka",
-    "az",
-    "kk",
-    "ky",
-    "uz",
-    "tr",
-    "mn",
-    "tg",
-    "as",
-    "bn",
-    "gu",
-    "hi",
-    "kn",
-    "ml",
-    "mr",
-    "ne",
-    "or",
-    "pa",
-    "si",
+    "sw",
     "ta",
     "te",
-    "in",
-    "km",
-    "lo",
-    "ms",
-    "my",
+    "tg",
     "th",
+    "tk",
     "tl",
+    "tr",
+    "tt",
+    "uk",
+    "uz",
     "vi",
-    "ja",
-    "ko",
+    "xh",
+    "yo",
     "zh-rCN",
     "zh-rHK",
     "zh-rTW",
-    "af",
-    "am",
-    "sw",
-    "ha",
-    "yo",
-    "ig",
     "zu"
 )
 
@@ -147,6 +166,7 @@ android {
     }
     androidResources {
         localeFilters += listOf("en") + i18nLocales
+        generateLocaleConfig = true
         // Replaces the default pattern. settings-tree.json stays a build input and is not in the APK.
         ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!settings-tree.json"
     }
@@ -313,13 +333,11 @@ from pathlib import Path
 import icu
 
 TARGET = (
-    "be bg bs ca cs cy da de el en-rAU en-rCA en-rGB en-rIN es es-rUS et eu fi "
-    "fr fr-rCA ga gl hr hu is it lb lt lv mk mt nb nl pl pt pt-rPT ro ru sk sl sq "
-    "b+sr+Latn sr sv uk hy ka az kk ky uz tr mn tg "
-    "as bn gu hi kn ml mr ne or pa si ta te "
-    "in km lo ms my th tl vi "
-    "ja ko zh-rCN zh-rHK zh-rTW "
-    "af am sw ha yo ig zu"
+    "af am as az b+ceb b+en+001 b+es+419 b+sr+Latn be bg bn bs ca cs cy da de el "
+    "en-rAU en-rCA en-rGB en-rIN es es-rUS et eu fi fo fr fr-rCA fy ga gd gl gu ha "
+    "hi hr hu hy ig in is it ja jv ka kk km kn ko ku ky lb lo lt lv mg mi mk ml mn "
+    "mr ms mt my nb ne nl nn or pa pl pt pt-rPT qu ro rm ru rw si sk sl so sq sr su "
+    "sv sw ta te tg th tk tl tr tt uk uz vi xh yo zh-rCN zh-rHK zh-rTW zu"
 ).split()
 
 Q_ORDER = ("zero", "one", "two", "few", "many", "other")
@@ -386,6 +404,12 @@ def placeholders(text):
 def language_tag(qual):
     if qual == "b+sr+Latn":
         return "sr-Latn"
+    if qual == "b+ceb":
+        return "ceb"
+    if qual == "b+en+001":
+        return "en-001"
+    if qual == "b+es+419":
+        return "es-419"
     if qual == "in":
         return "id"
     if "-r" in qual:
@@ -710,7 +734,7 @@ def main(argv):
     strings_path, i18n_dir, out_dir, filter_arg = argv[1:]
     filters = [part for part in filter_arg.split(",") if part]
     issues, generated, string_count = check(strings_path, i18n_dir, filters, TARGET)
-    if len(TARGET) != 87:
+    if len(TARGET) != 106:
         issues.append({
             "key": "locales",
             "why": "missing",

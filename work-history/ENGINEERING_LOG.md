@@ -3985,3 +3985,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - First action per standard-plan-compliance-block.md; commits stay on master
 
 ## 2026-10-31 - Account settings draw the email, and setup waits for restore
+
+## 2026-10-31 - Translation locale set is 106
+
+- The app ships English plus these 106 locales. Nineteen new translations are committed, and the per-app language picker lists that default and each locale in the set.
