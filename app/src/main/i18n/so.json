@@ -714,7 +714,7 @@
 {"key": "settings_status_counts", "source": "Folder message counts", "text": "Farriinta galka ayaa tirinaysa"},
 {"key": "settings_client_sort_note", "source": "Downloads one field for every message.", "text": "Wuxuu soo dejiyaa hal goob fariin kasta."},
 {"key": "settings_client_thread_note", "source": "Downloads threading headers for every message.", "text": "Soodejiso madaxyada dunta ee fariin kasta."},
-{"key": "settings_poll_note", "source": "Asks the server on a timer when it has no IDLE.", "text": "Wuxuu ku waydiiyaa serferka saacada marka aanu lahayn ILE."},
+{"key": "settings_poll_note", "source": "Asks the server on a timer when it has no IDLE.", "text": "Wuxuu ku waydiiyaa serferka saacada marka aanu lahayn IDLE."},
 {"key": "settings_status_note", "source": "Sends STATUS for each visible folder when the server has no LIST-STATUS.", "text": "Waxay u soo dirtaa XAALADDA galka kasta oo muuqda marka seerfarku aanu lahayn LIST-STATUS."},
 {"key": "settings_force_slower", "source": "Force slower fallbacks", "text": "Ku adkee dib u dhac tartiib tartiib ah"},
 {"key": "settings_force_slower_note", "source": "Debug only. Uses the slower fallbacks.", "text": "qaladka kaliya. Wuxuu adeegsadaa dib-u-dhacyada tartiib tartiib ah."},

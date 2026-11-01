@@ -893,7 +893,7 @@
 {"key": "index_search_progress", "source": "%1$d of %2$d", "text": "%1$d tina %2$d"},
 {"key": "index_long_search_done", "source": "Search finished: %1$d messages", "text": "Pilarian réngsé: seratan %1$d"},
 {"key": "index_long_search_show", "source": "Show", "text": "Témbongkeun"},
-{"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Komprési (KOMPRESS)"},
+{"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "Komprési (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Hurung"},
 {"key": "settings_compression_off", "source": "Off", "text": "Pareum"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Server henteu nawiskeun COMPRESS=DEFLATE."},

@@ -893,7 +893,7 @@
 {"key": "index_search_progress", "source": "%1$d of %2$d", "text": "%2$d-den %1$d"},
 {"key": "index_long_search_done", "source": "Search finished: %1$d messages", "text": "Gözleg tamamlandy: %1$d habarlary"},
 {"key": "index_long_search_show", "source": "Show", "text": "Görkez"},
-{"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "gysyş (GYSGAÇA)"},
+{"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "gysyş (COMPRESS)"},
 {"key": "settings_compression_on", "source": "On", "text": "Işlediň"},
 {"key": "settings_compression_off", "source": "Off", "text": "Öçürilen"},
 {"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Serwer COMPRESS=DEFLATE teklip etmeýär."},
