@@ -516,7 +516,7 @@
 {"key": "settings_message_swipe_left", "source": "Message swipe left", "text": "Umyalezo swayipha ekhohlo"},
 {"key": "settings_message_swipe_right", "source": "Message swipe right", "text": "Umyalezo swayipha ngasekunene"},
 {"key": "settings_message_bar", "source": "Message bar", "text": "Ibha yomyalezo"},
-{"key": "settings_unread_warn", "source": "Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.", "text": "."},
+{"key": "settings_unread_warn", "source": "Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.", "text": "Ukubala imiyalezo engafundwanga kucela kumncedisi ubalo olungabonwanga lwebhokisi yeposi nganye ekuluhlu, kwaye ibhokisi yeposi enkulu inokwenza uluhlu lweefolda lube ncotha."},
 {"key": "settings_confirm", "source": "Confirm", "text": "Qinisekisa"},
 {"key": "settings_dismiss", "source": "Dismiss", "text": "Khupha"},
 {"key": "settings_composing", "source": "Composing", "text": "Ukuqamba"},
