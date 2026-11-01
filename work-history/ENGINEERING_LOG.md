@@ -4001,3 +4001,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - Constant conditions are gone
 
 - Each compiler-constant check now keeps only the branch it already selected. Account save, traffic notes, the settings commit, the ui-key check, pane layout, HTML text, and toolbar edits are unchanged.
+
+## 2026-11-01 - Settings, Help, and About with no open account
+
+- About no longer reads an account or shows the TLS tile. Help shares the debug report from its button. The drawer does not reopen over Settings, Help, or About.
