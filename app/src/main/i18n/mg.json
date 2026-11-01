@@ -426,7 +426,7 @@
 {"key": "settings_smtp_password_hint", "source": "Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP password\" is ticked.", "text": "Ampiasaina rehefa ilaina ny fidirana SMTP. Ny tenimiafina IMAP dia ampiasaina raha tsy misy ny \"Mitovy amin'ny tenimiafina IMAP\"."},
 {"key": "settings_smtp_same_as_imap", "source": "Same as IMAP password", "text": "Mitovy amin'ny tenimiafina IMAP"},
 {"key": "settings_email_submission", "source": "JMAP EmailSubmission", "text": "JMAP EmailSubmission"},
-{"key": "settings_email_submission_note", "source": "Off uses SMTP.", "text": "Mampiasa SMTP."},
+{"key": "settings_email_submission_note", "source": "Off uses SMTP.", "text": "Miala mampiasa SMTP."},
 {"key": "settings_jmap_folders", "source": "Browse folders over JMAP", "text": "Mikaroka lahatahiry amin'ny JMAP"},
 {"key": "settings_jmap_folders_note", "source": "Off uses IMAP even when the server offers JMAP.", "text": "Mampiasa IMAP na dia manolotra JMAP aza ny mpizara."},
 {"key": "settings_import", "source": "Import", "text": "Import"},

@@ -731,7 +731,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Eliminar permanentemente"},
 {"key": "settings_move_method", "source": "Move method", "text": "Método de movimiento"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Copiar y luego marcar como eliminado"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "MOVER IMAP"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Buzón de basura"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Todavía se necesita un buzón de basura."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "No se ha configurado ningún buzón de papelera y no se anuncia LIST-EXTENDED."},

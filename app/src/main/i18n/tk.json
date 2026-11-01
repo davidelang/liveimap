@@ -896,7 +896,7 @@
 {"key": "settings_compression", "source": "Compression (COMPRESS)", "text": "gysyş (GYSGAÇA)"},
 {"key": "settings_compression_on", "source": "On", "text": "Işlediň"},
 {"key": "settings_compression_off", "source": "Off", "text": "Öçürilen"},
-{"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Serwer COMPRESS = DEFLATE teklip etmeýär."},
+{"key": "settings_reason_compress", "source": "The server does not offer COMPRESS=DEFLATE.", "text": "Serwer COMPRESS=DEFLATE teklip etmeýär."},
 {"key": "settings_move_all_deleted", "source": "Move entire folder includes deleted messages", "text": "Bukjanyň hemmesini öçürmek öçürilen habarlary öz içine alýar"},
 {"key": "settings_move_all_deleted_note", "source": "Off: messages already marked deleted stay behind (UID SEARCH UNDELETED).", "text": "Ýapyk: öň öçürilen diýlip bellenen habarlar yzda galýar (UID SEARCH UNDELETED)."},
 {"key": "folders_no_account", "source": "No mail account yet", "text": "Entek poçta hasaby ýok"},

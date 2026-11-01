@@ -870,7 +870,7 @@
 {"key": "settings_check_unreachable", "source": "Server not reachable", "text": "Server betg cuntanschibel"},
 {"key": "settings_check_save_anyway", "source": "Save anyway", "text": "Tuttina arcunar"},
 {"key": "settings_check_revert", "source": "Revert", "text": "Returnar"},
-{"key": "settings_client_cert", "source": "Client certificate (IMAP and SMTP; SASL EXTERNAL when the server offers it)", "text": "Certificat da client (IMAP e SMTP; SASL EXTERN, sch'il server porscha quel)"},
+{"key": "settings_client_cert", "source": "Client certificate (IMAP and SMTP; SASL EXTERNAL when the server offers it)", "text": "Certificat da client (IMAP e SMTP; SASL EXTERNAL, sch'il server porscha quel)"},
 {"key": "settings_client_cert_none", "source": "None", "text": "Nagina"},
 {"key": "settings_client_cert_import", "source": "Import .p12…", "text": ".p12 importar…"},
 {"key": "settings_client_cert_password", "source": "Certificate password", "text": "Pled-clav dal certificat"},

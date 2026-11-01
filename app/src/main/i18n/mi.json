@@ -426,7 +426,7 @@
 {"key": "settings_smtp_password_hint", "source": "Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP password\" is ticked.", "text": "Ka whakamahia ina hiahiatia te takiuru SMTP. Ka whakamahia te kupuhipa IMAP ina tohua \"Same as IMAP password\"."},
 {"key": "settings_smtp_same_as_imap", "source": "Same as IMAP password", "text": "He rite ki te kupuhipa IMAP"},
 {"key": "settings_email_submission", "source": "JMAP EmailSubmission", "text": "JMAP Īmēra Tukunga"},
-{"key": "settings_email_submission_note", "source": "Off uses SMTP.", "text": "Ka whakamahia te SMTP."},
+{"key": "settings_email_submission_note", "source": "Off uses SMTP.", "text": "Wehe ka whakamahi i te SMTP."},
 {"key": "settings_jmap_folders", "source": "Browse folders over JMAP", "text": "Tirotiro kōpaki ki runga JMAP"},
 {"key": "settings_jmap_folders_note", "source": "Off uses IMAP even when the server offers JMAP.", "text": "Whakamahi IMAP ahakoa ka tukuna e te tūmau JMAP."},
 {"key": "settings_import", "source": "Import", "text": "Kawemai"},
