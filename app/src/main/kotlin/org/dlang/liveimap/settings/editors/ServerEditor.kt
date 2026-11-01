@@ -215,7 +215,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
             editor.ui.launch {
                 try {
                     drafts.sieveReport = sieveCheckText(
-                        withContext(editor.settings.tlsPolicy()) {
+                        withContext(editor.settings.tlsPolicy().ioContext()) {
                             greetSieve(
                                 host,
                                 port,

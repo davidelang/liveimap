@@ -4,9 +4,13 @@ import org.dlang.liveimap.engine.sieve.sieveTlsProtocols
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
+import org.dlang.liveimap.settings.ioContext
 import org.dlang.liveimap.settings.tlsPolicy
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,6 +55,16 @@ class TlsPolicyTest {
         assertTrue(back.acceptInvalidCert)
         assertTrue(back.allowOldTls)
         assertEquals(TlsPolicy(acceptInvalidCert = true, allowOldTls = true), back.tlsPolicy())
+    }
+
+    @Test
+    fun ioContextIsIoPlusThePolicy() {
+        val policy = TlsPolicy(acceptInvalidCert = true, allowOldTls = true)
+        val context = policy.ioContext()
+        assertSame(Dispatchers.IO, context[ContinuationInterceptor])
+        assertSame(policy, context[TlsPolicy])
+        assertTrue(context[TlsPolicy]!!.acceptInvalidCert)
+        assertTrue(context[TlsPolicy]!!.allowOldTls)
     }
 
     @Test

@@ -958,6 +958,10 @@ fun percentDecode(value: String): String {
 fun Settings.tlsPolicy(): org.dlang.liveimap.engine.TlsPolicy =
     org.dlang.liveimap.engine.TlsPolicy(acceptInvalidCert = acceptInvalidCert, allowOldTls = allowOldTls)
 
+/** Dispatchers.IO plus this policy, so ManageSieve network leaves the main thread. */
+fun org.dlang.liveimap.engine.TlsPolicy.ioContext(): kotlin.coroutines.CoroutineContext =
+    kotlinx.coroutines.Dispatchers.IO + this
+
 /** True when the fields the server check probes are unchanged. */
 /** What the server-settings check does after a settings change (see [serverCheckStep]). */
 enum class ServerCheckStep { Rebase, Wait, Check, Nothing }

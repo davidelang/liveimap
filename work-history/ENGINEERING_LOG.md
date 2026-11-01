@@ -4005,3 +4005,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - Settings, Help, and About with no open account
 
 - About no longer reads an account or shows the TLS tile. Help shares the debug report from its button. The drawer does not reopen over Settings, Help, or About.
+
+## 2026-11-01 - ManageSieve check off the main thread
+
+- The sieve check and the filter upload run on Dispatchers.IO with the account TLS policy still in context. A dirty settings page keeps Save on screen, and a server draft still goes through the server check.

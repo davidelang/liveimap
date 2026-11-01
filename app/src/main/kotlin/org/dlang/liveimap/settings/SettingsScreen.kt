@@ -918,8 +918,10 @@ fun SettingsTree(
         picking = picking,
     )
     BackHandler(enabled = picking.value != null) { picking.value = null }
+    Column(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
+            .weight(1f)
             .fillMaxWidth()
             .onGloballyPositioned { coords ->
                 val bounds = coords.boundsInRoot()
@@ -957,14 +959,6 @@ fun SettingsTree(
             val saveFailure = settingsSaveFailure.value
             if (saveFailure != null) {
                 Text(saveFailure)
-            }
-            if (page != "accounts" && (editor.pageDirty || editor.creating)) {
-                Button(
-                    onClick = { editor.commitPage() },
-                    modifier = Modifier.testTag("settings-save"),
-                ) {
-                    Text(stringResource(R.string.settings_save))
-                }
             }
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
                 TextButton(onClick = { onNavigate("settings/setup?accountId=$accountId") }) {
@@ -1008,6 +1002,20 @@ fun SettingsTree(
                 for (node in shown) renderSettingsNode(node, depth, walk)
             }
         }
+        val drafts = walk.drafts
+        if (page != "accounts" && (editor.pageDirty || editor.creating || drafts?.hasDraft == true)) {
+            Button(
+                onClick = {
+                    if (drafts != null && drafts.hasDraft) drafts.saveServer(editor)
+                    else editor.commitPage()
+                },
+                enabled = drafts?.serverChecking != true,
+                modifier = Modifier.padding(16.dp).testTag("settings-save"),
+            ) {
+                Text(stringResource(R.string.settings_save))
+            }
+        }
+    }
     MailboxPickDialog(editor, picking.value) { picking.value = it }
     val editing = editingFavorite
     if (editing != null) {

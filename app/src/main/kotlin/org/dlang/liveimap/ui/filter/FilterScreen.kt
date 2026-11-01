@@ -56,6 +56,7 @@ import org.dlang.liveimap.accounts.AccountStore
 import org.dlang.liveimap.settings.SieveTargetException
 import org.dlang.liveimap.settings.sieveTarget
 import org.dlang.liveimap.ui.LocalScreenAccounts
+import org.dlang.liveimap.settings.ioContext
 import org.dlang.liveimap.settings.tlsPolicy
 
 @Composable
@@ -164,7 +165,7 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                             }
                             return@launch
                         }
-                        val warning = withContext(account.tlsPolicy()) {
+                        val warning = withContext(account.tlsPolicy().ioContext()) {
                             openAndDeliverLiveimap(
                                 login.host,
                                 login.port,
