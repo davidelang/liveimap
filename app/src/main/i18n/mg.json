@@ -823,7 +823,7 @@
 {"key": "pinerc_favorite", "source": "Favorite", "text": "Tena tiako"},
 {"key": "settings_wrap_column", "source": "Wrap column", "text": "tsanganana fonosina"},
 {"key": "settings_flowed_text", "source": "Flowed text", "text": "Lahatsoratra mikoriana"},
-{"key": "settings_flowed_text_note", "source": "Off sends fixed lines.", "text": "Mandefa andalana raikitra ny Off."},
+{"key": "settings_flowed_text_note", "source": "Off sends fixed lines.", "text": "Miala mandefa andalana raikitra."},
 {"key": "reader_collapse_header", "source": "Collapse header", "text": "Lohatenin'ny collapse"},
 {"key": "reader_expand_header", "source": "Expand header", "text": "fanitarana lohapejy"},
 {"key": "reader_next", "source": "Next", "text": "Manaraka"},

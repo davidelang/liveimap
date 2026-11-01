@@ -850,7 +850,7 @@
 {"key": "cert_trust_confirm", "source": "Trust this certificate for %1$s", "text": "Themba esi satifikethi se-%1$s"},
 {"key": "cert_trust_decline", "source": "Don't trust", "text": "Sukubathemba"},
 {"key": "settings_allow_plaintext", "source": "Allow a clear-text password", "text": "Vumela igama lokugqitha elicacileyo"},
-{"key": "settings_allow_plaintext_note", "source": "On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask.", "text": "Kudibaniso olungaguqulelwanga ngokuntsonkothileyo, iLiveIMAP ibuza phambi kokuthumela igama eligqithisiweyo. I-SCRAM kunye ne-CRM-MD5 musa ukubuza."},
+{"key": "settings_allow_plaintext_note", "source": "On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask.", "text": "Kudibaniso olungaguqulelwanga ngokuntsonkothileyo, iLiveIMAP ibuza phambi kokuthumela igama eligqithisiweyo. I-SCRAM kunye ne-CRAM-MD5 musa ukubuza."},
 {"key": "plaintext_auth_title", "source": "Send the password in the clear?", "text": "Thumela igama lokugqitha ngendlela ecacileyo?"},
 {"key": "plaintext_auth_body", "source": "This connection is not encrypted. The password will be sent in the clear.", "text": "Olu xhulumaniso aluguqulelwanga ngokuntsonkotha. I-password iya kuthunyelwa ngokucacileyo."},
 {"key": "plaintext_auth_confirm", "source": "Send the password", "text": "Thumela igama lokugqithisa"},
