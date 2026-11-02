@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Clean and collapse app/src/main/assets/settings-tree.json.
+
+Git runs `clean` on stdin and stores the pretty bytes. `collapse` is the hand
+helper for moving lines in vim. There is no smudge filter.
+"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+
+def _loads_settings_tree():
+    path = Path(__file__).resolve().parent / "app" / "gen-settings-tree.py"
+    spec = importlib.util.spec_from_file_location("gen_settings_tree", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.loads_settings_tree
+
+
+loads_settings_tree = _loads_settings_tree()
+
+
+def _scalar(value):
+    return value is None or isinstance(value, (str, bool, int, float))
+
+
+def _empty_array(value):
+    return isinstance(value, list) and len(value) == 0
+
+
+def _single(value):
+    # A scalar, an empty array, an empty object, or a one-key / one-element chain of those.
+    if _scalar(value) or _empty_array(value):
+        return True
+    if isinstance(value, dict):
+        return len(value) == 0 or (len(value) == 1 and _single(next(iter(value.values()))))
+    if isinstance(value, list):
+        return len(value) == 1 and _single(value[0])
+    return False
+
+
+def _leaf_object(value):
+    return isinstance(value, dict) and all(
+        _scalar(item) or _empty_array(item) for item in value.values()
+    )
+
+
+def _inline(value):
+    if _scalar(value) or _empty_array(value):
+        return True
+    if isinstance(value, dict):
+        if len(value) == 0 or _leaf_object(value):
+            return True
+        return len(value) == 1 and _single(next(iter(value.values())))
+    if isinstance(value, list):
+        if len(value) == 1 and _single(value[0]):
+            return True
+        if value and all(_scalar(item) for item in value):
+            return True
+        if value and all(
+            isinstance(item, dict) and len(item) == 1 and _inline(item) for item in value
+        ):
+            return True
+    return False
+
+
+def _json_atom(value):
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _inline_text(value):
+    if _scalar(value):
+        return _json_atom(value)
+    if isinstance(value, list):
+        if not value:
+            return "[]"
+        return "[ " + ", ".join(_inline_text(item) for item in value) + " ]"
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        parts = (
+            _json_atom(key) + ": " + _inline_text(item) for key, item in value.items()
+        )
+        return "{ " + ", ".join(parts) + " }"
+    raise TypeError(type(value).__name__)
+
+
+def _lines(value, level):
+    """Lines for value. The first line has no indent; later lines are indented.
+    The last line has no comma.
+    """
+    close = "  " * level
+    child = "  " * (level + 1)
+    if _inline(value):
+        return [_inline_text(value)]
+    if isinstance(value, list):
+        lines = ["["]
+        for item in value:
+            item_lines = _lines(item, level + 1)
+            item_lines[0] = child + item_lines[0]
+            item_lines[-1] += ","
+            lines.extend(item_lines)
+        lines.append(close + "]")
+        return lines
+    if isinstance(value, dict):
+        lines = ["{"]
+        for key, item in value.items():
+            key_text = _json_atom(key)
+            if _inline(item):
+                lines.append(child + key_text + ": " + _inline_text(item) + ",")
+            else:
+                nested = _lines(item, level + 1)
+                lines.append(child + key_text + ": " + nested[0])
+                lines.extend(nested[1:])
+                lines[-1] += ","
+        lines.append(close + "}")
+        return lines
+    raise TypeError(type(value).__name__)
+
+
+def clean_text(text):
+    doc = loads_settings_tree(text)
+    return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+
+
+def collapse_text(text):
+    doc = loads_settings_tree(text)
+    return "\n".join(_lines(doc, 0)) + "\n"
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1] not in ("clean", "collapse"):
+        sys.stderr.write("Usage: settings-tree-filter clean|collapse < tree.json\n")
+        return 2
+    try:
+        text = sys.stdin.buffer.read().decode("utf-8")
+        out = clean_text(text) if argv[1] == "clean" else collapse_text(text)
+    except Exception as exc:
+        sys.stderr.write("settings-tree-filter: %s\n" % exc)
+        return 1
+    sys.stdout.buffer.write(out.encode("utf-8"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

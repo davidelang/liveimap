@@ -4051,3 +4051,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - A one-leaf settings group shows that leaf
 
 - A settings group whose only visible child is one leaf shows that leaf. Account, Server, Sending, Logging, Layout, and Address book stay headers. settings-tree.md lists the keys the tree file can set.
+
+## 2026-11-02 - Settings tree clean filter
+
+- Git stores settings-tree.json as the pretty file. settings-tree-filter clean turns an edited copy back into that form, and collapse prints the one-line form for moving lines. merge=binary keeps this side and leaves the path conflicted when both sides change, with no conflict markers.

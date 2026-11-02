@@ -1,6 +1,7 @@
 #!/bin/bash
-# install-merge-drivers.sh — configure repo-local git config: merge drivers for special files
-# and the manage-configs smudge/clean filter (required=true). The one place this config is set.
+# install-merge-drivers.sh — configure repo-local git config: merge drivers for special files,
+# the manage-configs smudge/clean filter (required=true), and the settings-tree clean filter.
+# The one place this config is set.
 # Idempotent. Safe to run from any worktree (shared .git config).
 # Called by update-rules.sh and setup_agent.sh; also runnable by hand.
 
@@ -8,7 +9,7 @@ set -euo pipefail
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   echo "Usage: ./install-merge-drivers.sh"
-  echo "Configure repo-local merge drivers and the manage-configs filter. No arguments."
+  echo "Configure repo-local merge drivers, the manage-configs filter, and the settings-tree clean filter. No arguments."
   exit 0
 fi
 
@@ -32,6 +33,9 @@ git config filter.manage-configs.clean "bash ./filter-clean-config %f"
 git config filter.manage-configs.smudge "bash ./filter-apply-config"
 git config filter.manage-configs.required true
 
+# settings-tree: clean only. Checkout writes the blob. No smudge, no required, no merge program.
+git config filter.settings-tree.clean "./settings-tree-filter clean"
+
 # Legacy alias: refuse now delegates to ve-special-ours
 git config merge.ve-special-refuse.name "VE special-file keep-ours (deprecated alias)"
 git config merge.ve-special-refuse.driver "./git-merge-drivers/ve-special-refuse %O %A %B %L %P"
@@ -39,10 +43,12 @@ git config merge.ve-special-refuse.driver "./git-merge-drivers/ve-special-refuse
 chmod +x "$ROOT/git-merge-drivers/ve-englog" \
          "$ROOT/git-merge-drivers/ve-special-ours" \
          "$ROOT/git-merge-drivers/ve-special-refuse" 2>/dev/null || true
-chmod +x "$ROOT/install-merge-drivers.sh" "$ROOT/merge-branch-into-master.sh" 2>/dev/null || true
+chmod +x "$ROOT/install-merge-drivers.sh" "$ROOT/merge-branch-into-master.sh" \
+         "$ROOT/settings-tree-filter" 2>/dev/null || true
 
 echo "install-merge-drivers: configured for $(git rev-parse --git-common-dir 2>/dev/null || echo .git)"
 echo "  merge.autostash=$(git config --get merge.autostash)"
 git config --get merge.ve-englog.driver
 git config --get merge.ve-special-ours.driver
 echo "  filter.manage-configs.required=$(git config --get filter.manage-configs.required)"
+git config --get filter.settings-tree.clean
