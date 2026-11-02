@@ -4055,3 +4055,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - Settings tree clean filter
 
 - Git stores settings-tree.json as the pretty file. settings-tree-filter clean turns an edited copy back into that form, and collapse prints the one-line form for moving lines. merge=binary keeps this side and leaves the path conflicted when both sides change, with no conflict markers.
+
+## 2026-11-02 - Settings tree filter writes no bytecode
+
+- settings-tree-filter clean and collapse no longer import app/gen-settings-tree.py in a way that writes app/__pycache__/gen-settings-tree.cpython-*.pyc. The pretty blob is unchanged.

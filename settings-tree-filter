@@ -4,9 +4,12 @@
 Git runs `clean` on stdin and stores the pretty bytes. `collapse` is the hand
 helper for moving lines in vim. There is no smudge filter.
 """
+import sys
+
+sys.dont_write_bytecode = True
+
 import importlib.util
 import json
-import sys
 from pathlib import Path
 
 

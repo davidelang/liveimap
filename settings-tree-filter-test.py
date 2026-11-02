@@ -269,7 +269,24 @@ def check_worktree_diff(collapsed, ugly):
         TREE.write_bytes(original)
 
 
+def drop_generator_bytecode():
+    cache = ROOT / "app" / "__pycache__"
+    if not cache.is_dir():
+        return
+    for path in cache.glob("gen-settings-tree.cpython-*.pyc"):
+        path.unlink()
+
+
+def bytecode_files():
+    found = []
+    for path in ROOT.rglob("*.pyc"):
+        found.append(path.relative_to(ROOT).as_posix())
+    return sorted(found)
+
+
 def main():
+    drop_generator_bytecode()
+    before = bytecode_files()
     pretty = TREE.read_bytes()
     if run_filter("clean", pretty.decode("utf-8")) != pretty:
         fail("clean of the current tree is not those bytes")
@@ -344,6 +361,11 @@ def main():
         fail("check-attr:\n%s" % attrs.stdout)
     check_worktree_diff(collapsed, ugly)
     check_merge_driver()
+    run_filter("clean", '{ "a": 1 }\n')
+    run_filter("collapse", '{ "a": 1 }\n')
+    made = [path for path in bytecode_files() if path not in before]
+    if made or list((ROOT / "app" / "__pycache__").glob("gen-settings-tree.cpython-*.pyc")):
+        fail("filter wrote bytecode: %s" % made)
     print("settings-tree-filter-test: ok")
 
 
