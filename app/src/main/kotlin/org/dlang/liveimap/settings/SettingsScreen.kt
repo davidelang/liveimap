@@ -632,10 +632,10 @@ internal class SettingsEditor(
             val retarget = org.dlang.liveimap.accounts.retargetCredentials(attempt.before, attempt.screen)
             val saving = if (captured != null) retarget.settings else attempt.screen
             val keys = if (captured != null) saving.changedKeysAgainst(attempt.before) else dirtyKeys.get()
-            // A moved server drops the old secret in the settings write. A password that is part of this attempt is written after that, as commit used to.
+            // A moved server drops the old secret in the settings write. A password that is part of this attempt is written after that.
             val writePassword = attempt.password
             val writeSmtp = attempt.smtp
-            val writeSieve = if (captured != null && retarget.dropSievePassword) null else attempt.sieve
+            val writeSieve = attempt.sieve
             val rejected = if (captured != null) rejectedAccountSettings(saving) else null
             val preview = settingsSaveVerdict(
                 rejected = rejected,
@@ -741,8 +741,8 @@ internal class SettingsEditor(
                 smtpPassword = ""
                 smtpMissing = false
             }
-            if (retarget.dropSievePassword) sievePassword = ""
-            else if (writeSieve != null) sievePassword = writeSieve
+            if (writeSieve != null) sievePassword = writeSieve
+            else if (retarget.dropSievePassword) sievePassword = ""
         }
         baselineMirror.set(if (replaceSettings) saving else settingsMirror.get())
         dirtyKeys.set(emptySet())
