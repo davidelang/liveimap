@@ -4039,3 +4039,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - Save a listed account that has no settings blob
 
 - Saving the account on screen writes that account when it is listed and the settings blob is missing, instead of failing with no account selected. A failed save-anyway or exit Save stays on that dialog and shows the failure there.
+
+## 2026-11-02 - To me matches plus-tags and personal Gmail
+
+- The index mark, reply-all, and sending rules treat a plus-tag as the same mailbox, and personal Gmail dots and googlemail.com as that mailbox too. A rule pattern whose local part contains a dot or a plus stays exact. The index filter "to me" shows messages whose envelope bit is set, including outside the loaded window, and does not send a to-me search key.
