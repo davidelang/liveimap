@@ -35,6 +35,12 @@ internal fun settingsSaveHeld(review: ServerSaveReview): String =
 
 internal fun settingsSaveFailed(message: String): String = "failed $message"
 
+/** An in-flight check stays on the capture it started with. [editingNow] is not the target. */
+internal fun boundSaveCapture(started: SaveCapture, editingNow: String?): SaveCapture {
+    if (started.accountId != editingNow) return started
+    return started
+}
+
 /** Log and failure text when the attempt wrote no key and no password. Not a string resource. */
 internal const val settingsSaveEmptyWrite: String = "empty write"
 

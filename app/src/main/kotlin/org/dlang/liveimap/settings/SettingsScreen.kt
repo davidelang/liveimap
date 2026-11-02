@@ -1364,12 +1364,11 @@ internal class ServerDrafts {
 
     fun saveServer(editor: SettingsEditor, control: String) {
         val draft = serverDraft
-        val accountId = editor.editingId
         val settingsAtStart = editor.settings
         val generation = saveGeneration
+        val started = captureAttempt(editor, draft, settingsAtStart)
         if (draft == null) {
-            val capture = captureAttempt(editor, null, settingsAtStart)
-            settingsIo.launch { finishStore(editor, control, generation, capture) }
+            settingsIo.launch { finishStore(editor, control, generation, started) }
             return
         }
         settingsIo.launch {
@@ -1389,11 +1388,10 @@ internal class ServerDrafts {
             val review = serverSaveReview(draft, result)
             if (settingsSaveChoice(confirmed = false, review) == SettingsSaveChoice.Hold) {
                 serverReview = review
-                logSettingsSave(control, accountId, settingsSaveHeld(review))
+                logSettingsSave(control, started.accountId, settingsSaveHeld(review))
                 return@launch
             }
-            val base = if (editor.editingId == accountId) editor.settings else settingsAtStart
-            finishStore(editor, control, generation, captureAttempt(editor, draft, base))
+            finishStore(editor, control, generation, boundSaveCapture(started, editor.editingId))
         }
     }
 

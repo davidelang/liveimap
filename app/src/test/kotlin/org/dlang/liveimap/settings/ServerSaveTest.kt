@@ -205,6 +205,79 @@ class ServerSaveTest {
         )
     }
 
+    @Test fun checkInFlightStaysOnTheAccountItStarted() {
+        val before = newAccountSettings().copy(
+            imapHost = "old.example",
+            imapPort = 993,
+            smtpHost = "smtp.example",
+            smtpPort = 587,
+            username = "ada",
+            email = "ada@old.example",
+        )
+        val screen = before.copy(imapHost = "started.example")
+        val started = SaveCapture(
+            accountId = "acct-a",
+            before = before,
+            screen = screen,
+            password = "pw-a",
+            smtp = "smtp-a",
+            sieve = "sieve-a",
+            creating = false,
+        )
+        val other = newAccountSettings().copy(
+            imapHost = "other.example",
+            imapPort = 143,
+            smtpHost = "smtp.other",
+            smtpPort = 25,
+            username = "bea",
+            email = "bea@other.example",
+        )
+        val bound = boundSaveCapture(started, "acct-b")
+        assertEquals("acct-a", bound.accountId)
+        assertEquals(screen, bound.screen)
+        assertEquals(before, bound.before)
+        assertEquals("pw-a", bound.password)
+        assertEquals("smtp-a", bound.smtp)
+        assertEquals("sieve-a", bound.sieve)
+        assertEquals(
+            "settings save account-save account=acct-a stored",
+            settingsSaveReport("account-save", bound.accountId, "stored"),
+        )
+        val keys = bound.screen.changedKeysAgainst(bound.before)
+        assertTrue(keys.contains("imapHost"))
+        val ontoOther = settingsSaveVerdict(
+            rejected = null,
+            before = bound.before,
+            screen = bound.screen,
+            keysWritten = keys,
+            wrotePassword = true,
+            wroteSmtp = true,
+            wroteSieve = true,
+            needPassword = true,
+            needSmtp = true,
+            needSieve = true,
+            record = accountUserData("acct-b", other, null),
+            checkRecord = true,
+        )
+        assertFalse(ontoOther.stored)
+        val ontoStarted = settingsSaveVerdict(
+            rejected = null,
+            before = bound.before,
+            screen = bound.screen,
+            keysWritten = keys,
+            wrotePassword = true,
+            wroteSmtp = true,
+            wroteSieve = true,
+            needPassword = true,
+            needSmtp = true,
+            needSieve = true,
+            record = accountUserData("acct-a", bound.screen, null),
+            checkRecord = true,
+        )
+        assertTrue(ontoStarted.stored)
+        assertEquals("started.example", overlayAccountFields(applyWrittenKeys(bound.before, bound.screen, keys), accountUserData("acct-a", bound.screen, null)).imapHost)
+    }
+
     private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
         .map(::File).first { it.exists() }.readText()
 

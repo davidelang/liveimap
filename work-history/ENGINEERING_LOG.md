@@ -4027,3 +4027,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - A sieve password in the same save is kept
 
 - A sieve host change no longer drops a sieve password that was part of that save. It is written after the settings record, the same way the IMAP and SMTP passwords are, and stored is not reported when it was dropped.
+
+## 2026-11-01 - An in-flight settings check stays on the account it started with
+
+- Switching accounts while the server check runs no longer stores that attempt onto the account open now. The store and the stored log name the account, screen, and password drafts the check started with.
