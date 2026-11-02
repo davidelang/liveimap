@@ -291,11 +291,10 @@ fun replyRecipients(
     val primary = if (useReplyTo && replyTo.isNotEmpty()) replyTo else from
     if (!replyAll) return primary to emptyList()
     val drop = HashSet<String>()
-    val self = accountEmail.trim().lowercase()
-    if (self.isNotEmpty()) drop.add(self)
+    if (accountEmail.trim().isNotEmpty()) drop.add(foldedMailbox(accountEmail))
     for (alt in altAddresses) {
-        val spec = addrSpec(alt).trim().lowercase()
-        if (spec.isNotEmpty()) drop.add(spec)
+        val spec = addrSpec(alt).trim()
+        if (spec.isNotEmpty()) drop.add(foldedMailbox(spec))
     }
     val seen = LinkedHashSet<String>()
     val toOut = ArrayList<String>()
@@ -303,8 +302,8 @@ fun replyRecipients(
     fun accept(raw: String, into: MutableList<String>) {
         val spec = addrSpec(raw).trim()
         if (spec.isEmpty()) return
+        if (foldedMailbox(spec) in drop) return
         val key = spec.lowercase()
-        if (key in drop) return
         if (!seen.add(key)) return
         into.add(raw.trim())
     }

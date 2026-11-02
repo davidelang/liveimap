@@ -282,6 +282,12 @@ data class AppliedFilter(
     val kind: String = "",
 )
 
+/** Envelope to-me bit. Not a server search key and not a stored keyword. */
+const val ToMeFilter = "ToMe"
+
+fun serverSideFilters(filters: List<AppliedFilter>): List<AppliedFilter> =
+    filters.filter { it.kind != ToMeFilter }
+
 /**
  * The whole filter chain as one search: (kind, argument) for MailSession.searchCriterion, ANDing every filter.
  * An And advanced filter contributes its steps; an Or one goes in as a nested "Group". Null for an empty chain.
@@ -687,6 +693,28 @@ private fun threadDepths(root: ThreadNode): Map<Long, Int> {
 private fun preorderUids(current: ThreadNode): List<Long> {
     val out = ArrayList<Long>()
     current.forEachPreorder { n -> n.uid?.let { out.add(it) } }
+    return out
+}
+
+/** Keeps [keep] in preorder. A thread whose root is not kept continues at the next kept message. */
+internal fun pruneThreadsTo(threads: List<CollapsedThread>, keep: Set<Long>): List<CollapsedThread> {
+    if (keep.isEmpty()) return emptyList()
+    val out = ArrayList<CollapsedThread>()
+    for (thread in threads) {
+        val kept = ArrayList<Long>()
+        if (thread.rootUid in keep) kept.add(thread.rootUid)
+        for (uid in thread.hiddenUids) if (uid in keep) kept.add(uid)
+        if (kept.isEmpty()) continue
+        val root = kept[0]
+        val hidden = kept.drop(1)
+        val base = if (root == thread.rootUid) 0 else thread.depthByUid[root] ?: 1
+        val depth = LinkedHashMap<Long, Int>()
+        for (uid in hidden) {
+            val d = (thread.depthByUid[uid] ?: (base + 1)) - base
+            depth[uid] = if (d < 1) 1 else d
+        }
+        out.add(CollapsedThread(root, hidden, depth))
+    }
     return out
 }
 
@@ -1387,13 +1415,40 @@ class IndexModel(
     }
 
     /**
-     * Runs the filter chain as ONE server search carrying every criterion (never intersects result sets on the
-     * client). Null with [notice] set when the search failed.
+     * One server search for every criterion except [ToMeFilter]. To me is the envelope bit on that result
+     * (every UID in the folder, when it is the only criterion), including messages outside the loaded window.
+     * Null with [notice] set when the search failed. The server is not given a to-me key and no keyword is stored.
      */
     private suspend fun searchFilters(filters: List<AppliedFilter>): Set<Long>? {
-        val (kind, argument) = combinedFilterSearch(filters) ?: return emptySet()
+        val server = serverSideFilters(filters)
+        val toMe = server.size != filters.size
+        val found = if (server.isEmpty()) {
+            if (!toMe) return emptySet()
+            try {
+                allUidsInWindows(home()).toSet()
+            } catch (failure: MailFailure) {
+                notice = failure.text
+                return null
+            }
+        } else {
+            val (kind, argument) = combinedFilterSearch(server) ?: return emptySet()
+            try {
+                home().searchCriterion(kind, argument).toSet()
+            } catch (failure: MailFailure) {
+                notice = failure.text
+                return null
+            }
+        }
+        if (!toMe) return found
+        if (found.isEmpty()) return emptySet()
         return try {
-            home().searchCriterion(kind, argument).toSet()
+            val mine = HashSet<Long>()
+            for (chunk in found.chunked(200)) {
+                for (row in fetchByUid(chunk, preview = false)) {
+                    if (row.toMe) mine.add(row.uid)
+                }
+            }
+            mine
         } catch (failure: MailFailure) {
             notice = failure.text
             null
@@ -2624,13 +2679,16 @@ class IndexModel(
         return first..last
     }
 
-    /** The active filter chain as SORT/THREAD criteria, or null when no filter is on. */
-    private fun chainCriteria(): String? = if (filterUids == null) null else filterChainGroup(appliedFilters)
+    /** The active filter chain as SORT/THREAD criteria, or null when no filter is on. To me is not a server key. */
+    private fun chainCriteria(): String? =
+        if (filterUids == null) null else filterChainGroup(serverSideFilters(appliedFilters))
 
     private suspend fun fetchSorted(key: SortKey, newestFirst: Boolean, preserveAnchor: Int? = null): List<IndexRow> {
         clearThreads()
         val criteria = chainCriteria()
-        run {
+        val toMe = appliedFilters.any { it.kind == ToMeFilter }
+        // A window is the server result only. To me still has to be applied to the envelopes, so skip it.
+        if (!toMe) {
             val windowed = windowedSort(key, newestFirst, criteria)
             if (windowed != null) {
                 order = windowed
@@ -2662,7 +2720,10 @@ class IndexModel(
             }
         } else {
             // With a filter on, the criteria go with SORT; restricting to the search result is only the fallback.
-            criteria?.let { home().sortMatching(key, newestFirst, it) } ?: restrict(home().sort(key, newestFirst))
+            // To me is not in those criteria: the sort is the other criterion, then the envelope bit.
+            val matched = criteria?.let { home().sortMatching(key, newestFirst, it) }
+            val sorted = matched ?: home().sort(key, newestFirst)
+            if (toMe || matched == null) restrict(sorted) else sorted
         }
         order = uids
         arrivalTotal = 0
@@ -2694,8 +2755,10 @@ class IndexModel(
             else -> threadNodeOf(home().thread(key))
         }
         val collapsed = collapsedThreads(tree, newestFirst)
-        // THREAD with the criteria already holds only matching messages; otherwise restrict to the search result.
-        val kept = if (matched != null) collapsed else restrictThreads(collapsed)
+        // THREAD criteria are the other filters. To me is the envelope bit on that result, not a server key.
+        val kept = if (appliedFilters.any { it.kind == ToMeFilter }) pruneThreadsTo(collapsed, filterUids.orEmpty())
+            else if (matched != null) collapsed
+            else restrictThreads(collapsed)
         threading = true
         adoptThread(kept)
         memberRows = emptyMap()

@@ -55,6 +55,20 @@ class FilterChainTest {
     }
 
     @Test
+    fun toMeIsNotAServerKey() {
+        val toMe = AppliedFilter("to me", "", ToMeFilter)
+        val from = AppliedFilter("From", "ada", "From")
+        assertEquals(listOf(from), serverSideFilters(listOf(from, toMe)))
+        assertEquals("From" to "ada", combinedFilterSearch(serverSideFilters(listOf(from, toMe))))
+        assertNull(combinedFilterSearch(serverSideFilters(listOf(toMe))))
+        assertEquals("to me", filterChipText(toMe))
+        val thread = CollapsedThread(1L, listOf(2L, 3L), mapOf(2L to 1, 3L to 2))
+        val kept = pruneThreadsTo(listOf(thread), setOf(3L))
+        assertEquals(listOf(3L), listOf(kept.single().rootUid) + kept.single().hiddenUids)
+        assertEquals(emptyList<CollapsedThread>(), pruneThreadsTo(listOf(thread), emptySet()))
+    }
+
+    @Test
     fun chipTextHidesUidSetsAndThreadChipUsesSubject() {
         assertEquals("Show this thread: Lab thread 288", threadChipLabel("Show this thread", "Re: Fwd: RE[2]: Lab thread 288"))
         assertEquals("Show this thread", threadChipLabel("Show this thread", null))

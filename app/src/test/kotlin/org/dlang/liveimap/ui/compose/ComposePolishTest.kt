@@ -48,6 +48,30 @@ class ComposePolishTest {
     }
 
     @Test
+    fun replyAllDropsFoldedAccountAndAlternate() {
+        val (to, cc) = replyRecipients(
+            replyAll = true,
+            replyTo = emptyList(),
+            from = listOf("Ann <ann@example.com>"),
+            to = listOf(
+                "Me <d.a.v.i.d.l.a.n.g+x@googlemail.com>",
+                "Alt <a.l.t+z@gmail.com>",
+                "Bo <bo@example.com>",
+                "Dots <a.b@x.com>",
+            ),
+            cc = listOf("ab+z@x.com", "ab@x.com"),
+            accountEmail = "davidlang@gmail.com",
+            altAddresses = listOf("Alt Name <alt@googlemail.com>"),
+            useReplyTo = false,
+        )
+        assertEquals(
+            listOf("Ann <ann@example.com>", "Bo <bo@example.com>", "Dots <a.b@x.com>"),
+            to,
+        )
+        assertEquals(listOf("ab+z@x.com", "ab@x.com"), cc)
+    }
+
+    @Test
     fun useReplyToFalseKeepsFrom() {
         val (to, cc) = replyRecipients(
             replyAll = false,

@@ -256,6 +256,7 @@ private val filterChoices = listOf(
     FilterChoice(R.string.index_filter_not_important, "NotImportant"),
     FilterChoice(R.string.index_filter_forwarded, "Forwarded"),
     FilterChoice(R.string.index_filter_not_forwarded, "NotForwarded"),
+    FilterChoice(R.string.index_status_to_me, ToMeFilter),
     FilterChoice(R.string.index_filter_from, "From", needsValue = true),
     FilterChoice(R.string.index_filter_to, "To", needsValue = true),
     FilterChoice(R.string.index_filter_cc, "Cc", needsValue = true),

@@ -15,6 +15,24 @@ class EnvelopeSenderTest {
     @Test fun listedAltAddressIsUsed() =
         assertEquals("david@example.org", envelopeSender("david@example.org", "dlang@lang.hm", listOf("david@example.org")))
 
+    @Test fun gmailDotAndGooglemailAreTheAccount() {
+        assertEquals("", envelopeSender("davidlang@gmail.com", "davidlang@gmail.com", emptyList()))
+        assertEquals(
+            "d.a.v.i.d.l.a.n.g@gmail.com",
+            envelopeSender("d.a.v.i.d.l.a.n.g@gmail.com", "davidlang@gmail.com", emptyList()),
+        )
+        assertEquals(
+            "d.a.v.i.d.l.a.n.g+x@googlemail.com",
+            envelopeSender("David <d.a.v.i.d.l.a.n.g+x@googlemail.com>", "davidlang@gmail.com", emptyList()),
+        )
+        assertEquals(
+            "other+z@gmail.com",
+            envelopeSender("other+z@gmail.com", "me@x.com", listOf("o.t.h.e.r@googlemail.com")),
+        )
+        assertEquals("", envelopeSender("a.b@x.com", "ab@x.com", emptyList()))
+        assertEquals("a.b+z@x.com", envelopeSender("a.b+z@x.com", "a.b@x.com", emptyList()))
+    }
+
     @Test fun foreignFromFallsBackToAccount() = assertEquals("", envelopeSender("someone@else.com", "dlang@lang.hm", emptyList()))
 
     @Test fun fromHeaderUnfolded() =

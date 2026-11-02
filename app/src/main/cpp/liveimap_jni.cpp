@@ -2083,6 +2083,24 @@ struct Row {
     bool hasEnvelope = false; // F113: index rows need it; an unsolicited flags-only FETCH has none
 };
 
+void asciiLowerInPlace(std::string & text) {
+    for (char & c : text) {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u >= 'A' && u <= 'Z') c = static_cast<char>(u - 'A' + 'a');
+    }
+}
+
+// Plus-tag dropped on every domain. Personal Gmail also drops dots, and googlemail.com is gmail.com.
+std::string foldedMailbox(std::string local, std::string domain) {
+    asciiLowerInPlace(local);
+    asciiLowerInPlace(domain);
+    auto plus = local.find('+');
+    if (plus != std::string::npos) local.resize(plus);
+    if (domain == "googlemail.com") domain = "gmail.com";
+    if (domain == "gmail.com") local.erase(std::remove(local.begin(), local.end(), '.'), local.end());
+    return local + "@" + domain;
+}
+
 bool sameMailbox(const char * mailbox, const char * host, const char * email) {
     if (email == nullptr || email[0] == 0) {
         return false;
@@ -2090,10 +2108,11 @@ bool sameMailbox(const char * mailbox, const char * host, const char * email) {
     if (mailbox == nullptr || host == nullptr || mailbox[0] == 0 || host[0] == 0) {
         return false;
     }
-    std::string combined(mailbox);
-    combined.push_back('@');
-    combined += host;
-    return strcasecmp(combined.c_str(), email) == 0;
+    std::string spec(email);
+    asciiLowerInPlace(spec);
+    auto at = spec.rfind('@');
+    if (at == std::string::npos || at == 0 || at + 1 >= spec.size()) return false;
+    return foldedMailbox(mailbox, host) == foldedMailbox(spec.substr(0, at), spec.substr(at + 1));
 }
 
 bool addressListMatches(clist * list, const char * email) {

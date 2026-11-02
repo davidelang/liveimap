@@ -14,6 +14,15 @@ class SendingRulesTest {
         assertTrue(addressMatches("@work.example", "a@eu.work.example"))
         assertTrue(addressMatches("me@x.org", "me+lists@x.org"))
         assertTrue(!addressMatches("me+a@x.org", "me+b@x.org"))
+        assertTrue(addressMatches("me@gmail.com", "M.E+x@googlemail.com"))
+        assertTrue(addressMatches("me@gmail.com", "m.e@gmail.com"))
+        assertTrue(!addressMatches("me.too@gmail.com", "metoo@gmail.com"))
+        assertTrue(!addressMatches("me.too@gmail.com", "me.too+x@gmail.com"))
+        assertTrue(!addressMatches("ab@x.com", "a.b@x.com"))
+        assertTrue(addressMatches("ab@x.com", "ab+z@x.com"))
+        assertTrue(addressMatches("@gmail.com", "a@gmail.com"))
+        assertTrue(!addressMatches("@gmail.com", "a@googlemail.com"))
+        assertTrue(addressMatches("me*", "me.too@gmail.com"))
         assertTrue(globMatches("Work/*", "work/projects/a"))
         assertTrue(!globMatches("Work/%", "Work/a/b"))
     }
@@ -64,6 +73,27 @@ class SendingRulesTest {
             ComposeContext(ComposeKindTag.New, recipients = listOf("b@work.example"), pinnedFrom = "me@home.example"))
         assertEquals("me@home.example", r.fromAddress)
         assertEquals("Me", r.signature)
+    }
+
+    @Test fun personalGmailIsOneMailbox() {
+        val mine = foldedMailbox("davidlang@gmail.com")
+        assertEquals(mine, foldedMailbox("Name <d.a.v.i.d.l.a.n.g@gmail.com>"))
+        assertEquals(mine, foldedMailbox("davidlang+x@gmail.com"))
+        assertEquals(mine, foldedMailbox("d.a.v.i.d.l.a.n.g+x@googlemail.com"))
+        assertEquals(foldedMailbox("alt@gmail.com"), foldedMailbox("a.l.t+z@googlemail.com"))
+        // Dots still have to be the same letters: d.lang is dlang, not davidlang.
+        assertEquals(foldedMailbox("dlang@gmail.com"), foldedMailbox("d.lang+x@googlemail.com"))
+        assertTrue(mine != foldedMailbox("d.lang+x@googlemail.com"))
+        assertTrue(foldedMailbox("a.b@x.com") != foldedMailbox("ab@x.com"))
+        assertEquals(foldedMailbox("a.b@x.com"), foldedMailbox("A.B+z@x.com"))
+    }
+
+    @Test fun fromMismatchStaysExactForPlus() {
+        val froms = { _: String -> listOf("me@x") }
+        val ctx = ComposeContext(ComposeKindTag.New, recipients = listOf("f@x.org"))
+        val account = SendingRule(AccountDefaultRule, actions = RuleActions(fromAddress = "me@x"))
+        assertNotNull(fromMismatch(emptyList(), account, "home", ctx, "me+work@x", "home", froms))
+        assertNull(fromMismatch(emptyList(), account, "home", ctx, "me@x", "home", froms))
     }
 
     @Test fun safetyNet() {

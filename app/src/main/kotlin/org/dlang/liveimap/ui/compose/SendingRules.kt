@@ -92,7 +92,27 @@ fun baseAddress(address: String): String {
     return local + a.substring(at)
 }
 
-/** Pattern: full address (plus tags match their base), `@domain` (and subdomains), or a glob with `*`. */
+/**
+ * Mailbox identity for "to me": plus-tag dropped on every domain. Personal Gmail (`gmail.com` and
+ * `googlemail.com`) also drops dots in the local part. The text that arrived is not rewritten.
+ */
+fun foldedMailbox(address: String): String {
+    val a = addrSpec(address).trim().lowercase()
+    val at = a.lastIndexOf('@')
+    if (at <= 0) return a
+    var local = a.substring(0, at)
+    val plus = local.indexOf('+')
+    if (plus >= 0) local = local.substring(0, plus)
+    var domain = a.substring(at + 1)
+    if (domain == "googlemail.com") domain = "gmail.com"
+    if (domain == "gmail.com") local = local.replace(".", "")
+    return "$local@$domain"
+}
+
+/**
+ * Pattern: full address, `@domain` (and subdomains), or a glob with `*`.
+ * A local part that contains `.` or `+` matches that address only. Any other address uses [foldedMailbox].
+ */
 fun addressMatches(pattern: String, address: String): Boolean {
     val p = pattern.trim().lowercase()
     if (p.isEmpty()) return false
@@ -103,8 +123,9 @@ fun addressMatches(pattern: String, address: String): Boolean {
         return domain == want || domain.endsWith(".$want")
     }
     if ('*' in p) return globMatches(p, a)
-    if ('+' in p.substringBefore('@')) return a == p
-    return baseAddress(a) == baseAddress(p)
+    val local = p.substringBefore('@')
+    if ('+' in local || '.' in local) return a == p
+    return foldedMailbox(a) == foldedMailbox(p)
 }
 
 /** `*` any run, `%` any run without `/` or `.` (IMAP LIST style), else literal; case-insensitive. */
@@ -468,16 +489,17 @@ fun headerFromAddress(rfc822: ByteArray): String {
 
 /**
  * MAIL FROM for a message with author [from] sent through the account whose address is [accountEmail].
- * Like pine, the From is used, but only when it is the account's own: a plus alias of it, or an address the
- * account lists ([allowed]: alt-addresses and the Froms its rules set). Anything else, or the account address
- * itself, gives "" (the account address), so a server that checks the sender does not refuse the message.
+ * Like pine, the From is used, but only when it is the account's own: a plus alias of it (and, on personal
+ * Gmail, a dotted or googlemail.com form), or an address the account lists ([allowed]: alt-addresses and the
+ * Froms its rules set). Anything else, or the account address itself, gives "" (the account address), so a
+ * server that checks the sender does not refuse the message.
  */
 fun envelopeSender(from: String, accountEmail: String, allowed: List<String>): String {
     val f = addrSpec(from).trim()
     if (f.isEmpty() || !envelopeAddressOk(f) || f.equals(accountEmail.trim(), ignoreCase = true)) return ""
-    val base = baseAddress(f)
-    if (base == baseAddress(accountEmail)) return f
-    return if (allowed.any { baseAddress(it) == base }) f else ""
+    val mine = foldedMailbox(f)
+    if (accountEmail.trim().isNotEmpty() && mine == foldedMailbox(accountEmail)) return f
+    return if (allowed.any { it.trim().isNotEmpty() && foldedMailbox(it) == mine }) f else ""
 }
 
 /** Status after a send: the saved note and the DSN-refused note, either of which may be absent. */
