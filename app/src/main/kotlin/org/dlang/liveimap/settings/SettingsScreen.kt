@@ -1391,7 +1391,8 @@ internal class ServerDrafts {
                 logSettingsSave(control, started.accountId, settingsSaveHeld(review))
                 return@launch
             }
-            finishStore(editor, control, generation, boundSaveCapture(started, editor.editingId))
+            val finished = captureAttempt(editor, serverDraft, editor.settings)
+            finishStore(editor, control, generation, boundSaveCapture(started, editor.editingId, finished))
         }
     }
 

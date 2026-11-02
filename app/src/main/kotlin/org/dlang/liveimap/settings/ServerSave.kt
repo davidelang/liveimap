@@ -35,10 +35,13 @@ internal fun settingsSaveHeld(review: ServerSaveReview): String =
 
 internal fun settingsSaveFailed(message: String): String = "failed $message"
 
-/** An in-flight check stays on the capture it started with. [editingNow] is not the target. */
-internal fun boundSaveCapture(started: SaveCapture, editingNow: String?): SaveCapture {
-    if (started.accountId != editingNow) return started
-    return started
+/**
+ * Another account keeps the capture the check started with.
+ * The same account stores [finished]: the screen, server draft, and password drafts open when the check ended.
+ */
+internal fun boundSaveCapture(started: SaveCapture, editingNow: String?, finished: SaveCapture): SaveCapture {
+    if (started.accountId != editingNow || finished.accountId != started.accountId) return started
+    return finished
 }
 
 /** Log and failure text when the attempt wrote no key and no password. Not a string resource. */

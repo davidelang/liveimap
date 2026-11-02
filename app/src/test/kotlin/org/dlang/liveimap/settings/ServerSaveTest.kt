@@ -8,6 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -232,7 +233,16 @@ class ServerSaveTest {
             username = "bea",
             email = "bea@other.example",
         )
-        val bound = boundSaveCapture(started, "acct-b")
+        val opened = SaveCapture(
+            accountId = "acct-b",
+            before = other,
+            screen = other,
+            password = "pw-b",
+            smtp = "smtp-b",
+            sieve = "sieve-b",
+            creating = false,
+        )
+        val bound = boundSaveCapture(started, "acct-b", opened)
         assertEquals("acct-a", bound.accountId)
         assertEquals(screen, bound.screen)
         assertEquals(before, bound.before)
@@ -276,6 +286,82 @@ class ServerSaveTest {
         )
         assertTrue(ontoStarted.stored)
         assertEquals("started.example", overlayAccountFields(applyWrittenKeys(bound.before, bound.screen, keys), accountUserData("acct-a", bound.screen, null)).imapHost)
+        assertNotEquals("pw-b", bound.password)
+    }
+
+    @Test fun checkSuccessKeepsEditsMadeWhileItRan() {
+        val before = newAccountSettings().copy(
+            imapHost = "old.example",
+            imapPort = 993,
+            smtpHost = "smtp.example",
+            smtpPort = 587,
+            username = "ada",
+            email = "ada@old.example",
+            signature = "",
+        )
+        val atStart = before.copy(imapHost = "started.example")
+        val started = SaveCapture(
+            accountId = "acct-a",
+            before = before,
+            screen = atStart,
+            password = "pw-a",
+            smtp = "smtp-a",
+            sieve = "sieve-a",
+            creating = false,
+        )
+        val onScreen = atStart.copy(imapHost = "during.example", signature = "typed while checking")
+        val finished = SaveCapture(
+            accountId = "acct-a",
+            before = before,
+            screen = onScreen,
+            password = "pw-during",
+            smtp = "smtp-during",
+            sieve = "sieve-during",
+            creating = false,
+        )
+        val chosen = boundSaveCapture(started, "acct-a", finished)
+        assertEquals("acct-a", chosen.accountId)
+        assertEquals("during.example", chosen.screen.imapHost)
+        assertEquals("typed while checking", chosen.screen.signature)
+        assertEquals("pw-during", chosen.password)
+        assertEquals("smtp-during", chosen.smtp)
+        assertEquals("sieve-during", chosen.sieve)
+        val keys = chosen.screen.changedKeysAgainst(chosen.before)
+        assertTrue(keys.contains("imapHost"))
+        assertTrue(keys.contains("signature"))
+        val wrote = settingsSaveVerdict(
+            rejected = null,
+            before = chosen.before,
+            screen = chosen.screen,
+            keysWritten = keys,
+            wrotePassword = true,
+            wroteSmtp = true,
+            wroteSieve = true,
+            needPassword = true,
+            needSmtp = true,
+            needSieve = true,
+            record = accountUserData("acct-a", chosen.screen, null),
+            checkRecord = true,
+        )
+        assertTrue(wrote.stored)
+        assertEquals("stored", wrote.outcome)
+        val loaded = overlayAccountFields(
+            applyWrittenKeys(chosen.before, chosen.screen, keys),
+            accountUserData("acct-a", chosen.screen, null),
+        )
+        assertEquals("during.example", loaded.imapHost)
+        assertEquals("typed while checking", loaded.signature)
+        assertEquals(
+            "settings save account-save account=acct-a stored",
+            settingsSaveReport("account-save", chosen.accountId, wrote.outcome),
+        )
+        val frozenKeys = started.screen.changedKeysAgainst(started.before)
+        val frozenLoad = overlayAccountFields(
+            applyWrittenKeys(started.before, started.screen, frozenKeys),
+            accountUserData("acct-a", started.screen, null),
+        )
+        assertEquals("started.example", frozenLoad.imapHost)
+        assertEquals("", frozenLoad.signature)
     }
 
     private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
