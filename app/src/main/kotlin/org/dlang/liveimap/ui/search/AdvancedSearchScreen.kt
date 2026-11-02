@@ -73,15 +73,10 @@ private data class AdvancedField(
 
 private val advancedFields = listOf(
     AdvancedField("New", R.string.index_filter_new),
-    AdvancedField("NotNew", R.string.index_filter_not_new),
     AdvancedField("Deleted", R.string.index_filter_deleted),
-    AdvancedField("NotDeleted", R.string.index_filter_not_deleted),
     AdvancedField("Answered", R.string.index_filter_answered),
-    AdvancedField("NotAnswered", R.string.index_filter_not_answered),
     AdvancedField("Important", R.string.index_filter_important),
-    AdvancedField("NotImportant", R.string.index_filter_not_important),
     AdvancedField("Forwarded", R.string.index_filter_forwarded),
-    AdvancedField("NotForwarded", R.string.index_filter_not_forwarded),
     AdvancedField("From", R.string.index_filter_from),
     AdvancedField("To", R.string.index_filter_to),
     AdvancedField("Cc", R.string.index_filter_cc),
@@ -95,7 +90,6 @@ private val advancedFields = listOf(
     AdvancedField("Larger", R.string.index_filter_larger),
     AdvancedField("Smaller", R.string.index_filter_smaller),
     AdvancedField("Keyword", R.string.index_filter_keyword),
-    AdvancedField("NotKeyword", R.string.index_filter_not_keyword),
     AdvancedField("Body", R.string.index_search_body),
     AdvancedField("Text", R.string.index_search_full_text),
 )
@@ -116,8 +110,17 @@ private val valuedAdvancedKinds = setOf(
     "Larger",
     "Smaller",
     "Keyword",
-    "NotKeyword",
 )
+
+private fun positiveAdvancedKind(kind: String): String = when (kind) {
+    "NotNew" -> "New"
+    "NotDeleted" -> "Deleted"
+    "NotAnswered" -> "Answered"
+    "NotImportant" -> "Important"
+    "NotForwarded" -> "Forwarded"
+    "NotKeyword" -> "Keyword"
+    else -> kind
+}
 
 private data class AdvancedDraft(
     val kind: String,
@@ -159,14 +162,16 @@ private fun restoreDraftRows(saved: String): List<AdvancedDraft> {
     for (line in saved.split('\n')) {
         val parts = line.split('\t')
         if (parts.size != 3) return defaultDraftRows
-        val kind = parts[0]
+        val storedKind = parts[0]
+        val kind = positiveAdvancedKind(storedKind)
         if (kind !in known) return defaultDraftRows
         val negated = when (parts[2]) {
             "0" -> false
             "1" -> true
             else -> return defaultDraftRows
         }
-        rows.add(AdvancedDraft(kind, parts[1], negated))
+        val notOn = if (storedKind != kind) true else negated
+        rows.add(AdvancedDraft(kind, parts[1], notOn))
     }
     if (rows.isEmpty()) return defaultDraftRows
     return rows
@@ -180,7 +185,7 @@ internal fun bodyPromptSkipped(scope: SearchScope, mailbox: String, skip: Set<St
 
 @Composable
 private fun advancedFieldLabel(kind: String): String {
-    val field = advancedFields.first { it.kind == kind }
+    val field = advancedFields.first { it.kind == positiveAdvancedKind(kind) }
     return stringResource(field.labelRes)
 }
 

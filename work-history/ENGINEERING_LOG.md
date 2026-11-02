@@ -4043,3 +4043,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - To me matches plus-tags and personal Gmail
 
 - The index mark, reply-all, and sending rules treat a plus-tag as the same mailbox, and personal Gmail dots and googlemail.com as that mailbox too. A rule pattern whose local part contains a dot or a plus stays exact. The index filter "to me" shows messages whose envelope bit is set, including outside the loaded window, and does not send a to-me search key.
+
+## 2026-11-02 - Advanced search lists each flag once
+
+- Each flag term is offered once, and the Not switch is what negates it. An old Not-kind draft opens as that term with Not on. A saved Not-kind still searches. The message-list filter still lists both forms.
