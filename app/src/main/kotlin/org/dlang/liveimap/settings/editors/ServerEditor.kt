@@ -276,11 +276,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
-                    drafts.serverReview = null
-                    drafts.serverDraft?.let { editor.persist(drafts.savedServer(editor, it)) }
-                    drafts.commitPasswords(editor)
-                    editor.ui.launch { editor.commitPageAwait() }
-                    drafts.serverDraft = null
+                    confirmSettingsSave(editor, drafts, "save-anyway")
                 }) { Text(stringResource(R.string.settings_check_save_anyway)) }
             },
             dismissButton = {
@@ -294,7 +290,10 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(stringResource(R.string.settings_unsaved_title)) },
             confirmButton = {
-                androidx.compose.material3.Button(onClick = { drafts.discardAsk = false; saveSettingsPage(editor, drafts) }) {
+                androidx.compose.material3.Button(onClick = {
+                    drafts.discardAsk = false
+                    confirmSettingsSave(editor, drafts, "unsaved")
+                }) {
                     Text(stringResource(R.string.settings_save))
                 }
             },
@@ -338,7 +337,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             androidx.compose.material3.Button(
-                onClick = { saveSettingsPage(editor, drafts) },
+                onClick = { saveSettingsPage(editor, drafts, "account-save") },
                 enabled = settingsSaveEnabled(
                     accountsPage = false,
                     creating = editor.creating,

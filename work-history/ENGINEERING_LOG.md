@@ -4015,3 +4015,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Approved plan: sandbox/plans/special-folders-save-gate-20261101-1435-plan.md
 - Work: Save turns on for text still in a field. Save and Test commit that line, then save or log in with the on-screen server. Special-folder and folder-list pickers use a throwaway login for the account being edited, or the unsaved draft, and keep the pick on that draft.
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-11-01 - Confirmed account Save stores the edits
+
+- Approved plan: sandbox/plans/settings-save-persists-20261101-1907-plan.md. Account Save and the separate Save still hold a server review that is not quiet. The unsaved dialog and save-anyway write the draft without another check, keep it if the store throws, and log one liveimap warning (stored, held, or failed).

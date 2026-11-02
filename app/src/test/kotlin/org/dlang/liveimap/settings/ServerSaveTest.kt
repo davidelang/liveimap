@@ -53,6 +53,41 @@ class ServerSaveTest {
         assertFalse(sameServer(saved.copy(imapHost = "h"), saved))
     }
 
+    @Test fun saveOutcomesAreStoreHoldAndConfirmedStore() {
+        val quiet = serverSaveReview(newAccountSettings(), ok)
+        assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = false, review = quiet))
+        assertEquals(
+            "settings save account-save account=acct stored",
+            settingsSaveReport("account-save", "acct", "stored"),
+        )
+        val held = serverSaveReview(newAccountSettings(), null)
+        assertTrue(held.unreachable)
+        assertNull(held.tlsWarning)
+        assertEquals(SettingsSaveChoice.Hold, settingsSaveChoice(confirmed = false, review = held))
+        assertEquals(
+            "settings save settings-save account=acct held unreachable=true tls=false",
+            settingsSaveReport("settings-save", "acct", settingsSaveHeld(held)),
+        )
+        val tls = serverSaveReview(newAccountSettings().withTlsMode(TlsMode.None), ok)
+        assertNotNull(tls.tlsWarning)
+        assertEquals(SettingsSaveChoice.Hold, settingsSaveChoice(confirmed = false, review = tls))
+        assertEquals(
+            "settings save account-save account=acct held unreachable=false tls=true",
+            settingsSaveReport("account-save", "acct", settingsSaveHeld(tls)),
+        )
+        assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = true, review = held))
+        assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = true, review = tls))
+        assertEquals(
+            "settings save unsaved account=acct stored",
+            settingsSaveReport("unsaved", "acct", "stored"),
+        )
+        assertEquals(
+            "settings save save-anyway account=acct failed keystore",
+            settingsSaveReport("save-anyway", "acct", settingsSaveFailed("keystore")),
+        )
+        assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = false, review = null))
+    }
+
     private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
         .map(::File).first { it.exists() }.readText()
 

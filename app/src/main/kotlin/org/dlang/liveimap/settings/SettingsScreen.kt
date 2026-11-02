@@ -169,6 +169,10 @@ import org.dlang.liveimap.ui.toolbar.notePaneScroll
  * exception that ends the process.
  */
 internal val settingsSaveFailure = androidx.compose.runtime.mutableStateOf<String?>(null)
+
+internal fun logSettingsSave(control: String, accountId: String?, outcome: String) {
+    android.util.Log.w("liveimap", settingsSaveReport(control, accountId, outcome))
+}
 internal val settingsIo = CoroutineScope(
     SupervisorJob() + Dispatchers.Main.immediate +
         kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
@@ -568,17 +572,15 @@ internal class SettingsEditor(
         }
     }
 
-    fun commitPage() {
-        runBlocking { commitPageAwait() }
-    }
+    fun commitPage(): Boolean = runBlocking { commitPageAwait() }
 
-    suspend fun commitPageAwait() {
+    suspend fun commitPageAwait(): Boolean {
         saveGate.lock()
         try {
             settingsSaveFailure.value = null
             if (creating) {
                 createAwait()
-                return
+                return true
             }
             val keys = dirtyKeys.get()
             val draft = settingsMirror.get()
@@ -605,10 +607,12 @@ internal class SettingsEditor(
             baselineSmtp = smtpPassword
             baselineSieve = sievePassword
             SettingsRevision.bump()
+            return true
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
         } catch (error: Exception) {
             settingsSaveFailure.value = error.message ?: error.toString()
+            return false
         } finally {
             saveGate.unlock()
         }
@@ -1005,7 +1009,7 @@ fun SettingsTree(
         val pendingLine = PendingLines.pending()
         if (settingsSaveShown(page == "accounts", editor.creating, editor.pageDirty, drafts?.hasDraft == true, pendingLine)) {
             Button(
-                onClick = { saveSettingsPage(editor, drafts) },
+                onClick = { saveSettingsPage(editor, drafts, "settings-save") },
                 enabled = settingsSaveEnabled(
                     page == "accounts",
                     editor.creating,
@@ -1111,6 +1115,9 @@ internal class ServerDrafts {
     var discardAsk by mutableStateOf(false)
     var leaveAfter by mutableStateOf<(() -> Unit)?>(null)
 
+    /** Bumped when a confirmed save starts, so a check still in flight cannot put the draft or the review back. */
+    @Volatile private var saveGeneration = 0
+
     val hasDraft: Boolean
         get() = serverDraft != null || passwordDraft != null || smtpPasswordDraft != null
 
@@ -1123,8 +1130,33 @@ internal class ServerDrafts {
     fun commitPasswords(editor: SettingsEditor) {
         passwordDraft?.let { editor.persistPassword(it) }
         smtpPasswordDraft?.let { editor.persistSmtpPassword(it) }
+    }
+
+    private fun clearDrafts() {
+        serverDraft = null
         passwordDraft = null
         smtpPasswordDraft = null
+    }
+
+    private fun reportStore(editor: SettingsEditor, control: String, generation: Int, ok: Boolean) {
+        val outcome = if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty())
+        logSettingsSave(control, editor.editingId, outcome)
+        if (ok && generation == saveGeneration) clearDrafts()
+    }
+
+    /** The store save-anyway performs. [draft] is the server snapshot this attempt writes. Drafts clear only after it returns. */
+    private suspend fun finishStore(editor: SettingsEditor, control: String, generation: Int, draft: Settings?) {
+        val ok = try {
+            draft?.let { editor.persist(savedServer(editor, it)) }
+            commitPasswords(editor)
+            editor.commitPageAwait()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            settingsSaveFailure.value = error.message ?: error.toString()
+            false
+        }
+        reportStore(editor, control, generation, ok)
     }
 
     // Server fields edit a draft; nothing is stored or checked until Save.
@@ -1147,12 +1179,15 @@ internal class ServerDrafts {
         return if (chosen.withoutPreserved("tlsMode") == chosen) merged.withoutPreserved("tlsMode") else merged
     }
 
-    fun saveServer(editor: SettingsEditor) {
-        val draft = serverDraft ?: run {
+    fun saveServer(editor: SettingsEditor, control: String) {
+        val draft = serverDraft
+        settingsSaveFailure.value = null
+        if (draft == null) {
             commitPasswords(editor)
-            editor.commitPage()
+            reportStore(editor, control, saveGeneration, editor.commitPage())
             return
         }
+        val generation = saveGeneration
         editor.ui.launch {
             serverChecking = true
             val result = try {
@@ -1166,23 +1201,40 @@ internal class ServerDrafts {
             } finally {
                 serverChecking = false
             }
+            if (generation != saveGeneration) return@launch
             val review = serverSaveReview(draft, result)
-            if (review.quiet) {
-                editor.persist(savedServer(editor, draft))
-                commitPasswords(editor)
-                editor.commitPageAwait()
-                serverDraft = null
-            } else {
+            if (settingsSaveChoice(confirmed = false, review) == SettingsSaveChoice.Hold) {
                 serverReview = review
+                logSettingsSave(control, editor.editingId, settingsSaveHeld(review))
+                return@launch
             }
+            finishStore(editor, control, generation, draft)
         }
+    }
+
+    /** Unsaved-dialog Save and save-anyway. No second server check. */
+    fun confirmStore(editor: SettingsEditor, control: String) {
+        val generation = ++saveGeneration
+        val draft = serverDraft
+        serverReview = null
+        settingsSaveFailure.value = null
+        editor.ui.launch { finishStore(editor, control, generation, draft) }
     }
 }
 
-internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?) {
+internal fun confirmSettingsSave(editor: SettingsEditor, drafts: ServerDrafts, control: String) {
     PendingLines.commitAll()
-    if (drafts != null && drafts.hasDraft) drafts.saveServer(editor)
-    else editor.commitPage()
+    drafts.confirmStore(editor, control)
+}
+
+internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?, control: String) {
+    PendingLines.commitAll()
+    if (drafts != null && drafts.hasDraft) drafts.saveServer(editor, control)
+    else {
+        settingsSaveFailure.value = null
+        val ok = editor.commitPage()
+        logSettingsSave(control, editor.editingId, if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty()))
+    }
 }
 
 internal class SettingsWalk(

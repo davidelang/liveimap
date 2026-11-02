@@ -19,6 +19,21 @@ fun serverSaveReview(draft: Settings, check: ServerCheck?): ServerSaveReview = S
     lines = check?.let { it.conflicts + it.notes }.orEmpty(),
 )
 
+/** Account Save and the separate Save store only when the review is missing or quiet. A confirmed save stores. */
+internal enum class SettingsSaveChoice { Store, Hold }
+
+internal fun settingsSaveChoice(confirmed: Boolean, review: ServerSaveReview?): SettingsSaveChoice =
+    if (confirmed || review == null || review.quiet) SettingsSaveChoice.Store else SettingsSaveChoice.Hold
+
+/** One release line: the control, the account id, and stored, held, or failed. No password and no settings blob. */
+internal fun settingsSaveReport(control: String, accountId: String?, outcome: String): String =
+    "settings save $control account=${accountId.orEmpty()} $outcome"
+
+internal fun settingsSaveHeld(review: ServerSaveReview): String =
+    "held unreachable=${review.unreachable} tls=${review.tlsWarning != null}"
+
+internal fun settingsSaveFailed(message: String): String = "failed $message"
+
 /** True when [a] and [b] have the same server fields (a draft equal to the saved settings is not a draft). */
 fun sameServer(a: Settings, b: Settings): Boolean = a.withServerOf(b) == a
 
