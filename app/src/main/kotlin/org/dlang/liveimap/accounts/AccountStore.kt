@@ -195,7 +195,7 @@ class AccountStore private constructor(private val context: Context) {
             onAccount {
                 var writtenId: String? = null
                 val writePreferences = withContext(Dispatchers.IO) {
-                    var current = loadLocked()
+                    var current = loadForCommit()
                     for (key in accountKeys) {
                         current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
                     }
@@ -222,7 +222,7 @@ class AccountStore private constructor(private val context: Context) {
         try {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) {
-                    var current = loadLocked()
+                    var current = loadForCommit()
                     for (key in accountKeys) {
                         current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
                     }
@@ -584,6 +584,23 @@ class AccountStore private constructor(private val context: Context) {
         org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
         val text = storedPreference(accountId) ?: throw NoAccountSelected()
         return overlayAccountFields(decodeSettings(text), account.userData).withUiOf(
+            org.dlang.liveimap.settings.SettingsHub.uiNow(),
+        )
+    }
+
+    /** Save base. A missing blob uses the AccountManager record. [loadLocked] still throws, so a load stays a missing blob. */
+    private suspend fun loadForCommit(): Settings {
+        val accounts = readAccounts()
+        val account = pick(accounts) ?: throw NoAccountSelected()
+        val accountId = parseAccountId(account.userData[userAccountId]) ?: throw NoAccountSelected()
+        val text = storedPreference(accountId)
+        if (text == null) {
+            return org.dlang.liveimap.settings.baseForListedSave(null, account.userData).withUiOf(
+                org.dlang.liveimap.settings.SettingsHub.uiNow(),
+            )
+        }
+        org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
+        return org.dlang.liveimap.settings.baseForListedSave(text, account.userData).withUiOf(
             org.dlang.liveimap.settings.SettingsHub.uiNow(),
         )
     }

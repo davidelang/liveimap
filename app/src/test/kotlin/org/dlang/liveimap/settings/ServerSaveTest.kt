@@ -1,8 +1,12 @@
 package org.dlang.liveimap.settings
 
 import java.io.File
+import org.dlang.liveimap.accounts.NoAccountSelected
 import org.dlang.liveimap.accounts.accountUserData
 import org.dlang.liveimap.accounts.overlayAccountFields
+import org.dlang.liveimap.accounts.planAccountSave
+import org.dlang.liveimap.accounts.userAccountId
+import org.dlang.liveimap.accounts.userImapHost
 import org.dlang.liveimap.engine.ServerCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -89,6 +93,73 @@ class ServerSaveTest {
             settingsSaveReport("save-anyway", "acct", settingsSaveFailed("keystore")),
         )
         assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = false, review = null))
+    }
+
+    @Test fun missingBlobIsAWriteNotNoAccountSelected() {
+        val id = "115db1e3-ed47-45c2-8182-54ac7721efef"
+        val listed = newAccountSettings().copy(
+            imapHost = "imap.example",
+            imapPort = 993,
+            smtpHost = "smtp.example",
+            smtpPort = 587,
+            username = "ada",
+            email = "ada@example",
+            signature = "",
+        )
+        val record = accountUserData(id, listed, null)
+        val drawer = accountUserData(
+            "drawer",
+            listed.copy(imapHost = "drawer.example", email = "drawer@example"),
+            null,
+        )
+        val screen = listed.copy(imapHost = "imap.new", signature = "signed", smtpPort = 2525)
+        val keys = screen.changedKeysAgainst(listed)
+        assertTrue(keys.contains("imapHost"))
+        assertTrue(keys.contains("signature"))
+        assertTrue(keys.contains("smtpPort"))
+        val base = try {
+            baseForListedSave(null, record)
+        } catch (error: NoAccountSelected) {
+            throw AssertionError(settingsSaveFailed(error.message ?: "no account selected"))
+        }
+        assertEquals("imap.example", base.imapHost)
+        assertEquals(993, base.imapPort)
+        assertEquals("smtp.example", base.smtpHost)
+        assertEquals(587, base.smtpPort)
+        assertEquals("ada", base.username)
+        assertEquals("ada@example", base.email)
+        assertNotEquals(drawer.getValue(userImapHost), base.imapHost)
+        val stored = applyWrittenKeys(base, screen, keys)
+        val plan = planAccountSave(id, null, stored, stored.encode(), "imap-slot")
+        val loaded = overlayAccountFields(decodeSettings(plan.text), plan.userData)
+        assertEquals("imap.new", loaded.imapHost)
+        assertEquals(993, loaded.imapPort)
+        assertEquals("smtp.example", loaded.smtpHost)
+        assertEquals(2525, loaded.smtpPort)
+        assertEquals("ada", loaded.username)
+        assertEquals("ada@example", loaded.email)
+        assertEquals("signed", loaded.signature)
+        assertEquals(id, plan.userData[userAccountId])
+        assertEquals("imap-slot", plan.passwordSlot)
+        assertFalse(plan.dropSmtpPassword)
+        assertFalse(plan.dropSievePassword)
+        assertEquals("settings save account-save account=$id stored", settingsSaveReport("account-save", id, "stored"))
+        assertEquals("settings save save-anyway account=$id stored", settingsSaveReport("save-anyway", id, "stored"))
+        assertEquals("settings save unsaved account=$id stored", settingsSaveReport("unsaved", id, "stored"))
+        val had = listed.copy(signature = "already")
+        val edited = had.copy(smtpPort = 2525)
+        val updated = applyWrittenKeys(
+            baseForListedSave(had.encode(), accountUserData(id, had, null)),
+            edited,
+            edited.changedKeysAgainst(had),
+        )
+        assertEquals("already", updated.signature)
+        assertEquals(2525, updated.smtpPort)
+        assertEquals("imap.example", updated.imapHost)
+        assertEquals(true to false, confirmedSaveDialogs(reviewOpen = true, discardOpen = false, stored = false))
+        assertEquals(false to true, confirmedSaveDialogs(reviewOpen = false, discardOpen = true, stored = false))
+        assertEquals(false to false, confirmedSaveDialogs(reviewOpen = true, discardOpen = false, stored = true))
+        assertEquals(false to false, confirmedSaveDialogs(reviewOpen = false, discardOpen = true, stored = true))
     }
 
     @Test fun storedOnlyWhenTheAccountGainedTheEdits() {

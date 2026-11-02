@@ -36,6 +36,19 @@ internal fun settingsSaveHeld(review: ServerSaveReview): String =
 internal fun settingsSaveFailed(message: String): String = "failed $message"
 
 /**
+ * A listed account with no settings blob is still that account.
+ * The blob text is decoded when present; a null blob is a new account overlaid with the AccountManager record.
+ */
+internal fun baseForListedSave(blob: String?, userData: Map<String, String>): Settings {
+    val decoded = if (blob == null) newAccountSettings() else decodeSettings(blob)
+    return overlayAccountFields(decoded, userData)
+}
+
+/** The server review and the exit dialog stay up until the confirmed write is stored. */
+internal fun confirmedSaveDialogs(reviewOpen: Boolean, discardOpen: Boolean, stored: Boolean): Pair<Boolean, Boolean> =
+    if (stored) false to false else reviewOpen to discardOpen
+
+/**
  * Another account keeps the capture the check started with.
  * The same account stores [finished]: the screen, server draft, and password drafts open when the check ended.
  */

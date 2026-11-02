@@ -4035,3 +4035,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - A settings check keeps edits made while it runs
 
 - A successful server check on the same account stores the screen, server draft, and password drafts open when the check finishes. stored matches that following load. Switching accounts still completes the attempt that started and does not log stored for the account open now.
+
+## 2026-11-02 - Save a listed account that has no settings blob
+
+- Saving the account on screen writes that account when it is listed and the settings blob is missing, instead of failing with no account selected. A failed save-anyway or exit Save stays on that dialog and shows the failure there.

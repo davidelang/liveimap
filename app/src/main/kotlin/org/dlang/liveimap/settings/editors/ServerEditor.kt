@@ -262,17 +262,18 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
         }
     }
     BackHandler(enabled = pagePending) { drafts.discardAsk = true }
+    val saveFailure = settingsSaveFailure.value
     drafts.serverReview?.let { review ->
         AlertDialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(stringResource(R.string.settings_save_server_title)) },
             text = {
-                Text(
-                    (listOfNotNull(review.tlsWarning?.let { stringResource(it) }) +
-                        (if (review.unreachable) listOf(stringResource(R.string.settings_check_unreachable)) else emptyList()) +
-                        review.lines).joinToString("\n"),
-                )
+                val lines = listOfNotNull(review.tlsWarning?.let { stringResource(it) }) +
+                    (if (review.unreachable) listOf(stringResource(R.string.settings_check_unreachable)) else emptyList()) +
+                    review.lines
+                val shown = if (saveFailure.isNullOrEmpty()) lines else lines + saveFailure
+                Text(shown.joinToString("\n"))
             },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
@@ -289,6 +290,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(stringResource(R.string.settings_unsaved_title)) },
+            text = saveFailure?.takeIf { it.isNotEmpty() }?.let { failure -> { Text(failure) } },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     confirmSettingsSave(editor, drafts, "unsaved")

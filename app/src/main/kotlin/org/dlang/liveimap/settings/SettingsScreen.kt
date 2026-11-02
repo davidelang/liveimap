@@ -1318,10 +1318,11 @@ internal class ServerDrafts {
     private fun reportStore(accountId: String?, control: String, generation: Int, ok: Boolean) {
         val outcome = if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty())
         logSettingsSave(control, accountId, outcome)
-        if (ok && generation == saveGeneration) {
-            clearDrafts()
-            discardAsk = false
-        }
+        if (generation != saveGeneration) return
+        val (reviewOpen, discardOpen) = confirmedSaveDialogs(serverReview != null, discardAsk, ok)
+        if (!reviewOpen) serverReview = null
+        discardAsk = discardOpen
+        if (ok) clearDrafts()
     }
 
     /** Writes [capture] and reports once. settingsIo, not the composition, so leaving the screen still finishes the report. */
@@ -1402,7 +1403,7 @@ internal class ServerDrafts {
         val draft = serverDraft
         val accountId = editor.editingId
         val settingsAtStart = editor.settings
-        serverReview = null
+        settingsSaveFailure.value = null
         settingsIo.launch {
             val base = if (editor.editingId == accountId) editor.settings else settingsAtStart
             finishStore(editor, control, generation, captureAttempt(editor, draft, base))
