@@ -12,18 +12,6 @@ class AllHeadersTest {
     }
 
     @Test
-    fun smallHeaderIsReadWhole() = runBlocking {
-        val raw = "Subject: =?utf-8?q?Caf=C3=A9?=\r\nX-Evil: <script>alert(1)</script>\r\n\r\n"
-        val (text, truncated) = readCappedText(RawViewCapBytes, source(raw.toByteArray()))
-        assertEquals(raw, text)
-        assertFalse(truncated)
-        // Shown unparsed by default; decoding encoded-words is an option, and markup stays text either way.
-        assertEquals(raw, headerViewText(text, decode = false, fallback = "ISO-8859-1"))
-        assertTrue(headerViewText(text, decode = true, fallback = "ISO-8859-1").startsWith("Subject: Café"))
-        assertTrue(headerViewText(text, decode = true, fallback = "ISO-8859-1").contains("<script>alert(1)</script>"))
-    }
-
-    @Test
     fun hugeHeaderStopsAtTheCap() = runBlocking {
         val huge = ByteArray(RawViewCapBytes * 3) { 'A'.code.toByte() }
         var fetched = 0

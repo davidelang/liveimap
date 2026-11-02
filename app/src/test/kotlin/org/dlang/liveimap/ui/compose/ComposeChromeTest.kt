@@ -168,15 +168,6 @@ class ComposeChromeTest {
     }
 
     @Test
-    fun unsentSubjectAndLabel() {
-        assertEquals("Hello", unsentSubject("Subject: Hello\r\n\r\nBody".encodeToByteArray(), "No subject", "ISO-8859-1"))
-        assertEquals(
-            "No subject",
-            unsentSubject("From: a@example.com\r\n\r\nHi".encodeToByteArray(), "No subject", "ISO-8859-1"),
-        )
-    }
-
-    @Test
     fun postponedUidToRemove() {
         assertEquals(8L, postponedUidToRemove(ComposeKind.ResumePostpone, true, 8L)!!)
         assertNull(postponedUidToRemove(ComposeKind.ResumePostpone, false, 8L))

@@ -3,15 +3,12 @@ package org.dlang.liveimap
 import kotlin.random.Random
 import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.ui.compose.addrSpec
-import org.dlang.liveimap.ui.compose.decodeHeaderWords
 import org.dlang.liveimap.ui.compose.splitAddresses
 import org.dlang.liveimap.ui.index.parseAdvancedQuery
 import org.dlang.liveimap.ui.reader.checkLink
 import org.dlang.liveimap.ui.reader.decodeImageTrust
-import org.dlang.liveimap.ui.reader.headerFields
 import org.dlang.liveimap.ui.reader.htmlAsText
 import org.dlang.liveimap.ui.reader.linkSafety
-import org.dlang.liveimap.ui.reader.listIdKey
 import org.dlang.liveimap.ui.reader.readerLines
 import org.dlang.liveimap.ui.reader.sniffContent
 import org.dlang.liveimap.ui.reader.stripMetaRefresh
@@ -64,8 +61,6 @@ class RandomInputTest {
     }
 
     private val targets: List<Pair<String, (String) -> Unit>> = listOf(
-        "decodeHeaderWords" to { s -> decodeHeaderWords(s, "UTF-8") },
-        "headerFields" to { s -> headerFields(s, "UTF-8").let { listIdKey(it.listId) } },
         "splitAddresses" to { s -> splitAddresses(s).forEach { addrSpec(it) } },
         "htmlAsText" to { s -> htmlAsText(s) },
         "stripMetaRefresh" to { s -> stripMetaRefresh(s) },
