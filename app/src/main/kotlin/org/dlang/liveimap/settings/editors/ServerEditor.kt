@@ -291,7 +291,6 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             title = { Text(stringResource(R.string.settings_unsaved_title)) },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
-                    drafts.discardAsk = false
                     confirmSettingsSave(editor, drafts, "unsaved")
                 }) {
                     Text(stringResource(R.string.settings_save))

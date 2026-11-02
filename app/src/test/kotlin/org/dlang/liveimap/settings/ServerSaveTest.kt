@@ -1,6 +1,8 @@
 package org.dlang.liveimap.settings
 
 import java.io.File
+import org.dlang.liveimap.accounts.accountUserData
+import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.engine.ServerCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,6 +88,121 @@ class ServerSaveTest {
             settingsSaveReport("save-anyway", "acct", settingsSaveFailed("keystore")),
         )
         assertEquals(SettingsSaveChoice.Store, settingsSaveChoice(confirmed = false, review = null))
+    }
+
+    @Test fun storedOnlyWhenTheAccountGainedTheEdits() {
+        installGeneratedSettings()
+        val before = newAccountSettings().copy(
+            imapHost = "old.example",
+            imapPort = 993,
+            smtpHost = "smtp.example",
+            smtpPort = 587,
+            username = "ada",
+            email = "ada@old.example",
+            signature = "old",
+        )
+        var record = accountUserData("acct", before, null)
+
+        val bad = before.copy(imapPort = 0)
+        val reason = rejectedAccountSettings(bad)
+        assertEquals("imapPort rejected 0", reason)
+        val rejected = settingsSaveVerdict(
+            rejected = reason,
+            before = before,
+            screen = bad,
+            keysWritten = emptySet(),
+            wrotePassword = false,
+            wroteSmtp = false,
+            wroteSieve = false,
+            needPassword = false,
+            needSmtp = false,
+            needSieve = false,
+            record = record,
+            checkRecord = true,
+        )
+        assertFalse(rejected.stored)
+        assertEquals(reason, rejected.failure)
+        assertEquals("old.example", overlayAccountFields(before, record).imapHost)
+        assertEquals(
+            "settings save save-anyway account=acct failed imapPort rejected 0",
+            settingsSaveReport("save-anyway", "acct", rejected.outcome),
+        )
+
+        val screen = before.copy(imapHost = "new.example", signature = "new sig")
+        assertFalse(sameServer(screen, before))
+        val empty = settingsSaveVerdict(
+            rejected = null,
+            before = before,
+            screen = screen,
+            keysWritten = emptySet(),
+            wrotePassword = false,
+            wroteSmtp = false,
+            wroteSieve = false,
+            needPassword = false,
+            needSmtp = false,
+            needSieve = false,
+            record = record,
+            checkRecord = true,
+        )
+        assertFalse(empty.stored)
+        assertEquals(settingsSaveEmptyWrite, empty.failure)
+        assertEquals("old.example", overlayAccountFields(before, record).imapHost)
+        assertEquals("old", overlayAccountFields(before, record).signature)
+        assertEquals(
+            "settings save unsaved account=acct failed empty write",
+            settingsSaveReport("unsaved", "acct", empty.outcome),
+        )
+
+        val keys = screen.changedKeysAgainst(before)
+        assertTrue(keys.contains("imapHost"))
+        assertTrue(keys.contains("signature"))
+        val stale = settingsSaveVerdict(
+            rejected = null,
+            before = before,
+            screen = screen,
+            keysWritten = keys,
+            wrotePassword = false,
+            wroteSmtp = false,
+            wroteSieve = false,
+            needPassword = false,
+            needSmtp = false,
+            needSieve = false,
+            record = record,
+            checkRecord = true,
+        )
+        assertFalse(stale.stored)
+        assertEquals("old.example", overlayAccountFields(before, record).imapHost)
+
+        record = accountUserData("acct", screen, null)
+        val wrote = settingsSaveVerdict(
+            rejected = null,
+            before = before,
+            screen = screen,
+            keysWritten = keys,
+            wrotePassword = false,
+            wroteSmtp = false,
+            wroteSieve = false,
+            needPassword = false,
+            needSmtp = false,
+            needSieve = false,
+            record = record,
+            checkRecord = true,
+        )
+        assertTrue(wrote.stored)
+        assertEquals("stored", wrote.outcome)
+        val account = applyWrittenKeys(before, screen, keys)
+        val loaded = overlayAccountFields(account, record)
+        assertEquals(screen.imapHost, loaded.imapHost)
+        assertEquals(screen.imapPort, loaded.imapPort)
+        assertEquals(screen.smtpHost, loaded.smtpHost)
+        assertEquals(screen.smtpPort, loaded.smtpPort)
+        assertEquals(screen.username, loaded.username)
+        assertEquals(screen.email, loaded.email)
+        assertEquals(screen.signature, loaded.signature)
+        assertEquals(
+            "settings save account-save account=acct stored",
+            settingsSaveReport("account-save", "acct", wrote.outcome),
+        )
     }
 
     private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")

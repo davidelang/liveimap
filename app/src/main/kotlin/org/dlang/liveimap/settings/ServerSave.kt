@@ -1,5 +1,6 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.engine.ServerCheck
 
 /** What Save shows before storing a server draft. The draft itself is never modified here (no revert path). */
@@ -33,6 +34,66 @@ internal fun settingsSaveHeld(review: ServerSaveReview): String =
     "held unreachable=${review.unreachable} tls=${review.tlsWarning != null}"
 
 internal fun settingsSaveFailed(message: String): String = "failed $message"
+
+/** Log and failure text when the attempt wrote no key and no password. Not a string resource. */
+internal const val settingsSaveEmptyWrite: String = "empty write"
+
+internal data class SettingsSaveVerdict(val stored: Boolean, val failure: String?) {
+    val outcome: String
+        get() = if (stored) "stored" else settingsSaveFailed(failure.orEmpty())
+}
+
+internal fun accountIdentityChanged(before: Settings, screen: Settings): Boolean =
+    before.imapHost != screen.imapHost || before.imapPort != screen.imapPort ||
+        before.smtpHost != screen.smtpHost || before.smtpPort != screen.smtpPort ||
+        before.username != screen.username || before.email != screen.email
+
+internal fun applyWrittenKeys(before: Settings, screen: Settings, keys: Set<String>): Settings {
+    var blob = before
+    for (key in keys) blob = blob.withSetting(key, SettingValue(screen.getSetting(key)))
+    return blob
+}
+
+/**
+ * Stored only when this attempt wrote the screen's edits and a following load would return them.
+ * Host, port, username, and email come from the AccountManager record ([overlayAccountFields]).
+ * A rejection or a commit that writes nothing is not stored. [checkRecord] is false before the write.
+ */
+internal fun settingsSaveVerdict(
+    rejected: String?,
+    before: Settings,
+    screen: Settings,
+    keysWritten: Set<String>,
+    wrotePassword: Boolean,
+    wroteSmtp: Boolean,
+    wroteSieve: Boolean,
+    needPassword: Boolean,
+    needSmtp: Boolean,
+    needSieve: Boolean,
+    record: Map<String, String>?,
+    checkRecord: Boolean,
+): SettingsSaveVerdict {
+    if (!rejected.isNullOrEmpty()) return SettingsSaveVerdict(false, rejected)
+    val changed = screen.changedKeysAgainst(before)
+    val wroteNothing = keysWritten.isEmpty() && !wrotePassword && !wroteSmtp && !wroteSieve
+    if (!keysWritten.containsAll(changed) || (needPassword && !wrotePassword) || (needSmtp && !wroteSmtp) ||
+        (needSieve && !wroteSieve) || wroteNothing
+    ) {
+        return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
+    }
+    if (!checkRecord) return SettingsSaveVerdict(true, null)
+    if (record == null) return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
+    val loaded = try {
+        overlayAccountFields(applyWrittenKeys(before, screen, keysWritten), record)
+    } catch (_: Exception) {
+        return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
+    }
+    if (accountIdentityChanged(screen, loaded)) return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
+    if (changed.any { loaded.getSetting(it) != screen.getSetting(it) }) {
+        return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
+    }
+    return SettingsSaveVerdict(true, null)
+}
 
 /** True when [a] and [b] have the same server fields (a draft equal to the saved settings is not a draft). */
 fun sameServer(a: Settings, b: Settings): Boolean = a.withServerOf(b) == a

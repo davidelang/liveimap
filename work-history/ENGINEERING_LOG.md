@@ -4019,3 +4019,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-01 - Confirmed account Save stores the edits
 
 - Approved plan: sandbox/plans/settings-save-persists-20261101-1907-plan.md. Account Save and the separate Save still hold a server review that is not quiet. The unsaved dialog and save-anyway write the draft without another check, keep it if the store throws, and log one liveimap warning (stored, held, or failed).
+
+## 2026-11-01 - Save reports stored only after the account has the edits
+
+- Approved plan: sandbox/plans/settings-save-false-stored-20261101-2008-plan.md. A rejected snapshot or an empty commit stays failed, keeps the unsaved warning, and does not log stored. stored means the next load's account record matches the screen. The report finishes on settingsIo after the screen leaves.

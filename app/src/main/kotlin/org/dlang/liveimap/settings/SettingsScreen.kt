@@ -205,6 +205,16 @@ internal class EditorLoad(
     val smtpMissing: Boolean = false,
 )
 
+internal class SaveCapture(
+    val accountId: String?,
+    val before: Settings,
+    val screen: Settings,
+    val password: String?,
+    val smtp: String?,
+    val sieve: String?,
+    val creating: Boolean,
+)
+
 internal class SettingsEditor(
     val store: DataStoreSettingsStore,
     val appContext: Context,
@@ -259,12 +269,12 @@ internal class SettingsEditor(
     val bound: DataStoreSettingsStore
         get() = editingId?.let { store.forAccount(it) } ?: store
 
-    fun persist(next: Settings) {
-        if (!ready) return
+    fun persist(next: Settings): Boolean {
+        if (!ready) return false
         val rejected = rejectedAccountSettings(next)
         if (rejected != null) {
             settingsSaveFailure.value = rejected
-            return
+            return false
         }
         // F32: the store drops passwords/pins when a server moves; show that here instead of a stale password
         val retarget = org.dlang.liveimap.accounts.retargetCredentials(settings, next)
@@ -290,7 +300,7 @@ internal class SettingsEditor(
             org.dlang.liveimap.settings.editors.PendingNewAccount.smtpPassword = smtpPassword
             org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = sievePassword
             pageDirty = true
-            return
+            return true
         }
         val changed = retarget.settings.changedKeysAgainst(previous)
         val immediate = changed.filter { it in immediateSettingKeys }.toSet()
@@ -299,7 +309,7 @@ internal class SettingsEditor(
             dirtyKeys.updateAndGet { it + page }
             pageDirty = dirtyKeys.get().isNotEmpty()
         }
-        if (immediate.isEmpty()) return
+        if (immediate.isEmpty()) return true
         val saving = retarget.settings
         val target = bound
         settingsIo.launch {
@@ -314,6 +324,7 @@ internal class SettingsEditor(
                 settingsSaveFailure.value = error.message ?: error.toString()
             }
         }
+        return true
     }
 
     fun persistPassword(value: String) {
@@ -574,7 +585,178 @@ internal class SettingsEditor(
 
     fun commitPage(): Boolean = runBlocking { commitPageAwait() }
 
-    suspend fun commitPageAwait(): Boolean {
+    fun captureSave(screen: Settings, password: String?, smtp: String?): SaveCapture = SaveCapture(
+        accountId = editingMirror.get(),
+        before = baselineMirror.get(),
+        screen = screen,
+        password = password ?: if (passwordDirty) this.password else null,
+        smtp = smtp ?: if (smtpDirty) smtpPassword else null,
+        sieve = if (sieveDirty) sievePassword else null,
+        creating = creating,
+    )
+
+    suspend fun commitPageAwait(requireWrite: Boolean = false, captured: SaveCapture? = null): Boolean {
+        if (requireWrite || captured != null) return commitAttempt(captured)
+        return commitLivePage()
+    }
+
+    private suspend fun commitAttempt(captured: SaveCapture?): Boolean {
+        saveGate.lock()
+        try {
+            val attempt = captured ?: SaveCapture(
+                accountId = editingMirror.get(),
+                before = baselineMirror.get(),
+                screen = settingsMirror.get(),
+                password = if (passwordDirty) password else null,
+                smtp = if (smtpDirty) smtpPassword else null,
+                sieve = if (sieveDirty) sievePassword else null,
+                creating = creating,
+            )
+            if (attempt.creating) {
+                if (captured != null && !persist(attempt.screen)) {
+                    if (settingsSaveFailure.value.isNullOrEmpty()) settingsSaveFailure.value = settingsSaveEmptyWrite
+                    return false
+                }
+                if (captured != null) {
+                    attempt.password?.let { persistPassword(it) }
+                    attempt.smtp?.let { persistSmtpPassword(it) }
+                    attempt.sieve?.let {
+                        sievePassword = it
+                        sieveDirty = true
+                    }
+                }
+                settingsSaveFailure.value = null
+                createAwait()
+                return true
+            }
+            val retarget = org.dlang.liveimap.accounts.retargetCredentials(attempt.before, attempt.screen)
+            val saving = if (captured != null) retarget.settings else attempt.screen
+            val keys = if (captured != null) saving.changedKeysAgainst(attempt.before) else dirtyKeys.get()
+            // A moved server drops the old secret in the settings write. A password that is part of this attempt is written after that, as commit used to.
+            val writePassword = attempt.password
+            val writeSmtp = attempt.smtp
+            val writeSieve = if (captured != null && retarget.dropSievePassword) null else attempt.sieve
+            val rejected = if (captured != null) rejectedAccountSettings(saving) else null
+            val preview = settingsSaveVerdict(
+                rejected = rejected,
+                before = attempt.before,
+                screen = saving,
+                keysWritten = keys,
+                wrotePassword = writePassword != null,
+                wroteSmtp = writeSmtp != null,
+                wroteSieve = writeSieve != null,
+                needPassword = writePassword != null,
+                needSmtp = writeSmtp != null,
+                needSieve = writeSieve != null,
+                record = null,
+                checkRecord = false,
+            )
+            if (!preview.stored) {
+                if (rejected != null || settingsSaveFailure.value.isNullOrEmpty()) {
+                    settingsSaveFailure.value = preview.failure
+                }
+                return false
+            }
+            val id = attempt.accountId
+            val storeTarget = id?.let { store.forAccount(it) }
+            if (storeTarget == null) {
+                if (accountIdentityChanged(attempt.before, saving) || writePassword != null || writeSmtp != null || writeSieve != null || keys.isEmpty()) {
+                    if (settingsSaveFailure.value.isNullOrEmpty()) settingsSaveFailure.value = settingsSaveEmptyWrite
+                    return false
+                }
+                settingsSaveFailure.value = null
+                SettingsHub.saveUiKeys(appContext, saving, keys)
+                if (captured == null || editingMirror.get() == id) {
+                    markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, replaceSettings = captured != null)
+                }
+                return true
+            }
+            settingsSaveFailure.value = null
+            if (keys.isNotEmpty()) storeTarget.commitKeys(saving, keys)
+            if (writePassword != null) storeTarget.setPassword(writePassword)
+            if (writeSmtp != null) storeTarget.setSmtpPassword(writeSmtp)
+            if (writeSieve != null) {
+                org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, writeSieve.ifEmpty { null })
+            }
+            val recorded = settingsSaveVerdict(
+                rejected = null,
+                before = attempt.before,
+                screen = saving,
+                keysWritten = keys,
+                wrotePassword = writePassword != null,
+                wroteSmtp = writeSmtp != null,
+                wroteSieve = writeSieve != null,
+                needPassword = writePassword != null,
+                needSmtp = writeSmtp != null,
+                needSieve = writeSieve != null,
+                record = store.accountFields(id),
+                checkRecord = true,
+            )
+            if (!recorded.stored) {
+                settingsSaveFailure.value = recorded.failure
+                return false
+            }
+            if (captured == null || editingMirror.get() == id) {
+                markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, replaceSettings = captured != null)
+            }
+            return true
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            settingsSaveFailure.value = error.message ?: error.toString()
+            return false
+        } finally {
+            saveGate.unlock()
+        }
+    }
+
+    private fun markAttemptStored(
+        accountId: String?,
+        saving: Settings,
+        writePassword: String?,
+        writeSmtp: String?,
+        writeSieve: String?,
+        replaceSettings: Boolean,
+    ) {
+        if (replaceSettings) {
+            if (editingMirror.get() != accountId) return
+            val retarget = org.dlang.liveimap.accounts.retargetCredentials(baselineMirror.get(), saving)
+            settingsEpoch.incrementAndGet()
+            settings = saving
+            if (writePassword != null) {
+                passwordEpoch.incrementAndGet()
+                password = writePassword
+                passwordMissing = false
+            } else if (retarget.dropImapPassword) {
+                passwordEpoch.incrementAndGet()
+                password = ""
+                passwordMissing = false
+            }
+            if (writeSmtp != null) {
+                smtpEpoch.incrementAndGet()
+                smtpPassword = writeSmtp
+                smtpMissing = false
+            } else if (retarget.dropSmtpPassword) {
+                smtpEpoch.incrementAndGet()
+                smtpPassword = ""
+                smtpMissing = false
+            }
+            if (retarget.dropSievePassword) sievePassword = ""
+            else if (writeSieve != null) sievePassword = writeSieve
+        }
+        baselineMirror.set(if (replaceSettings) saving else settingsMirror.get())
+        dirtyKeys.set(emptySet())
+        pageDirty = false
+        passwordDirty = false
+        smtpDirty = false
+        sieveDirty = false
+        baselinePassword = password
+        baselineSmtp = smtpPassword
+        baselineSieve = sievePassword
+        SettingsRevision.bump()
+    }
+
+    private suspend fun commitLivePage(): Boolean {
         saveGate.lock()
         try {
             settingsSaveFailure.value = null
@@ -1127,36 +1309,32 @@ internal class ServerDrafts {
         smtpPasswordDraft = null
     }
 
-    fun commitPasswords(editor: SettingsEditor) {
-        passwordDraft?.let { editor.persistPassword(it) }
-        smtpPasswordDraft?.let { editor.persistSmtpPassword(it) }
-    }
-
     private fun clearDrafts() {
         serverDraft = null
         passwordDraft = null
         smtpPasswordDraft = null
     }
 
-    private fun reportStore(editor: SettingsEditor, control: String, generation: Int, ok: Boolean) {
+    private fun reportStore(accountId: String?, control: String, generation: Int, ok: Boolean) {
         val outcome = if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty())
-        logSettingsSave(control, editor.editingId, outcome)
-        if (ok && generation == saveGeneration) clearDrafts()
+        logSettingsSave(control, accountId, outcome)
+        if (ok && generation == saveGeneration) {
+            clearDrafts()
+            discardAsk = false
+        }
     }
 
-    /** The store save-anyway performs. [draft] is the server snapshot this attempt writes. Drafts clear only after it returns. */
-    private suspend fun finishStore(editor: SettingsEditor, control: String, generation: Int, draft: Settings?) {
+    /** Writes [capture] and reports once. settingsIo, not the composition, so leaving the screen still finishes the report. */
+    private suspend fun finishStore(editor: SettingsEditor, control: String, generation: Int, capture: SaveCapture) {
         val ok = try {
-            draft?.let { editor.persist(savedServer(editor, it)) }
-            commitPasswords(editor)
-            editor.commitPageAwait()
+            editor.commitPageAwait(requireWrite = true, captured = capture)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             settingsSaveFailure.value = error.message ?: error.toString()
             false
         }
-        reportStore(editor, control, generation, ok)
+        reportStore(capture.accountId, control, generation, ok)
     }
 
     // Server fields edit a draft; nothing is stored or checked until Save.
@@ -1174,21 +1352,27 @@ internal class ServerDrafts {
         serverDraft = null
     }
 
-    fun savedServer(editor: SettingsEditor, chosen: Settings): Settings {
-        val merged = editor.settings.withServerOf(chosen)
+    fun savedServer(editor: SettingsEditor, chosen: Settings, base: Settings = editor.settings): Settings {
+        val merged = base.withServerOf(chosen)
         return if (chosen.withoutPreserved("tlsMode") == chosen) merged.withoutPreserved("tlsMode") else merged
+    }
+
+    private fun captureAttempt(editor: SettingsEditor, draft: Settings?, base: Settings): SaveCapture {
+        val screen = if (draft != null) savedServer(editor, draft, base) else base
+        return editor.captureSave(screen, passwordDraft, smtpPasswordDraft)
     }
 
     fun saveServer(editor: SettingsEditor, control: String) {
         val draft = serverDraft
-        settingsSaveFailure.value = null
+        val accountId = editor.editingId
+        val settingsAtStart = editor.settings
+        val generation = saveGeneration
         if (draft == null) {
-            commitPasswords(editor)
-            reportStore(editor, control, saveGeneration, editor.commitPage())
+            val capture = captureAttempt(editor, null, settingsAtStart)
+            settingsIo.launch { finishStore(editor, control, generation, capture) }
             return
         }
-        val generation = saveGeneration
-        editor.ui.launch {
+        settingsIo.launch {
             serverChecking = true
             val result = try {
                 if (draft.jmapFolders) {
@@ -1205,10 +1389,11 @@ internal class ServerDrafts {
             val review = serverSaveReview(draft, result)
             if (settingsSaveChoice(confirmed = false, review) == SettingsSaveChoice.Hold) {
                 serverReview = review
-                logSettingsSave(control, editor.editingId, settingsSaveHeld(review))
+                logSettingsSave(control, accountId, settingsSaveHeld(review))
                 return@launch
             }
-            finishStore(editor, control, generation, draft)
+            val base = if (editor.editingId == accountId) editor.settings else settingsAtStart
+            finishStore(editor, control, generation, captureAttempt(editor, draft, base))
         }
     }
 
@@ -1216,9 +1401,13 @@ internal class ServerDrafts {
     fun confirmStore(editor: SettingsEditor, control: String) {
         val generation = ++saveGeneration
         val draft = serverDraft
+        val accountId = editor.editingId
+        val settingsAtStart = editor.settings
         serverReview = null
-        settingsSaveFailure.value = null
-        editor.ui.launch { finishStore(editor, control, generation, draft) }
+        settingsIo.launch {
+            val base = if (editor.editingId == accountId) editor.settings else settingsAtStart
+            finishStore(editor, control, generation, captureAttempt(editor, draft, base))
+        }
     }
 }
 
@@ -1228,12 +1417,25 @@ internal fun confirmSettingsSave(editor: SettingsEditor, drafts: ServerDrafts, c
 }
 
 internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?, control: String) {
+    val pendingLine = PendingLines.pending()
     PendingLines.commitAll()
     if (drafts != null && drafts.hasDraft) drafts.saveServer(editor, control)
-    else {
-        settingsSaveFailure.value = null
+    else if (!editor.pageDirty && !pendingLine) {
         val ok = editor.commitPage()
         logSettingsSave(control, editor.editingId, if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty()))
+    } else {
+        val capture = editor.captureSave(editor.settings, null, null)
+        settingsIo.launch {
+            val ok = try {
+                editor.commitPageAwait(requireWrite = true, captured = capture)
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                settingsSaveFailure.value = error.message ?: error.toString()
+                false
+            }
+            logSettingsSave(control, capture.accountId, if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty()))
+        }
     }
 }
 
