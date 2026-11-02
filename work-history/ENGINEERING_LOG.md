@@ -4047,3 +4047,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - Advanced search lists each flag once
 
 - Each flag term is offered once, and the Not switch is what negates it. An old Not-kind draft opens as that term with Not on. A saved Not-kind still searches. The message-list filter still lists both forms.
+
+## 2026-11-02 - A one-leaf settings group shows that leaf
+
+- A settings group whose only visible child is one leaf shows that leaf. Account, Server, Sending, Logging, Layout, and Address book stay headers. settings-tree.md lists the keys the tree file can set.

@@ -1462,10 +1462,40 @@ internal fun renderSettingsNode(node: TreeNode, depth: Int, walk: SettingsWalk) 
     }
 }
 
+/** Account opens the server editor. The others add a footer under their children. */
+private val groupsWithExtraControls = setOf(
+    "Account",
+    "Server",
+    "Sending",
+    "Logging",
+    "Layout",
+    "Address book",
+)
+
+internal fun leafShownInstead(node: TreeNode.Group, read: (String) -> String, sdk: Int): TreeLeaf? {
+    if (node.title in groupsWithExtraControls) return null
+    val visible = node.children.filter { childDrawn(it, read, sdk) }
+    val only = visible.singleOrNull() as? TreeNode.Leaf ?: return null
+    return only.leaf
+}
+
+private fun childDrawn(node: TreeNode, read: (String) -> String, sdk: Int): Boolean = when (node) {
+    is TreeNode.Leaf -> node.leaf.visibleWhen?.holds(read, sdk) ?: true
+    is TreeNode.Group -> node.visibleWhen?.holds(read, sdk) ?: true
+    else -> true
+}
+
 @Composable
 internal fun renderGroup(node: TreeNode.Group, depth: Int, walk: SettingsWalk) {
     val editor = walk.editor
-    if (node.visibleWhen != null && !node.visibleWhen.holds({ editor.settings.getSetting(it) }, android.os.Build.VERSION.SDK_INT)) return
+    val read = { key: String -> editor.settings.getSetting(key) }
+    val sdk = android.os.Build.VERSION.SDK_INT
+    if (node.visibleWhen != null && !node.visibleWhen.holds(read, sdk)) return
+    val shown = leafShownInstead(node, read, sdk)
+    if (shown != null) {
+        rowFor(shown, walk)
+        return
+    }
     val id = node.id
     val summaryPiece = summaryPiece(node.summary, editor.settings, editor.accounts.size, android.os.Build.VERSION.SDK_INT)
     SettingsNode(
