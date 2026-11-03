@@ -730,7 +730,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Wiñaypaq chinkachiy"},
 {"key": "settings_move_method", "source": "Move method", "text": "Kuyuchiy ruway"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Copia, chaymanta marca borrado"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP KUYUCHIY"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Basura correo caja"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Huk Basura correo caja necesitakunraqmi."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Mana Basura correo caja churasqachu, chaymanta LIST-EXTENDED mana willasqachu."},

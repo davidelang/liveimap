@@ -4085,3 +4085,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - The staged asset directory is a generated asset source, so Play lint depends on stagePackagedAssets. src/main/assets is still not what AGP packages.
 
 ## 2026-11-03 - A settings plural with the same one and other sentence updates both
+
+## 2026-11-03 - Leftover locale translations
+
+- Grok translated non-English locale strings that were still the en-US sentence, one request per locale through the xAI API. English regional files stayed English. Strings that stay literal were not sent. generateAppI18n still does not call a translator.

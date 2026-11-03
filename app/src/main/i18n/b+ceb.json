@@ -730,7 +730,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Pagtangtang permanente"},
 {"key": "settings_move_method", "source": "Move method", "text": "Paagi sa paglihok"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Kopyaha, dayon markahan nga natangtang"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP LIHOK"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Basurahan nga mailbox"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Usa ka Trash mailbox ang gikinahanglan pa."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Walay Trash mailbox ang gitakda, ug ang LIST-EXTENDED wala i-advertise."},

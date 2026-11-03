@@ -730,7 +730,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Permanint wiskje"},
 {"key": "settings_move_method", "source": "Move method", "text": "Ferpleatsmetoade"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Kopiearje, markearje dan wiske"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP FERHÛZJE"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Jiskefet brievebus"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "In Jiskefet-postfak is noch nedich."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Gjin jiskefet is ynsteld, en LIST-EXTENDED wurdt net advertearre."},

@@ -730,7 +730,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Sguab às gu buan"},
 {"key": "settings_move_method", "source": "Move method", "text": "Gluais modh"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Leth-bhreac, an uairsin comharra air a dhubhadh às"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "GLUASAD IMAP"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Bogsa puist sgudal"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Tha feum air bogsa puist sgudal fhathast."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Chan eil bogsa-puist Sgudal air a shuidheachadh, agus chan eil LIST-EXTENDED air a shanasachadh."},
