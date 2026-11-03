@@ -4075,3 +4075,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - Settings is the account section and the ui section. The tree root is sections, a leaf's record comes from its section, hidden leaves are saved and not drawn, and the Settings screen scrolls both in file order.
 
 ## 2026-11-02 - The Settings screen shows Import once, and with no accounts one Add account button. The account route still includes both.
+
+## 2026-11-03 - Grok refreshes a changed settings sentence
+
+- A changed settings-tree sentence keeps its Android resource name. Grok, through the xAI API, writes the new machine text. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. No English sentence changed, so Grok did not run.

@@ -6,6 +6,8 @@ Gradle calls: python3 app/gen-settings-tree.py <tree.json> <ktOutDir>
 import copy
 import hashlib
 import json
+import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -134,8 +136,11 @@ class _Catalog:
         self.owners = owners
 
 
-def load_string_catalog(tree_path):
-    path = Path(tree_path).resolve().parents[1] / "res" / "values" / "strings.xml"
+def load_string_catalog(tree_path, strings_path=None):
+    if strings_path is None:
+        path = Path(tree_path).resolve().parents[1] / "res" / "values" / "strings.xml"
+    else:
+        path = Path(strings_path)
     root = ET.parse(path).getroot()
     strings = {}
     plurals = {}
@@ -364,6 +369,647 @@ def resolve_display_names(doc, catalog):
     return copy_doc
 
 
+_BINDINGS_NAME = "settings-display-bindings.json"
+_PH_RE = re.compile(r"%%|%(?:\d+\$)?[#+ 0,\-]*\d*(?:\.\d+)?[a-zA-Z]|%")
+_GROK_URL = "https://api.x.ai/v1/chat/completions"
+_GROK_MODELS = ("grok-4.20-0309-non-reasoning", "grok-4.3")
+
+
+def _android_escape(text):
+    out = []
+    for ch in text:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "'":
+            out.append("\\'")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "&":
+            out.append("&amp;")
+        elif ch == "<":
+            out.append("&lt;")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _add_slot(out, slot_id, sentence, plural, role, meta):
+    if not isinstance(sentence, str) or sentence == "":
+        return
+    item = {"id": slot_id, "sentence": sentence, "plural": plural, "role": role}
+    item.update(meta)
+    out.append(item)
+
+
+def _display_slots(node, scope, owner, out):
+    if isinstance(node, list):
+        for index, item in enumerate(node):
+            _display_slots(item, "%s/%s" % (scope, index), owner, out)
+        return
+    if not isinstance(node, dict):
+        return
+    if _is_leaf(node):
+        scope = "leaf:" + node["setting"]
+        owner = node["setting"]
+        _add_slot(out, scope + ":title", node.get("title"), False, "leaf-title", {"setting": owner})
+        choices = node.get("choiceTitles")
+        if isinstance(choices, dict):
+            for key, value in choices.items():
+                _add_slot(
+                    out,
+                    scope + ":choice:" + str(key),
+                    value,
+                    False,
+                    "choice",
+                    {"setting": owner, "choice": str(key)},
+                )
+    elif _is_group(node):
+        scope = "group:" + node["group"]
+        owner = node["group"]
+        _add_slot(out, scope + ":title", node.get("title"), False, "group-title", {"group": owner})
+    elif _is_page(node):
+        scope = "section:" + node["section"]
+        owner = node["section"]
+        _add_slot(out, scope + ":title", node.get("title"), False, "section-title", {"section": owner})
+    elif _is_editor(node):
+        scope = "editor:" + node["editor"]
+        owner = node["editor"]
+        if isinstance(node.get("title"), str) and node["title"]:
+            _add_slot(out, scope + ":title", node["title"], False, "editor-title", {"editor": owner})
+    else:
+        count = node.get("count") if isinstance(node.get("count"), str) else ""
+        _add_slot(out, scope + ":title", node.get("title"), False, "summary-text", {"owner": owner})
+        _add_slot(out, scope + ":text", node.get("text"), False, "summary-text", {"owner": owner})
+        _add_slot(
+            out,
+            scope + ":plural",
+            node.get("plural"),
+            True,
+            "summary-plural",
+            {"owner": owner, "count": count},
+        )
+        titles = node.get("titles")
+        if isinstance(titles, dict):
+            setting = node.get("setting") if isinstance(node.get("setting"), str) else owner
+            for key, value in titles.items():
+                _add_slot(
+                    out,
+                    scope + ":titles:" + str(key),
+                    value,
+                    False,
+                    "titles",
+                    {"owner": owner, "setting": setting, "key": str(key)},
+                )
+    if isinstance(node.get("description"), str):
+        _add_slot(out, scope + ":description", node.get("description"), False, "description", {"owner": owner})
+    for key, value in node.items():
+        if isinstance(value, (dict, list)):
+            _display_slots(value, scope + ":" + key, owner, out)
+
+
+def _slot_list(doc):
+    out = []
+    _display_slots(doc, "", "", out)
+    seen = set()
+    for slot in out:
+        if slot["id"] in seen:
+            raise SystemExit("settings display slot repeated: " + slot["id"])
+        seen.add(slot["id"])
+    return out
+
+
+def _lookup_slot(slot, catalog):
+    role = slot["role"]
+    sentence = slot["sentence"]
+    try:
+        if role == "leaf-title":
+            return _leaf_title(catalog, slot["setting"], sentence)
+        if role == "choice":
+            return _choice_name(catalog, slot["setting"], slot["choice"], sentence)
+        if role == "group-title":
+            return _group_title(catalog, slot["group"], sentence)
+        if role == "section-title":
+            return _page_or_editor_title(catalog, sentence, "section " + slot["section"])
+        if role == "editor-title":
+            return _page_or_editor_title(catalog, sentence, "editor " + slot["editor"])
+        if role == "description":
+            return _string_name(catalog, sentence, None, "description")
+        if role == "summary-text":
+            return _summary_name(catalog, slot.get("owner") or "", sentence)
+        if role == "summary-plural":
+            return _plural_name(catalog, sentence, slot.get("count") or "")
+        if role == "titles":
+            return _titles_name(catalog, slot.get("setting") or slot.get("owner") or "", slot.get("key") or "", sentence)
+    except SystemExit as exc:
+        # "matches a, b" is ambiguous. "matches" with no name is a missing sentence.
+        text = str(exc)
+        listed = text.split(" matches ", 1)[1].strip() if " matches " in text else ""
+        if listed:
+            raise
+        return None
+    return None
+
+
+def _resolved_names(doc, catalog):
+    resolved = resolve_display_names(doc, catalog)
+    named = {}
+    for slot in _slot_list(resolved):
+        named[slot["id"]] = slot["sentence"]
+    return named
+
+
+def _resource_sentence(catalog, name):
+    if name in catalog.plurals:
+        return catalog.plurals[name].get("other")
+    return catalog.strings.get(name)
+
+
+def _set_owner(catalog, name, old, sentence):
+    if old is not None:
+        owners = catalog.owners.get(old, [])
+        if name in owners:
+            owners.remove(name)
+        if not owners and old in catalog.owners:
+            del catalog.owners[old]
+    catalog.owners.setdefault(sentence, [])
+    if name not in catalog.owners[sentence]:
+        catalog.owners[sentence].append(name)
+
+
+def _set_string(catalog, name, sentence):
+    old = catalog.strings.get(name)
+    if old == sentence and name not in catalog.plurals:
+        return False
+    _set_owner(catalog, name, old, sentence)
+    catalog.strings[name] = sentence
+    return True
+
+
+def _set_plural_other(catalog, name, sentence):
+    quant = catalog.plurals.get(name)
+    if quant is None:
+        catalog.plurals[name] = {"one": sentence, "other": sentence}
+        return True
+    if quant.get("other") == sentence:
+        return False
+    quant["other"] = sentence
+    return True
+
+
+def _alloc_name(catalog, slot_id):
+    raw = re.sub(r"[^A-Za-z0-9]+", "_", slot_id).strip("_").lower()
+    if not raw or raw[0].isdigit():
+        raw = "s_" + raw
+    base = raw
+    if len(base) > 70:
+        digest = hashlib.sha1(slot_id.encode("utf-8")).hexdigest()[:8]
+        base = base[:60].rstrip("_") + "_" + digest
+    name = base
+    number = 2
+    while name in catalog.strings or name in catalog.plurals:
+        name = "%s_%d" % (base, number)
+        number += 1
+    return name
+
+
+def _write_if_changed(path, text):
+    path = Path(path)
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return False
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
+def _apply_string_xml(strings_path, catalog, edits):
+    if not edits:
+        return False
+    path = Path(strings_path)
+    original = path.read_text(encoding="utf-8")
+    text = original
+    additions = []
+    for kind, name, sentence in edits:
+        escaped = _android_escape(sentence)
+        if kind == "string":
+            pattern = re.compile(
+                r'(<string name="%s">)(.*?)(</string>)' % re.escape(name),
+                re.DOTALL,
+            )
+            updated, count = pattern.subn(lambda match: match.group(1) + escaped + match.group(3), text, count=1)
+            if count != 1:
+                raise SystemExit("strings.xml missing string " + name)
+            text = updated
+        elif kind == "plural":
+            pattern = re.compile(
+                r'(<plurals name="%s">.*?<item quantity="other">)(.*?)(</item>)' % re.escape(name),
+                re.DOTALL,
+            )
+            updated, count = pattern.subn(lambda match: match.group(1) + escaped + match.group(3), text, count=1)
+            if count != 1:
+                raise SystemExit("strings.xml missing plural " + name)
+            text = updated
+        elif kind == "new-string":
+            additions.append('    <string name="%s">%s</string>' % (name, escaped))
+        elif kind == "new-plural":
+            additions.append(
+                "    <plurals name=\"%s\">\n        <item quantity=\"one\">%s</item>\n        <item quantity=\"other\">%s</item>\n    </plurals>"
+                % (name, escaped, escaped)
+            )
+        else:
+            raise SystemExit("strings.xml edit " + kind)
+    if additions:
+        marker = "</resources>"
+        at = text.rfind(marker)
+        if at < 0:
+            raise SystemExit("strings.xml missing resources")
+        block = "\n".join(additions) + "\n"
+        text = text[:at] + block + text[at:]
+    if text == original:
+        return False
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
+def align_display_english(tree_path, strings_path=None, binding_path=None):
+    # A settings-tree sentence keeps the Android resource name it already has.
+    # A shared name stays on the uses whose English did not change.
+    tree_path = Path(tree_path)
+    if strings_path is None:
+        strings_path = tree_path.resolve().parents[1] / "res" / "values" / "strings.xml"
+    strings_path = Path(strings_path)
+    if binding_path is None:
+        binding_path = Path(__file__).resolve().parent / _BINDINGS_NAME
+    binding_path = Path(binding_path)
+    doc = loads_settings_tree(tree_path.read_bytes())
+    catalog = load_string_catalog(tree_path, strings_path)
+    slots = _slot_list(doc)
+    if not binding_path.is_file():
+        named = _resolved_names(doc, catalog)
+        if set(named) != set(slot["id"] for slot in slots):
+            raise SystemExit("settings display slots do not match resolved names")
+        body = json.dumps(named, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        _write_if_changed(binding_path, body)
+        return set(named.values())
+
+    saved = json.loads(binding_path.read_text(encoding="utf-8"))
+    if not isinstance(saved, dict):
+        raise SystemExit("settings display bindings")
+    assigned = {}
+    for slot in slots:
+        name = saved.get(slot["id"])
+        if isinstance(name, str) and _resource_sentence(catalog, name) == slot["sentence"]:
+            assigned[slot["id"]] = name
+    edits = []
+    for slot in slots:
+        if slot["id"] in assigned:
+            continue
+        found = _lookup_slot(slot, catalog)
+        if found:
+            assigned[slot["id"]] = found
+            continue
+        previous = saved.get(slot["id"])
+        keepers = [
+            other
+            for other in slots
+            if other["id"] != slot["id"]
+            and saved.get(other["id"]) == previous
+            and other["id"] in assigned
+        ]
+        if isinstance(previous, str) and previous and not keepers and _resource_sentence(catalog, previous) is not None:
+            sentence = slot["sentence"]
+            if slot["plural"] or previous in catalog.plurals:
+                if _set_plural_other(catalog, previous, sentence):
+                    edits.append(("plural", previous, sentence))
+            else:
+                if _set_string(catalog, previous, sentence):
+                    edits.append(("string", previous, sentence))
+            assigned[slot["id"]] = previous
+            saved[slot["id"]] = previous
+            continue
+        name = _alloc_name(catalog, slot["id"])
+        if slot["plural"]:
+            _set_plural_other(catalog, name, slot["sentence"])
+            edits.append(("new-plural", name, slot["sentence"]))
+        else:
+            _set_string(catalog, name, slot["sentence"])
+            edits.append(("new-string", name, slot["sentence"]))
+        assigned[slot["id"]] = name
+        saved[slot["id"]] = name
+    if set(assigned) != set(slot["id"] for slot in slots):
+        raise SystemExit("settings display slot was not named")
+    named = _resolved_names(doc, catalog)
+    for slot_id, name in assigned.items():
+        if named.get(slot_id) != name:
+            raise SystemExit("settings display name drifted: %s -> %s, resolved %s" % (slot_id, name, named.get(slot_id)))
+    _apply_string_xml(strings_path, catalog, edits)
+    body = json.dumps(assigned, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    _write_if_changed(binding_path, body)
+    return set(assigned.values())
+
+
+def _same_text(stored, current):
+    if isinstance(current, dict):
+        if not isinstance(stored, dict):
+            return False
+        return set(stored) == set(current) and all(stored[k] == current[k] for k in current)
+    return isinstance(stored, str) and stored == current
+
+
+def _placeholders(text):
+    if not isinstance(text, str):
+        return []
+    return sorted(_PH_RE.findall(text))
+
+
+def _ordered_text(value):
+    if not isinstance(value, dict):
+        return value
+    ordered = {}
+    for key in ("zero", "one", "two", "few", "many", "other"):
+        if key in value:
+            ordered[key] = value[key]
+    for key in sorted(value):
+        if key not in ordered:
+            ordered[key] = value[key]
+    return ordered
+
+
+def _entry_body(entry):
+    obj = {"key": entry["key"], "source": _ordered_text(entry["source"]), "text": _ordered_text(entry["text"])}
+    if entry.get("pending") is True:
+        obj["pending"] = True
+    return json.dumps(obj, ensure_ascii=False, separators=(", ", ": "))
+
+
+def _rewrite_locale(path, updates, additions):
+    path = Path(path)
+    original = path.read_text(encoding="utf-8")
+    lines = original.splitlines()
+    changed = False
+    last_entry = None
+    pending = dict(updates)
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        payload = stripped[:-1] if stripped.endswith(",") else stripped
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        key = obj.get("key") if isinstance(obj, dict) else None
+        last_entry = index
+        if key not in pending:
+            continue
+        comma = stripped.endswith(",")
+        indent = line[: len(line) - len(line.lstrip())]
+        new_line = indent + pending[key] + ("," if comma else "")
+        if new_line != line:
+            lines[index] = new_line
+            changed = True
+        del pending[key]
+    if pending:
+        raise SystemExit("i18n entry missing while refreshing " + path.name)
+    if additions:
+        if last_entry is None:
+            raise SystemExit("i18n file has no entries: " + path.name)
+        if not lines[last_entry].rstrip().endswith(","):
+            lines[last_entry] = lines[last_entry].rstrip() + ","
+        indent = lines[last_entry][: len(lines[last_entry]) - len(lines[last_entry].lstrip())]
+        insert_at = last_entry + 1
+        for body in additions:
+            lines.insert(insert_at, indent + body + ",")
+            insert_at += 1
+        if lines[insert_at - 1].rstrip().endswith(","):
+            lines[insert_at - 1] = lines[insert_at - 1].rstrip()[:-1]
+        changed = True
+    if not changed:
+        return False
+    ending = "\n" if original.endswith("\n") else ""
+    path.write_text("\n".join(lines) + ending, encoding="utf-8")
+    return True
+
+
+def _grok_request(api_key, prompt):
+    import urllib.error
+    import urllib.request
+
+    for model in _GROK_MODELS:
+        payload = {
+            "model": model,
+            "temperature": 0,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You translate Android UI strings. Reply with one JSON object and no other text.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        }
+        data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            _GROK_URL,
+            data=data,
+            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                raw = response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            if exc.code in (400, 404):
+                continue
+            return None
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            return None
+        try:
+            body = json.loads(raw)
+            content = body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError):
+            return None
+        return _parse_grok_json(content)
+    return None
+
+
+def _parse_grok_json(content):
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _translation_ok(english, translated, quantities):
+    if isinstance(english, dict):
+        if not isinstance(translated, dict):
+            return False
+        for quantity in quantities:
+            got = translated.get(quantity)
+            sample = english.get(quantity, english.get("other", ""))
+            if not isinstance(got, str) or _placeholders(got) != _placeholders(sample):
+                return False
+        return True
+    return isinstance(translated, str) and _placeholders(translated) == _placeholders(english)
+
+
+def _grok_translate(api_key, english, locale_tags, quantities):
+    # One xAI call per batch. Any other host is not a translation service we call.
+    locales = list(locale_tags)
+    found = {}
+    step = 20
+    for start in range(0, len(locales), step):
+        batch = locales[start : start + step]
+        lines = []
+        for loc in batch:
+            tag = locale_tags[loc]
+            if quantities.get(loc):
+                lines.append("%s (%s) quantities %s" % (loc, tag, ", ".join(quantities[loc])))
+            else:
+                lines.append("%s (%s)" % (loc, tag))
+        if isinstance(english, dict):
+            prompt = (
+                "Translate this en-US Android plural into each locale. "
+                "Keep every placeholder and format argument exactly as written. "
+                "Return a JSON object whose keys are the locale ids and whose values are objects of quantity to text. "
+                "Use only the quantities listed for that locale.\n\n"
+                "en-US: %s\n\n%s" % (json.dumps(english, ensure_ascii=False), "\n".join(lines))
+            )
+        else:
+            prompt = (
+                "Translate this en-US Android string into each locale. "
+                "Keep every placeholder and format argument exactly as written. "
+                "Return a JSON object whose keys are the locale ids and whose values are the translations.\n\n"
+                "en-US: %s\n\n%s" % (json.dumps(english, ensure_ascii=False), "\n".join(lines))
+            )
+        parsed = _grok_request(api_key, prompt)
+        if not isinstance(parsed, dict):
+            return None
+        for loc in batch:
+            translated = parsed.get(loc)
+            if not _translation_ok(english, translated, quantities.get(loc) or []):
+                return None
+            if isinstance(translated, dict):
+                kept = {}
+                for quantity in quantities.get(loc) or []:
+                    kept[quantity] = translated[quantity]
+                found[loc] = kept
+            else:
+                found[loc] = translated.strip()
+    return found
+
+
+def _fallback_text(current, quantities):
+    if isinstance(current, dict):
+        text = {}
+        for quantity in quantities or ["other"]:
+            if quantity in current and isinstance(current[quantity], str):
+                text[quantity] = current[quantity]
+            else:
+                text[quantity] = current.get("other", "")
+        return text
+    return current
+
+
+def refresh_display_translations(machines, items, display_names, keywords, locale_tags):
+    # Updates machine source for a changed settings-tree sentence.
+    # Grok writes text. If Grok cannot run, the previous text stays and pending retries later.
+    # Strings outside display_names are left for the caller to reject.
+    if not display_names:
+        return 0, 0
+    by_current = {key: value for key, value in items}
+    work = {}
+    for loc, pair in machines.items():
+        _path, data = pair
+        found = {}
+        for entry in data:
+            if isinstance(entry, dict) and isinstance(entry.get("key"), str):
+                found[entry["key"]] = entry
+        for key in display_names:
+            if key not in by_current:
+                continue
+            current = by_current[key]
+            entry = found.get(key)
+            if entry is None:
+                work.setdefault(key, []).append((loc, None))
+                continue
+            pending = entry.get("pending") is True
+            if pending or not _same_text(entry.get("source"), current):
+                work.setdefault(key, []).append((loc, entry))
+    if not work:
+        return 0, 0
+    api_key = os.environ.get("XAI_API_KEY", "").strip()
+    updated = 0
+    kept = 0
+    file_updates = {}
+    file_additions = {}
+    for key, rows in work.items():
+        current = by_current[key]
+        quantities = {}
+        tags = {}
+        for loc, _entry in rows:
+            tags[loc] = locale_tags.get(loc, loc)
+            if isinstance(current, dict):
+                quantities[loc] = list(keywords.get(loc) or [])
+        translated = _grok_translate(api_key, current, tags, quantities) if api_key else None
+        for loc, entry in rows:
+            path, data = machines[loc]
+            got = None if translated is None else translated.get(loc)
+            if entry is None:
+                previous = _fallback_text(current, quantities.get(loc))
+                text = got if got is not None else previous
+                pending = got is None
+                created = {"key": key, "source": current, "text": text}
+                if pending:
+                    created["pending"] = True
+                    kept += 1
+                else:
+                    updated += 1
+                data.append(created)
+                file_additions.setdefault(path, []).append(_entry_body(created))
+                continue
+            old_text = entry.get("text")
+            if got is None:
+                entry["source"] = current
+                entry["pending"] = True
+                if "text" not in entry:
+                    entry["text"] = _fallback_text(current, quantities.get(loc))
+                kept += 1
+            else:
+                entry["source"] = current
+                entry["text"] = got
+                entry.pop("pending", None)
+                updated += 1
+            if entry.get("text") is None:
+                entry["text"] = old_text if isinstance(old_text, (str, dict)) else _fallback_text(current, quantities.get(loc))
+            file_updates.setdefault(path, {})[key] = _entry_body(entry)
+    paths = set(file_updates) | set(file_additions)
+    for path in paths:
+        _rewrite_locale(path, file_updates.get(path, {}), file_additions.get(path, []))
+    return updated, kept
+
+
 def _remember_sentence(found, catalog, value):
     if not isinstance(value, str) or not value:
         return
@@ -405,6 +1051,7 @@ def display_sentences(doc, catalog):
 
 
 def emit(doc, kt_root, tree_bytes, tree_path):
+    align_display_english(tree_path)
     catalog = load_string_catalog(tree_path)
     sentences = display_sentences(doc, catalog)
     doc = resolve_display_names(doc, catalog)

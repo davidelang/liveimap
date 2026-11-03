@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- A change that adds, changes, or removes any string here also writes that string in every app/src/main/i18n/<locale>.json in the same change, translated by the coder. Every <locale>.override.json entry stays and only the machine file's source changes. A removed string is removed from every i18n file. generateAppI18n fails the build otherwise. -->
+    <!-- A display sentence in settings-tree.json keeps its resource name. generateAppI18n asks Grok for the machine text when that English changes, and does not edit an .override.json file. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. Any other add, change, or remove here still updates every machine locale in the same change, translated by the coder. generateAppI18n fails the build when one of those sources is not the current en-US text. -->
     <string name="app_name">LiveIMAP</string>
     <string name="about_title">About</string>
     <string name="about_version">Version %1$s</string>

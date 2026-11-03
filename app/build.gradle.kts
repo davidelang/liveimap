@@ -366,7 +366,8 @@ androidComponents {
     }
 }
 
-// Checks app/src/main/i18n and writes values-<locale>/strings.xml. No network and no translator.
+// Checks app/src/main/i18n and writes values-<locale>/strings.xml.
+// A changed settings-tree display sentence is refreshed by Grok. Any other source mismatch fails the task.
 private val i18nPython: String = """
 
 import json
@@ -606,7 +607,15 @@ def entries_by_key(data, issues, locale, file):
     return found
 
 
-def check(strings_path, i18n_dir, locale_filters, target):
+def load_settings_gen(path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("settings_tree_gen", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_names=None):
     i18n_dir = Path(i18n_dir)
     issues = []
     items, by_key = load_source(strings_path)
@@ -627,7 +636,7 @@ def check(strings_path, i18n_dir, locale_filters, target):
     overrides = {}
     if not i18n_dir.is_dir():
         add(issues, "i18n", "missing", "", "", "en", "app/src/main/i18n")
-        return issues, {}, 0
+        return issues, {}, 0, ""
     for path in sorted(i18n_dir.iterdir()):
         if not path.is_file():
             add(issues, path.name, "extra", "", "", path.name, rel_file(path))
@@ -651,6 +660,19 @@ def check(strings_path, i18n_dir, locale_filters, target):
                 machines[loc] = (path, data)
         else:
             add(issues, name, "extra", "", "", name, rel_file(path))
+
+    display_names = set(display_names or [])
+    grok_note = ""
+    if gen is not None and display_names:
+        updated, kept = gen.refresh_display_translations(
+            machines,
+            items,
+            display_names,
+            keywords,
+            {loc: language_tag(loc) for loc in target},
+        )
+        if updated or kept:
+            grok_note = "i18n grok: refreshed %d, kept %d" % (updated, kept)
 
     generated = {}
     for loc in target:
@@ -693,7 +715,8 @@ def check(strings_path, i18n_dir, locale_filters, target):
                     if not same_source(old, current):
                         add(issues, key, "changed", old, current, loc, file)
                 text = entry.get("text")
-                check_texts(issues, key, text, current, loc, file, plural, required, old)
+                if entry.get("pending") is not True:
+                    check_texts(issues, key, text, current, loc, file, plural, required, old)
                 chosen = text
                 if key in override_found:
                     otext = override_found[key].get("text")
@@ -726,7 +749,7 @@ def check(strings_path, i18n_dir, locale_filters, target):
                     add(issues, want_name, "changed", show(value), show(want_value), loc, file)
                     break
         generated[loc] = xml
-    return issues, generated, len(items)
+    return issues, generated, len(items), grok_note
 
 
 def format_issues(issues):
@@ -774,12 +797,25 @@ def round_trip(xml_text):
 
 
 def main(argv):
-    if len(argv) != 5:
-        print("usage: i18n_check.py strings.xml i18n_dir out_dir locale,filters", file=sys.stderr)
+    if len(argv) not in (5, 8):
+        print(
+            "usage: i18n_check.py strings.xml i18n_dir out_dir locale,filters [tree.json bindings.json gen.py]",
+            file=sys.stderr,
+        )
         return 2
-    strings_path, i18n_dir, out_dir, filter_arg = argv[1:]
+    strings_path, i18n_dir, out_dir, filter_arg = argv[1:5]
+    gen = None
+    display_names = set()
+    if len(argv) == 8:
+        tree_path, binding_path, gen_path = argv[5:]
+        gen = load_settings_gen(gen_path)
+        display_names = gen.align_display_english(tree_path, strings_path, binding_path)
     filters = [part for part in filter_arg.split(",") if part]
-    issues, generated, string_count = check(strings_path, i18n_dir, filters, TARGET)
+    issues, generated, string_count, grok_note = check(
+        strings_path, i18n_dir, filters, TARGET, gen, display_names
+    )
+    if grok_note:
+        print(grok_note)
     if len(TARGET) != 106:
         issues.append({
             "key": "locales",
@@ -819,6 +855,15 @@ abstract class GenerateI18nTask : DefaultTask() {
     @get:Input
     abstract val localeFilters: ListProperty<String>
 
+    @get:InputFile
+    abstract val treeFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val bindingFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val settingsScript: RegularFileProperty
+
     @get:OutputDirectory
     abstract val resOut: DirectoryProperty
 
@@ -833,6 +878,9 @@ abstract class GenerateI18nTask : DefaultTask() {
             i18nDir.get().asFile.absolutePath,
             resOut.get().asFile.absolutePath,
             localeFilters.get().joinToString(","),
+            treeFile.get().asFile.absolutePath,
+            bindingFile.get().asFile.absolutePath,
+            settingsScript.get().asFile.absolutePath,
         ).redirectErrorStream(true).start()
         val output = proc.inputStream.bufferedReader().readText()
         val code = proc.waitFor()
@@ -841,14 +889,19 @@ abstract class GenerateI18nTask : DefaultTask() {
     }
 }
 
-// A change that adds, changes, or removes any string in res/values/strings.xml also writes that string in every app/src/main/i18n/<locale>.json in the same change, translated by the coder. Every <locale>.override.json entry stays and only the machine file's source changes. A removed string is removed from every i18n file. generateAppI18n fails the build otherwise.
+// A settings-tree display sentence is machine-translated by Grok when its English changes. An .override.json file is not edited. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. Any other strings.xml add, change, or remove still has to be translated by the coder in the same change. generateAppI18n fails the build when a machine source outside this tree is not the current en-US text.
 val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     stringsFile.set(file("src/main/res/values/strings.xml"))
     i18nDir.set(file("src/main/i18n"))
     python.set(i18nPython)
     localeFilters.set(listOf("en") + i18nLocales)
+    treeFile.set(file("src/main/assets/settings-tree.json"))
+    bindingFile.set(file("settings-display-bindings.json"))
+    settingsScript.set(file("gen-settings-tree.py"))
     resOut.set(layout.buildDirectory.dir("generated/i18n/res"))
 }
+
+generateSettingsTree.configure { dependsOn(generateAppI18n) }
 
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(generateAppI18n) }
 
