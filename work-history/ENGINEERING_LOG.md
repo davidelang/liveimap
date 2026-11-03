@@ -4073,3 +4073,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-02 - The APK packages only the three assets the app opens
 
 ## 2026-11-02 - Settings is the account section and the ui section. The tree root is sections, a leaf's record comes from its section, hidden leaves are saved and not drawn, and the Settings screen scrolls both in file order.
+
+## 2026-11-02 - The Settings screen shows Import once, and with no accounts one Add account button. The account route still includes both.
