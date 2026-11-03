@@ -22,3 +22,15 @@ third_party/*/*.local
 .grok/sandbox.toml
 .grok/sandbox.toml.lock
 .grok/sandbox.toml.tmp
+
+# Build outputs and caches (never tracked). Kept here because the root's .gitignore
+# is published into every worktree (rules.manifest.local: local .gitignore).
+/.gradle-home/
+/.gradle/
+/.android-shared/
+/build/
+/app/build/
+/app/.cxx/
+/buildSrc/.gradle/
+/buildSrc/build/
+__pycache__/
