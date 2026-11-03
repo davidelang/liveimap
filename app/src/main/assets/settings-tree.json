@@ -1,140 +1,6 @@
 {
   "pages": [
     {
-      "page": "top",
-      "title": "drawer_settings",
-      "children": [
-        {
-          "page": "ui",
-          "title": "settings_all_accounts",
-          "summary": [
-            {
-              "text": "settings_all_accounts_summary"
-            }
-          ],
-          "children": [
-            {
-              "setting": "appTextZoom",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 100,
-              "title": "setting_appTextZoom_title",
-              "min": 50,
-              "max": 300
-            },
-            {
-              "setting": "indexPageSize",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 60,
-              "title": "setting_indexPageSize_title"
-            },
-            {
-              "setting": "swipeThresholdPercent",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 40,
-              "title": "setting_swipeThresholdPercent_title",
-              "min": 1,
-              "max": 99
-            },
-            {
-              "setting": "reconnectDelaysSec",
-              "type": "IntList",
-              "scope": "ui",
-              "kind": "text",
-              "default": [
-                2,
-                10,
-                60
-              ],
-              "title": "setting_reconnectDelaysSec_title",
-              "minItems": 1,
-              "itemMin": 1,
-              "itemMax": 86400
-            },
-            {
-              "setting": "maxRawViewBytes",
-              "type": "Long",
-              "scope": "ui",
-              "kind": "number",
-              "default": 1048576,
-              "title": "setting_maxRawViewBytes_title"
-            },
-            {
-              "setting": "maxImageTrustBytes",
-              "type": "Long",
-              "scope": "ui",
-              "kind": "number",
-              "default": 2000000,
-              "title": "setting_maxImageTrustBytes_title"
-            },
-            {
-              "setting": "moveChunk",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 1000,
-              "title": "setting_moveChunk_title",
-              "min": 1,
-              "max": 2147483647
-            },
-            {
-              "setting": "clientSortChunk",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 5000,
-              "title": "setting_clientSortChunk_title",
-              "min": 1,
-              "max": 2147483647
-            },
-            {
-              "editor": "toolbars",
-              "opens": "screen",
-              "title": "settings_toolbars",
-              "settings": []
-            },
-            {
-              "setting": "settingsOpensOn",
-              "type": "Enum",
-              "scope": "ui",
-              "kind": "choice",
-              "default": "drawer",
-              "title": "setting_settingsOpensOn_title",
-              "choices": [
-                "drawer",
-                "lastEdited"
-              ],
-              "choiceTitles": {
-                "drawer": "setting_settingsOpensOn_drawer",
-                "lastEdited": "setting_settingsOpensOn_lastEdited"
-              }
-            }
-          ]
-        },
-        {
-          "editor": "accountList",
-          "opens": "screen",
-          "title": "settings_accounts",
-          "summary": [
-            {
-              "plural": "settings_account_count",
-              "count": "$accounts"
-            }
-          ]
-        },
-        {
-          "editor": "pinerc",
-          "opens": "screen",
-          "title": "settings_import"
-        }
-      ]
-    },
-    {
       "page": "account",
       "title": "settings_account",
       "children": [
@@ -485,6 +351,26 @@
                   "title": "settings_email_submission"
                 },
                 {
+                  "setting": "smtpNoAuth",
+                  "type": "Enum",
+                  "scope": "account",
+                  "kind": "choice",
+                  "default": "Off",
+                  "title": "setting_smtpNoAuth_title",
+                  "choices": [
+                    "On",
+                    "Off"
+                  ],
+                  "choiceTitles": {
+                    "On": "setting_smtpNoAuth_on",
+                    "Off": "setting_smtpNoAuth_off"
+                  },
+                  "visibleWhen": {
+                    "setting": "emailSubmission",
+                    "equals": false
+                  }
+                },
+                {
                   "setting": "smtpHost",
                   "type": "String",
                   "scope": "account",
@@ -574,26 +460,6 @@
                   "enabledWhen": {
                     "setting": "smtpNoAuth",
                     "notEquals": "On"
-                  }
-                },
-                {
-                  "setting": "smtpNoAuth",
-                  "type": "Enum",
-                  "scope": "account",
-                  "kind": "choice",
-                  "default": "Off",
-                  "title": "setting_smtpNoAuth_title",
-                  "choices": [
-                    "On",
-                    "Off"
-                  ],
-                  "choiceTitles": {
-                    "On": "setting_smtpNoAuth_on",
-                    "Off": "setting_smtpNoAuth_off"
-                  },
-                  "visibleWhen": {
-                    "setting": "emailSubmission",
-                    "equals": false
                   }
                 },
                 {
@@ -2639,6 +2505,140 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "page": "top",
+      "title": "drawer_settings",
+      "children": [
+        {
+          "page": "ui",
+          "title": "settings_all_accounts",
+          "summary": [
+            {
+              "text": "settings_all_accounts_summary"
+            }
+          ],
+          "children": [
+            {
+              "setting": "appTextZoom",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 100,
+              "title": "setting_appTextZoom_title",
+              "min": 50,
+              "max": 300
+            },
+            {
+              "setting": "indexPageSize",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 60,
+              "title": "setting_indexPageSize_title"
+            },
+            {
+              "setting": "swipeThresholdPercent",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 40,
+              "title": "setting_swipeThresholdPercent_title",
+              "min": 1,
+              "max": 99
+            },
+            {
+              "setting": "reconnectDelaysSec",
+              "type": "IntList",
+              "scope": "ui",
+              "kind": "text",
+              "default": [
+                2,
+                10,
+                60
+              ],
+              "title": "setting_reconnectDelaysSec_title",
+              "minItems": 1,
+              "itemMin": 1,
+              "itemMax": 86400
+            },
+            {
+              "setting": "maxRawViewBytes",
+              "type": "Long",
+              "scope": "ui",
+              "kind": "number",
+              "default": 1048576,
+              "title": "setting_maxRawViewBytes_title"
+            },
+            {
+              "setting": "maxImageTrustBytes",
+              "type": "Long",
+              "scope": "ui",
+              "kind": "number",
+              "default": 2000000,
+              "title": "setting_maxImageTrustBytes_title"
+            },
+            {
+              "setting": "moveChunk",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 1000,
+              "title": "setting_moveChunk_title",
+              "min": 1,
+              "max": 2147483647
+            },
+            {
+              "setting": "clientSortChunk",
+              "type": "Int",
+              "scope": "ui",
+              "kind": "number",
+              "default": 5000,
+              "title": "setting_clientSortChunk_title",
+              "min": 1,
+              "max": 2147483647
+            },
+            {
+              "setting": "settingsOpensOn",
+              "type": "Enum",
+              "scope": "ui",
+              "kind": "choice",
+              "default": "drawer",
+              "title": "setting_settingsOpensOn_title",
+              "choices": [
+                "drawer",
+                "lastEdited"
+              ],
+              "choiceTitles": {
+                "drawer": "setting_settingsOpensOn_drawer",
+                "lastEdited": "setting_settingsOpensOn_lastEdited"
+              }
+            },
+            {
+              "editor": "toolbars",
+              "opens": "screen",
+              "title": "settings_toolbars",
+              "settings": []
+            }
+          ]
+        },
+        {
+          "editor": "accountList",
+          "opens": "screen",
+          "title": "settings_accounts",
+          "summary": [
+            {
+              "plural": "settings_account_count",
+              "count": "$accounts"
+            }
+          ]
+        },
+        {
+          "editor": "pinerc",
+          "opens": "screen",
+          "title": "settings_import"
         }
       ]
     }
