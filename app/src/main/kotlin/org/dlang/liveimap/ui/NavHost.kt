@@ -1037,18 +1037,7 @@ private fun LiveImapNavHostReady() {
                         onEditBook = { navController.navigate("addressbook") },
                         onOpenPanel = { name, _ -> openToolbar(name) },
                         onNavigate = { route -> navController.navigate(route) },
-                        page = "top",
-                    )
-                }
-            }
-            composable("settings/global") {
-                UpPage(stringResource(R.string.settings_all_accounts), onUp = { navController.popBackStack() }) {
-                    SettingsTree(
-                        onCopyContacts = { navController.navigate("contacts") },
-                        onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, _ -> openToolbar(name) },
-                        onNavigate = { route -> navController.navigate(route) },
-                        page = "ui",
+                        page = "settings",
                     )
                 }
             }

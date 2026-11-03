@@ -143,7 +143,7 @@ def check_layout(collapsed):
         if '"setting": "appTextZoom"' in line
     ]
     if zoom != [
-        '            { "setting": "appTextZoom", "type": "Int", "scope": "ui", '
+        '        { "setting": "appTextZoom", "type": "Int", '
         '"kind": "number", "default": 100, "title": "Font size", '
         '"min": 50, "max": 300 },'
     ]:
@@ -319,8 +319,8 @@ def check_worktree_diff(collapsed, ugly):
             if diff.returncode != 0 or diff.stdout:
                 fail("layout diff not empty: %s" % diff.stdout[:400])
         edited = collapsed.replace(
-            '"setting": "appTextZoom", "type": "Int", "scope": "ui", "kind": "number", "default": 100,',
-            '"setting": "appTextZoom", "type": "Int", "scope": "ui", "kind": "number", "default": 101,',
+            '"setting": "appTextZoom", "type": "Int", "kind": "number", "default": 100,',
+            '"setting": "appTextZoom", "type": "Int", "kind": "number", "default": 101,',
             1,
         )
         if edited == collapsed:
@@ -336,7 +336,7 @@ def check_worktree_diff(collapsed, ugly):
         text = diff.stdout.decode()
         if "Binary files" in text or "<<<<<<<" in text:
             fail(text[:400])
-        if '-              "default": 100,' not in text or '+              "default": 101,' not in text:
+        if '-          "default": 100,' not in text or '+          "default": 101,' not in text:
             fail("pretty line diff missing:\n%s" % text[:800])
     finally:
         TREE.write_bytes(original)

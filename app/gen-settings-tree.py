@@ -75,9 +75,8 @@ def all_leaves(doc):
     def visit(node):
         if "setting" in node:
             found.append(node)
-    for page in doc["pages"]:
-        walk_nodes([page], visit)
-    walk_nodes(doc["stored"], visit)
+    for section in doc["sections"]:
+        walk_nodes([section], visit)
     return found
 
 
@@ -86,8 +85,8 @@ def groups_of(doc):
     def visit(node):
         if "group" in node:
             found.append(node)
-    for page in doc["pages"]:
-        walk_nodes([page], visit)
+    for section in doc["sections"]:
+        walk_nodes([section], visit)
     return found
 
 
@@ -294,7 +293,7 @@ def _is_group(node):
 def _is_page(node):
     return (
         isinstance(node, dict)
-        and isinstance(node.get("page"), str)
+        and isinstance(node.get("section"), str)
         and "children" in node
         and "setting" not in node
     )
@@ -330,9 +329,9 @@ def _resolve_node(node, owner, catalog):
         if isinstance(node.get("title"), str):
             node["title"] = _group_title(catalog, node["group"], node["title"])
     elif _is_page(node):
-        owner = node["page"]
+        owner = node["section"]
         if isinstance(node.get("title"), str):
-            node["title"] = _page_or_editor_title(catalog, node["title"], "page " + node["page"])
+            node["title"] = _page_or_editor_title(catalog, node["title"], "section " + node["section"])
     elif _is_editor(node):
         owner = node["editor"]
         if isinstance(node.get("title"), str) and node["title"]:
@@ -891,18 +890,15 @@ def emit_access(doc, leaves, groups, kt_dir):
         if "group" in node:
             group = node["group"]
         if "setting" in node and not node.get("derived"):
-            group_of[node["setting"]] = group or ("ui" if node.get("scope") == "ui" else "account")
+            group_of[node["setting"]] = group or node.get("scope") or "account"
         for key in ("children", "settings"):
             kids = node.get(key)
             if isinstance(kids, list):
                 for child in kids:
                     if isinstance(child, dict):
                         visit(child, group)
-    for page in doc["pages"]:
-        visit(page, None)
-    for leaf in doc.get("stored", []):
-        if isinstance(leaf, dict) and "setting" in leaf and not leaf.get("derived"):
-            group_of.setdefault(leaf["setting"], "stored")
+    for section in doc["sections"]:
+        visit(section, None)
     buckets = {}
     for key, group in group_of.items():
         buckets.setdefault(group, []).append(key)
@@ -1099,21 +1095,22 @@ def main():
     raw = Path(tree_path).read_bytes()
     doc = loads_settings_tree(raw)
     validate_doc(doc)
+    stamp_scopes(doc)
     emit(doc, kt_root, raw, tree_path)
 
 
-ROOT_KEYS = {"pages", "stored"}
-PAGE_KEYS = {"page", "title", "children", "summary"}
+ROOT_KEYS = {"sections"}
+SECTION_KEYS = {"section", "title", "children", "summary"}
 GROUP_KEYS = {
     "group", "title", "label", "header", "children", "summary", "visibleWhen", "enabledWhen",
     "description", "editor", "opens", "introWhen",
 }
 EDITOR_KEYS = {"editor", "opens", "title", "summary", "settings", "children", "label"}
 LEAF_KEYS = {
-    "setting", "type", "scope", "kind", "default", "title", "summary", "choiceTitles", "choices",
+    "setting", "type", "kind", "default", "title", "summary", "choiceTitles", "choices",
     "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "server", "derived",
     "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen", "editor",
-    "opens", "format", "label", "nullable", "titleArgs",
+    "opens", "format", "label", "nullable", "titleArgs", "hidden",
 }
 
 
@@ -1151,17 +1148,40 @@ def _extra(keys, allowed, where):
         raise SystemExit("settings-tree.json extra key %s at %s" % (", ".join(extra), where))
 
 
+def stamp_scopes(doc):
+    def walk(node, scope):
+        if isinstance(node, list):
+            for item in node:
+                walk(item, scope)
+            return
+        if not isinstance(node, dict):
+            return
+        if "setting" in node and "type" in node:
+            node["scope"] = scope
+        for key in ("children", "settings"):
+            kids = node.get(key)
+            if isinstance(kids, list):
+                for child in kids:
+                    walk(child, scope)
+
+    for section in doc["sections"]:
+        for child in section.get("children") or []:
+            walk(child, section["section"])
+
+
 def validate_doc(doc):
     if not isinstance(doc, dict):
         raise SystemExit("settings-tree.json root")
     _extra(doc.keys(), ROOT_KEYS, "root")
-    if "pages" not in doc or not isinstance(doc["pages"], list):
-        raise SystemExit("settings-tree.json missing pages")
+    sections = doc.get("sections")
+    if not isinstance(sections, list) or not sections:
+        raise SystemExit("settings-tree.json missing sections")
     seen = set()
+    seen_sections = []
 
     def leaf(node, where):
         _extra(node.keys(), LEAF_KEYS, where)
-        for required in ("setting", "type", "scope", "kind", "default"):
+        for required in ("setting", "type", "kind", "default"):
             if required not in node:
                 raise SystemExit("settings-tree.json missing %s at %s" % (required, where))
         key = node["setting"]
@@ -1172,19 +1192,16 @@ def validate_doc(doc):
         seen.add(key)
         if node["type"] == "Int" and node.get("choiceTitles"):
             raise SystemExit("settings-tree.json %s choiceTitles" % key)
+        if "hidden" in node and node["hidden"] is not True and node["hidden"] is not False:
+            raise SystemExit("settings-tree.json hidden at " + where)
 
     def walk(node, where):
         if not isinstance(node, dict):
             raise SystemExit("settings-tree.json node " + where)
-        if "setting" in node:
+        if "section" in node:
+            raise SystemExit("settings-tree.json nested section at " + where)
+        if "setting" in node and "type" in node:
             leaf(node, where)
-            return
-        if "page" in node:
-            _extra(node.keys(), PAGE_KEYS, where)
-            if "title" not in node or "children" not in node:
-                raise SystemExit("settings-tree.json missing page field at " + where)
-            for index, child in enumerate(node["children"]):
-                walk(child, "%s/%s" % (node["page"], index))
             return
         if "group" in node:
             _extra(node.keys(), GROUP_KEYS, where)
@@ -1203,15 +1220,22 @@ def validate_doc(doc):
             return
         raise SystemExit("settings-tree.json missing kind at " + where)
 
-    for index, page in enumerate(doc["pages"]):
-        walk(page, "pages/%s" % index)
-    stored = doc.get("stored", [])
-    if not isinstance(stored, list):
-        raise SystemExit("settings-tree.json stored")
-    for index, node in enumerate(stored):
-        if not isinstance(node, dict) or "setting" not in node:
-            raise SystemExit("settings-tree.json stored %s" % index)
-        leaf(node, "stored/%s" % index)
+    for index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            raise SystemExit("settings-tree.json section %s" % index)
+        _extra(section.keys(), SECTION_KEYS, "sections/%s" % index)
+        sid = section.get("section")
+        if sid not in ("account", "ui"):
+            raise SystemExit("settings-tree.json section %s" % sid)
+        if sid in seen_sections:
+            raise SystemExit("settings-tree.json duplicate section %s" % sid)
+        seen_sections.append(sid)
+        if "title" not in section or not isinstance(section.get("children"), list):
+            raise SystemExit("settings-tree.json missing section field at " + str(sid))
+        for child_index, child in enumerate(section["children"]):
+            walk(child, "%s/%s" % (sid, child_index))
+    if len(seen_sections) != 2 or set(seen_sections) != {"account", "ui"}:
+        raise SystemExit("settings-tree.json sections")
 
 
 def kt_json(value):
@@ -1254,7 +1278,7 @@ def kt_opt_long(node, name):
     return "%sL" % int(node[name])
 
 
-def kt_leaf(leaf, stored):
+def kt_leaf(leaf):
     choices = leaf.get("choices")
     if choices is None:
         choices_kt = "null"
@@ -1304,7 +1328,7 @@ def kt_leaf(leaf, stored):
         "enabledWhen = %s," % enabled,
         "editor = %s," % kt_opt_str(leaf, "editor"),
         "opens = %s," % kt_opt_str(leaf, "opens"),
-        "stored = %s," % ("true" if stored else "false"),
+        "hidden = %s," % ("true" if leaf.get("hidden") is True else "false"),
         ")",
     ])
 
@@ -1320,13 +1344,13 @@ def install_kotlin(doc):
 
     def emit_node(node):
         if "setting" in node:
-            return "TreeNode.Leaf(%s)" % kt_leaf(node, False)
-        if "page" in node:
-            name = fname(node.get("page") or "page")
+            return "TreeNode.Leaf(%s)" % kt_leaf(node)
+        if "section" in node:
+            name = fname(node.get("section") or "section")
             kids = ",\n".join(emit_node(child) for child in node.get("children") or [])
             functions.append(
                 "private fun %s(): TreeNode = TreeNode.Page(%s, %s, listOf(\n%s\n), %s)\n"
-                % (name, kt_string(node.get("page") or ""), kt_string(node.get("title") or ""), kids or "", kt_json_list(node.get("summary") or []))
+                % (name, kt_string(node.get("section") or ""), kt_string(node.get("title") or ""), kids or "", kt_json_list(node.get("summary") or []))
             )
             return "%s()" % name
         if "group" in node:
@@ -1370,13 +1394,11 @@ def install_kotlin(doc):
             return "%s()" % name
         raise SystemExit("install node")
 
-    page_calls = ", ".join(emit_node(page) for page in doc["pages"])
-    stored = ",\n".join(kt_leaf(leaf, True) for leaf in doc.get("stored") or [])
+    section_calls = ", ".join(emit_node(section) for section in doc["sections"])
     head = "\n".join([
         "internal fun installGeneratedSettings() {",
         "    installBuiltTree(",
-        "        listOf(%s)," % page_calls,
-        "        listOf(%s)," % stored,
+        "        listOf(%s)," % section_calls,
         "    )",
         "}",
         "",

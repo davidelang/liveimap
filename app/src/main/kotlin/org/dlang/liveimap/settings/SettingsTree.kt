@@ -46,7 +46,7 @@ data class TreeLeaf(
     val enabledWhen: Condition? = null,
     val editor: String? = null,
     val opens: String? = null,
-    val stored: Boolean = false,
+    val hidden: Boolean = false,
 )
 
 sealed class TreeNode {
@@ -117,10 +117,10 @@ private val serverRequired = listOf(
 )
 
 private val leafKeys = setOf(
-    "setting", "type", "scope", "kind", "default", "title", "summary", "choiceTitles", "choices",
+    "setting", "type", "kind", "default", "title", "summary", "choiceTitles", "choices",
     "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "server", "derived",
     "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen", "editor",
-    "opens", "format", "label", "nullable", "titleArgs",
+    "opens", "format", "label", "nullable", "titleArgs", "hidden",
 )
 
 private val groupKeys = setOf(
@@ -130,7 +130,7 @@ private val groupKeys = setOf(
 
 private val editorKeys = setOf("editor", "opens", "title", "summary", "settings", "children", "label")
 
-private val pageKeys = setOf("page", "title", "children", "summary")
+private val sectionKeys = setOf("section", "title", "children", "summary")
 
 private val opensOk = setOf("screen", "popup", "inline")
 
@@ -202,47 +202,50 @@ fun installedLeaf(key: String): TreeLeaf? = InstalledTree.leaves[key]
 
 fun parseSettingsTree(text: String): List<TreeNode> = parseSettingsDocument(text).pages
 
-data class SettingsDocument(val pages: List<TreeNode>, val stored: List<TreeLeaf>)
+data class SettingsDocument(val pages: List<TreeNode>)
 
 fun parseSettingsDocument(text: String): SettingsDocument {
     val root = parseJson(text)
     if (root is JsonValue.Arr) {
-        return SettingsDocument(root.items.map { node(it) }, emptyList())
+        return SettingsDocument(root.items.map { node(it, "") })
     }
     val obj = root as? JsonValue.Obj ?: throw SettingsTreeParseException("settings-tree.json root")
-    val pages = obj.fields["pages"] as? JsonValue.Arr ?: throw SettingsTreeParseException("settings-tree.json pages")
-    val stored = when (val raw = obj.fields["stored"]) {
-        null -> emptyList()
-        is JsonValue.Arr -> raw.items.map { readLeaf((it as JsonValue.Obj), stored = true).leaf }
-        else -> throw SettingsTreeParseException("settings-tree.json stored")
+    for (name in obj.fields.keys) {
+        if (name != "sections") throw SettingsTreeParseException("settings-tree.json root field $name")
     }
-    return SettingsDocument(pages.items.map { node(it) }, stored)
+    val sections = obj.fields["sections"] as? JsonValue.Arr
+        ?: throw SettingsTreeParseException("settings-tree.json sections")
+    return SettingsDocument(sections.items.map { readSection(it) })
 }
 
-private fun node(value: JsonValue): TreeNode {
+private fun readSection(value: JsonValue): TreeNode.Page {
+    val obj = value as? JsonValue.Obj ?: throw SettingsTreeParseException("settings-tree.json section")
+    for (name in obj.fields.keys) {
+        if (name !in sectionKeys) throw SettingsTreeParseException("settings-tree.json section field $name")
+    }
+    val section = str(obj, "section") ?: throw SettingsTreeParseException("settings-tree.json section")
+    val title = str(obj, "title") ?: throw SettingsTreeParseException("settings-tree.json section title")
+    val children = childrenOf(obj, "children", section)
+    return TreeNode.Page(section, title, children, arrayField(obj, "summary"))
+}
+
+private fun node(value: JsonValue, scopeName: String): TreeNode {
     val obj = value as? JsonValue.Obj ?: throw SettingsTreeParseException("settings-tree.json node")
     return when {
-        "page" in obj.fields -> readPage(obj)
-        "group" in obj.fields -> readGroup(obj)
-        "setting" in obj.fields -> TreeNode.Leaf(readLeaf(obj, stored = false).leaf)
-        "editor" in obj.fields -> readEditor(obj)
+        "section" in obj.fields -> throw SettingsTreeParseException("settings-tree.json nested section")
+        "group" in obj.fields -> readGroup(obj, scopeName)
+        "setting" in obj.fields -> TreeNode.Leaf(readLeaf(obj, scopeName))
+        "editor" in obj.fields -> readEditor(obj, scopeName)
         else -> throw SettingsTreeParseException("settings-tree.json node")
     }
 }
 
-private fun readPage(obj: JsonValue.Obj): TreeNode.Page {
-    val page = str(obj, "page") ?: throw SettingsTreeParseException("settings-tree.json page")
-    val title = str(obj, "title") ?: throw SettingsTreeParseException("settings-tree.json page title")
-    val children = childrenOf(obj, "children")
-    return TreeNode.Page(page, title, children, arrayField(obj, "summary"))
-}
-
-private fun readGroup(obj: JsonValue.Obj): TreeNode.Group {
+private fun readGroup(obj: JsonValue.Obj, scopeName: String): TreeNode.Group {
     val id = str(obj, "group") ?: throw SettingsTreeParseException("settings-tree.json group")
     val resource = str(obj, "title") ?: throw SettingsTreeParseException("settings-tree.json group title")
     val label = str(obj, "label") ?: resource
     val header = str(obj, "header") ?: "label"
-    val children = childrenOf(obj, "children")
+    val children = childrenOf(obj, "children", scopeName)
     return TreeNode.Group(
         id = id,
         title = label,
@@ -258,21 +261,19 @@ private fun readGroup(obj: JsonValue.Obj): TreeNode.Group {
     )
 }
 
-private fun readEditor(obj: JsonValue.Obj): TreeNode.Editor {
+private fun readEditor(obj: JsonValue.Obj, scopeName: String): TreeNode.Editor {
     val editor = str(obj, "editor") ?: throw SettingsTreeParseException("settings-tree.json editor")
     val opens = str(obj, "opens") ?: ""
     val title = str(obj, "title") ?: ""
     val children = when {
-        "settings" in obj.fields -> childrenOf(obj, "settings")
-        "children" in obj.fields -> childrenOf(obj, "children")
+        "settings" in obj.fields -> childrenOf(obj, "settings", scopeName)
+        "children" in obj.fields -> childrenOf(obj, "children", scopeName)
         else -> emptyList()
     }
     return TreeNode.Editor(editor, opens, title, children, arrayField(obj, "summary"))
 }
 
-private data class LeafRead(val leaf: TreeLeaf, val errors: List<String> = emptyList())
-
-private fun readLeaf(obj: JsonValue.Obj, stored: Boolean): LeafRead {
+private fun readLeaf(obj: JsonValue.Obj, scopeName: String): TreeLeaf {
     val key = str(obj, "setting") ?: throw SettingsTreeParseException("settings-tree.json leaf setting")
     for (name in obj.fields.keys) {
         if (name !in leafKeys) throw SettingsTreeParseException("settings-tree.json leaf $key field $name")
@@ -301,40 +302,43 @@ private fun readLeaf(obj: JsonValue.Obj, stored: Boolean): LeafRead {
         }
         else -> throw SettingsTreeParseException("settings-tree.json leaf $key choiceTitles")
     }
-    return LeafRead(
-        TreeLeaf(
-            setting = key,
-            typeName = str(obj, "type").orEmpty(),
-            scopeName = str(obj, "scope").orEmpty(),
-            kind = str(obj, "kind").orEmpty(),
-            default = obj.fields.getValue("default"),
-            title = str(obj, "title").orEmpty(),
-            summary = str(obj, "summary"),
-            choiceTitles = choiceTitles,
-            choices = choices,
-            min = longField("min"),
-            max = longField("max"),
-            minItems = longField("minItems"),
-            maxItems = longField("maxItems"),
-            itemMin = longField("itemMin"),
-            itemMax = longField("itemMax"),
-            order = str(obj, "order"),
-            server = boolField(obj, "server") == true,
-            derived = boolField(obj, "derived") == true,
-            pinerc = str(obj, "pinerc"),
-            pinercFormat = str(obj, "pinercFormat"),
-            visibleWhen = conditionField(obj, "visibleWhen"),
-            enabledWhen = conditionField(obj, "enabledWhen"),
-            editor = str(obj, "editor"),
-            opens = str(obj, "opens"),
-            stored = stored,
-        ),
+    val hidden = when (val v = obj.fields["hidden"]) {
+        null -> false
+        is JsonValue.Bool -> v.value
+        else -> throw SettingsTreeParseException("settings-tree.json leaf $key hidden")
+    }
+    return TreeLeaf(
+        setting = key,
+        typeName = str(obj, "type").orEmpty(),
+        scopeName = scopeName,
+        kind = str(obj, "kind").orEmpty(),
+        default = obj.fields.getValue("default"),
+        title = str(obj, "title").orEmpty(),
+        summary = str(obj, "summary"),
+        choiceTitles = choiceTitles,
+        choices = choices,
+        min = longField("min"),
+        max = longField("max"),
+        minItems = longField("minItems"),
+        maxItems = longField("maxItems"),
+        itemMin = longField("itemMin"),
+        itemMax = longField("itemMax"),
+        order = str(obj, "order"),
+        server = boolField(obj, "server") == true,
+        derived = boolField(obj, "derived") == true,
+        pinerc = str(obj, "pinerc"),
+        pinercFormat = str(obj, "pinercFormat"),
+        visibleWhen = conditionField(obj, "visibleWhen"),
+        enabledWhen = conditionField(obj, "enabledWhen"),
+        editor = str(obj, "editor"),
+        opens = str(obj, "opens"),
+        hidden = hidden,
     )
 }
 
-private fun childrenOf(obj: JsonValue.Obj, name: String): List<TreeNode> {
+private fun childrenOf(obj: JsonValue.Obj, name: String, scopeName: String): List<TreeNode> {
     val arr = obj.fields[name] as? JsonValue.Arr ?: throw SettingsTreeParseException("settings-tree.json $name")
-    return arr.items.map { node(it) }
+    return arr.items.map { node(it, scopeName) }
 }
 
 private fun arrayField(obj: JsonValue.Obj, name: String): List<JsonValue> = when (val v = obj.fields[name]) {
@@ -377,11 +381,14 @@ fun validateSettingsTree(text: String, complete: Boolean = true): List<String> {
         return listOf(e.message ?: "settings-tree.json malformed")
     }
     val seen = HashSet<String>()
-    fun walk(node: TreeNode, page: String?) {
+    val seenSections = HashSet<String>()
+    fun walk(node: TreeNode, section: String?) {
         when (node) {
             is TreeNode.Page -> {
-                if (node.page !in setOf("top", "ui", "account")) errors.add("settings-tree.json page ${node.page}")
+                if (node.page !in setOf("ui", "account")) errors.add("settings-tree.json section ${node.page}")
+                else if (!seenSections.add(node.page)) errors.add("settings-tree.json duplicate section ${node.page}")
                 checkResource(node.title, complete, errors)
+                checkSummary(node.summary, "section ${node.page}", complete, errors)
                 node.children.forEach { walk(it, node.page) }
             }
             is TreeNode.Group -> {
@@ -391,28 +398,25 @@ fun validateSettingsTree(text: String, complete: Boolean = true): List<String> {
                 checkSummary(node.introWhen, "group ${node.id} intro", complete, errors)
                 checkOpens(node.editor, node.opens, "group ${node.id}", errors)
                 if (node.visibleWhen != null) checkCondition(node.visibleWhen, errors)
-                node.children.forEach { walk(it, page) }
+                node.children.forEach { walk(it, section) }
             }
             is TreeNode.Editor -> {
                 checkResource(node.title, complete, errors)
                 checkOpens(node.editor, node.opens, "editor ${node.editor}", errors)
                 checkSummary(node.summary, "editor ${node.editor}", complete, errors)
-                node.children.forEach { walk(it, page) }
+                node.children.forEach { walk(it, section) }
             }
             is TreeNode.Leaf -> {
                 if (!seen.add(node.leaf.setting)) errors.add("settings-tree.json duplicate setting ${node.leaf.setting}")
-                errors.addAll(checkLeaf(node.leaf, page, complete))
+                errors.addAll(checkLeaf(node.leaf, section, complete))
             }
         }
     }
     doc.pages.forEach { walk(it, null) }
-    for (leaf in doc.stored) {
-        if (!seen.add(leaf.setting)) errors.add("settings-tree.json duplicate setting ${leaf.setting}")
-        errors.addAll(checkLeaf(leaf, "stored", complete))
-    }
     if (complete) {
+        if (seenSections != setOf("ui", "account")) errors.add("settings-tree.json sections")
         for (key in uiRequired) {
-            val leaf = findLeaf(doc.pages, key) ?: doc.stored.firstOrNull { it.setting == key }
+            val leaf = findLeaf(doc.pages, key)
             if (leaf == null || leaf.scopeName != "ui") {
                 errors.add("settings-tree.json $key is not ui")
             }
@@ -443,13 +447,15 @@ private fun checkLeaf(leaf: TreeLeaf, page: String?, complete: Boolean): List<St
     val errors = ArrayList<String>()
     val key = leaf.setting
     if (leaf.typeName.isEmpty()) errors.add("settings-tree.json leaf $key type")
-    if (leaf.scopeName != "ui" && leaf.scopeName != "account") errors.add("settings-tree.json leaf $key scope")
+    if (page == "ui" || page == "account") {
+        if (leaf.scopeName != page) errors.add("settings-tree.json leaf $key scope")
+    } else if (leaf.scopeName != "ui" && leaf.scopeName != "account") {
+        errors.add("settings-tree.json leaf $key scope")
+    }
     if (leaf.kind.isEmpty()) errors.add("settings-tree.json leaf $key kind")
-    if (leaf.title.isEmpty() && !leaf.stored) errors.add("settings-tree.json leaf $key title")
+    if (leaf.title.isEmpty()) errors.add("settings-tree.json leaf $key title")
     if (leaf.title.isNotEmpty()) checkResource(leaf.title, complete, errors)
     leaf.summary?.let { checkResource(it, complete, errors) }
-    if (leaf.scopeName == "ui" && page == "account") errors.add("settings-tree.json leaf $key on account page")
-    if (leaf.scopeName == "account" && page == "ui") errors.add("settings-tree.json leaf $key on ui page")
     val numeric = leaf.typeName == "Int" || leaf.typeName == "Long"
     val list = leaf.typeName == "StringList" || leaf.typeName == "IntList" || leaf.typeName == "Encoded"
     if (!numeric && (leaf.min != null || leaf.max != null)) errors.add("settings-tree.json leaf $key has min or max")
@@ -477,9 +483,6 @@ private fun checkLeaf(leaf: TreeLeaf, page: String?, complete: Boolean): List<St
     if (leaf.enabledWhen != null) checkCondition(leaf.enabledWhen, errors)
     checkOpens(leaf.editor, leaf.opens, "leaf $key", errors)
     errors.addAll(checkDefault(leaf))
-    if (complete && leaf.scopeName == "ui" && key in uiRequired && leaf.scopeName != "ui") {
-        errors.add("settings-tree.json $key is not ui")
-    }
     return errors
 }
 
@@ -535,7 +538,7 @@ fun numberRejection(key: String, leaf: TreeLeaf, value: Long): String? {
 
 fun rejectedNumber(treeJson: String, key: String, value: Long): String? {
     val doc = parseSettingsDocument(treeJson)
-    val leaf = findLeaf(doc.pages, key) ?: doc.stored.firstOrNull { it.setting == key } ?: return "unknown setting $key"
+    val leaf = findLeaf(doc.pages, key) ?: return "unknown setting $key"
     return numberRejection(key, leaf, value)
 }
 
@@ -631,7 +634,7 @@ private fun checkValue(setting: String, expected: JsonValue, errors: MutableList
 
 private fun completeLeaf(leaf: TreeLeaf?): Boolean = leaf != null && leaf.choices != null
 
-internal fun installBuiltTree(pages: List<TreeNode>, stored: List<TreeLeaf>) {
+internal fun installBuiltTree(pages: List<TreeNode>) {
     val leaves = linkedMapOf<String, TreeLeaf>()
     fun walk(node: TreeNode) {
         when (node) {
@@ -642,7 +645,6 @@ internal fun installBuiltTree(pages: List<TreeNode>, stored: List<TreeLeaf>) {
         }
     }
     pages.forEach { walk(it) }
-    stored.forEach { leaves[it.setting] = it }
     InstalledTree.leaves = leaves
     InstalledTree.roots = pages
     InstalledTree.specs = leaves.mapValues { (_, leaf) -> specOf(leaf) }

@@ -1,7 +1,7 @@
 {
-  "pages": [
+  "sections": [
     {
-      "page": "account",
+      "section": "account",
       "title": "Account",
       "children": [
         {
@@ -19,7 +19,6 @@
                 {
                   "setting": "friendlyName",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Friendly name"
@@ -27,7 +26,6 @@
                 {
                   "setting": "email",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Email",
@@ -37,7 +35,6 @@
                 {
                   "setting": "displayName",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Display name",
@@ -47,7 +44,6 @@
                 {
                   "setting": "altAddresses",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "text",
                   "default": [],
                   "title": "Alternate addresses",
@@ -82,7 +78,6 @@
                 {
                   "setting": "jmapFolders",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Mail access"
@@ -90,7 +85,6 @@
                 {
                   "setting": "maxJmapResponseBytes",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 16777216,
                   "title": "Largest JMAP server response"
@@ -98,7 +92,6 @@
                 {
                   "setting": "jmapPartCacheMessages",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 200,
                   "title": "JMAP part cache",
@@ -127,7 +120,6 @@
                 {
                   "setting": "imapHost",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "IMAP host",
@@ -147,7 +139,6 @@
                 {
                   "setting": "imapPort",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 993,
                   "title": "IMAP port",
@@ -164,7 +155,6 @@
                 {
                   "setting": "username",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Username",
@@ -174,7 +164,6 @@
                 {
                   "setting": "tlsMode",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Implicit",
                   "title": "TLS",
@@ -199,7 +188,6 @@
                 {
                   "setting": "allowPlaintextAuth",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Allow a clear-text password",
@@ -211,7 +199,6 @@
                 {
                   "setting": "acceptInvalidCert",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Accept invalid certificate",
@@ -225,7 +212,6 @@
                 {
                   "setting": "allowOldTls",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Allow old TLS and weak keys",
@@ -237,7 +223,6 @@
                 {
                   "setting": "authMechanism",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Authentication mechanism",
@@ -249,7 +234,6 @@
                 {
                   "setting": "clientCertAlias",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Client certificate alias",
@@ -264,7 +248,6 @@
                 {
                   "setting": "certPin",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Certificate pin",
@@ -277,7 +260,6 @@
                 {
                   "setting": "jmapCertPin",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "JMAP certificate pin",
@@ -286,7 +268,6 @@
                 {
                   "setting": "pipelineCommands",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Pipeline IMAP commands"
@@ -345,7 +326,6 @@
                 {
                   "setting": "emailSubmission",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "JMAP EmailSubmission"
@@ -353,7 +333,6 @@
                 {
                   "setting": "smtpNoAuth",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Off",
                   "title": "On sends with no SMTP login",
@@ -373,7 +352,6 @@
                 {
                   "setting": "smtpHost",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "SMTP host",
@@ -388,7 +366,6 @@
                 {
                   "setting": "smtpPort",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 465,
                   "title": "SMTP port",
@@ -405,7 +382,6 @@
                 {
                   "setting": "smtpTlsMode",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Implicit",
                   "title": "SMTP TLS",
@@ -430,7 +406,6 @@
                 {
                   "setting": "smtpUsername",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "SMTP username",
@@ -449,7 +424,6 @@
                 {
                   "setting": "smtpSameAsImap",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Same as IMAP password",
@@ -465,7 +439,6 @@
                 {
                   "setting": "sieveSameAsInbound",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Same as inbound server and login",
@@ -474,7 +447,6 @@
                 {
                   "setting": "sieveHost",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Sieve host",
@@ -489,7 +461,6 @@
                 {
                   "setting": "sieveUsername",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Sieve user name",
@@ -502,7 +473,6 @@
                 {
                   "setting": "passwordStorage",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "googleRestore",
                   "title": "Password storage",
@@ -521,7 +491,6 @@
                 {
                   "setting": "sievePort",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 4190,
                   "title": "Sieve port",
@@ -532,7 +501,6 @@
                 {
                   "setting": "sieveTlsMode",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "StartTls",
                   "title": "Sieve TLS",
@@ -551,7 +519,6 @@
                 {
                   "setting": "sieveCertPin",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Sieve certificate pin",
@@ -560,7 +527,6 @@
                 {
                   "setting": "sieveConnectSeconds",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 30,
                   "title": "Sieve connect timeout",
@@ -569,7 +535,6 @@
                 {
                   "setting": "sieveReadSeconds",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 60,
                   "title": "Sieve read timeout",
@@ -613,7 +578,6 @@
                 {
                   "setting": "watchedFolders",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Watched folders",
@@ -623,7 +587,6 @@
                 {
                   "setting": "extraIdleBudget",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 2,
                   "title": "Connections for watched folders (within the maximum)",
@@ -633,7 +596,6 @@
                 {
                   "setting": "maxConnections",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 8,
                   "title": "Most connections to the server",
@@ -643,7 +605,6 @@
                 {
                   "setting": "connectTimeoutSec",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 30,
                   "title": "Mail server connect timeout",
@@ -653,7 +614,6 @@
                 {
                   "setting": "readTimeoutSec",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 60,
                   "title": "Mail server read timeout",
@@ -689,7 +649,6 @@
                 {
                   "setting": "sendingRules",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Sending rules",
@@ -701,7 +660,6 @@
                 {
                   "setting": "signature",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Signature",
@@ -711,7 +669,6 @@
                 {
                   "setting": "sigDashes",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Start signature with “-- ”",
@@ -721,7 +678,6 @@
                 {
                   "setting": "sigAtBottom",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Signature at bottom when replying above the quote",
@@ -731,7 +687,6 @@
                 {
                   "setting": "quotePrefix",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "> ",
                   "title": "Reply quote prefix",
@@ -741,7 +696,6 @@
                 {
                   "setting": "replyLeadIn",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "On {date}, {from} wrote:",
                   "title": "Reply lead-in ({date}, {from}, {name}, {subject})",
@@ -751,7 +705,6 @@
                 {
                   "setting": "dsnMode",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Off",
                   "title": "Delivery status notifications",
@@ -773,7 +726,6 @@
                 {
                   "setting": "composerHeaders",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Composer headers (e.g. Reply-To, X-Priority)",
@@ -783,7 +735,6 @@
                 {
                   "setting": "inboundRules",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Inbound rules",
@@ -836,7 +787,6 @@
                 {
                   "setting": "sentMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Sent mailbox",
@@ -846,7 +796,6 @@
                 {
                   "setting": "postponedMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Postponed mailbox",
@@ -856,7 +805,6 @@
                 {
                   "setting": "addressBookMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Save contacts to",
@@ -866,7 +814,6 @@
                 {
                   "setting": "spamMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Spam mailbox"
@@ -874,7 +821,6 @@
                 {
                   "setting": "trashMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Trash mailbox"
@@ -930,7 +876,6 @@
                 {
                   "setting": "showUnreadCounts",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Show unread counts"
@@ -938,7 +883,6 @@
                 {
                   "setting": "expandedFolders",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Expanded folders",
@@ -948,7 +892,6 @@
                 {
                   "setting": "folderCountFreshSeconds",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 300,
                   "title": "Refresh folder counts after",
@@ -972,7 +915,6 @@
                 {
                   "setting": "defaultView",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "Arrival|newest",
                   "title": "Default view",
@@ -982,7 +924,6 @@
                 {
                   "setting": "folderViews",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Folder views",
@@ -992,7 +933,6 @@
                 {
                   "setting": "threadIndexStyle",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Expanded",
                   "title": "Thread index",
@@ -1037,7 +977,6 @@
                 {
                   "setting": "inboxStart",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Newest",
                   "title": "INBOX opens at",
@@ -1067,7 +1006,6 @@
                 {
                   "setting": "folderStart",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Newest",
                   "title": "Other folders open at",
@@ -1095,7 +1033,6 @@
                 {
                   "setting": "folderStarts",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Start position per folder",
@@ -1105,7 +1042,6 @@
                 {
                   "setting": "startAfterChange",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "RerunRule",
                   "title": "After a sort, direction, filter or search change",
@@ -1121,7 +1057,6 @@
                 {
                   "setting": "showRecentRules",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Show \\Recent-based rules"
@@ -1129,7 +1064,6 @@
                 {
                   "setting": "openAtInIndexMenu",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "'Open at' in the index menu"
@@ -1137,7 +1071,6 @@
                 {
                   "setting": "pinercStartDefault",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "LeaveUnchanged",
                   "title": "When a pinerc has no incoming-startup-rule",
@@ -1171,7 +1104,6 @@
                 {
                   "setting": "askSort",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": -1,
                   "title": "Ask before sorting folders larger than"
@@ -1179,7 +1111,6 @@
                 {
                   "setting": "askThread",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": -1,
                   "title": "Ask before threading folders larger than"
@@ -1187,7 +1118,6 @@
                 {
                   "setting": "askSearch",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": -1,
                   "title": "Ask before searching folders larger than"
@@ -1195,7 +1125,6 @@
                 {
                   "setting": "askFallback",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": -1,
                   "title": "Ask before a fallback on folders larger than"
@@ -1203,7 +1132,6 @@
                 {
                   "setting": "sortAskSkip",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Do not ask again for this sort"
@@ -1211,7 +1139,6 @@
                 {
                   "setting": "threadAskSkip",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Do not ask again for this thread"
@@ -1219,7 +1146,6 @@
                 {
                   "setting": "searchAskSkip",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Do not ask again for this search"
@@ -1227,7 +1153,6 @@
                 {
                   "setting": "fallbackAskSkip",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Do not ask again for this fallback"
@@ -1235,7 +1160,6 @@
                 {
                   "setting": "savedSearches",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Saved searches"
@@ -1243,7 +1167,6 @@
                 {
                   "setting": "savedAdvanced",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Saved advanced searches"
@@ -1251,7 +1174,6 @@
                 {
                   "setting": "maxResultUids",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 2000000,
                   "title": "Most search results",
@@ -1300,7 +1222,6 @@
                 {
                   "setting": "markSeenOnOpen",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Mark seen on open"
@@ -1308,7 +1229,6 @@
                 {
                   "setting": "bodyView",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "PlainOrError",
                   "title": "Message view",
@@ -1330,7 +1250,6 @@
                 {
                   "setting": "preferHtml",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Prefer HTML",
@@ -1339,7 +1258,6 @@
                 {
                   "setting": "readerTextLayout",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Text",
                   "title": "Message text layout",
@@ -1357,7 +1275,6 @@
                 {
                   "setting": "bodyFetchChunk",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 65536,
                   "title": "Bytes per body fetch",
@@ -1367,7 +1284,6 @@
                 {
                   "setting": "viewerHeaders",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Headers shown when reading (e.g. List-Id)",
@@ -1377,7 +1293,6 @@
                 {
                   "setting": "nonAsciiDisplay",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "HighlightSuspicious",
                   "title": "Unusual characters (folders, senders, subjects)",
@@ -1414,7 +1329,6 @@
                 {
                   "setting": "showDeleted",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Show deleted"
@@ -1422,7 +1336,6 @@
                 {
                   "setting": "autoExpunge",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Auto-expunge"
@@ -1430,7 +1343,6 @@
                 {
                   "setting": "askBeforeExpunge",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Confirm before expunge",
@@ -1440,7 +1352,6 @@
                 {
                   "setting": "deletePolicy",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "MarkDeleted",
                   "title": "Delete button",
@@ -1460,7 +1371,6 @@
                 {
                   "setting": "moveMethod",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "CopyThenMarkDeleted",
                   "title": "Move method",
@@ -1478,7 +1388,6 @@
                 {
                   "setting": "moveAllIncludesDeleted",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Move entire folder includes deleted messages"
@@ -1486,7 +1395,6 @@
                 {
                   "setting": "compression",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "On",
                   "title": "Compression (COMPRESS)",
@@ -1523,7 +1431,6 @@
                 {
                   "setting": "swipeTrailing",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "Delete||",
                   "title": "List swipe left",
@@ -1533,7 +1440,6 @@
                 {
                   "setting": "swipeLeading",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "ReplyAll||",
                   "title": "List swipe right",
@@ -1543,7 +1449,6 @@
                 {
                   "setting": "readerSwipeTrailing",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "Next||",
                   "title": "Open-message swipe left",
@@ -1553,7 +1458,6 @@
                 {
                   "setting": "readerSwipeLeading",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "Previous||",
                   "title": "Open-message swipe right",
@@ -1563,7 +1467,6 @@
                 {
                   "setting": "bounceFcc",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Bounce Fcc"
@@ -1609,7 +1512,6 @@
                 {
                   "setting": "composerWrapColumn",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 74,
                   "title": "Wrap column",
@@ -1621,7 +1523,6 @@
                 {
                   "setting": "quellFlowed",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Flowed text"
@@ -1644,7 +1545,6 @@
                 {
                   "setting": "replyAboveQuote",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Reply above the quote"
@@ -1671,7 +1571,6 @@
                 {
                   "setting": "includeForwardAttachments",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "When forwarding inline, include the original's attachments"
@@ -1679,7 +1578,6 @@
                 {
                   "setting": "forwardAsAttachment",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Forward as attachment"
@@ -1714,7 +1612,6 @@
                 {
                   "setting": "savedMailbox",
                   "type": "String",
-                  "scope": "account",
                   "kind": "mailbox",
                   "default": "",
                   "title": "Default Save-to folder",
@@ -1724,7 +1621,6 @@
                 {
                   "setting": "saveNameRule",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "DefaultFolder",
                   "title": "Save name rule",
@@ -1763,7 +1659,6 @@
                 {
                   "setting": "completionSources",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [
                     "pine"
@@ -1805,7 +1700,6 @@
                 {
                   "setting": "addressBookHistory",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 3,
                   "title": "Address book history",
@@ -1815,7 +1709,6 @@
                 {
                   "setting": "addressBookNeverTrim",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Never trim"
@@ -1823,7 +1716,6 @@
                 {
                   "setting": "extraAddressBooks",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Extra address books",
@@ -1835,7 +1727,6 @@
                 {
                   "setting": "globalAddressBooks",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Global address books (read only)",
@@ -1847,7 +1738,6 @@
                 {
                   "setting": "androidContactsCacheSeconds",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 300,
                   "title": "Android contacts cache",
@@ -1901,7 +1791,6 @@
                 {
                   "setting": "theme",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "FollowSystem",
                   "title": "Theme",
@@ -1919,7 +1808,6 @@
                 {
                   "setting": "dynamicColor",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": true,
                   "title": "Dynamic color",
@@ -1964,7 +1852,6 @@
                 {
                   "setting": "density",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Compact",
                   "title": "Density",
@@ -1982,7 +1869,6 @@
                 {
                   "setting": "dateFormat",
                   "type": "Enum",
-                  "scope": "account",
                   "kind": "choice",
                   "default": "Short",
                   "title": "Date format",
@@ -2002,7 +1888,6 @@
                 {
                   "setting": "datePattern",
                   "type": "String",
-                  "scope": "account",
                   "kind": "text",
                   "default": "",
                   "title": "Date pattern",
@@ -2050,7 +1935,6 @@
                 {
                   "setting": "customLayout",
                   "type": "Encoded",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": "",
                   "title": "Custom panel layout",
@@ -2078,7 +1962,6 @@
             {
               "setting": "multiPane",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "Auto",
               "title": "Multi-pane",
@@ -2096,7 +1979,6 @@
             {
               "setting": "folderPlace",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "Auto",
               "title": "Folder list pane",
@@ -2120,7 +2002,6 @@
             {
               "setting": "foldPosture",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "Off",
               "title": "Fold posture",
@@ -2142,7 +2023,6 @@
             {
               "setting": "fullScreen",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Full screen"
@@ -2150,7 +2030,6 @@
             {
               "setting": "paneArrangement",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "Auto",
               "title": "List and message arrangement",
@@ -2172,7 +2051,6 @@
             {
               "setting": "previewSize",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "Auto",
               "title": "Message preview in list",
@@ -2209,7 +2087,6 @@
             {
               "setting": "clientSort",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Client sort"
@@ -2217,7 +2094,6 @@
             {
               "setting": "clientSortCollation",
               "type": "Enum",
-              "scope": "account",
               "kind": "choice",
               "default": "locale",
               "title": "Client sort collation",
@@ -2233,7 +2109,6 @@
             {
               "setting": "unlabeledCharset",
               "type": "String",
-              "scope": "account",
               "kind": "text",
               "default": "ISO-8859-1",
               "title": "Charset of unlabeled text"
@@ -2241,7 +2116,6 @@
             {
               "setting": "clientThread",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Client thread"
@@ -2249,7 +2123,6 @@
             {
               "setting": "pollForNewMail",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Poll for new mail"
@@ -2257,7 +2130,6 @@
             {
               "setting": "pollSeconds",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 60,
               "title": "Poll interval",
@@ -2267,7 +2139,6 @@
             {
               "setting": "idleFallbackSeconds",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 60,
               "title": "Poll interval when IDLE fails"
@@ -2275,7 +2146,6 @@
             {
               "setting": "keepAliveMinutes",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 9,
               "title": "Keep-alive interval (NOOP on idle connections)"
@@ -2283,7 +2153,6 @@
             {
               "setting": "idleRenewMinutes",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 9,
               "title": "Restart IDLE every",
@@ -2293,7 +2162,6 @@
             {
               "setting": "longSearchProgressSec",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 60,
               "title": "Long search progress"
@@ -2301,7 +2169,6 @@
             {
               "setting": "longSearchQuietSec",
               "type": "Int",
-              "scope": "account",
               "kind": "number",
               "default": 600,
               "title": "Long search quiet"
@@ -2309,7 +2176,6 @@
             {
               "setting": "statusVisibleCounts",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Fetch counts for visible folders (slower)"
@@ -2317,7 +2183,6 @@
             {
               "setting": "forceSlowerFallbacks",
               "type": "Bool",
-              "scope": "account",
               "kind": "bool",
               "default": false,
               "title": "Force slower fallbacks"
@@ -2367,7 +2232,6 @@
                 {
                   "setting": "logImapTraffic",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Log IMAP traffic"
@@ -2375,7 +2239,6 @@
                 {
                   "setting": "trafficLogMaxMb",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 4,
                   "title": "Traffic log size limit",
@@ -2385,7 +2248,6 @@
                 {
                   "setting": "showUserInDebugReport",
                   "type": "Bool",
-                  "scope": "account",
                   "kind": "bool",
                   "default": false,
                   "title": "Show user name in the debug report"
@@ -2393,7 +2255,6 @@
                 {
                   "setting": "idleWakeSeconds",
                   "type": "Int",
-                  "scope": "account",
                   "kind": "number",
                   "default": 5,
                   "title": "Watch check interval (debug)",
@@ -2440,7 +2301,6 @@
                 {
                   "setting": "hiddenCapabilities",
                   "type": "StringList",
-                  "scope": "account",
                   "kind": "subscreen",
                   "default": [],
                   "title": "Hide capabilities",
@@ -2488,7 +2348,6 @@
             {
               "setting": "favorites",
               "type": "Encoded",
-              "scope": "account",
               "kind": "subscreen",
               "default": "",
               "title": "Favorites",
@@ -2505,124 +2364,177 @@
               }
             }
           ]
+        },
+        {
+          "setting": "lastSaveMailbox",
+          "type": "String",
+          "kind": "mailbox",
+          "default": "",
+          "title": "Last save mailbox",
+          "hidden": true
+        },
+        {
+          "setting": "trafficFilesPerCap",
+          "type": "Int",
+          "kind": "number",
+          "default": 0,
+          "title": "Traffic files kept per account",
+          "min": 0,
+          "max": 10000,
+          "hidden": true
+        },
+        {
+          "setting": "imageTrustMaxEntries",
+          "type": "Int",
+          "kind": "number",
+          "default": 5000,
+          "title": "Trusted image entries",
+          "min": 1,
+          "max": 1000000,
+          "hidden": true
+        },
+        {
+          "setting": "previewByteLimit",
+          "type": "Int",
+          "kind": "number",
+          "default": 2048,
+          "title": "Preview bytes",
+          "min": 1,
+          "max": 104857600,
+          "hidden": true
+        },
+        {
+          "setting": "unseenListLimit",
+          "type": "Int",
+          "kind": "number",
+          "default": 300,
+          "title": "Unseen folder lookups",
+          "min": 0,
+          "max": 100000,
+          "hidden": true
+        },
+        {
+          "setting": "jmapStopWatchWaitMs",
+          "type": "Long",
+          "kind": "number",
+          "default": 5000,
+          "title": "JMAP watch wait",
+          "min": 1,
+          "max": 600000,
+          "hidden": true
+        },
+        {
+          "setting": "jmapMaxWindow",
+          "type": "Int",
+          "kind": "number",
+          "default": 120,
+          "title": "JMAP page size",
+          "min": 1,
+          "max": 10000,
+          "hidden": true
         }
       ]
     },
     {
-      "page": "top",
-      "title": "Settings",
+      "section": "ui",
+      "title": "All accounts",
+      "summary": [
+        {
+          "text": "Settings shared by every account"
+        }
+      ],
       "children": [
         {
-          "page": "ui",
-          "title": "All accounts",
-          "summary": [
-            {
-              "text": "Settings shared by every account"
-            }
+          "setting": "appTextZoom",
+          "type": "Int",
+          "kind": "number",
+          "default": 100,
+          "title": "Font size",
+          "min": 50,
+          "max": 300
+        },
+        {
+          "setting": "indexPageSize",
+          "type": "Int",
+          "kind": "number",
+          "default": 60,
+          "title": "Messages loaded per page"
+        },
+        {
+          "setting": "swipeThresholdPercent",
+          "type": "Int",
+          "kind": "number",
+          "default": 40,
+          "title": "Swipe threshold",
+          "min": 1,
+          "max": 99
+        },
+        {
+          "setting": "reconnectDelaysSec",
+          "type": "IntList",
+          "kind": "text",
+          "default": [
+            2,
+            10,
+            60
           ],
-          "children": [
-            {
-              "setting": "appTextZoom",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 100,
-              "title": "Font size",
-              "min": 50,
-              "max": 300
-            },
-            {
-              "setting": "indexPageSize",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 60,
-              "title": "Messages loaded per page"
-            },
-            {
-              "setting": "swipeThresholdPercent",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 40,
-              "title": "Swipe threshold",
-              "min": 1,
-              "max": 99
-            },
-            {
-              "setting": "reconnectDelaysSec",
-              "type": "IntList",
-              "scope": "ui",
-              "kind": "text",
-              "default": [
-                2,
-                10,
-                60
-              ],
-              "title": "Reconnect delays",
-              "minItems": 1,
-              "itemMin": 1,
-              "itemMax": 86400
-            },
-            {
-              "setting": "maxRawViewBytes",
-              "type": "Long",
-              "scope": "ui",
-              "kind": "number",
-              "default": 1048576,
-              "title": "Largest message shown in raw view"
-            },
-            {
-              "setting": "maxImageTrustBytes",
-              "type": "Long",
-              "scope": "ui",
-              "kind": "number",
-              "default": 2000000,
-              "title": "Largest remote image loaded"
-            },
-            {
-              "setting": "moveChunk",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 1000,
-              "title": "Messages per move command",
-              "min": 1,
-              "max": 2147483647
-            },
-            {
-              "setting": "clientSortChunk",
-              "type": "Int",
-              "scope": "ui",
-              "kind": "number",
-              "default": 5000,
-              "title": "Messages per sort batch",
-              "min": 1,
-              "max": 2147483647
-            },
-            {
-              "setting": "settingsOpensOn",
-              "type": "Enum",
-              "scope": "ui",
-              "kind": "choice",
-              "default": "drawer",
-              "title": "Settings opens on",
-              "choices": [
-                "drawer",
-                "lastEdited"
-              ],
-              "choiceTitles": {
-                "drawer": "The account open in the drawer",
-                "lastEdited": "The account edited last"
-              }
-            },
-            {
-              "editor": "toolbars",
-              "opens": "screen",
-              "title": "Toolbars",
-              "settings": []
-            }
-          ]
+          "title": "Reconnect delays",
+          "minItems": 1,
+          "itemMin": 1,
+          "itemMax": 86400
+        },
+        {
+          "setting": "maxRawViewBytes",
+          "type": "Long",
+          "kind": "number",
+          "default": 1048576,
+          "title": "Largest message shown in raw view"
+        },
+        {
+          "setting": "maxImageTrustBytes",
+          "type": "Long",
+          "kind": "number",
+          "default": 2000000,
+          "title": "Largest remote image loaded"
+        },
+        {
+          "setting": "moveChunk",
+          "type": "Int",
+          "kind": "number",
+          "default": 1000,
+          "title": "Messages per move command",
+          "min": 1,
+          "max": 2147483647
+        },
+        {
+          "setting": "clientSortChunk",
+          "type": "Int",
+          "kind": "number",
+          "default": 5000,
+          "title": "Messages per sort batch",
+          "min": 1,
+          "max": 2147483647
+        },
+        {
+          "setting": "settingsOpensOn",
+          "type": "Enum",
+          "kind": "choice",
+          "default": "drawer",
+          "title": "Settings opens on",
+          "choices": [
+            "drawer",
+            "lastEdited"
+          ],
+          "choiceTitles": {
+            "drawer": "The account open in the drawer",
+            "lastEdited": "The account edited last"
+          }
+        },
+        {
+          "editor": "toolbars",
+          "opens": "screen",
+          "title": "Toolbars",
+          "settings": []
         },
         {
           "editor": "accountList",
@@ -2639,162 +2551,92 @@
           "editor": "pinerc",
           "opens": "screen",
           "title": "Import"
+        },
+        {
+          "setting": "settingsLastEditedAccount",
+          "type": "String",
+          "kind": "text",
+          "default": "",
+          "title": "Last edited account",
+          "hidden": true
+        },
+        {
+          "setting": "toolbars",
+          "type": "Encoded",
+          "kind": "text",
+          "default": "",
+          "title": "Toolbars",
+          "hidden": true
+        },
+        {
+          "setting": "defaultAccount",
+          "type": "String",
+          "kind": "text",
+          "default": "",
+          "title": "Default account",
+          "hidden": true
+        },
+        {
+          "setting": "trafficRetentionDays",
+          "type": "Int",
+          "kind": "number",
+          "default": 30,
+          "title": "Days to keep traffic logs",
+          "min": 1,
+          "max": 3650,
+          "hidden": true
+        },
+        {
+          "setting": "linkCheckMaxScanBytes",
+          "type": "Int",
+          "kind": "number",
+          "default": 2000000,
+          "title": "Link check scan",
+          "min": 1,
+          "max": 2147483647,
+          "hidden": true
+        },
+        {
+          "setting": "linkCheckMaxAnchors",
+          "type": "Int",
+          "kind": "number",
+          "default": 2000,
+          "title": "Link check anchors",
+          "min": 1,
+          "max": 1000000,
+          "hidden": true
+        },
+        {
+          "setting": "pinercMaxBytes",
+          "type": "Int",
+          "kind": "number",
+          "default": 1048576,
+          "title": "Pinerc import size",
+          "min": 1,
+          "max": 2147483647,
+          "hidden": true
+        },
+        {
+          "setting": "authenticatorLifeMinutes",
+          "type": "Int",
+          "kind": "number",
+          "default": 10,
+          "title": "Setup token lifetime",
+          "min": 1,
+          "max": 1440,
+          "hidden": true
+        },
+        {
+          "setting": "longSearchPollMs",
+          "type": "Long",
+          "kind": "number",
+          "default": 250,
+          "title": "Long search poll",
+          "min": 1,
+          "max": 600000,
+          "hidden": true
         }
       ]
-    }
-  ],
-  "stored": [
-    {
-      "setting": "settingsLastEditedAccount",
-      "type": "String",
-      "scope": "ui",
-      "kind": "text",
-      "default": "",
-      "title": "Last edited account"
-    },
-    {
-      "setting": "toolbars",
-      "type": "Encoded",
-      "scope": "ui",
-      "kind": "text",
-      "default": "",
-      "title": "Toolbars"
-    },
-    {
-      "setting": "lastSaveMailbox",
-      "type": "String",
-      "scope": "account",
-      "kind": "mailbox",
-      "default": "",
-      "title": "Last save mailbox"
-    },
-    {
-      "setting": "defaultAccount",
-      "type": "String",
-      "scope": "ui",
-      "kind": "text",
-      "default": "",
-      "title": "Default account"
-    },
-    {
-      "setting": "trafficRetentionDays",
-      "type": "Int",
-      "scope": "ui",
-      "kind": "number",
-      "default": 30,
-      "title": "Days to keep traffic logs",
-      "min": 1,
-      "max": 3650
-    },
-    {
-      "setting": "trafficFilesPerCap",
-      "type": "Int",
-      "scope": "account",
-      "kind": "number",
-      "default": 0,
-      "title": "Traffic files kept per account",
-      "min": 0,
-      "max": 10000
-    },
-    {
-      "setting": "imageTrustMaxEntries",
-      "type": "Int",
-      "scope": "account",
-      "kind": "number",
-      "default": 5000,
-      "title": "Trusted image entries",
-      "min": 1,
-      "max": 1000000
-    },
-    {
-      "setting": "previewByteLimit",
-      "type": "Int",
-      "scope": "account",
-      "kind": "number",
-      "default": 2048,
-      "title": "Preview bytes",
-      "min": 1,
-      "max": 104857600
-    },
-    {
-      "setting": "unseenListLimit",
-      "type": "Int",
-      "scope": "account",
-      "kind": "number",
-      "default": 300,
-      "title": "Unseen folder lookups",
-      "min": 0,
-      "max": 100000
-    },
-    {
-      "setting": "linkCheckMaxScanBytes",
-      "type": "Int",
-      "scope": "ui",
-      "kind": "number",
-      "default": 2000000,
-      "title": "Link check scan",
-      "min": 1,
-      "max": 2147483647
-    },
-    {
-      "setting": "linkCheckMaxAnchors",
-      "type": "Int",
-      "scope": "ui",
-      "kind": "number",
-      "default": 2000,
-      "title": "Link check anchors",
-      "min": 1,
-      "max": 1000000
-    },
-    {
-      "setting": "pinercMaxBytes",
-      "type": "Int",
-      "scope": "ui",
-      "kind": "number",
-      "default": 1048576,
-      "title": "Pinerc import size",
-      "min": 1,
-      "max": 2147483647
-    },
-    {
-      "setting": "jmapStopWatchWaitMs",
-      "type": "Long",
-      "scope": "account",
-      "kind": "number",
-      "default": 5000,
-      "title": "JMAP watch wait",
-      "min": 1,
-      "max": 600000
-    },
-    {
-      "setting": "jmapMaxWindow",
-      "type": "Int",
-      "scope": "account",
-      "kind": "number",
-      "default": 120,
-      "title": "JMAP page size",
-      "min": 1,
-      "max": 10000
-    },
-    {
-      "setting": "authenticatorLifeMinutes",
-      "type": "Int",
-      "scope": "ui",
-      "kind": "number",
-      "default": 10,
-      "title": "Setup token lifetime",
-      "min": 1,
-      "max": 1440
-    },
-    {
-      "setting": "longSearchPollMs",
-      "type": "Long",
-      "scope": "ui",
-      "kind": "number",
-      "default": 250,
-      "title": "Long search poll",
-      "min": 1,
-      "max": 600000
     }
   ]
 }

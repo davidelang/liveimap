@@ -2,6 +2,7 @@ package org.dlang.liveimap.settings
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,13 +54,29 @@ class SettingsOneLeafTest {
     }
 
     @Test
+    fun hiddenLeafAndEmptyGroupAreNotDrawn() {
+        val read = { _: String -> "" }
+        val hidden = leaf("secret", hidden = true)
+        val kept = leaf("kept")
+        assertFalse(childDrawn(hidden, read, 30))
+        assertTrue(childDrawn(kept, read, 30))
+        val whenHidden = leaf("flagged", Condition.Equals("flag", JsonValue.Bool(true)))
+        assertFalse(childDrawn(whenHidden, { "false" }, 30))
+        assertTrue(childDrawn(whenHidden, { "true" }, 30))
+        assertFalse(childDrawn(group("Quiet", listOf(hidden)), read, 30))
+        val mixed = group("Quiet", listOf(hidden, kept))
+        assertTrue(childDrawn(mixed, read, 30))
+        assertEquals("kept", leafShownInstead(mixed, read, 30)?.setting)
+    }
+
+    @Test
     fun manualListsTheParserKeys() {
         val text = listOf(
             File("src/main/assets/settings-tree.md"),
             File("app/src/main/assets/settings-tree.md"),
         ).first { it.isFile }.readText()
         for (key in listOf(
-            "pages", "stored", "top", "ui", "account",
+            "sections", "hidden", "ui", "account",
             "group", "header", "introWhen", "description",
             "hiddenOptions", "swipes", "clientCert", "paneLayout", "pinerc",
             "StringList", "subscreen", "nondecreasing", "pinercFormat",
@@ -72,7 +89,7 @@ class SettingsOneLeafTest {
     }
 }
 
-private fun leaf(setting: String, visibleWhen: Condition? = null) = TreeNode.Leaf(
+private fun leaf(setting: String, visibleWhen: Condition? = null, hidden: Boolean = false) = TreeNode.Leaf(
     TreeLeaf(
         setting = setting,
         typeName = "Bool",
@@ -81,6 +98,7 @@ private fun leaf(setting: String, visibleWhen: Condition? = null) = TreeNode.Lea
         default = JsonValue.Bool(false),
         title = "t",
         visibleWhen = visibleWhen,
+        hidden = hidden,
     ),
 )
 

@@ -1051,7 +1051,7 @@ fun SettingsTree(
     onEditBook: () -> Unit,
     onOpenPanel: (String, String) -> Unit,
     onNavigate: (String) -> Unit = {},
-    page: String = "top",
+    page: String = "settings",
     accountId: String? = null,
     editorId: String? = null,
 ) {
@@ -1180,11 +1180,37 @@ fun SettingsTree(
                 }
             } else {
                 val shown: List<TreeNode> = when (page) {
-                    "top" -> roots.filter { it is TreeNode.Page && it.page == "top" }
+                    "settings" -> roots
                     "editor" -> listOfNotNull(findSettingsEditor(roots, editorId))
                     else -> listOfNotNull(findSettingsPage(roots, page))
                 }
-                for (node in shown) renderSettingsNode(node, depth, walk)
+                for (node in shown) {
+                    if (
+                        page == "settings" &&
+                        node is TreeNode.Page &&
+                        node.page == "account" &&
+                        editor.accounts.isEmpty() &&
+                        !editor.creating
+                    ) {
+                        AccountListEditor(
+                            accounts = emptyList(),
+                            onPick = {},
+                            onRemove = {},
+                            onAdd = {
+                                if (editor.accounts.isEmpty()) onNavigate("settings/setup")
+                                else {
+                                    editor.beginNewAccount()
+                                    onNavigate("settings/account/_")
+                                }
+                            },
+                            deletingName = editor.deleteName,
+                            deleteError = accountDeleteError(editor),
+                            onRetryDelete = { editor.retryDelete() },
+                        )
+                    } else {
+                        renderSettingsNode(node, depth, walk)
+                    }
+                }
             }
         }
         val drafts = walk.drafts
@@ -1480,10 +1506,11 @@ internal fun leafShownInstead(node: TreeNode.Group, read: (String) -> String, sd
     return only.leaf
 }
 
-private fun childDrawn(node: TreeNode, read: (String) -> String, sdk: Int): Boolean = when (node) {
-    is TreeNode.Leaf -> node.leaf.visibleWhen?.holds(read, sdk) ?: true
-    is TreeNode.Group -> node.visibleWhen?.holds(read, sdk) ?: true
-    else -> true
+internal fun childDrawn(node: TreeNode, read: (String) -> String, sdk: Int): Boolean = when (node) {
+    is TreeNode.Leaf -> !node.leaf.hidden && (node.leaf.visibleWhen?.holds(read, sdk) ?: true)
+    is TreeNode.Group -> (node.visibleWhen?.holds(read, sdk) ?: true) && node.children.any { childDrawn(it, read, sdk) }
+    is TreeNode.Editor -> true
+    is TreeNode.Page -> node.children.any { childDrawn(it, read, sdk) }
 }
 
 @Composable
@@ -1491,7 +1518,7 @@ internal fun renderGroup(node: TreeNode.Group, depth: Int, walk: SettingsWalk) {
     val editor = walk.editor
     val read = { key: String -> editor.settings.getSetting(key) }
     val sdk = android.os.Build.VERSION.SDK_INT
-    if (node.visibleWhen != null && !node.visibleWhen.holds(read, sdk)) return
+    if (!childDrawn(node, read, sdk)) return
     val shown = leafShownInstead(node, read, sdk)
     if (shown != null) {
         rowFor(shown, walk)
@@ -1814,6 +1841,7 @@ internal val LocalRowEnabled = compositionLocalOf { true }
 
 @Composable
 internal fun rowFor(leaf: TreeLeaf, walk: SettingsWalk) {
+    if (leaf.hidden) return
     val settings = walk.editor.settings
     val read = { key: String -> settings.getSetting(key) }
     val sdk = android.os.Build.VERSION.SDK_INT

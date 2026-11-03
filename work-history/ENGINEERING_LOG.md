@@ -4071,3 +4071,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Display strings in settings-tree.json are the en-US sentences, and settings-tree.md explains the tree from the root. An unchanged sentence keeps its Android resource name. No English sentence changed, so Grok did not run.
 
 ## 2026-11-02 - The APK packages only the three assets the app opens
+
+## 2026-11-02 - Settings is the account section and the ui section. The tree root is sections, a leaf's record comes from its section, hidden leaves are saved and not drawn, and the Settings screen scrolls both in file order.

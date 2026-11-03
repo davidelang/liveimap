@@ -13,7 +13,7 @@ class SettingsNavigationTest {
             File("app/src/main/kotlin/org/dlang/liveimap/ui/NavHost.kt"),
         ).first { it.isFile }.readText()
         assertTrue(nav.contains("composable(\"settings\")"))
-        assertTrue(nav.contains("composable(\"settings/global\")"))
+        assertFalse(nav.contains("composable(\"settings/global\")"))
         assertTrue(nav.contains("composable(\"settings/accounts\")"))
         assertTrue(nav.contains("settings/account/{accountId}/editor/{editorId}"))
         assertTrue(nav.contains("settings/account/{accountId}"))
