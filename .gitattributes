@@ -46,6 +46,7 @@ third_party/libpin-sandbox filter=manage-configs
 filter-apply-config !filter
 filter-clean-config !filter
 settings-tree-filter !filter
+settings-tree-collapse !filter
 # @@SANDBOX_PATH@@ — project.config sandbox_dir, else sandbox_path
 new_agent_prompt filter=manage-configs
 AGENTS.md filter=manage-configs

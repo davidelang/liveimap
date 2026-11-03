@@ -44,7 +44,7 @@ chmod +x "$ROOT/git-merge-drivers/ve-englog" \
          "$ROOT/git-merge-drivers/ve-special-ours" \
          "$ROOT/git-merge-drivers/ve-special-refuse" 2>/dev/null || true
 chmod +x "$ROOT/install-merge-drivers.sh" "$ROOT/merge-branch-into-master.sh" \
-         "$ROOT/settings-tree-filter" 2>/dev/null || true
+         "$ROOT/settings-tree-filter" "$ROOT/settings-tree-collapse" 2>/dev/null || true
 
 echo "install-merge-drivers: configured for $(git rev-parse --git-common-dir 2>/dev/null || echo .git)"
 echo "  merge.autostash=$(git config --get merge.autostash)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Layout and git-attribute checks for settings-tree-filter. Does not load libliveimap."""
+"""Layout and git-attribute checks for the settings-tree clean filter and collapse script. Does not load libliveimap."""
 import json
 import subprocess
 import tempfile
@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 TREE = ROOT / "app" / "src" / "main" / "assets" / "settings-tree.json"
 FILTER = ROOT / "settings-tree-filter"
+COLLAPSE = ROOT / "settings-tree-collapse"
 
 
 def fail(message):
@@ -25,6 +26,71 @@ def run_filter(mode, text):
     if proc.returncode != 0:
         fail("%s failed: %s" % (mode, proc.stderr.decode()))
     return proc.stdout
+
+
+def run_collapse(text):
+    with tempfile.TemporaryDirectory(prefix="settings-tree-collapse-") as directory:
+        path = Path(directory) / "tree.json"
+        path.write_bytes(text.encode("utf-8"))
+        names = set(Path(directory).iterdir())
+        proc = subprocess.run(
+            [str(COLLAPSE), str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        got = path.read_bytes()
+        if set(Path(directory).iterdir()) != names:
+            fail("collapse wrote a second file")
+        if proc.stdout:
+            fail("collapse wrote stdout")
+        if proc.returncode != 0:
+            fail("collapse failed: %s" % proc.stderr.decode())
+        return got
+
+
+def check_collapse_parse_failure():
+    with tempfile.TemporaryDirectory(prefix="settings-tree-collapse-") as directory:
+        path = Path(directory) / "tree.json"
+        bad = b"{ not json\n"
+        path.write_bytes(bad)
+        proc = subprocess.run(
+            [str(COLLAPSE), str(path)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if proc.returncode == 0:
+            fail("bad tree exited 0")
+        if path.read_bytes() != bad:
+            fail("bad tree was rewritten")
+        if proc.stdout:
+            fail("collapse wrote stdout on failure")
+
+
+def check_filter_usage():
+    proc = subprocess.run(
+        [str(FILTER), "collapse"],
+        input=b"{}\n",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    err = proc.stderr.decode()
+    if proc.returncode == 0 or proc.stdout or "collapse" in err or "clean" not in err:
+        fail("filter accepted collapse: %s" % err)
+    missing = subprocess.run(
+        [str(FILTER)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    usage = missing.stderr.decode()
+    if missing.returncode == 0 or "collapse" in usage:
+        fail("usage with no args: %s" % usage)
 
 
 def ugly_text(pretty):
@@ -126,6 +192,8 @@ def check_attributes():
         fail("diff attribute set on the tree")
     if "settings-tree-filter !filter" not in lines:
         fail("settings-tree-filter is not !filter")
+    if "settings-tree-collapse !filter" not in lines:
+        fail("settings-tree-collapse is not !filter")
     script = (ROOT / "install-merge-drivers.sh").read_text()
     if 'git config filter.settings-tree.clean "./settings-tree-filter clean"' not in script:
         fail("clean filter is not registered")
@@ -284,20 +352,35 @@ def bytecode_files():
     return sorted(found)
 
 
+def pretty_blob():
+    # Checkout writes the pretty blob. A layout-only worktree edit still cleans to it.
+    proc = subprocess.run(
+        ["git", "-C", str(ROOT), "show", "HEAD:app/src/main/assets/settings-tree.json"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        fail(proc.stderr.decode())
+    return proc.stdout
+
+
 def main():
     drop_generator_bytecode()
     before = bytecode_files()
-    pretty = TREE.read_bytes()
+    pretty = pretty_blob()
     if run_filter("clean", pretty.decode("utf-8")) != pretty:
-        fail("clean of the current tree is not those bytes")
-    collapsed = run_filter("collapse", pretty.decode("utf-8")).decode("utf-8")
+        fail("clean of the blob is not those bytes")
+    if run_filter("clean", TREE.read_bytes().decode("utf-8")) != pretty:
+        fail("clean of the current tree is not the blob")
+    collapsed = run_collapse(pretty.decode("utf-8")).decode("utf-8")
     if run_filter("clean", collapsed) != pretty:
         fail("clean of collapse is not the current tree")
     check_layout(collapsed)
     ugly = ugly_text(pretty.decode("utf-8"))
     if "\n" not in ugly.split("[", 1)[-1][:80]:
         fail("ugly form did not break a list")
-    if run_filter("collapse", ugly).decode("utf-8") != collapsed:
+    if run_collapse(ugly).decode("utf-8") != collapsed:
         fail("ugly collapse differs")
     if run_filter("clean", ugly) != pretty:
         fail("ugly clean differs")
@@ -343,7 +426,8 @@ def main():
         fail("merge.settings-tree is set")
     attrs = subprocess.run(
         ["git", "check-attr", "filter", "merge", "diff", "text", "--",
-         "app/src/main/assets/settings-tree.json", "settings-tree-filter"],
+         "app/src/main/assets/settings-tree.json", "settings-tree-filter",
+         "settings-tree-collapse"],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         text=True,
@@ -355,14 +439,17 @@ def main():
         "app/src/main/assets/settings-tree.json: diff: unspecified",
         "app/src/main/assets/settings-tree.json: text: unspecified",
         "settings-tree-filter: filter: unspecified",
+        "settings-tree-collapse: filter: unspecified",
     }
     got_attrs = {line for line in attrs.stdout.splitlines() if line}
     if not expect <= got_attrs:
         fail("check-attr:\n%s" % attrs.stdout)
     check_worktree_diff(collapsed, ugly)
     check_merge_driver()
+    check_filter_usage()
+    check_collapse_parse_failure()
     run_filter("clean", '{ "a": 1 }\n')
-    run_filter("collapse", '{ "a": 1 }\n')
+    run_collapse('{ "a": 1 }\n')
     made = [path for path in bytecode_files() if path not in before]
     if made or list((ROOT / "app" / "__pycache__").glob("gen-settings-tree.cpython-*.pyc")):
         fail("filter wrote bytecode: %s" % made)
