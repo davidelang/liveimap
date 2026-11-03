@@ -4079,3 +4079,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Grok refreshes a changed settings sentence
 
 - A changed settings-tree sentence keeps its Android resource name. Grok, through the xAI API, writes the new machine text. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. No English sentence changed, so Grok did not run.
+
+## 2026-11-03 - Play lint depends on staged assets
+
+- The staged asset directory is a generated asset source, so Play lint depends on stagePackagedAssets. src/main/assets is still not what AGP packages.

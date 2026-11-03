@@ -344,7 +344,9 @@ val stagePackagedAssets = tasks.register<StagePackagedAssetsTask>("stagePackaged
     outDir.set(packagedAssetsDir)
 }
 
-android.sourceSets.getByName("main").assets.setSrcDirs(listOf(stagePackagedAssets.flatMap { it.outDir }))
+// src/main/assets is not an asset source. The staged directory is added below as a
+// generated source so every reader, including Play lint, depends on stagePackagedAssets.
+android.sourceSets.getByName("main").assets.setSrcDirs(emptyList<String>())
 
 tasks.configureEach {
     if (name.startsWith("merge") && name.endsWith("Assets")) {
@@ -362,6 +364,7 @@ val generateSettingsTree = tasks.register<liveimap.GenerateSettingsTreeTask>("ge
 
 androidComponents {
     onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(stagePackagedAssets) { it.outDir }
         variant.sources.kotlin?.addGeneratedSourceDirectory(generateSettingsTree) { it.ktOut }
     }
 }
