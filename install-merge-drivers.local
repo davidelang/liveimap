@@ -1,0 +1,8 @@
+#!/bin/bash
+# install-merge-drivers.local: liveimap-owned; run last by install-merge-drivers.sh.
+# Sets the settings-tree clean filter used by .gitattributes for
+# app/src/main/assets/settings-tree.json. Never written by deploy-orchestration.
+set -euo pipefail
+git config filter.settings-tree.clean "./settings-tree-filter clean"
+chmod +x ./settings-tree-filter ./settings-tree-collapse
+echo "  filter.settings-tree.clean=$(git config --get filter.settings-tree.clean)"
