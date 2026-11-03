@@ -144,7 +144,7 @@ def check_layout(collapsed):
     ]
     if zoom != [
         '            { "setting": "appTextZoom", "type": "Int", "scope": "ui", '
-        '"kind": "number", "default": 100, "title": "setting_appTextZoom_title", '
+        '"kind": "number", "default": 100, "title": "Font size", '
         '"min": 50, "max": 300 },'
     ]:
         fail("appTextZoom: %r" % zoom)
@@ -152,8 +152,8 @@ def check_layout(collapsed):
     window = lines[tls_at:tls_at + 12]
     for needle in (
         '"choices": [ "None", "StartTls", "Implicit" ],',
-        '"choiceTitles": { "None": "settings_tls_none", "StartTls": "settings_tls_starttls", '
-        '"Implicit": "settings_tls_implicit" },',
+        '"choiceTitles": { "None": "None", "StartTls": "STARTTLS", '
+        '"Implicit": "Implicit TLS" },',
         '"visibleWhen": { "setting": "jmapFolders", "equals": false },',
     ):
         if not any(needle in line for line in window):
@@ -163,7 +163,12 @@ def check_layout(collapsed):
     chain = '"summary": [ { "value": { "choiceTitle": "bodyView" } } ],'
     if not any(line.strip() == chain for line in lines):
         fail("summary chain not one line")
-    display = next(i for i, line in enumerate(lines) if '"text": "settings_display_line"' in line)
+    display = next(
+        i for i, line in enumerate(lines)
+        if line.strip() == '"text": "%1$s, %2$s",'
+        and lines[i + 1].strip()
+        == '"args": [ { "choiceTitle": "density" }, { "choiceTitle": "dateFormat" } ],'
+    )
     if lines[display - 2].strip() != '"summary": [':
         fail("display summary not expanded: %s" % lines[display - 2])
     args = lines[display + 1].strip()

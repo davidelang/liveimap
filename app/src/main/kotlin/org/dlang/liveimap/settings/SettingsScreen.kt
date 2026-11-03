@@ -1462,7 +1462,7 @@ internal fun renderSettingsNode(node: TreeNode, depth: Int, walk: SettingsWalk) 
     }
 }
 
-/** Account opens the server editor. The others add a footer under their children. */
+/** Account opens the server editor. Server, Sending, Logging, Layout, and Address book add a footer. These stay headers. */
 private val groupsWithExtraControls = setOf(
     "Account",
     "Server",
@@ -1470,6 +1470,7 @@ private val groupsWithExtraControls = setOf(
     "Logging",
     "Layout",
     "Address book",
+    "Mailboxes",
 )
 
 internal fun leafShownInstead(node: TreeNode.Group, read: (String) -> String, sdk: Int): TreeLeaf? {

@@ -3,10 +3,11 @@
 
 Gradle calls: python3 app/gen-settings-tree.py <tree.json> <ktOutDir>
 """
+import copy
 import hashlib
 import json
-import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 def loads_settings_tree(data):
@@ -95,7 +96,319 @@ def kt_string(value):
     return '"' + text + '"'
 
 
-def emit(doc, kt_root, tree_bytes):
+def _android_unescape(text):
+    if text is None:
+        return ""
+    out = []
+    i = 0
+    simple = {"n": "\n", "t": "\t", "'": "'", '"': '"', "\\": "\\", "r": "\r"}
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt in simple:
+                out.append(simple[nxt])
+                i += 2
+                continue
+            if nxt == "u" and i + 5 < len(text):
+                hexv = text[i + 2:i + 6]
+                try:
+                    out.append(chr(int(hexv, 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+            out.append(nxt)
+            i += 2
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+class _Catalog:
+    def __init__(self, strings, plurals):
+        self.strings = strings
+        self.plurals = plurals
+        owners = {}
+        for name, text in strings.items():
+            owners.setdefault(text, []).append(name)
+        self.owners = owners
+
+
+def load_string_catalog(tree_path):
+    path = Path(tree_path).resolve().parents[1] / "res" / "values" / "strings.xml"
+    root = ET.parse(path).getroot()
+    strings = {}
+    plurals = {}
+    for el in root:
+        name = el.attrib.get("name")
+        if el.tag == "string":
+            strings[name] = _android_unescape(el.text)
+        elif el.tag == "plurals":
+            plurals[name] = {
+                item.attrib.get("quantity"): _android_unescape(item.text) for item in el
+            }
+    return _Catalog(strings, plurals)
+
+
+# Same English, different resources. The name is the one this tree already uses.
+_CHOICE_NAME = {
+    ("tlsMode", "None"): "settings_tls_none",
+    ("smtpTlsMode", "None"): "settings_tls_none",
+    ("sieveTlsMode", "None"): "settings_tls_none",
+    ("previewSize", "None"): "settings_preview_none",
+    ("previewSize", "Large"): "settings_preview_large",
+    ("density", "Large"): "label_large",
+    ("threadIndexStyle", "Expanded"): "settings_thread_expanded",
+    ("threadIndexStyle", "Collapsed"): "settings_thread_collapsed",
+    ("bodyView", "PlainOrHtml"): "label_html",
+    ("clientSortCollation", "plain"): "setting_clientSortCollation_plain",
+    ("dsnMode", "Off"): "settings_dsn_off",
+    ("compression", "Off"): "settings_compression_off",
+    ("compression", "On"): "settings_compression_on",
+    ("multiPane", "Off"): "settings_multi_pane_off",
+    ("multiPane", "Wide"): "settings_multi_pane_wide",
+    ("folderPlace", "Off"): "settings_multi_pane_off",
+    ("foldPosture", "Off"): "settings_multi_pane_off",
+    ("foldPosture", "On"): "settings_multi_pane_wide",
+}
+
+_SUMMARY_NAME = {
+    ("watched_folders", "None"): "settings_watched_none",
+    ("folder_views", "%1$s, %2$s"): "settings_sort_line",
+    ("folders", "%1$s, %2$s"): "settings_sort_line",
+    ("display", "%1$s, %2$s"): "settings_display_line",
+    ("slower", "On"): "settings_slower_on",
+    ("slower", "Off"): "settings_slower_off",
+    ("custom_panel_layout", "Custom panel layout"): "layout_custom",
+    ("forwarding", "Forward as attachment"): "settings_forward_attachment",
+}
+
+# Leaf titles whose English is also some other resource. The name is the one the leaf uses now.
+_LEAF_TITLE = {
+    "signature": "settings_signature",
+    "quotePrefix": "pinerc_quote_prefix",
+    "dsnMode": "settings_dsn",
+    "forwardAsAttachment": "settings_forward_attachment",
+}
+
+
+def _owners(catalog, sentence):
+    return list(catalog.owners.get(sentence, []))
+
+
+def _non_group(names):
+    return [name for name in names if not name.startswith("settings_group_")]
+
+
+def _one_name(sentence, names, where):
+    if len(names) == 1:
+        return names[0]
+    raise SystemExit("settings-tree.json display %r at %s matches %s" % (sentence, where, ", ".join(names)))
+
+
+def _resource_name(catalog, value):
+    return value in catalog.strings or value in catalog.plurals
+
+
+def _string_name(catalog, sentence, prefer, where):
+    if sentence in catalog.strings or sentence in catalog.plurals:
+        return sentence
+    names = _owners(catalog, sentence)
+    if not names:
+        raise SystemExit("settings-tree.json display %r at %s" % (sentence, where))
+    if prefer is not None and prefer in names:
+        return prefer
+    return _one_name(sentence, names, where)
+
+
+def _leaf_title(catalog, setting, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    fixed = _LEAF_TITLE.get(setting)
+    if fixed is not None and catalog.strings.get(fixed) == sentence:
+        return fixed
+    names = _owners(catalog, sentence)
+    prefer = "setting_%s_title" % setting
+    if prefer in names:
+        return prefer
+    return _one_name(sentence, _non_group(names) or names, "leaf " + setting)
+
+
+def _page_or_editor_title(catalog, sentence, where):
+    if _resource_name(catalog, sentence):
+        return sentence
+    names = _owners(catalog, sentence)
+    return _one_name(sentence, _non_group(names) or names, where)
+
+
+def _group_title(catalog, group_id, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    name = "settings_group_%s_title" % group_id
+    if catalog.strings.get(name) != sentence:
+        raise SystemExit("settings-tree.json group %s title %r" % (group_id, sentence))
+    return name
+
+
+def _choice_name(catalog, setting, choice, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    fixed = _CHOICE_NAME.get((setting, choice))
+    return _string_name(catalog, sentence, fixed, "choice %s %s" % (setting, choice))
+
+
+def _summary_name(catalog, owner, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    fixed = _SUMMARY_NAME.get((owner, sentence))
+    return _string_name(catalog, sentence, fixed, "summary " + owner)
+
+
+def _plural_name(catalog, sentence, count):
+    if sentence in catalog.plurals or sentence in catalog.strings:
+        return sentence
+    names = [name for name, quant in catalog.plurals.items() if quant.get("other") == sentence]
+    if count == "$accounts" and "settings_account_count" in names:
+        return "settings_account_count"
+    return _one_name(sentence, names, "plural")
+
+
+def _titles_name(catalog, setting, key, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    prefer = None
+    if setting == "defaultView" and key == "true":
+        prefer = "reader_newest"
+    return _string_name(catalog, sentence, prefer, "titles %s %s" % (setting, key))
+
+
+def _is_leaf(node):
+    return isinstance(node, dict) and "type" in node and isinstance(node.get("setting"), str)
+
+
+def _is_group(node):
+    return isinstance(node, dict) and isinstance(node.get("group"), str) and "children" in node
+
+
+def _is_page(node):
+    return (
+        isinstance(node, dict)
+        and isinstance(node.get("page"), str)
+        and "children" in node
+        and "setting" not in node
+    )
+
+
+def _is_editor(node):
+    return (
+        isinstance(node, dict)
+        and isinstance(node.get("editor"), str)
+        and "type" not in node
+        and "setting" not in node
+    )
+
+
+def _resolve_node(node, owner, catalog):
+    if isinstance(node, list):
+        for item in node:
+            _resolve_node(item, owner, catalog)
+        return
+    if not isinstance(node, dict):
+        return
+    if _is_leaf(node):
+        owner = node["setting"]
+        if isinstance(node.get("title"), str):
+            node["title"] = _leaf_title(catalog, node["setting"], node["title"])
+        choices = node.get("choiceTitles")
+        if isinstance(choices, dict):
+            for key, value in list(choices.items()):
+                if isinstance(value, str):
+                    choices[key] = _choice_name(catalog, node["setting"], key, value)
+    elif _is_group(node):
+        owner = node["group"]
+        if isinstance(node.get("title"), str):
+            node["title"] = _group_title(catalog, node["group"], node["title"])
+    elif _is_page(node):
+        owner = node["page"]
+        if isinstance(node.get("title"), str):
+            node["title"] = _page_or_editor_title(catalog, node["title"], "page " + node["page"])
+    elif _is_editor(node):
+        owner = node["editor"]
+        if isinstance(node.get("title"), str) and node["title"]:
+            node["title"] = _page_or_editor_title(catalog, node["title"], "editor " + node["editor"])
+    else:
+        if isinstance(node.get("title"), str):
+            node["title"] = _string_name(catalog, node["title"], None, "title")
+        if isinstance(node.get("text"), str):
+            node["text"] = _summary_name(catalog, owner, node["text"])
+        if isinstance(node.get("plural"), str):
+            count = node.get("count") if isinstance(node.get("count"), str) else ""
+            node["plural"] = _plural_name(catalog, node["plural"], count)
+        titles = node.get("titles")
+        if isinstance(titles, dict):
+            setting = node.get("setting") if isinstance(node.get("setting"), str) else owner
+            for key, value in list(titles.items()):
+                if isinstance(value, str):
+                    titles[key] = _titles_name(catalog, setting, key, value)
+    if isinstance(node.get("description"), str):
+        node["description"] = _string_name(catalog, node["description"], None, "description")
+    for value in node.values():
+        if isinstance(value, (dict, list)):
+            _resolve_node(value, owner, catalog)
+
+
+def resolve_display_names(doc, catalog):
+    # The file stores en-US sentences. Emitted Kotlin still uses the resource name.
+    copy_doc = copy.deepcopy(doc)
+    _resolve_node(copy_doc, "", catalog)
+    return copy_doc
+
+
+def _remember_sentence(found, catalog, value):
+    if not isinstance(value, str) or not value:
+        return
+    if value in catalog.strings:
+        found.add(catalog.strings[value])
+    elif value in catalog.plurals:
+        other = catalog.plurals[value].get("other")
+        if other:
+            found.add(other)
+    else:
+        found.add(value)
+
+
+def display_sentences(doc, catalog):
+    found = set()
+
+    def walk(node):
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+        if not isinstance(node, dict):
+            return
+        _remember_sentence(found, catalog, node.get("title"))
+        _remember_sentence(found, catalog, node.get("description"))
+        _remember_sentence(found, catalog, node.get("text"))
+        _remember_sentence(found, catalog, node.get("plural"))
+        for key in ("choiceTitles", "titles"):
+            mapped = node.get(key)
+            if isinstance(mapped, dict):
+                for value in mapped.values():
+                    _remember_sentence(found, catalog, value)
+        for value in node.values():
+            if isinstance(value, (dict, list)):
+                walk(value)
+
+    walk(doc)
+    return sorted(found)
+
+
+def emit(doc, kt_root, tree_bytes, tree_path):
+    catalog = load_string_catalog(tree_path)
+    sentences = display_sentences(doc, catalog)
+    doc = resolve_display_names(doc, catalog)
     leaves = all_leaves(doc)
     groups = groups_of(doc)
     by_key = {}
@@ -180,6 +493,9 @@ def emit(doc, kt_root, tree_bytes):
         "    private val resourceKeys: Array<String> = arrayOf(%s)" % ", ".join(kt_string(n) for n in resource_names),
         "    private val resourceIds: IntArray = intArrayOf(%s)" % ", ".join(res_expr(n) for n in resource_names),
         "    val pluralNames: List<String> = listOf(%s)" % ", ".join(kt_string(n) for n in sorted(plural_names)),
+        "    private val sentenceKeys: Array<String> = arrayOf(%s)" % ", ".join(kt_string(n) for n in sentences),
+        "",
+        "    fun sentence(name: String): Boolean = sentenceKeys.binarySearch(name) >= 0",
         "",
         "    fun resource(name: String): Int {",
         "        val index = resourceKeys.binarySearch(name)",
@@ -783,7 +1099,7 @@ def main():
     raw = Path(tree_path).read_bytes()
     doc = loads_settings_tree(raw)
     validate_doc(doc)
-    emit(doc, kt_root, raw)
+    emit(doc, kt_root, raw, tree_path)
 
 
 ROOT_KEYS = {"pages", "stored"}

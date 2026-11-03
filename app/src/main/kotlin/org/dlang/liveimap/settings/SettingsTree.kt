@@ -388,6 +388,7 @@ fun validateSettingsTree(text: String, complete: Boolean = true): List<String> {
                 if (node.header != "label" && node.header != "arrow") errors.add("settings-tree.json group ${node.id} header")
                 checkResource(node.resource, complete, errors)
                 checkSummary(node.summary, "group ${node.id}", complete, errors)
+                checkSummary(node.introWhen, "group ${node.id} intro", complete, errors)
                 checkOpens(node.editor, node.opens, "group ${node.id}", errors)
                 if (node.visibleWhen != null) checkCondition(node.visibleWhen, errors)
                 node.children.forEach { walk(it, page) }
@@ -539,8 +540,15 @@ fun rejectedNumber(treeJson: String, key: String, value: Long): String? {
 }
 
 private fun checkResource(name: String, complete: Boolean, errors: MutableList<String>) {
-    if (!name.matches(Regex("[A-Za-z][A-Za-z0-9_]*"))) errors.add("settings-tree.json resource $name")
-    if (complete && name !in SettingsTreeGenerated.resourceNames) errors.add("settings-tree.json resource $name")
+    val ident = name.matches(Regex("[A-Za-z][A-Za-z0-9_]*"))
+    if (name.isEmpty() || (!complete && !ident)) {
+        errors.add("settings-tree.json resource $name")
+        return
+    }
+    if (!complete) return
+    if (ident && name in SettingsTreeGenerated.resourceNames) return
+    if (SettingsTreeGenerated.sentence(name)) return
+    errors.add("settings-tree.json resource $name")
 }
 
 private fun checkOpens(editor: String?, opens: String?, where: String, errors: MutableList<String>) {
@@ -555,6 +563,29 @@ private fun checkOpens(editor: String?, opens: String?, where: String, errors: M
     }
 }
 
+private fun checkSummaryDisplays(obj: JsonValue.Obj, complete: Boolean, errors: MutableList<String>) {
+    val text = (obj.fields["text"] as? JsonValue.Str)?.value
+    val plural = (obj.fields["plural"] as? JsonValue.Str)?.value
+    if (text != null) checkResource(text, complete, errors)
+    if (plural != null) checkResource(plural, complete, errors)
+    val titles = obj.fields["titles"] as? JsonValue.Obj
+    if (titles != null) {
+        for (item in titles.fields.values) {
+            val name = (item as? JsonValue.Str)?.value ?: continue
+            checkResource(name, complete, errors)
+        }
+    }
+    val nested = obj.fields["value"] as? JsonValue.Obj
+    if (nested != null) checkSummaryDisplays(nested, complete, errors)
+    val args = obj.fields["args"] as? JsonValue.Arr
+    if (args != null) {
+        for (item in args.items) {
+            val child = item as? JsonValue.Obj ?: continue
+            checkSummaryDisplays(child, complete, errors)
+        }
+    }
+}
+
 private fun checkSummary(cases: List<JsonValue>, where: String, complete: Boolean, errors: MutableList<String>) {
     if (cases.isEmpty()) return
     cases.forEachIndexed { index, raw ->
@@ -566,8 +597,7 @@ private fun checkSummary(cases: List<JsonValue>, where: String, complete: Boolea
         if (index == cases.lastIndex && "when" in obj.fields) errors.add("settings-tree.json $where summary when")
         val text = (obj.fields["text"] as? JsonValue.Str)?.value
         val plural = (obj.fields["plural"] as? JsonValue.Str)?.value
-        if (text != null) checkResource(text, complete, errors)
-        if (plural != null) checkResource(plural, complete, errors)
+        checkSummaryDisplays(obj, complete, errors)
         if (text == null && plural == null && "value" !in obj.fields) errors.add("settings-tree.json $where summary")
         val whenRaw = obj.fields["when"]
         if (whenRaw != null) {
