@@ -310,11 +310,19 @@ private class PinercRun(
             return out
         }
         val books = bookMailboxes("address-book")
-        if (books != null && books.isNotEmpty()) {
-            next = next.copy(addressBookMailbox = books.first(), extraAddressBooks = books.drop(1))
-        }
         val globals = bookMailboxes("global-address-book")
-        if (globals != null) next = next.copy(globalAddressBooks = globals.filter { it !in (books ?: emptyList()) })
+        if (books != null || globals != null) {
+            val items = ArrayList<AddressBookEntry>()
+            for (name in books.orEmpty()) {
+                items += AddressBookEntry(kind = "pine", mailbox = name, readOnly = false, saveTarget = false)
+            }
+            for (name in globals.orEmpty()) {
+                if (items.none { it.mailbox == name }) {
+                    items += AddressBookEntry(kind = "pine", mailbox = name, readOnly = true, saveTarget = false)
+                }
+            }
+            next = next.copy(addressBooks = items)
+        }
     }
 
     private fun applyIncoming() {
@@ -499,7 +507,11 @@ fun encodePinerc(settings: Settings): String {
         bars.selectionBar != defaultSelectionBar() ||
         bars.folderBar != defaultFolderBar() ||
         bars.composeBar != defaultComposeBar() ||
-        bars.toolbarRows != 2
+        bars.indexBar.rows != 2 ||
+        bars.selectionBar.rows != 2 ||
+        bars.folderBar.rows != 2 ||
+        (bars.readerToolbar ?: defaultReaderToolbar()).rows != 2 ||
+        bars.composeBar.rows != 2
     ) {
         lines.add("# toolbar")
     }
@@ -590,12 +602,13 @@ private fun writePinercIdentity(settings: Settings, add: (String, String) -> Uni
 }
 
 private fun writePinercBooks(settings: Settings, add: (String, String) -> Unit) {
-    if (settings.addressBookMailbox.isNotEmpty()) {
-        val books = listOf(settings.addressBookMailbox) + settings.extraAddressBooks.filter { it != settings.addressBookMailbox }
-        add("address-book", books.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
+    val writable = settings.addressBooks.filter { it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty() }
+    val readonly = settings.addressBooks.filter { it.kind == "pine" && it.readOnly && it.mailbox.isNotEmpty() }
+    if (writable.isNotEmpty()) {
+        add("address-book", writable.joinToString(", ") { pinercQuoted("{${settings.imapHost}}${it.mailbox}") })
     }
-    if (settings.globalAddressBooks.isNotEmpty()) {
-        add("global-address-book", settings.globalAddressBooks.joinToString(", ") { pinercQuoted("{${settings.imapHost}}$it") })
+    if (readonly.isNotEmpty()) {
+        add("global-address-book", readonly.joinToString(", ") { pinercQuoted("{${settings.imapHost}}${it.mailbox}") })
     }
 }
 
@@ -651,8 +664,8 @@ fun withoutMissingMailboxes(
     consider(phrases.postponedMailbox, next.postponedMailbox, current.postponedMailbox) {
         next = next.copy(postponedMailbox = it)
     }
-    consider(phrases.addressBookMailbox, next.addressBookMailbox, current.addressBookMailbox) {
-        next = next.copy(addressBookMailbox = it)
+    consider(phrases.addressBookMailbox, next.addressBooks.firstOrNull { it.kind == "pine" }?.mailbox.orEmpty(), current.addressBooks.firstOrNull { it.kind == "pine" }?.mailbox.orEmpty()) {
+        next = next.copy(addressBooks = current.addressBooks)
     }
     if (drops.isEmpty()) return preview
     val rows = preview.rows.filter { row -> drops.none { prefix -> row.startsWith(prefix) } }
@@ -677,8 +690,8 @@ fun withoutCheckedMailboxes(
     consider(phrases.postponedMailbox, next.postponedMailbox, current.postponedMailbox) {
         next = next.copy(postponedMailbox = it)
     }
-    consider(phrases.addressBookMailbox, next.addressBookMailbox, current.addressBookMailbox) {
-        next = next.copy(addressBookMailbox = it)
+    consider(phrases.addressBookMailbox, next.addressBooks.firstOrNull { it.kind == "pine" }?.mailbox.orEmpty(), current.addressBooks.firstOrNull { it.kind == "pine" }?.mailbox.orEmpty()) {
+        next = next.copy(addressBooks = current.addressBooks)
     }
     if (drops.isEmpty()) return preview
     val rows = preview.rows.filter { row -> drops.none { prefix -> row.startsWith(prefix) } }
@@ -1459,6 +1472,11 @@ private fun parseSort(value: String): FolderView? {
     return FolderView(key, newestFirst = newest)
 }
 
+private fun pineBookList(settings: Settings, readOnly: Boolean): String =
+    settings.addressBooks
+        .filter { it.kind == "pine" && it.readOnly == readOnly && it.mailbox.isNotEmpty() }
+        .joinToString(", ") { it.mailbox }
+
 private fun diffRows(
     current: Settings,
     next: Settings,
@@ -1489,9 +1507,8 @@ private fun diffRows(
     add(phrases.email, current.email, next.email)
     add(phrases.sentMailbox, current.sentMailbox, next.sentMailbox)
     add(phrases.postponedMailbox, current.postponedMailbox, next.postponedMailbox)
-    add(phrases.addressBookMailbox, current.addressBookMailbox, next.addressBookMailbox)
-    add(phrases.extraAddressBooks, current.extraAddressBooks.joinToString(", "), next.extraAddressBooks.joinToString(", "))
-    add(phrases.globalAddressBooks, current.globalAddressBooks.joinToString(", "), next.globalAddressBooks.joinToString(", "))
+    add(phrases.addressBookMailbox, pineBookList(current, readOnly = false), pineBookList(next, readOnly = false))
+    add(phrases.globalAddressBooks, pineBookList(current, readOnly = true), pineBookList(next, readOnly = true))
     add(phrases.historyLabel, current.addressBookHistory, next.addressBookHistory)
     add(
         phrases.defaultView,

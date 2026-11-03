@@ -105,6 +105,7 @@ import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.addressSaveMailbox
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
@@ -825,30 +826,28 @@ private fun ComposeForm(
     }
 
     suspend fun sourcesForCompose(settings: Settings): List<CompletionSource> {
-        val ids = settings.completionSources
-        val pine = if (pineSourceId !in ids) {
-            emptyList()
-        } else {
-            // The account's book, then its extra and global books (contacts plan phase 5).
-            settings.alpineBooks().flatMap { (book, _) ->
-                try {
-                    pineEntriesOnce(session, accountId, book)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: MailFailure) {
-                    notice = error.text
-                    emptyList()
-                }
+        val books = settings.addressBooks
+        val pine = HashMap<String, List<AlpineEntry>>()
+        for (book in books) {
+            if (book.kind != "pine" || book.mailbox.isEmpty()) continue
+            if (book.mailbox in pine) continue
+            pine[book.mailbox] = try {
+                pineEntriesOnce(session, accountId, book.mailbox)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                emptyList()
             }
         }
-        val wantAndroid = ids.any { it.startsWith("android|") }
+        val wantAndroid = books.any { it.kind == "android" }
         if (!wantAndroid) {
-            return completionSourcesInOrder(ids, pine, emptyMap(), emptyMap())
+            return completionSourcesInOrder(books, pine, emptyMap(), emptyMap())
         }
         val permissionNeeded = appContext.getString(R.string.contacts_permission_needed)
         if (!hasReadContacts(appContext)) {
             notice = permissionNeeded
-            return completionSourcesInOrder(ids, pine, emptyMap(), emptyMap())
+            return completionSourcesInOrder(books, pine, emptyMap(), emptyMap())
         }
         val entries = try {
             when (val loaded = androidEntriesOnce(appContext.contentResolver)) {
@@ -876,7 +875,7 @@ private fun ComposeForm(
         } catch (_: Exception) {
             emptyMap()
         }
-        return completionSourcesInOrder(ids, pine, entries, labels)
+        return completionSourcesInOrder(books, pine, entries, labels)
     }
 
     suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
@@ -1858,7 +1857,7 @@ private fun ComposeForm(
                     draftLoaded = true
                 }
                 if (seed.kind != ComposeKind.Bounce) {
-                    plaintextEntries = readPlaintextBook(settings.addressBookMailbox)
+                    plaintextEntries = readPlaintextBook(settings.addressSaveMailbox().orEmpty())
                     addressSources = sourcesForCompose(settings)
                 }
             } catch (error: CancellationException) {
@@ -2127,7 +2126,7 @@ private fun ComposeForm(
                                 }
                             }
                             ToolbarIconRows(
-                                maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                                maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.composeRows(),
                                 onRows = { count -> iconRows = count },
                                 icons = composeIcons,
                             )

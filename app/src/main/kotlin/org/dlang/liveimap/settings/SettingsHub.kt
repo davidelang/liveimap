@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.dlang.liveimap.accounts.AccountStore
+import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.accounts.parseAccountId
 import org.dlang.liveimap.ui.toolbar.ToolbarStore
 
@@ -70,29 +71,40 @@ object SettingsHub {
         noticeState.value = null
     }
 
+    fun noteLoad(message: String) {
+        noticeState.value = message
+    }
+
     suspend fun prepare(context: Context) {
         prepareGate.withLock {
         if (phase != 0) return@withLock
         installGeneratedSettings()
         val store = AccountStore.shared(context)
         val blobs = store.storedBlobs()
-        val uiMap = linesOf(readGlobalRecord(context))
-        val accounts = LinkedHashMap<String, LinkedHashMap<String, String>>()
+        val uiText = readGlobalRecord(context)
+        val uiError = documentError(uiText)
+        val ui = if (uiError != null) Settings() else decodeSettings(uiText)
+        val published = LinkedHashMap<String, Settings>()
+        val notices = ArrayList<String>()
+        if (uiError != null) notices.add(uiError)
         for ((id, text) in blobs) {
             val parsed = parseAccountId(id) ?: continue
-            accounts[parsed] = linesOf(text)
+            val error = documentError(text)
+            val decoded = if (error != null) {
+                notices.add(error)
+                Settings()
+            } else {
+                decodeSettings(text)
+            }
+            val userData = store.accountFields(parsed) ?: emptyMap()
+            published[parsed] = overlayAccountFields(decoded, userData).withUiOf(ui)
         }
-        val names = store.listAccounts().associate { it.id to it.name }
-        val proposal = propose(uiMap, accounts, names)
-        if (proposal.questions.extras.isEmpty() && proposal.questions.moves.isEmpty()) {
-            finish(context, proposal.ui, proposal.accounts, proposal.warning)
-        } else {
-            pendingUi = proposal.ui
-            pendingAccounts = proposal.accounts
-            pendingNames = names
-            questionState.value = proposal.questions
-            phase = 1
-        }
+        uiState.value = ui
+        accountState.value = published
+        openState.value = resolveOpen(published.keys, ui.defaultAccount)
+        if (notices.isNotEmpty()) noticeState.value = notices.joinToString("\n")
+        ToolbarStore.install(ui)
+        phase = 2
         }
     }
 
@@ -124,7 +136,8 @@ object SettingsHub {
         val text = next.encodeUi()
         writeGlobalRecord(context, text)
         publishUi(next)
-        if ("toolbars" in keys) ToolbarStore.install(next.toolbars)
+        ToolbarStore.install(next)
+        settleScope(context)
     }
 
     suspend fun noteAccountWritten(context: Context, accountId: String, settings: Settings, first: Boolean) {
@@ -186,7 +199,7 @@ object SettingsHub {
         accountState.value = published
         openState.value = resolveOpen(published.keys, ui.defaultAccount)
         if (warning.isNotEmpty()) noticeState.value = warning
-        ToolbarStore.install(ui.toolbars)
+        ToolbarStore.install(ui)
         phase = 2
     }
 
@@ -199,7 +212,7 @@ object SettingsHub {
     internal fun adoptRecord(record: String) {
         val ui = decodeSettings(record)
         publishUi(ui)
-        ToolbarStore.install(ui.toolbars)
+        ToolbarStore.install(ui)
     }
 
     private fun resolveOpen(ids: Collection<String>, defaultAccount: String): String? {

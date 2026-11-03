@@ -26,6 +26,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectedAddress
 import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.DataStoreSettingsStore
+import org.dlang.liveimap.settings.alpineBooks
 
 @Composable
 fun AddressBookPicker(onPicked: (SelectedAddress) -> Unit, onDismiss: () -> Unit) {
@@ -68,8 +69,8 @@ private fun AddressBookPickerLoaded(
             notice = error.message ?: notConnected
             return@LaunchedEffect
         }
-        val mailbox = settings.addressBookMailbox
-        if (mailbox.isEmpty()) {
+        val books = settings.alpineBooks()
+        if (books.isEmpty()) {
             notice = missingMailbox
             return@LaunchedEffect
         }
@@ -100,15 +101,22 @@ private fun AddressBookPickerLoaded(
             }
             OpenResult.Connected -> Unit
         }
-        try {
-            val loaded = loadAlpineBook(session, mailbox, settings.bodyFetchChunk)
-            notice = loaded.notice
-            entries = loaded.entries
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: MailFailure) {
-            notice = error.text
+        val loadedEntries = ArrayList<AlpineEntry>()
+        var loadedNotice: String? = null
+        for ((mailbox, _) in books) {
+            try {
+                val loaded = loadAlpineBook(session, mailbox, settings.bodyFetchChunk)
+                if (!loaded.notice.isNullOrEmpty()) loadedNotice = loaded.notice
+                loadedEntries += loaded.entries
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: MailFailure) {
+                notice = error.text
+                return@LaunchedEffect
+            }
         }
+        notice = loadedNotice
+        entries = loadedEntries
     }
 
     Column(

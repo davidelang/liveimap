@@ -61,7 +61,7 @@ const val SwipeWidthPercent = 40
 
 fun indexPage(): Int {
     val stored = SettingsHub.uiNow().indexPageSize
-    return if (stored >= 1) stored else IndexPageSize
+    return if (stored >= 1) stored.toInt() else IndexPageSize
 }
 
 fun swipeWidthPercent(): Int {
@@ -492,8 +492,6 @@ fun effectiveDeletePolicy(
         return if (policy == DeletePolicy.DeletePermanently && uidPlus) policy else DeletePolicy.MarkDeleted
     }
     if (inTrash) return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
-    if (policy == DeletePolicy.DeletePermanently && !uidPlus) return DeletePolicy.MarkDeleted
-    if (policy == DeletePolicy.MoveToTrash && !trashKnown) return DeletePolicy.MarkDeleted
     return policy
 }
 
@@ -516,6 +514,12 @@ fun policyForListedDelete(
         return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
     }
     return effectiveDeletePolicy(policy, inTrash, uidPlus, trash.isNotEmpty(), trashNamedByUser)
+}
+
+fun deleteCapabilityWarn(policy: DeletePolicy, uidPlus: Boolean, trashKnown: Boolean): Int = when {
+    policy == DeletePolicy.DeletePermanently && !uidPlus -> com.davidlang.liveimap.R.string.index_delete_needs_uidplus
+    policy == DeletePolicy.MoveToTrash && !trashKnown -> com.davidlang.liveimap.R.string.index_delete_needs_trash
+    else -> 0
 }
 
 fun alternateDeletePolicies(
@@ -1947,7 +1951,7 @@ class IndexModel(
             }
             if (big) onSearchProgress?.invoke(null)
             val moved = outcome.moved
-            val usedMove = moveCommandKind(settings.moveMethod, session.featureCaps.move) == "Move"
+            val usedMove = moveCommandKind(settings.disableImapMove, session.featureCaps.move) == "Move"
             // Whatever moved is reflected, also when a later batch failed or Stop was pressed.
             if (allMailbox && moved.size == all.size && outcome.failure == null) {
                 order = emptyList()
@@ -1996,8 +2000,24 @@ class IndexModel(
         allMailbox: Boolean = false,
         folder: String = mailbox,
     ): List<IndexRow> {
-        if (!session.featureCaps.uidPlus) return heldRows
         if (!allMailbox && uids.isEmpty()) return heldRows
+        if (!session.featureCaps.uidPlus) {
+            try {
+                if (allMailbox) {
+                    home(folder).storeFlagsAll(setOf("\\Deleted"), emptySet())
+                } else {
+                    home(folder).storeFlags(uids, setOf("\\Deleted"), emptySet())
+                }
+                home(folder).expungeAllDeleted()
+                notice = null
+                mailUndo = null
+                return if (loadedWindow) reloadKeepingAnchor() else heldRows
+            } catch (failure: MailFailure) {
+                notice = failure.text
+                mailUndo = null
+                return heldRows
+            }
+        }
         try {
             val snapshot = if (allMailbox) frozenAll(folder = folder) else uids
             val done = ArrayList<Long>()
@@ -2134,9 +2154,8 @@ class IndexModel(
     }
 
     suspend fun expunge(): List<IndexRow> {
-        if (!session.featureCaps.uidPlus) return heldRows
         try {
-            home().uidExpungeDeleted()
+            if (session.featureCaps.uidPlus) home().uidExpungeDeleted() else home().expungeAllDeleted()
         } catch (failure: MailFailure) {
             notice = failure.text
             return heldRows
@@ -2884,7 +2903,7 @@ class IndexModel(
      */
     suspend fun runLongSearch(text: String): List<Long> {
         val links = longSearchLinks ?: throw MailFailure("search failed")
-        val search = LongSearch(links(store.load(), mailbox), org.dlang.liveimap.settings.SettingsHub.uiNow().longSearchPollMs)
+        val search = LongSearch(links(store.load(), mailbox), org.dlang.liveimap.settings.SettingsHub.uiNow().longSearchPollMs.toLong())
         runningSearch = search
         onSearchProgress?.invoke(SearchProgress(-1, -1, 0))
         try {

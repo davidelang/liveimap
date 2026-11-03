@@ -245,6 +245,14 @@ internal class SettingsEditor(
     var passwordMissing by mutableStateOf(false)
     var smtpMissing by mutableStateOf(false)
     var sievePassword by mutableStateOf("")
+    var policy by mutableStateOf<List<PolicyLine>>(emptyList())
+
+    fun noteSievePassword(value: String) {
+        sievePassword = value
+        sieveDirty = true
+        pageDirty = true
+        if (creating) org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = value
+    }
     var deleteName by mutableStateOf<String?>(null)
     var deleteStep by mutableStateOf<Int?>(null)
     var deleteFailedName by mutableStateOf<String?>(null)
@@ -271,11 +279,6 @@ internal class SettingsEditor(
 
     fun persist(next: Settings): Boolean {
         if (!ready) return false
-        val rejected = rejectedAccountSettings(next)
-        if (rejected != null) {
-            settingsSaveFailure.value = rejected
-            return false
-        }
         // F32: the store drops passwords/pins when a server moves; show that here instead of a stale password
         val retarget = org.dlang.liveimap.accounts.retargetCredentials(settings, next)
         if (retarget.dropImapPassword) {
@@ -636,7 +639,7 @@ internal class SettingsEditor(
             val writePassword = attempt.password
             val writeSmtp = attempt.smtp
             val writeSieve = attempt.sieve
-            val rejected = if (captured != null) rejectedAccountSettings(saving) else null
+            val rejected = null
             val preview = settingsSaveVerdict(
                 rejected = rejected,
                 before = attempt.before,
@@ -1146,6 +1149,7 @@ fun SettingsTree(
             if (saveFailure != null) {
                 Text(saveFailure)
             }
+            PolicyDialog(editor)
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
                 TextButton(onClick = { onNavigate("settings/setup?accountId=$accountId") }) {
                     Text(stringResource(R.string.setup_help))
@@ -1173,6 +1177,8 @@ fun SettingsTree(
                 )
             } else if (page == "editor" && editorId == "pinerc") {
                 PinercEditor(editor)
+            } else if (page == "editor" && editorId == "addressBooks") {
+                ManageAddresses(editor, onEditBook, onCopyContacts)
             } else if (page == "editor") {
                 when (val found = findSettingsEditor(roots, editorId)) {
                     is TreeNode.Group -> renderSettingsNode(found, depth, walk)
@@ -1438,12 +1444,70 @@ internal class ServerDrafts {
     }
 }
 
+@Composable
+internal fun PolicyDialog(editor: SettingsEditor) {
+    val lines = editor.policy
+    if (lines.isEmpty()) return
+    var picks by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    AlertDialog(
+        onDismissRequest = { editor.policy = emptyList() },
+        title = { Text(stringResource(R.string.settings_policy_title)) },
+        text = {
+            Column {
+                for (line in lines) {
+                    Text(line.text)
+                    if (line.needsPick) {
+                        for ((label, value) in line.options) {
+                            TextButton(onClick = { picks = picks + (line.key to value) }) {
+                                Text(if (picks[line.key] == value) "* $label" else label)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                var next = editor.settings
+                for (line in lines) {
+                    if (line.needsPick && picks[line.key] == null) return@TextButton
+                    next = line.clean(next, picks[line.key])
+                }
+                ScopePicks.chosen = picks
+                editor.persist(next)
+                editor.policy = emptyList()
+                saveSettingsPage(editor, null, "policy-clean", bypassPolicy = true)
+            }) { Text(stringResource(R.string.settings_policy_clean)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { editor.policy = emptyList() }) {
+                    Text(stringResource(R.string.settings_keep_editing))
+                }
+                TextButton(onClick = {
+                    ScopePicks.chosen = emptyMap()
+                    editor.policy = emptyList()
+                    saveSettingsPage(editor, null, "policy-anyway", bypassPolicy = true)
+                }) { Text(stringResource(R.string.settings_check_save_anyway)) }
+            }
+        },
+    )
+}
+
 internal fun confirmSettingsSave(editor: SettingsEditor, drafts: ServerDrafts, control: String) {
     PendingLines.commitAll()
     drafts.confirmStore(editor, control)
 }
 
-internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?, control: String) {
+internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?, control: String, bypassPolicy: Boolean = false) {
+    if (!bypassPolicy) {
+        val issues = policyIssues(editor.settings, editor.editingId)
+        if (issues.isNotEmpty()) {
+            editor.policy = issues
+            return
+        }
+    }
+    editor.policy = emptyList()
     val pendingLine = PendingLines.pending()
     PendingLines.commitAll()
     if (drafts != null && drafts.hasDraft) drafts.saveServer(editor, control)
@@ -1804,13 +1868,13 @@ internal fun CountLeaf(key: String, count: Int) {
 }
 
 @Composable
-internal fun SkipSetField(key: String, value: Set<String>, ready: Boolean, onValue: (Set<String>) -> Unit) {
+internal fun SkipSetField(key: String, value: List<String>, ready: Boolean, onValue: (List<String>) -> Unit) {
     LineField(
         stringResource(SettingsTreeGenerated.regTitle(key)),
         value.joinToString(", "),
         ready = ready,
     ) { text ->
-        onValue(text.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet())
+        onValue(text.split(',').map { it.trim() }.filter { it.isNotEmpty() })
     }
 }
 
@@ -1839,6 +1903,17 @@ internal fun NumberLeaf(
     )
 }
 
+@Composable
+internal fun NumberLeaf(
+    label: String,
+    value: Long,
+    ready: Boolean,
+    ok: (Int) -> Boolean,
+    onValue: (Long) -> Unit,
+) {
+    NumberLeaf(label, value.toInt(), ready, ok) { onValue(it.toLong()) }
+}
+
 internal val LocalRowEnabled = compositionLocalOf { true }
 
 @Composable
@@ -1850,16 +1925,24 @@ internal fun rowFor(leaf: TreeLeaf, walk: SettingsWalk) {
     if (leaf.visibleWhen != null && !leaf.visibleWhen.holds(read, sdk)) return
     val enabled = leaf.enabledWhen?.holds(read, sdk) ?: true
     CompositionLocalProvider(LocalRowEnabled provides enabled) {
-    when (leaf.kind) {
-        "bool" -> BoolRow(leaf.setting, walk)
-        "number" -> NumberRow(leaf.setting, walk)
-        "choice" -> ChoiceRow(leaf.setting, walk)
+    when (leaf.typeName) {
+        "bool", "Bool" -> BoolRow(leaf.setting, walk)
+        "either" -> EitherRow(leaf, walk)
+        "number", "Int", "Long" -> if (leaf.many) NumberListRow(leaf.setting, walk) else NumberRow(leaf.setting, walk)
+        "choice", "Enum" -> ChoiceRow(leaf.setting, walk)
+        "text", "String", "Encoded" -> if (leaf.many) StringListRow(leaf.setting, walk) else TextRow(leaf.setting, walk)
+        "password" -> PasswordRow(leaf.setting, walk)
         "mailbox" -> MailboxRow(leaf.setting, walk)
-        "subscreen" -> SubscreenRow(leaf.setting, walk)
+        "folder" -> if (leaf.setting == "addressBooks") AddressBooksRow(walk) else row_favorites(walk)
+        "checkServer" -> CheckServerRow(walk)
+        "clientCert" -> row_clientCertAlias(leaf.setting, walk)
+        "pinerc" -> PinercEditor(walk.editor)
+        "settingsFile" -> SettingsFileRow(leaf.setting, walk)
+        "rules", "swipe" -> SubscreenRow(leaf.setting, walk)
+        "toolbar" -> ToolbarLeafRow(leaf.setting, walk)
+        "paneLayout" -> row_customLayout(walk)
         else -> if (leaf.setting.endsWith("Pin") || leaf.setting == "certPin") {
             PinRow(leaf.setting, walk)
-        } else if (leaf.typeName == "StringList" || leaf.typeName == "IntList") {
-            StringListRow(leaf.setting, walk)
         } else {
             TextRow(leaf.setting, walk)
         }
@@ -1909,7 +1992,7 @@ internal fun BoolRow(key: String, walk: SettingsWalk) {
         "allowPlaintextAuth" -> row_allowPlaintextAuth(walk)
         "acceptInvalidCert" -> row_acceptInvalidCert(walk)
         "allowOldTls" -> row_allowOldTls(walk)
-        "pipelineCommands" -> row_pipelineCommands(walk)
+
         "emailSubmission" -> row_emailSubmission(walk)
         "smtpSameAsImap" -> row_smtpSameAsImap(walk)
         "sieveSameAsInbound" -> row_sieveSameAsInbound(walk)
@@ -1939,7 +2022,168 @@ internal fun BoolRow(key: String, walk: SettingsWalk) {
         "forceSlowerFallbacks" -> row_forceSlowerFallbacks(walk)
         "logImapTraffic" -> row_logImapTraffic(walk)
         "showUserInDebugReport" -> row_showUserInDebugReport(walk)
-        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+        else -> {
+            val editor = walk.editor
+            val on = editor.settings.getSetting(key) == "true"
+            BoolField(stringResource(SettingsTreeGenerated.regTitle(key)), on) { value ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(if (value) "true" else "false")))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EitherRow(leaf: TreeLeaf, walk: SettingsWalk) {
+    val editor = walk.editor
+    val on = editor.settings.getSetting(leaf.setting) == "true"
+    val falseName = leaf.choiceTitles?.get("false").orEmpty()
+    val trueName = leaf.choiceTitles?.get("true").orEmpty()
+    val falseText = SettingsTreeGenerated.resource(falseName).let { id ->
+        if (id != 0) stringResource(id) else falseName
+    }
+    val trueText = SettingsTreeGenerated.resource(trueName).let { id ->
+        if (id != 0) stringResource(id) else trueName
+    }
+    ListItem(
+        headlineContent = { Text(stringResource(SettingsTreeGenerated.regTitle(leaf.setting))) },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(falseText)
+                Switch(
+                    checked = on,
+                    onCheckedChange = { value ->
+                        editor.persist(editor.settings.withSetting(leaf.setting, SettingValue(if (value) "true" else "false")))
+                    },
+                    enabled = LocalRowEnabled.current,
+                )
+                Text(trueText)
+            }
+        },
+    )
+}
+
+@Composable
+internal fun NumberListRow(key: String, walk: SettingsWalk) {
+    if (key == "reconnectDelaysSec") {
+        row_reconnectDelaysSec(key, walk)
+        return
+    }
+    val editor = walk.editor
+    LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
+        editor.persist(editor.settings.withSetting(key, SettingValue(text)))
+    }
+}
+
+@Composable
+internal fun PasswordRow(key: String, walk: SettingsWalk) {
+    val editor = walk.editor
+    val drafts = walk.drafts
+    when (key) {
+        "imapPassword" -> if (drafts != null) PasswordDraftField(editor, drafts)
+        "smtpPassword" -> if (drafts != null) SmtpPasswordDraftField(editor, drafts, editor.ready, true)
+        "sievePassword" -> {
+            if (editor.sievePassword.isEmpty() && !editor.creating && editor.editingId != null) {
+                Text(stringResource(R.string.error_password_missing))
+            }
+            LineField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                editor.sievePassword,
+                KeyboardType.Password,
+                password = true,
+                ready = editor.ready,
+            ) { editor.noteSievePassword(it) }
+        }
+    }
+}
+
+@Composable
+internal fun CheckServerRow(walk: SettingsWalk) {
+    val editor = walk.editor
+    val drafts = walk.drafts
+    TextButton(onClick = {
+        val chosen = drafts?.serverDraft ?: editor.settings
+        val candidate = drafts?.savedServer(editor, chosen) ?: chosen
+        editor.ui.launch {
+            val report = try {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    org.dlang.liveimap.engine.LibetpanMailSession.checkServerSettings(candidate)
+                }
+            } catch (error: Exception) {
+                null
+            }
+            val lines = if (report == null) listOf("server not reachable") else report.conflicts + report.notes
+            settingsSaveFailure.value = lines.joinToString("\n").ifEmpty { "ok" }
+        }
+    }) { Text(stringResource(SettingsTreeGenerated.regTitle("checkServer"))) }
+}
+
+@Composable
+internal fun ToolbarLeafRow(key: String, walk: SettingsWalk) {
+    val screen = when (key) {
+        "selectionBar" -> "selection"
+        "folderBar" -> "folders"
+        "readerToolbar" -> "reader"
+        "composeBar" -> "compose"
+        else -> "index"
+    }
+    OpenRow(stringResource(SettingsTreeGenerated.regTitle(key))) { walk.onOpenPanel(screen, "") }
+}
+
+@Composable
+internal fun AddressBooksRow(walk: SettingsWalk) {
+    OpenRow(stringResource(SettingsTreeGenerated.regTitle("addressBooks"))) {
+        val id = walk.editor.editingId ?: "_"
+        walk.onNavigate("settings/account/$id/editor/addressBooks")
+    }
+}
+
+@Composable
+internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
+    val editor = walk.editor
+    val accountScope = key == "accountSettingsFile"
+    var includePasswords by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val body = exportSettingsDocument(
+            if (accountScope) editor.settings.encode() else editor.settings.encodeUi(),
+            includePasswords && accountScope,
+            editor.password,
+            editor.smtpPassword,
+            editor.sievePassword,
+        )
+        context.contentResolver.openOutputStream(uri)?.use { it.write(body.toByteArray()) }
+    }
+    val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: return@rememberLauncherForActivityResult
+        val error = documentError(text)
+        if (error != null) {
+            settingsSaveFailure.value = error
+            return@rememberLauncherForActivityResult
+        }
+        val root = parseJson(text) as JsonValue.Obj
+        val include = (root.fields["includePasswords"] as? JsonValue.Bool)?.value == true
+        val decoded = decodeSettings(text)
+        val merged = if (accountScope) editor.settings.withAccountFields(decoded) else editor.settings.withUiOf(decoded)
+        editor.persist(merged)
+        if (include && accountScope) {
+            (root.fields["imapPassword"] as? JsonValue.Str)?.value?.let { editor.persistPassword(it) }
+            (root.fields["smtpPassword"] as? JsonValue.Str)?.value?.let { editor.persistSmtpPassword(it) }
+            (root.fields["sievePassword"] as? JsonValue.Str)?.value?.let { editor.noteSievePassword(it) }
+        }
+    }
+    Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+    if (accountScope) {
+        BoolField(stringResource(R.string.settings_include_passwords), includePasswords) { includePasswords = it }
+    }
+    Row {
+        TextButton(onClick = { import.launch(arrayOf("application/json", "text/*", "*/*")) }) {
+            Text(stringResource(R.string.settings_import))
+        }
+        TextButton(onClick = { export.launch(if (accountScope) "account-settings.json" else "ui-settings.json") }) {
+            Text(stringResource(R.string.settings_export))
+        }
     }
 }
 
@@ -1961,8 +2205,6 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "readerTextLayout" -> row_readerTextLayout(walk)
         "nonAsciiDisplay" -> row_nonAsciiDisplay(walk)
         "deletePolicy" -> row_deletePolicy(walk)
-        "moveMethod" -> row_moveMethod(walk)
-        "compression" -> row_compression(walk)
         "saveNameRule" -> row_saveNameRule(walk)
         "theme" -> row_theme(walk)
         "density" -> row_density(walk)
@@ -2003,7 +2245,6 @@ internal fun NumberRow(key: String, walk: SettingsWalk) {
         "maxJmapResponseBytes" -> row_maxJmapResponseBytes(key, walk)
         "idleWakeSeconds" -> row_idleWakeSeconds(walk)
         "trafficLogMaxMb" -> row_trafficLogMaxMb(walk)
-        "toolbarRows" -> row_indexBar(walk)
         "maxResultUids" -> row_maxResultUids(key, walk)
         "maxRawViewBytes" -> row_maxRawViewBytes(key, walk)
         "maxImageTrustBytes" -> row_maxImageTrustBytes(key, walk)
@@ -2015,7 +2256,17 @@ internal fun NumberRow(key: String, walk: SettingsWalk) {
         "androidContactsCacheSeconds" -> row_androidContactsCacheSeconds(walk)
         "sieveConnectSeconds" -> row_sieveConnectSeconds(key, walk)
         "sieveReadSeconds" -> row_sieveReadSeconds(key, walk)
-        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+        else -> {
+            val editor = walk.editor
+            LineField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                editor.settings.getSetting(key),
+                keyboardType = KeyboardType.Number,
+                ready = editor.ready,
+            ) { text ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(text.trim())))
+            }
+        }
     }
 }
 
@@ -2040,7 +2291,15 @@ internal fun TextRow(key: String, walk: SettingsWalk) {
         "viewerHeaders" -> row_viewerHeaders(walk)
         "datePattern" -> row_datePattern(walk)
         "unlabeledCharset" -> row_unlabeledCharset(key, walk)
-        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+        "defaultView" -> row_defaultView(key, walk)
+        "folderViews" -> row_folderViews(walk)
+        "folderStarts" -> row_folderStarts(walk)
+        else -> {
+            val editor = walk.editor
+            LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(text)))
+            }
+        }
     }
 }
 
@@ -2049,7 +2308,21 @@ internal fun StringListRow(key: String, walk: SettingsWalk) {
     when (key) {
         "altAddresses" -> row_altAddresses(walk)
         "reconnectDelaysSec" -> row_reconnectDelaysSec(key, walk)
-        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+        "watchedFolders" -> row_watchedFolders(walk)
+        "expandedFolders" -> row_expandedFolders(walk)
+        "savedSearches" -> row_savedSearches(key, walk)
+        "savedAdvanced" -> row_savedAdvanced(key, walk)
+        "hiddenCapabilities" -> row_hiddenCapabilities(walk)
+        "sortAskSkip" -> row_sortAskSkip(key, walk)
+        "threadAskSkip" -> row_threadAskSkip(key, walk)
+        "searchAskSkip" -> row_searchAskSkip(key, walk)
+        "fallbackAskSkip" -> row_fallbackAskSkip(key, walk)
+        else -> {
+            val editor = walk.editor
+            LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(text)))
+            }
+        }
     }
 }
 
@@ -2102,7 +2375,6 @@ internal fun SubscreenRow(key: String, walk: SettingsWalk) {
         "globalAddressBooks" -> row_globalAddressBooks(walk)
         "customLayout" -> row_customLayout(walk)
         "hiddenCapabilities" -> row_hiddenCapabilities(walk)
-        "indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar" -> row_indexBar(walk)
         "favorites" -> row_favorites(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
@@ -2256,7 +2528,6 @@ internal fun row_username(walk: SettingsWalk) {
             ),
         )
     }
-    if (drafts != null) PasswordDraftField(editor, drafts)
 }
 
 @Composable
@@ -2454,7 +2725,6 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    val drafts = walk.drafts
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
     BoolField(
         stringResource(R.string.settings_smtp_same_as_imap),
@@ -2463,7 +2733,6 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
     ) {
         editor.persist(editor.settings.copy(smtpSameAsImap = it))
     }
-    if (drafts != null) SmtpPasswordDraftField(editor, drafts, editor.ready && !authOn, !authOn)
 }
 
 @Composable
@@ -2494,27 +2763,6 @@ internal fun row_sieveSameAsInbound(walk: SettingsWalk) {
     val settings = editor.settings
     BoolField(stringResource(R.string.settings_sieve_same_as_inbound), settings.sieveSameAsInbound) {
         editor.persist(editor.settings.copy(sieveSameAsInbound = it))
-    }
-    if (settings.sieveSameAsInbound) return
-    if (editor.sievePassword.isEmpty() && !editor.creating && editor.editingId != null) {
-        Text(stringResource(R.string.error_password_missing))
-    }
-    LineField(stringResource(R.string.settings_sieve_password), editor.sievePassword, KeyboardType.Password, password = true, ready = editor.ready) {
-        editor.sievePassword = it
-        val id = editor.editingId
-        if (editor.creating) {
-            org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = it
-        } else if (id != null) {
-            settingsIo.launch {
-                org.dlang.liveimap.accounts.AccountStore.shared(editor.appContext).setSievePassword(id, it)
-            }
-        }
-    }
-    val id = editor.editingId
-    androidx.compose.runtime.LaunchedEffect(id) {
-        if (id == null || editor.creating) return@LaunchedEffect
-        val raw = org.dlang.liveimap.accounts.AccountStore.shared(editor.appContext).sievePassword(id)
-        editor.sievePassword = raw ?: ""
     }
 }
 
@@ -2763,15 +3011,9 @@ internal fun row_postponedMailbox(walk: SettingsWalk) {
         editor.persist(editor.settings.copy(postponedMailbox = it))
     }
 }
-
 @Composable
-internal fun row_addressBookMailbox(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_address_book_mailbox), settings.addressBookMailbox, { walk.picking.value = MailboxPick.AddressBook }) {
-        editor.persist(editor.settings.copy(addressBookMailbox = it))
-    }
-}
+internal fun row_addressBookMailbox(walk: SettingsWalk) { AddressBooksRow(walk) }
+
 
 @Composable
 internal fun row_spamMailbox(walk: SettingsWalk) {
@@ -3151,59 +3393,20 @@ internal fun row_askBeforeExpunge(walk: SettingsWalk) {
 
 @Composable
 internal fun row_deletePolicy(walk: SettingsWalk) {
-
     val editor = walk.editor
     val settings = editor.settings
-    val gate = rememberCapFlags(editor)
-    val trashSet = settings.trashMailbox.isNotEmpty()
-    ReasonChoice(
-        stringResource(R.string.settings_delete_button),
-        listOf(
-            ReasonOption(DeletePolicy.MarkDeleted, true, null),
-            ReasonOption(
-                DeletePolicy.MoveToTrash,
-                trashSet || gate.listExtended,
-                when {
-                    trashSet -> null
-                    gate.listExtended -> stringResource(R.string.settings_trash_needed)
-                    else -> stringResource(R.string.settings_reason_no_trash)
-                },
-            ),
-            ReasonOption(
-                DeletePolicy.DeletePermanently,
-                gate.uidPlus,
-                if (gate.uidPlus) null else stringResource(R.string.settings_reason_uidplus),
-            ),
-        ),
+    ChoiceField(
+        stringResource(SettingsTreeGenerated.regTitle("deletePolicy")),
+        DeletePolicy.entries,
         settings.deletePolicy,
         { deletePolicyName(it) },
     ) { policy ->
         editor.persist(editor.settings.copy(deletePolicy = policy).withoutPreserved("deletePolicy"))
     }
 }
-
 @Composable
-internal fun row_moveMethod(walk: SettingsWalk) {
+internal fun row_moveMethod(walk: SettingsWalk) { Unit }
 
-    val editor = walk.editor
-    val settings = editor.settings
-    val gate = rememberCapFlags(editor)
-    ReasonChoice(
-        stringResource(R.string.settings_move_method),
-        listOf(
-            ReasonOption(MoveMethod.CopyThenMarkDeleted, true, null),
-            ReasonOption(
-                MoveMethod.ImapMove,
-                gate.canMove,
-                if (gate.canMove) null else stringResource(R.string.settings_reason_move),
-            ),
-        ),
-        settings.moveMethod,
-        { moveMethodName(it) },
-    ) { method ->
-        editor.persist(editor.settings.copy(moveMethod = method).withoutPreserved("moveMethod"))
-    }
-}
 
 @Composable
 internal fun row_moveAllIncludesDeleted(walk: SettingsWalk) {
@@ -3217,25 +3420,9 @@ internal fun row_moveAllIncludesDeleted(walk: SettingsWalk) {
         editor.persist(editor.settings.copy(moveAllIncludesDeleted = it))
     }
 }
-
 @Composable
-internal fun row_compression(walk: SettingsWalk) {
+internal fun row_compression(walk: SettingsWalk) { Unit }
 
-    val editor = walk.editor
-    val settings = editor.settings
-    val gate = rememberCapFlags(editor)
-    ReasonChoice(
-        stringResource(R.string.settings_compression),
-        listOf(
-            ReasonOption(Compression.On, gate.compress, if (gate.compress) null else stringResource(R.string.settings_reason_compress)),
-            ReasonOption(Compression.Off, true, null),
-        ),
-        settings.compression,
-        { compressionName(it) },
-    ) { mode ->
-        editor.persist(editor.settings.copy(compression = mode))
-    }
-}
 
 @Composable
 internal fun row_swipeTrailing(walk: SettingsWalk) {
@@ -3383,12 +3570,9 @@ internal fun row_lastSaveMailbox(key: String, walk: SettingsWalk) {
         editor.persist(editor.settings.copy(lastSaveMailbox = it))
     }
 }
-
 @Composable
-internal fun row_completionSources(walk: SettingsWalk) {
-    val editor = walk.editor
-    AddressCompletionRows(editor)
-}
+internal fun row_completionSources(walk: SettingsWalk) { AddressBooksRow(walk) }
+
 
 @Composable
 internal fun row_addressBookHistory(walk: SettingsWalk) {
@@ -3412,24 +3596,12 @@ internal fun row_addressBookNeverTrim(walk: SettingsWalk) {
         editor.persist(editor.settings.copy(addressBookNeverTrim = it))
     }
 }
+@Composable
+internal fun row_extraAddressBooks(walk: SettingsWalk) { AddressBooksRow(walk) }
 
 @Composable
-internal fun row_extraAddressBooks(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    BookList(stringResource(R.string.settings_extra_books), settings.extraAddressBooks, { walk.picking.value = MailboxPick.ExtraBook }) { gone ->
-        editor.persist(editor.settings.copy(extraAddressBooks = editor.settings.extraAddressBooks - gone))
-    }
-}
+internal fun row_globalAddressBooks(walk: SettingsWalk) { AddressBooksRow(walk) }
 
-@Composable
-internal fun row_globalAddressBooks(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    BookList(stringResource(R.string.settings_global_books), settings.globalAddressBooks, { walk.picking.value = MailboxPick.GlobalBook }) { gone ->
-        editor.persist(editor.settings.copy(globalAddressBooks = editor.settings.globalAddressBooks - gone))
-    }
-}
 
 @Composable
 internal fun row_theme(walk: SettingsWalk) {
@@ -3838,11 +4010,6 @@ internal fun row_hiddenCapabilities(walk: SettingsWalk) {
     HiddenOptionsEditor(walk.editor)
 }
 
-
-@Composable
-internal fun row_indexBar(walk: SettingsWalk) {
-    Unit
-}
 
 @Composable
 internal fun row_favorites(walk: SettingsWalk) {
@@ -4318,6 +4485,16 @@ internal fun LineField(
 @Composable
 internal fun AskLimitField(
     label: String,
+    value: Long,
+    ready: Boolean,
+    onValue: (Long) -> Unit,
+) {
+    AskLimitField(label, value.toInt(), ready) { onValue(it.toLong()) }
+}
+
+@Composable
+internal fun AskLimitField(
+    label: String,
     value: Int,
     ready: Boolean,
     onValue: (Int) -> Unit,
@@ -4632,22 +4809,9 @@ internal fun deletePolicyName(policy: DeletePolicy): String = stringResource(
         DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
     },
 )
+internal fun compressionName(mode: String): String = mode
 
-@Composable
-internal fun compressionName(mode: Compression): String = stringResource(
-    when (mode) {
-        Compression.On -> R.string.settings_compression_on
-        Compression.Off -> R.string.settings_compression_off
-    },
-)
-
-@Composable
-internal fun moveMethodName(method: MoveMethod): String = stringResource(
-    when (method) {
-        MoveMethod.CopyThenMarkDeleted -> R.string.settings_copy_then_mark
-        MoveMethod.ImapMove -> R.string.settings_imap_move
-    },
-)
+internal fun moveMethodName(method: String): String = method
 
 internal data class ReasonOption<T>(
     val value: T,
@@ -4810,11 +4974,9 @@ internal fun assignMailbox(base: Settings, field: MailboxPick, mailbox: String):
     return when (field) {
         MailboxPick.Sent -> base.copy(sentMailbox = mailbox)
         MailboxPick.Postponed -> base.copy(postponedMailbox = mailbox)
-        MailboxPick.AddressBook -> base.copy(addressBookMailbox = mailbox)
-        MailboxPick.ExtraBook -> if (mailbox in base.extraAddressBooks || mailbox == base.addressBookMailbox) base
-            else base.copy(extraAddressBooks = base.extraAddressBooks + mailbox, globalAddressBooks = base.globalAddressBooks - mailbox)
-        MailboxPick.GlobalBook -> if (mailbox in base.globalAddressBooks || mailbox == base.addressBookMailbox) base
-            else base.copy(globalAddressBooks = base.globalAddressBooks + mailbox, extraAddressBooks = base.extraAddressBooks - mailbox)
+        MailboxPick.AddressBook -> base.copy(addressBooks = base.addressBooks + AddressBookEntry("pine", mailbox = mailbox))
+        MailboxPick.ExtraBook -> base
+        MailboxPick.GlobalBook -> base
         MailboxPick.Spam -> base.copy(spamMailbox = mailbox)
         MailboxPick.Trash -> base.copy(trashMailbox = mailbox)
         MailboxPick.Saved -> base.copy(savedMailbox = mailbox)

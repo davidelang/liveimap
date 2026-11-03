@@ -121,6 +121,7 @@ import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.extraIdleChanges
 import org.dlang.liveimap.session.folderMessageCount
 import org.dlang.liveimap.session.mailSession
+import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.smoke.smokeLaunch
@@ -383,7 +384,7 @@ private fun FolderListLoaded(
             }
             if (loaded != null) {
                 folderBar = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderBar()
-                toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows()
+                toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderRows()
             }
         }
         onStopOrDispose { job.cancel() }
@@ -455,11 +456,11 @@ private fun FolderListLoaded(
             sentMailbox = settings.sentMailbox
             postponedMailbox = settings.postponedMailbox
             spamMailbox = settings.spamMailbox
-            addressBookMailbox = settings.addressBookMailbox
+            addressBookMailbox = settings.alpineBooks().firstOrNull()?.first.orEmpty()
             favorites = settings.favorites
             showUnreadCounts = settings.showUnreadCounts
             folderBar = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderBar()
-            toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows()
+            toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderRows()
             try {
                 store.password()
             } catch (error: CancellationException) {

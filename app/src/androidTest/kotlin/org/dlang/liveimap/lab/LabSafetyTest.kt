@@ -12,7 +12,7 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.usableTrashName
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DeletePolicy
-import org.dlang.liveimap.settings.MoveMethod
+
 import org.dlang.liveimap.settings.TlsMode
 import org.dlang.liveimap.ui.index.effectiveDeletePolicy
 import org.junit.Assert.assertEquals
@@ -63,7 +63,7 @@ class LabSafetyTest {
             imapHost = host, imapPort = port, username = arg("labUser"), tlsMode = TlsMode.None,
             logImapTraffic = true, authMechanism = "IMAP-LOGIN",
             autoExpunge = arg("labAutoExpunge") == "true",
-            moveMethod = MoveMethod.valueOf(arg("labMoveMethod", "CopyThenMarkDeleted")),
+            disableImapMove = arg("labMoveMethod", "CopyThenMarkDeleted") != "ImapMove",
             deletePolicy = DeletePolicy.valueOf(arg("labDeletePolicy", "MarkDeleted")),
         )
         labId = createLabAccount(ctx, account, arg("labPass"))

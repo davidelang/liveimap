@@ -207,6 +207,7 @@ class AccountStore private constructor(private val context: Context) {
                 }
                 writePreferences()
                 org.dlang.liveimap.settings.SettingsHub.replaceAccount(writtenId ?: return@onAccount, published)
+                org.dlang.liveimap.settings.settleScope(context)
             }
         }
         if (uiKeys.isEmpty()) return published
@@ -237,6 +238,7 @@ class AccountStore private constructor(private val context: Context) {
             }
             val id = stored?.accountId ?: throw NoAccountSelected()
             org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, published)
+            org.dlang.liveimap.settings.settleScope(context)
         } catch (error: Throwable) {
             val saved = stored
             if (saved != null) {
@@ -317,7 +319,11 @@ class AccountStore private constructor(private val context: Context) {
                 val account = readAccounts().firstOrNull { parseAccountId(it.userData[userAccountId]) == id }
                     ?: return@withContext null
                 val text = storedPreference(id) ?: return@withContext null
-                val settings = overlayAccountFields(decodeSettings(text), account.userData)
+                val settings = try {
+                    overlayAccountFields(decodeSettings(text), account.userData)
+                } catch (_: org.dlang.liveimap.settings.SettingsDocumentException) {
+                    overlayAccountFields(org.dlang.liveimap.settings.Settings(), account.userData)
+                }
                 val slot = account.passwordSlot
                 val password = if (slot.isNullOrEmpty()) {
                     null
@@ -443,6 +449,7 @@ class AccountStore private constructor(private val context: Context) {
                 writePreference(accountId, settings.encode())
                 org.dlang.liveimap.settings.SettingsHub.noteAccountWritten(context, accountId, settings, accounts.isEmpty())
                 refreshBackup(accountId, password)
+                org.dlang.liveimap.settings.settleScope(context)
                 accountId
             }
         }
@@ -583,7 +590,13 @@ class AccountStore private constructor(private val context: Context) {
         val accountId = parseAccountId(account.userData[userAccountId]) ?: throw NoAccountSelected()
         org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
         val text = storedPreference(accountId) ?: throw NoAccountSelected()
-        return overlayAccountFields(decodeSettings(text), account.userData).withUiOf(
+        val decoded = try {
+            decodeSettings(text)
+        } catch (error: org.dlang.liveimap.settings.SettingsDocumentException) {
+            org.dlang.liveimap.settings.SettingsHub.noteLoad(error.message ?: "settings document")
+            org.dlang.liveimap.settings.Settings()
+        }
+        return overlayAccountFields(decoded, account.userData).withUiOf(
             org.dlang.liveimap.settings.SettingsHub.uiNow(),
         )
     }

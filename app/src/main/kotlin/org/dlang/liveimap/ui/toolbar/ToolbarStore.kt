@@ -4,12 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import org.dlang.liveimap.settings.SettingValue
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SettingsHub
-import org.dlang.liveimap.settings.withSetting
+import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.percentDecode
 import org.dlang.liveimap.settings.percentEncode
-import org.dlang.liveimap.settings.readUiLine
 
 data class ToolbarRecord(
     val indexBar: IndexBarLayout = defaultIndexBar(),
@@ -17,7 +16,6 @@ data class ToolbarRecord(
     val folderBar: FolderBarLayout = defaultFolderBar(),
     val readerToolbar: ReaderToolbarLayout? = null,
     val composeBar: ComposeBarLayout = defaultComposeBar(),
-    val toolbarRows: Int = 2,
 )
 
 object ToolbarStore {
@@ -29,36 +27,62 @@ object ToolbarStore {
     fun folderBar(): FolderBarLayout = record.folderBar
     fun readerToolbar(): ReaderToolbarLayout? = record.readerToolbar
     fun composeBar(): ComposeBarLayout = record.composeBar
-    fun toolbarRows(): Int = record.toolbarRows
+    fun indexRows(): Int = record.indexBar.rows
+    fun selectionRows(): Int = record.selectionBar.rows
+    fun folderRows(): Int = record.folderBar.rows
+    fun readerRows(): Int = (record.readerToolbar ?: defaultReaderToolbar()).rows
+    fun composeRows(): Int = record.composeBar.rows
+
+    fun install(settings: Settings) {
+        record = ToolbarRecord(
+            indexBar = settings.indexBar,
+            selectionBar = settings.selectionBar,
+            folderBar = settings.folderBar,
+            readerToolbar = settings.readerToolbar,
+            composeBar = settings.composeBar,
+        )
+    }
 
     fun install(uiRecord: String) {
-        val line = when {
-            uiRecord.isEmpty() -> null
-            uiRecord.contains("toolbars=") || uiRecord.contains("\n") -> readUiLine(uiRecord, "toolbars")
-            else -> uiRecord
+        if (uiRecord.isBlank()) {
+            record = ToolbarRecord()
+            return
         }
-        record = if (line.isNullOrEmpty()) {
-            ToolbarRecord()
-        } else {
-            try {
-                decodeToolbarValue(line)
-            } catch (_: IllegalArgumentException) {
-                record
-            }
+        try {
+            install(decodeSettings(uiRecord))
+        } catch (_: Exception) {
+            // A bad UI document keeps the bars already on screen.
         }
     }
 
     fun replace(next: ToolbarRecord) {
-        if (next.toolbarRows !in 1..4) throw IllegalArgumentException("toolbarRows")
+        val rows = listOf(
+            next.indexBar.rows,
+            next.selectionBar.rows,
+            next.folderBar.rows,
+            (next.readerToolbar ?: defaultReaderToolbar()).rows,
+            next.composeBar.rows,
+        )
+        if (rows.any { it !in 1..4 }) throw IllegalArgumentException("toolbarRows")
         record = next
     }
 
     fun encodeValue(): String = encodeToolbarValue(record)
 
     suspend fun save(context: Context) {
-        val encoded = encodeValue()
-        val next = SettingsHub.uiNow().withSetting("toolbars", SettingValue(encoded))
-        SettingsHub.saveUiKeys(context, next, setOf("toolbars"))
+        val current = SettingsHub.uiNow()
+        val next = current.copy(
+            indexBar = record.indexBar,
+            selectionBar = record.selectionBar,
+            folderBar = record.folderBar,
+            readerToolbar = record.readerToolbar ?: defaultReaderToolbar(),
+            composeBar = record.composeBar,
+        )
+        SettingsHub.saveUiKeys(
+            context,
+            next,
+            setOf("indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar"),
+        )
     }
 }
 
@@ -70,7 +94,11 @@ fun encodeToolbarValue(record: ToolbarRecord): String {
         "folderBar=" + encodeFolderBar(record.folderBar),
         "readerToolbar=$reader",
         "composeBar=" + encodeComposeBar(record.composeBar),
-        "toolbarRows=" + record.toolbarRows,
+        "indexRows=" + record.indexBar.rows,
+        "selectionRows=" + record.selectionBar.rows,
+        "folderRows=" + record.folderBar.rows,
+        "readerRows=" + (record.readerToolbar ?: defaultReaderToolbar()).rows,
+        "composeRows=" + record.composeBar.rows,
     ).joinToString("\n")
     return percentEncode(inner)
 }
@@ -82,7 +110,11 @@ fun decodeToolbarValue(value: String): ToolbarRecord {
     var folder = defaultFolderBar()
     var reader: ReaderToolbarLayout? = null
     var compose = defaultComposeBar()
-    var rows = 2
+    var indexRows = 2
+    var selectionRows = 2
+    var folderRows = 2
+    var readerRows = 2
+    var composeRows = 2
     for (line in lines) {
         val eq = line.indexOf('=')
         if (eq <= 0) continue
@@ -94,11 +126,29 @@ fun decodeToolbarValue(value: String): ToolbarRecord {
             "folderBar" -> folder = parseFolderBar(text)
             "readerToolbar" -> reader = if (text.isEmpty()) null else parseReaderToolbar(text)
             "composeBar" -> compose = parseComposeBar(text)
-            "toolbarRows" -> rows = text.toInt()
+            "indexRows" -> indexRows = text.toInt()
+            "selectionRows" -> selectionRows = text.toInt()
+            "folderRows" -> folderRows = text.toInt()
+            "readerRows" -> readerRows = text.toInt()
+            "composeRows" -> composeRows = text.toInt()
+            "toolbarRows" -> {
+                indexRows = text.toInt()
+                selectionRows = indexRows
+                folderRows = indexRows
+                readerRows = indexRows
+                composeRows = indexRows
+            }
         }
     }
-    if (rows !in 1..4) throw IllegalArgumentException("toolbarRows")
-    return ToolbarRecord(index, selection, folder, reader, compose, rows)
+    val counts = listOf(indexRows, selectionRows, folderRows, readerRows, composeRows)
+    if (counts.any { it !in 1..4 }) throw IllegalArgumentException("toolbarRows")
+    return ToolbarRecord(
+        index.copy(rows = indexRows),
+        selection.copy(rows = selectionRows),
+        folder.copy(rows = folderRows),
+        reader?.copy(rows = readerRows),
+        compose.copy(rows = composeRows),
+    )
 }
 
 fun effectiveReaderToolbar(): ReaderToolbarLayout = ToolbarStore.readerToolbar() ?: defaultReaderToolbar()

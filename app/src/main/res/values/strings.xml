@@ -2,6 +2,28 @@
 <resources>
     <!-- A display sentence in settings-tree.json keeps its resource name. generateAppI18n asks Grok for the machine text when that English changes, and does not edit an .override.json file. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. Any other add, change, or remove here still updates every machine locale in the same change, translated by the coder. generateAppI18n fails the build when one of those sources is not the current en-US text. -->
     <string name="app_name">LiveIMAP</string>
+    <string name="settings_group_advanced_title">Advanced</string>
+    <string name="settings_group_performance_title">Performance</string>
+    <string name="drawer_manage_addresses">Manage addresses</string>
+    <string name="settings_policy_clean">Clean</string>
+    <string name="settings_policy_title">Review these settings</string>
+    <string name="settings_include_passwords">Include passwords in the export</string>
+    <string name="settings_export">Export</string>
+    <string name="settings_policy_wrong_type">%1$s is not the expected type. Clean sets %2$s.</string>
+    <string name="settings_policy_range">%1$s is outside its limits. Clean sets %2$s.</string>
+    <string name="settings_policy_unknown">%1$s is not a setting. Clean removes it.</string>
+    <string name="settings_policy_order">%1$s is not in order. Clean sorts it.</string>
+    <string name="settings_policy_duplicates">%1$s has duplicates. Clean sorts it and drops duplicates.</string>
+    <string name="settings_policy_delete">Saved delete choice needs %1$s. Clean sets %2$s.</string>
+    <string name="settings_policy_disagree">%1$s has different values: %2$s. Clean stores the selected value and removes the old copies.</string>
+    <string name="settings_no_writable_book">No writable address book. Nothing was saved.</string>
+    <string name="settings_pick_book">Choose an address book</string>
+    <string name="settings_save_target">Save target</string>
+    <string name="settings_read_only">Read only</string>
+    <string name="settings_add_pine_book">Add Pine book</string>
+    <string name="settings_add_android_book">Add Android contacts</string>
+    <string name="index_delete_needs_uidplus">This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.</string>
+    <string name="index_delete_needs_trash">This server has no trash mailbox. The alternate is to mark deleted.</string>
     <string name="about_title">About</string>
     <string name="about_version">Version %1$s</string>
     <string name="about_support">Ask for help</string>
@@ -592,7 +614,7 @@ Your version: %2$s</string>
     <string name="settings_date_format">Date format</string>
     <string name="settings_date_pattern">Date pattern</string>
     <string name="settings_logging">Logging</string>
-    <string name="settings_pipeline">Pipeline IMAP commands</string>
+    <string name="settings_pipeline">Disable command pipelining</string>
     <string name="settings_log_traffic">Log IMAP traffic</string>
     <string name="settings_log_note">Commands and server replies are written to this account\'s traffic log. Login data is replaced by its length; nothing else is hidden.</string>
     <string name="settings_share_log">Share log</string>
@@ -926,7 +948,7 @@ Your version: %2$s</string>
     <string name="index_search_progress">%1$d of %2$d</string>
     <string name="index_long_search_done">Search finished: %1$d messages</string>
     <string name="index_long_search_show">Show</string>
-    <string name="settings_compression">Compression (COMPRESS)</string>
+    <string name="settings_compression">Disable compression</string>
     <string name="settings_compression_on">On</string>
     <string name="settings_compression_off">Off</string>
     <string name="settings_reason_compress">The server does not offer COMPRESS=DEFLATE.</string>
@@ -1233,4 +1255,14 @@ Your version: %2$s</string>
     <string name="setting_jmapMaxWindow_title">JMAP page size</string>
     <string name="setting_authenticatorLifeMinutes_title">Setup token lifetime</string>
     <string name="setting_longSearchPollMs_title">Long search poll</string>
+    <string name="leaf_checkserver_title">Check server</string>
+    <string name="leaf_imappassword_title">IMAP password</string>
+    <string name="leaf_accountsettingsfile_title">Import or export this account</string>
+    <string name="leaf_disableimapmove_title">Disable IMAP MOVE</string>
+    <string name="leaf_addressbooks_title">Address books</string>
+    <string name="leaf_indexbar_title">Message index toolbar</string>
+    <string name="leaf_selectionbar_title">Selection bar</string>
+    <string name="leaf_folderbar_title">Folder list toolbar</string>
+    <string name="leaf_pinerc_title">Import Pine settings</string>
+    <string name="leaf_uisettingsfile_title">Import or export settings</string>
 </resources>

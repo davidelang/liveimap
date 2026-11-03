@@ -157,55 +157,47 @@ import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 import org.dlang.liveimap.ui.toolbar.notePaneScroll
 
-internal data class CompletionRow(val id: String, val label: String, val enabled: Boolean)
-
-internal fun completionRows(
-    settings: Settings,
-    sets: List<AndroidContactSet>,
-    pineLabel: String,
-): List<CompletionRow> {
-    val enabled = settings.completionSources
-    val setById = sets.associateBy { it.id }
-    val rows = ArrayList<CompletionRow>()
-    val shown = HashSet<String>()
-    for (id in enabled) {
-        if (id == pineSourceId) {
-            if (settings.addressBookMailbox.isEmpty()) continue
-            rows.add(CompletionRow(id, pineLabel, true))
-            shown.add(id)
-            continue
-        }
-        val set = setById[id] ?: continue
-        rows.add(CompletionRow(id, set.label, true))
-        shown.add(id)
-    }
-    if (settings.addressBookMailbox.isNotEmpty() && pineSourceId !in shown) {
-        rows.add(CompletionRow(pineSourceId, pineLabel, false))
-    }
-    for (set in sets) {
-        if (set.id in shown) continue
-        rows.add(CompletionRow(set.id, set.label, false))
-    }
-    return rows
+private fun moveBook(books: List<AddressBookEntry>, index: Int, delta: Int): List<AddressBookEntry> {
+    val target = index + delta
+    if (index !in books.indices || target !in books.indices) return books
+    val next = books.toMutableList()
+    val moved = next.removeAt(index)
+    next.add(target, moved)
+    return next
 }
+
 @Composable
-internal fun AddressCompletionRows(editor: SettingsEditor) {
+internal fun ManageAddresses(
+    editor: SettingsEditor,
+    onEditBook: () -> Unit,
+    onCopyContacts: () -> Unit,
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     var granted by remember { mutableStateOf(hasReadContacts(context)) }
     var denied by rememberSaveable { mutableStateOf(false) }
-    var needsPermission by remember { mutableStateOf(false) }
     var sets by remember { mutableStateOf<List<AndroidContactSet>>(emptyList()) }
     val requestContacts = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { ok ->
         granted = ok
         denied = !ok
+        if (ok) {
+            editor.ui.launch {
+                val loaded = try {
+                    androidContactSetsOnce(appContext.contentResolver, appContext.packageManager)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (loaded is AndroidContacts.Ready) sets = loaded.value
+            }
+        }
     }
     LaunchedEffect(granted) {
         if (!granted) {
             sets = emptyList()
-            needsPermission = false
             return@LaunchedEffect
         }
         val loaded = try {
@@ -215,62 +207,72 @@ internal fun AddressCompletionRows(editor: SettingsEditor) {
         } catch (_: Exception) {
             null
         }
-        when (loaded) {
-            null -> {
-                needsPermission = false
-                sets = emptyList()
-            }
-            AndroidContacts.PermissionNeeded -> {
-                needsPermission = true
-                sets = emptyList()
-            }
-            is AndroidContacts.Ready -> {
-                needsPermission = false
-                sets = loaded.value
-            }
-        }
+        if (loaded is AndroidContacts.Ready) sets = loaded.value
     }
-    val pineLabel = stringResource(R.string.settings_pine)
-    for (row in completionRows(editor.settings, sets, pineLabel)) {
-        BoolField(row.label, row.enabled) { on ->
-            editor.persist(
-                editor.settings.copy(
-                    completionSources = withSourceEnabled(editor.settings.completionSources, row.id, on),
-                ),
-            )
+    val books = editor.settings.addressBooks
+    Text(stringResource(R.string.settings_address_book))
+    books.forEachIndexed { index, book ->
+        val label = if (book.kind == "android") {
+            book.accountName.ifEmpty { stringResource(R.string.settings_add_android_book) }
+        } else {
+            book.mailbox.ifEmpty { stringResource(R.string.settings_add_pine_book) }
         }
-        if (!row.enabled) continue
+        Text(label)
         Row {
             TextButton(onClick = {
-                editor.persist(
-                    editor.settings.copy(
-                        completionSources = moveCompletionSource(
-                            editor.settings.completionSources,
-                            row.id,
-                            up = true,
-                        ),
-                    ),
-                )
+                editor.persist(editor.settings.copy(addressBooks = moveBook(editor.settings.addressBooks, index, -1)))
             }) { Text(stringResource(R.string.drawer_move_up)) }
             TextButton(onClick = {
-                editor.persist(
-                    editor.settings.copy(
-                        completionSources = moveCompletionSource(
-                            editor.settings.completionSources,
-                            row.id,
-                            up = false,
-                        ),
-                    ),
-                )
+                editor.persist(editor.settings.copy(addressBooks = moveBook(editor.settings.addressBooks, index, 1)))
             }) { Text(stringResource(R.string.drawer_move_down)) }
+            TextButton(onClick = {
+                val next = editor.settings.addressBooks.filterIndexed { i, _ -> i != index }
+                editor.persist(editor.settings.copy(addressBooks = next))
+            }) { Text(stringResource(R.string.settings_book_remove)) }
+            if (book.kind == "pine") {
+                TextButton(onClick = {
+                    val next = editor.settings.addressBooks.mapIndexed { i, item ->
+                        if (i != index) item else item.copy(readOnly = !item.readOnly, saveTarget = if (!item.readOnly) false else item.saveTarget)
+                    }
+                    editor.persist(editor.settings.copy(addressBooks = next))
+                }) { Text(stringResource(R.string.settings_read_only)) }
+                if (!book.readOnly) {
+                    TextButton(onClick = {
+                        val next = editor.settings.addressBooks.mapIndexed { i, item ->
+                            item.copy(saveTarget = i == index && item.kind == "pine" && !item.readOnly)
+                        }
+                        editor.persist(editor.settings.copy(addressBooks = next))
+                    }) { Text(stringResource(R.string.settings_save_target)) }
+                }
+            }
         }
     }
-    if (needsPermission) Text(stringResource(R.string.contacts_permission_needed))
-    if (granted) return
-    BoolField(stringResource(R.string.settings_show_android), false) { on ->
-        if (on) requestContacts.launch(android.Manifest.permission.READ_CONTACTS)
+    var mailbox by remember { mutableStateOf("") }
+    LineField(stringResource(R.string.settings_add_pine_book), mailbox, ready = editor.ready) { text ->
+        mailbox = ""
+        val name = text.trim()
+        if (name.isEmpty()) return@LineField
+        editor.persist(editor.settings.copy(addressBooks = editor.settings.addressBooks + AddressBookEntry("pine", mailbox = name)))
     }
-    if (denied) Text(stringResource(R.string.settings_contacts_denied))
+    if (!granted) {
+        TextButton(onClick = { requestContacts.launch(android.Manifest.permission.READ_CONTACTS) }) {
+            Text(stringResource(R.string.settings_add_android_book))
+        }
+        if (denied) Text(stringResource(R.string.settings_contacts_denied))
+    } else {
+        for (set in sets) {
+            val id = androidAccountOf(set.id)
+            TextButton(onClick = {
+                if (id == null) return@TextButton
+                val (type, name) = id
+                val entry = AddressBookEntry(kind = "android", accountType = type, accountName = name)
+                if (editor.settings.addressBooks.any { it.kind == "android" && it.accountType == type && it.accountName == name }) return@TextButton
+                editor.persist(editor.settings.copy(addressBooks = editor.settings.addressBooks + entry))
+            }) { Text(set.label) }
+        }
+    }
+    OpenRow(stringResource(R.string.settings_edit_book), onEditBook)
+    OpenRow(stringResource(R.string.settings_copy_contacts), onCopyContacts)
 }
 /** Extra or global Alpine address books: one row per book with Remove, and Add (mailbox picker). */
 @Composable

@@ -49,7 +49,7 @@ class LibetpanLongSearchLink(
         } else {
             account.longSearchQuietSec
         }
-        session.prepareLongSearch(timeoutSec)
+        session.prepareLongSearch(timeoutSec.toInt())
     }
 
     override suspend fun search(kind: String, argument: String): List<Long> = session.longSearch(kind, argument).asList()

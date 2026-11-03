@@ -47,7 +47,7 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.androidAccountOf
-import org.dlang.liveimap.settings.pineSourceId
+import org.dlang.liveimap.settings.androidSourceId
 import org.dlang.liveimap.settings.alpineBookOf
 import org.dlang.liveimap.settings.alpineBookSourceId
 import org.dlang.liveimap.settings.alpineBooks
@@ -156,7 +156,7 @@ private fun ContactCopyLoaded(
             mailbox,
             state.lastUid,
             pending.map { it.asAlpineEntry() },
-            settings.addressBookHistory,
+            settings.addressBookHistory.toInt(),
             settings.addressBookNeverTrim,
         )
         when (result) {
@@ -512,8 +512,9 @@ private fun copySources(
         }
     }
     books(accountId, null, settings)
-    for (id in settings.completionSources) {
-        if (id == pineSourceId) continue
+    for (book in settings.addressBooks) {
+        if (book.kind != "android") continue
+        val id = androidSourceId(book.accountType, book.accountName)
         val set = setById[id] ?: continue
         out.add(CopySource(id, set.label))
     }

@@ -223,8 +223,8 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
                                 pin,
                                 ::confirmMailCertificate,
                                 org.dlang.liveimap.engine.TrafficLog.writer(cacheDir, trafficId),
-                                editor.settings.sieveConnectSeconds,
-                                editor.settings.sieveReadSeconds,
+                                editor.settings.sieveConnectSeconds.toInt(),
+                                editor.settings.sieveReadSeconds.toInt(),
                             ) { fingerprint ->
                                 editor.persist(editor.settings.copy(sieveCertPin = fingerprint))
                             }
@@ -331,7 +331,6 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
         for (child in node.children) {
             renderSettingsNode(child, depth, walk)
         }
-        if (!walk.settingsScroll) PinercEditor(editor, sections, depth)
         // David, 2026-10-12: Save and Test account side by side; Test account logs in (IMAP or JMAP, and SMTP).
         androidx.compose.foundation.layout.Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -479,10 +478,9 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
                     ) {
                         names.add(built.next.postponedMailbox)
                     }
-                    if (built.next.addressBookMailbox.isNotEmpty() &&
-                        built.next.addressBookMailbox != current.addressBookMailbox
-                    ) {
-                        names.add(built.next.addressBookMailbox)
+                    val had = current.addressBooks.map { it.mailbox }.filter { it.isNotEmpty() }.toSet()
+                    for (book in built.next.addressBooks) {
+                        if (book.mailbox.isNotEmpty() && book.mailbox !in had) names.add(book.mailbox)
                     }
                     val id = editor.bound.chosenAccountId()
                     val shown = if (id == null) {

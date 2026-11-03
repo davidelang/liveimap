@@ -96,7 +96,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
     suspend fun write(edit: BookEdit, entries: List<AlpineEntry>, on: PineBookState) {
         val mailbox = book?.first ?: return
         val s = store.load()
-        when (val result = writePineBook(session, mailbox, on.lastUid, entries, s.addressBookHistory, s.addressBookNeverTrim)) {
+        when (val result = writePineBook(session, mailbox, on.lastUid, entries, s.addressBookHistory.toInt(), s.addressBookNeverTrim)) {
             is PineWriteResult.Wrote -> { notice = context.getString(R.string.book_saved); read(mailbox) }
             is PineWriteResult.NotBook -> notice = result.notice
             is PineWriteResult.Stale -> when (val rb = rebaseEdit(on.entries, result.state.entries, edit)) {

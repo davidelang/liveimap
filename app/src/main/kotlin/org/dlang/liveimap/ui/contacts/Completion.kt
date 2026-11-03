@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.SelectedAddress
+import org.dlang.liveimap.settings.AddressBookEntry
 import org.dlang.liveimap.settings.androidSourceId
 import org.dlang.liveimap.settings.pineSourceId
 import java.util.concurrent.atomic.AtomicReference
@@ -158,18 +159,22 @@ fun moveCompletionSource(sources: List<String>, id: String, up: Boolean): List<S
 }
 
 fun completionSourcesInOrder(
-    ids: List<String>,
-    pineEntries: List<AlpineEntry>,
+    books: List<AddressBookEntry>,
+    pineByMailbox: Map<String, List<AlpineEntry>>,
     androidEntries: Map<String, List<CompletionEntry>>,
     androidLabels: Map<String, String>,
 ): List<CompletionSource> {
-    val pine = pineEntries.map { CompletionEntry(it.nickname, it.fullname, it.address) }
-    val out = ArrayList<CompletionSource>(ids.size)
-    for (id in ids) {
-        if (id == pineSourceId) {
-            out.add(CompletionSource("Pine", pine))
-        } else if (id.startsWith("android|")) {
-            out.add(CompletionSource(androidLabels[id] ?: id, androidEntries[id].orEmpty()))
+    val out = ArrayList<CompletionSource>(books.size)
+    for (book in books) {
+        if (book.kind == "pine") {
+            if (book.mailbox.isEmpty()) continue
+            val entries = pineByMailbox[book.mailbox].orEmpty().map {
+                CompletionEntry(it.nickname, it.fullname, it.address)
+            }
+            out.add(CompletionSource(book.mailbox, entries))
+        } else if (book.kind == "android") {
+            val id = androidSourceId(book.accountType, book.accountName)
+            out.add(CompletionSource(androidLabels[id] ?: book.accountName.ifEmpty { id }, androidEntries[id].orEmpty()))
         }
     }
     return out

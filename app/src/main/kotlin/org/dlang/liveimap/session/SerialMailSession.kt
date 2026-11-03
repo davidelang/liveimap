@@ -206,6 +206,10 @@ class SerialMailSession(
         unscoped("storeFlagsAll")
     }
 
+    override suspend fun expungeAllDeleted() {
+        unscoped("expungeAllDeleted")
+    }
+
     override suspend fun uidExpungeDeleted() {
         unscoped("uidExpungeDeleted")
     }

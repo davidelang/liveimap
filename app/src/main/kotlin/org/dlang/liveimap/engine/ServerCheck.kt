@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.session.imapAuthOrder
+import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
 
@@ -93,6 +94,15 @@ fun checkServer(settings: Settings, probe: ServerProbe, oldTlsWorks: Boolean? = 
     }
     if (mechanisms.isNotEmpty() && couldUse.isEmpty() && !loginDisabled) {
         notes.add("server offers no SASL mechanism the app supports (${mechanisms.sorted().joinToString(" ")}); LOGIN is used")
+    }
+    if ("COMPRESS=DEFLATE" !in words && !settings.compression) {
+        notes.add("server does not advertise COMPRESS=DEFLATE")
+    }
+    if (settings.deletePolicy == DeletePolicy.DeletePermanently && "UIDPLUS" !in words) {
+        notes.add("Delete permanently needs UIDPLUS; the alternate is mark deleted")
+    }
+    if (settings.deletePolicy == DeletePolicy.MoveToTrash && settings.trashMailbox.isEmpty()) {
+        notes.add("Move to Trash needs a trash mailbox; the alternate is mark deleted")
     }
     return ServerCheck(reachable = true, conflicts = conflicts, notes = notes)
 }

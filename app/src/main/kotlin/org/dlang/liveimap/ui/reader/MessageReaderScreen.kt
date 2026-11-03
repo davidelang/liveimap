@@ -163,6 +163,7 @@ import org.dlang.liveimap.settings.globalSettingsRecord
 import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.addressSaveMailbox
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SwipeAction
@@ -186,6 +187,7 @@ import org.dlang.liveimap.ui.folder.MailboxChooser
 import org.dlang.liveimap.ui.index.IndexModel
 import org.dlang.liveimap.ui.index.MailboxTitle
 import org.dlang.liveimap.ui.index.alternateDeletePolicies
+import org.dlang.liveimap.ui.index.deleteCapabilityWarn
 import org.dlang.liveimap.ui.index.effectiveDeletePolicy
 import org.dlang.liveimap.ui.index.formatIndexDate
 import org.dlang.liveimap.ui.index.MailboxTitleLines
@@ -457,7 +459,7 @@ private fun readerLabels(): ReaderLabels = ReaderLabels(
     noAppFound = stringResource(R.string.reader_no_app),
     notConnected = stringResource(R.string.reader_not_connected),
     savedText = stringResource(R.string.reader_saved),
-    noAddressBookText = stringResource(R.string.reader_no_address_book),
+    noAddressBookText = stringResource(R.string.settings_no_writable_book),
     noAddressesText = stringResource(R.string.reader_no_addresses),
     addressAddedText = stringResource(R.string.reader_address_added),
     addressExistsText = stringResource(R.string.reader_address_exists),
@@ -603,6 +605,8 @@ private fun ReaderScreen(
     var advanceTarget by remember { mutableStateOf<Pair<Long, Int>?>(null) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var confirmPermanent by remember { mutableStateOf(false) }
+    var deleteWarn by remember { mutableIntStateOf(0) }
+    var pendingReaderPolicy by remember { mutableStateOf(DeletePolicy.DeletePermanently) }
     var expungeUids by remember { mutableStateOf<List<Long>>(emptyList()) }
     val laterRetry = remember { LaterRetry() }
     var account by held.accountState
@@ -694,6 +698,7 @@ private fun ReaderScreen(
     var saveOffer by remember { mutableStateOf("") }
     var confirmTake by remember { mutableStateOf(false) }
     var takeChoices by remember { mutableStateOf<List<TakeAddress>>(emptyList()) }
+    var pendingTake by remember { mutableStateOf<TakeAddress?>(null) }
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var moreMenu by remember { mutableStateOf(false) }
     var displayMenu by remember { mutableStateOf(false) }
@@ -702,11 +707,12 @@ private fun ReaderScreen(
     var pageGeneration by remember { mutableIntStateOf(0) }
     var heading by held.headingState
 
-    BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake) && !moreMenu && !displayMenu) {
+    BackHandler(enabled = (choosingMove || choosingSave || confirmSave || confirmTake || pendingTake != null) && !moreMenu && !displayMenu) {
         choosingMove = false
         choosingSave = false
         confirmSave = false
         confirmTake = false
+        pendingTake = null
     }
     BackHandler(enabled = moreMenu || displayMenu) {
         moreMenu = false
@@ -1712,14 +1718,20 @@ private fun ReaderScreen(
                         s.copyThenDelete(listOf(uid), trash)
                         Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
-                    val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
+                    val usedMove = moveCommandKind(account.disableImapMove, session.featureCaps.move) == "Move"
                     showActionUndo(refUndo(accountId, mailbox, epoch, uid, trash, dest.asList(), targetEpoch, usedMove), target)
                 }
                 DeletePolicy.DeletePermanently -> {
-                    if (!session.featureCaps.uidPlus) return
-                    inRef { _, s -> // F43: act on this folder's UID
-                        s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
-                        s.uidExpunge(listOf(uid))
+                    if (!session.featureCaps.uidPlus) {
+                        inRef { _, s ->
+                            s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            s.expungeAllDeleted()
+                        }
+                    } else {
+                        inRef { _, s -> // F43: act on this folder's UID
+                            s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
+                            s.uidExpunge(listOf(uid))
+                        }
                     }
                     openNextOrIndex(target)
                 }
@@ -1733,10 +1745,25 @@ private fun ReaderScreen(
 
     fun runChosenPolicy(policy: DeletePolicy) {
         scope.launch {
-            if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+            if (policy == DeletePolicy.DeletePermanently && !session.featureCaps.uidPlus) {
+                deleteWarn = R.string.index_delete_needs_uidplus
+                pendingReaderPolicy = DeletePolicy.DeletePermanently
                 confirmPermanent = true
                 return@launch
             }
+            if (policy == DeletePolicy.MoveToTrash && knownTrashName.isEmpty()) {
+                deleteWarn = R.string.index_delete_needs_trash
+                pendingReaderPolicy = DeletePolicy.MarkDeleted
+                confirmPermanent = true
+                return@launch
+            }
+            if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                deleteWarn = 0
+                pendingReaderPolicy = DeletePolicy.DeletePermanently
+                confirmPermanent = true
+                return@launch
+            }
+            pendingReaderPolicy = policy
             runReaderPolicyLocked(policy)
         }
     }
@@ -1775,7 +1802,20 @@ private fun ReaderScreen(
                 trash.isNotEmpty(),
                 trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
             )
+            val warn = deleteCapabilityWarn(account.deletePolicy, session.featureCaps.uidPlus, trash.isNotEmpty())
+            if (warn != 0) {
+                deleteWarn = warn
+                pendingReaderPolicy = if (warn == R.string.index_delete_needs_trash) {
+                    DeletePolicy.MarkDeleted
+                } else {
+                    DeletePolicy.DeletePermanently
+                }
+                confirmPermanent = true
+                return@launch
+            }
             if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
+                deleteWarn = 0
+                pendingReaderPolicy = DeletePolicy.DeletePermanently
                 confirmPermanent = true
                 return@launch
             }
@@ -1836,7 +1876,7 @@ private fun ReaderScreen(
                         s.copyThenDelete(listOf(uid), spamMailbox)
                         Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
-                    val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
+                    val usedMove = moveCommandKind(account.disableImapMove, session.featureCaps.move) == "Move"
                     showActionUndo(
                         refUndo(accountId, mailbox, epoch, uid, spamMailbox, dest.asList(), targetEpoch, usedMove),
                         target,
@@ -2102,7 +2142,7 @@ private fun ReaderScreen(
                         }
                     }
                     ToolbarIconRows(
-                        maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                        maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.readerRows(),
                         onRows = { count -> iconRows = count },
                         icons = readerIcons,
                     )
@@ -2235,7 +2275,7 @@ private fun ReaderScreen(
                     text = { Text(takeAddress) },
                     onClick = {
                         moreMenu = false
-                        if (account.addressBookMailbox.isEmpty()) {
+                        if (account.addressSaveMailbox() == null) {
                             postSnack(noAddressBookText)
                         } else {
                             val found = takeAddresses(
@@ -2923,12 +2963,13 @@ private fun ReaderScreen(
     if (confirmPermanent) {
         AlertDialog(
             onDismissRequest = { confirmPermanent = false },
-            text = { Text(stringResource(R.string.index_permanent_body)) },
+            text = { Text(stringResource(if (deleteWarn != 0) deleteWarn else R.string.index_permanent_body)) },
             confirmButton = {
                 TextButton(onClick = {
+                    val chosen = pendingReaderPolicy
                     confirmPermanent = false
                     scope.launch {
-                        runReaderPolicyLocked(DeletePolicy.DeletePermanently)
+                        runReaderPolicyLocked(chosen)
                     }
                 }) {
                     Text(
@@ -2986,7 +3027,7 @@ private fun ReaderScreen(
                                     s.copyThenDelete(listOf(uid), picked)
                                     Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                                 }
-                                val usedMove = moveCommandKind(account.moveMethod, session.featureCaps.move) == "Move"
+                                val usedMove = moveCommandKind(account.disableImapMove, session.featureCaps.move) == "Move"
                                 showActionUndo(
                                     refUndo(accountId, mailbox, epoch, uid, picked, dest.asList(), targetEpoch, usedMove),
                                     target,
@@ -3071,10 +3112,13 @@ private fun ReaderScreen(
         )
     }
     }
-    fun takeChosenAddress(choice: TakeAddress) {
+    fun takeChosenAddress(choice: TakeAddress, book: String) {
+        if (book.isEmpty()) {
+            postSnack(noAddressBookText)
+            return
+        }
         scope.launch {
                 try {
-                    val book = account.addressBookMailbox
                     when (val read = readPineBook(session, book, account.bodyFetchChunk)) {
                         is PineRead.NotBook -> postSnack(read.notice)
                         is PineRead.Ready -> {
@@ -3093,7 +3137,7 @@ private fun ReaderScreen(
                                     book,
                                     read.state.lastUid,
                                     added,
-                                    account.addressBookHistory,
+                                    account.addressBookHistory.toInt(),
                                     account.addressBookNeverTrim,
                                 )) {
                                     is PineWriteResult.Wrote -> postSnack(addressAddedText)
@@ -3126,7 +3170,14 @@ private fun ReaderScreen(
                         }
                         TextButton(onClick = {
                             confirmTake = false
-                            takeChosenAddress(choice)
+                            val mailbox = account.addressSaveMailbox()
+                            when {
+                                mailbox == null || mailbox.isEmpty() && account.addressBooks.none {
+                                    it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty()
+                                } -> postSnack(noAddressBookText)
+                                mailbox.isEmpty() -> pendingTake = choice
+                                else -> takeChosenAddress(choice, mailbox)
+                            }
                         }) { Text(label) }
                     }
                 }
@@ -3138,8 +3189,36 @@ private fun ReaderScreen(
             },
         )
     }
+    @Composable
+    fun PickSaveBookDialog() {
+        val choice = pendingTake ?: return
+        val books = account.addressBooks.mapNotNull { book ->
+            if (book.kind == "pine" && !book.readOnly && book.mailbox.isNotEmpty()) book.mailbox else null
+        }.distinct()
+        AlertDialog(
+            onDismissRequest = { pendingTake = null },
+            title = { Text(stringResource(R.string.settings_pick_book)) },
+            text = {
+                Column {
+                    for (box in books) {
+                        TextButton(onClick = {
+                            pendingTake = null
+                            takeChosenAddress(choice, box)
+                        }) { Text(box) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pendingTake = null }) {
+                    Text(stringResource(R.string.reader_cancel))
+                }
+            },
+        )
+    }
     ReaderDialogs()
     TakeAddressDialog()
+    PickSaveBookDialog()
     }
     ReaderTail()
 

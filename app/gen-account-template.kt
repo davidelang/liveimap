@@ -1,60 +1,31 @@
 data class Settings(
 /* @gen-fields */
     val unknownSettings: List<String> = emptyList(),
+    /** Keys present in the JSON document this value was decoded from. Absent keys are not a warning. */
+    val storedKeys: Set<String> = emptySet(),
 ) {
     val preferHtml: Boolean
         get() = bodyView == BodyView.PlainOrHtml
 
-    init {
-        if (composerWrapColumn !in 0..998) throw IllegalArgumentException("bad composerWrapColumn")
-        if (pollSeconds !in 15..600) throw IllegalArgumentException("pollSeconds")
-        if (idleFallbackSeconds < 1) throw IllegalArgumentException("idleFallbackSeconds")
-        if (keepAliveMinutes < 1) throw IllegalArgumentException("keepAliveMinutes")
-        if (idleRenewMinutes !in 1..29) throw IllegalArgumentException("idleRenewMinutes")
-        if (connectTimeoutSec !in 1..600) throw IllegalArgumentException("connectTimeoutSec")
-        if (readTimeoutSec !in 1..3600) throw IllegalArgumentException("readTimeoutSec")
-        if (trafficLogMaxMb !in 0..64) throw IllegalArgumentException("trafficLogMaxMb")
-        if (jmapPartCacheMessages !in 1..10000) throw IllegalArgumentException("jmapPartCacheMessages")
-        if (longSearchProgressSec < 1) throw IllegalArgumentException("longSearchProgressSec")
-        if (longSearchQuietSec < 1) throw IllegalArgumentException("longSearchQuietSec")
-        if (maxJmapResponseBytes < 1) throw IllegalArgumentException("maxJmapResponseBytes")
-        if (maxResultUids < 1) throw IllegalArgumentException("maxResultUids")
-        if (sieveConnectSeconds < 1) throw IllegalArgumentException("sieveConnectSeconds")
-        if (sieveReadSeconds < 1) throw IllegalArgumentException("sieveReadSeconds")
-        if (!knownUnlabeledCharset(unlabeledCharset)) throw IllegalArgumentException("unlabeledCharset")
-    }
-
-    /** tlsMode, then deletePolicy, then moveMethod, when that raw line is still kept. */
+    /** tlsMode, then deletePolicy, when that raw value is still kept. */
     fun preservedSecurityKey(): String? {
-        val present = HashSet<String>()
-        for (entry in unknownSettings) {
-            val first = entry.substringBefore('\n')
-            val eq = first.indexOf('=')
-            if (eq > 0) present.add(first.substring(0, eq))
-        }
+        val present = preservedKeys()
         if ("tlsMode" in present) return "tlsMode"
         if ("deletePolicy" in present) return "deletePolicy"
-        if ("moveMethod" in present) return "moveMethod"
         return null
     }
 
     /** The raw sieveTlsMode line, when it is still kept. Not a preservedSecurityKey. */
-    fun preservedSieveTlsKey(): String? {
-        for (entry in unknownSettings) {
-            val first = entry.substringBefore('\n')
-            val eq = first.indexOf('=')
-            if (eq > 0 && first.substring(0, eq) == "sieveTlsMode") return "sieveTlsMode"
-        }
-        return null
-    }
+    fun preservedSieveTlsKey(): String? =
+        if ("sieveTlsMode" in preservedKeys()) "sieveTlsMode" else null
 
-    /** A chosen value, including the default, drops every kept line for [key]. */
+    fun preservedKeys(): Set<String> = unknownSettings.map { it.substringBefore('\n') }.toSet()
+
+    /** A chosen value, including the default, drops every kept value for [key]. */
     fun withoutPreserved(key: String): Settings {
         val kept = ArrayList<String>()
         for (entry in unknownSettings) {
-            val first = entry.substringBefore('\n')
-            val eq = first.indexOf('=')
-            if (eq > 0 && first.substring(0, eq) == key) continue
+            if (entry.substringBefore('\n') == key) continue
             kept.add(entry)
         }
         return copy(unknownSettings = kept)
@@ -65,112 +36,96 @@ private val fieldNames = listOf(
 /* @gen-names */
 )
 
-// Lines a fresh account writes. A preserved key still at that line stays omitted.
-private fun failureEncodedLine(key: String): String? = if (key == "tlsMode") "tlsMode=None" else null
-
 internal fun decodeIntList(text: String): List<Int> {
     if (text.isEmpty()) return emptyList()
     return text.split(',').map { it.trim().toInt() }
 }
 
-private val defaultEncodedLines: Map<String, String> by lazy {
-    Settings().encode().lineSequence().filter { it.isNotEmpty() }.associate { line ->
-        val eq = line.indexOf('=')
-        line.substring(0, eq) to line
-    }
-}
+private val freshSettings: Settings by lazy { Settings() }
 
-fun Settings.encode(): String = buildString {
-    val preserved = HashSet<String>()
-    for (entry in unknownSettings) {
-        val first = entry.substringBefore('\n')
-        val eq = first.indexOf('=')
-        if (eq > 0) preserved.add(first.substring(0, eq))
-    }
+private fun Settings.writeDocument(uiOnly: Boolean, dropForeign: Set<String>): String {
+    val fields = linkedMapOf<String, JsonValue>()
     val written = HashSet<String>()
-    fun put(line: String) {
-        val first = line.substringBefore('\n')
-        val eq = first.indexOf('=')
-        if (eq > 0) {
-            val key = first.substring(0, eq)
-            // A later edit replaces the raw line. The failed-decode default does not.
-            if (key in preserved && (defaultEncodedLines[key] == first || failureEncodedLine(key) == first)) return
-            written.add(key)
+    val fresh = freshSettings
+    fun put(key: String, value: JsonValue) {
+        val raw = preservedJson(key)
+        if (raw != null && getSetting(key) == fresh.getSetting(key)) {
+            fields[key] = raw
+        } else {
+            fields[key] = value
         }
-        appendLine(line)
+        written.add(key)
     }
+    if (uiOnly) {
+/* @gen-ui-encode */
+    } else {
 /* @gen-encode */
-    for (entry in unknownSettings) {
-        val first = entry.substringBefore('\n')
-        val eq = first.indexOf('=')
-        if (eq > 0 && first.substring(0, eq) in written) continue
-        appendLine(entry)
     }
+    for (key in storedKeys) {
+        if (key in written || key in documentSecretKeys || key in dropForeign) continue
+        val spec = settingsRegistry[key] ?: continue
+        val foreign = (spec.scope == SettingScope.Ui) != uiOnly
+        if (!foreign) continue
+        val raw = preservedJson(key)
+        val value = raw ?: try {
+            parseJson(getSetting(key))
+        } catch (_: Exception) {
+            continue
+        }
+        fields[key] = value
+        written.add(key)
+    }
+    for (entry in unknownSettings) {
+        val key = entry.substringBefore('\n')
+        if (key in written || key in documentSecretKeys) continue
+        val parsed = try {
+            parseJson(entry.substringAfter('\n'))
+        } catch (_: Exception) {
+            continue
+        }
+        fields[key] = parsed
+    }
+    return encodeJson(JsonValue.Obj(fields))
 }
 
-fun Settings.encodeUi(): String = buildString {
-    fun put(line: String) {
-        appendLine(line)
-    }
-/* @gen-ui-encode */
-}
+fun Settings.encode(dropForeign: Set<String> = emptySet()): String = writeDocument(uiOnly = false, dropForeign = dropForeign)
+
+fun Settings.encodeUi(dropForeign: Set<String> = emptySet()): String = writeDocument(uiOnly = true, dropForeign = dropForeign)
 
 fun Settings.withUiOf(ui: Settings): Settings = copy(
 /* @gen-ui-copy */
 )
 
 fun decodeSettings(text: String): Settings {
-    val values = linkedMapOf<String, String>()
+    if (text.isBlank()) return Settings()
+    val root = try {
+        parseJson(text)
+    } catch (error: Exception) {
+        throw SettingsDocumentException(error.message ?: "settings document")
+    }
+    val obj = root as? JsonValue.Obj ?: throw SettingsDocumentException("settings document is not an object")
+    val values = obj.fields
     val unknown = ArrayList<String>()
-    var openKey: String? = null
-    for (line in text.lines()) {
-        if (line.isEmpty()) continue
-        val eq = line.indexOf('=')
-        val key = if (eq > 0) line.substring(0, eq) else ""
-        if (eq > 0 && key in fieldNames) {
-            values[key] = line.substring(eq + 1) // F69: a duplicate key: the last one wins
-            openKey = key
-        } else if (openKey == "inboundRules" && line.contains('\t')) {
-            values[openKey] = values.getValue(openKey) + "\n" + line // rule lines always carry a TAB
-        } else if (eq > 0) {
-            // F69: a newer build's key: kept for round-tripping, not an error. Never keep anything credential-like
-            // (secrets live in the keystore; a stray one here must not be carried along and re-saved).
-            val lower = key.lowercase()
-            if ("password" !in lower && "secret" !in lower && "token" !in lower) unknown += line
-            openKey = null
-        } else {
-            openKey = null // F69: a malformed line is skipped
-        }
-    }
     val d = Settings()
-    fun listDroppedAll(key: String, value: Any?): Boolean = when (key) {
-        "inboundRules", "favorites" -> value is List<*> && value.isEmpty()
-        "folderViews", "folderStarts" -> value is Map<*, *> && value.isEmpty()
-        "expandedFolders" -> value is Set<*> && value.isEmpty()
-        else -> false
-    }
-    // A throw keeps the raw line. A list that skips every element of a non-empty value does too.
-    fun <T> field(key: String, default: T, read: () -> T): T {
-        val raw = values[key]
-        if (raw == null && key != "bodyView") return default
+    fun <T> field(key: String, default: T, read: (JsonValue) -> T): T {
+        val raw = values[key] ?: return default
         return try {
-            val value = read()
-            if (raw != null && raw.isNotEmpty() && listDroppedAll(key, value)) unknown += "$key=$raw"
-            value
+            read(raw)
         } catch (_: Exception) {
-            if (raw != null) unknown += "$key=$raw"
+            unknown += key + "\n" + encodeJson(raw)
             default
         }
     }
-    val decodedTlsMode = field("tlsMode", TlsMode.None) { enumValueOf<TlsMode>(values.getValue("tlsMode")) }
-    val decodedSmtpTls = if ("smtpTlsMode" !in values) {
-        decodedTlsMode
-    } else {
-        field("smtpTlsMode", decodedTlsMode) { enumValueOf<TlsMode>(values.getValue("smtpTlsMode")) }
+    for ((key, raw) in values) {
+        if (key in fieldNames || key in documentSecretKeys) continue
+        val lower = key.lowercase()
+        if ("password" in lower || "secret" in lower || "token" in lower) continue
+        unknown += key + "\n" + encodeJson(raw)
     }
     return Settings(
 /* @gen-decode */
         unknownSettings = unknown,
+        storedKeys = values.keys.filter { it !in documentSecretKeys }.toSet(),
     )
 }
 

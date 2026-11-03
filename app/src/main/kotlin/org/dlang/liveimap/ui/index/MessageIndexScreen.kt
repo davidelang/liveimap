@@ -242,6 +242,8 @@ private data class PendingDelete(
     val policy: DeletePolicy = DeletePolicy.DeletePermanently,
     /** Confirm of a Trash hit: permanent only for Trash, [policy] for the home folder. */
     val permanentOnlyInTrash: Boolean = false,
+    /** Non-zero when the saved policy cannot run on this server. */
+    val warn: Int = 0,
 )
 
 private val filterChoices = listOf(
@@ -2433,7 +2435,13 @@ private fun MessageIndexLoaded(
     if (askedPermanent != null) {
         AlertDialog(
             onDismissRequest = { pendingPermanent = null },
-            text = { Text(stringResource(R.string.index_permanent_body)) },
+            text = {
+                Text(
+                    stringResource(
+                        if (askedPermanent.warn != 0) askedPermanent.warn else R.string.index_permanent_body,
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     val request = askedPermanent
@@ -2807,14 +2815,16 @@ private fun MessageIndexLoaded(
                                 val hitInTrash = namedTrash && trash.isNotEmpty() &&
                                     hits.any { sameMailbox(it.first, trash) } &&
                                     session.featureCaps.uidPlus
-                                if ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge) {
+                                val warn = deleteCapabilityWarn(account.deletePolicy, session.featureCaps.uidPlus, trash.isNotEmpty())
+                                if (warn != 0 || ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge)) {
                                     pendingPermanent = PendingDelete(
                                         uids,
                                         entire,
                                         fromSwipe = false,
                                         hits = hits,
-                                        policy = policy,
-                                        permanentOnlyInTrash = true,
+                                        policy = if (warn == R.string.index_delete_needs_trash) DeletePolicy.MarkDeleted else policy,
+                                        permanentOnlyInTrash = warn == 0,
+                                        warn = warn,
                                     )
                                 } else {
                                     applyDeletePolicy(policy, uids, entire, trash, hits)
@@ -3021,7 +3031,7 @@ private fun MessageIndexLoaded(
                             }
                         }
                         ToolbarIconRows(
-                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionRows(),
                             onRows = { count -> iconRows = count },
                             icons = selectionIcons,
                         )
@@ -3405,7 +3415,7 @@ private fun MessageIndexLoaded(
                             }
                         }
                         ToolbarIconRows(
-                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.toolbarRows(),
+                            maxRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.indexRows(),
                             onRows = { count -> iconRows = count },
                             icons = indexIcons,
                         )

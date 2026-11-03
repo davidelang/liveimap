@@ -76,6 +76,10 @@ interface MailSession {
         throw MailFailure("not supported")
     }
     suspend fun uidExpungeDeleted()
+    /** EXPUNGE with no UID set: every \\Deleted message in the selected folder. */
+    suspend fun expungeAllDeleted() {
+        throw MailFailure("not supported")
+    }
     suspend fun uidExpunge(uids: List<Long>) {
         throw MailFailure("not supported")
     }

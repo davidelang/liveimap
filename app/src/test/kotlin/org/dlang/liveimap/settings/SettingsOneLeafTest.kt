@@ -26,9 +26,7 @@ class SettingsOneLeafTest {
         val read = { _: String -> "" }
         fun shown(id: String, sdk: Int) = leafShownInstead(groups.first { it.id == id }, read, sdk)?.setting
         assertEquals("replyAboveQuote", shown("replying", 30))
-        assertEquals("completionSources", shown("address_completion", 30))
         assertEquals("customLayout", shown("custom_panel_layout", 30))
-        assertEquals("hiddenCapabilities", shown("hide_capabilities", 30))
         assertEquals("favorites", shown("favorites", 30))
         assertEquals("theme", shown("theme", 30))
         assertNull(shown("theme", 31))
@@ -78,8 +76,9 @@ class SettingsOneLeafTest {
         for (key in listOf(
             "sections", "hidden", "ui", "account",
             "group", "header", "introWhen", "description",
-            "hiddenOptions", "swipes", "clientCert", "paneLayout", "pinerc",
-            "StringList", "subscreen", "nondecreasing", "pinercFormat",
+            "clientCert", "paneLayout", "pinerc", "settingsFile", "toolbar",
+            "many", "order", "not", "either", "checkServer", "password", "folder",
+            "pinercFormat",
             "titleWhen", "titleArgs", "sdkAtLeast", "notEquals",
             "choiceTitle", "countSet", "rulesWho", "\$accounts",
             "single visible leaf",

@@ -184,6 +184,8 @@ _SUMMARY_NAME = {
     ("display", "%1$s, %2$s"): "settings_display_line",
     ("slower", "On"): "settings_slower_on",
     ("slower", "Off"): "settings_slower_off",
+    ("performance", "On"): "settings_slower_on",
+    ("performance", "Off"): "settings_slower_off",
     ("custom_panel_layout", "Custom panel layout"): "layout_custom",
     ("forwarding", "Forward as attachment"): "settings_forward_attachment",
 }
@@ -1194,14 +1196,19 @@ def emit(doc, kt_root, tree_bytes, tree_path):
         "object SettingsDefaults {",
     ]
     for leaf in leaves:
+        if leaf.get("type") in UNSTORED_TYPES or "default" not in leaf:
+            continue
         key = leaf["setting"]
-        typ = leaf["type"]
         default = leaf["default"]
-        if typ == "Int":
+        try:
+            stored = kt_type(leaf)
+        except SystemExit:
+            continue
+        if stored == "Int" and isinstance(default, int) and not isinstance(default, bool):
             lines.append("    const val %s: Int = %s" % (key, int(default)))
-        elif typ == "Long":
+        elif stored == "Long" and isinstance(default, int) and not isinstance(default, bool):
             lines.append("    const val %s: Long = %sL" % (key, int(default)))
-        elif typ == "Bool":
+        elif stored == "Boolean" and isinstance(default, bool):
             lines.append("    const val %s: Boolean = %s" % (key, "true" if default else "false"))
         elif key in ("tlsMode", "multiPane", "folderPane", "paneArrangement", "previewSize", "folderPosition"):
             lines.append("    const val %s: String = %s" % (key, kt_string(default)))
@@ -1230,8 +1237,6 @@ ENUM_CLASS = {
     "readerTextLayout": "TextLayout",
     "nonAsciiDisplay": "NonAsciiDisplay",
     "deletePolicy": "DeletePolicy",
-    "moveMethod": "MoveMethod",
-    "compression": "Compression",
     "saveNameRule": "SaveNameRule",
     "dsnMode": "org.dlang.liveimap.ui.compose.DsnMode",
     "theme": "ThemeMode",
@@ -1245,20 +1250,14 @@ ENUM_CLASS = {
     "clientSortCollation": "ClientSortCollation",
 }
 
-SET_FIELDS = {
-    "expandedFolders",
-    "hiddenCapabilities",
-    "sortAskSkip",
-    "threadAskSkip",
-    "searchAskSkip",
-    "fallbackAskSkip",
-}
+SET_FIELDS = set()
 
 TYPE_OVERRIDE = {
     "defaultView": "FolderView",
     "folderViews": "Map<String, FolderView>",
     "folderStarts": "Map<String, StartRule>",
     "favorites": "List<FolderFavorite>",
+    "addressBooks": "List<AddressBookEntry>",
     "inboundRules": "List<InboundRule>",
     "savedSearches": "List<SavedSearch>",
     "savedAdvanced": "List<SavedAdvanced>",
@@ -1268,28 +1267,20 @@ TYPE_OVERRIDE = {
     "readerSwipeLeading": "SwipeBinding",
     "altAddresses": "List<String>",
     "watchedFolders": "List<String>",
-    "completionSources": "List<String>",
-    "extraAddressBooks": "List<String>",
-    "globalAddressBooks": "List<String>",
+    "sendingRules": "String",
+    "customLayout": "String",
+    "indexBar": "IndexBarLayout",
+    "selectionBar": "SelectionBarLayout",
+    "folderBar": "FolderBarLayout",
+    "readerToolbar": "ReaderToolbarLayout",
+    "composeBar": "ComposeBarLayout",
 }
 
 # Readers that are not the type's ordinary decode. The id still comes from the JSON leaf.
 DECODE_READER = {
-    "authMechanism": 'percentDecode(values.getValue("authMechanism")).trim().uppercase()',
-    "completionSources": 'decodeCompletionSources(values["completionSources"])',
-    "customLayout": 'values["customLayout"]?.let { percentDecode(it) }?.takeIf { decodePaneLayout(it) != null }.orEmpty()',
-    "bodyFetchChunk": 'parseIntField(values.getValue("bodyFetchChunk")).coerceIn(1024, 1048576)',
-    "composerWrapColumn": 'parseIntField(values.getValue("composerWrapColumn")).coerceIn(0, 998)',
-    "sievePort": 'parseSievePort(values.getValue("sievePort"))',
-    "maxConnections": 'org.dlang.liveimap.session.clampMaxConnections(parseIntField(values.getValue("maxConnections")))',
-    "askSort": 'parseAskLimit(values.getValue("askSort"))',
-    "askThread": 'parseAskLimit(values.getValue("askThread"))',
-    "askSearch": 'parseAskLimit(values.getValue("askSearch"))',
-    "askFallback": 'parseAskLimit(values.getValue("askFallback"))',
-    "bodyView": "decodeBodyView(values)",
-    "sigDashes": 'values.getValue("sigDashes") == "true"',
-    "sigAtBottom": 'values.getValue("sigAtBottom") == "true"',
-    "smtpSameAsImap": 'values["smtpSameAsImap"] == "true"',
+    "authMechanism": "jsonString(it).trim().uppercase()",
+    "customLayout": "jsonString(it).takeIf { decodePaneLayout(it) != null }.orEmpty()",
+    "sievePort": "parseSievePort(jsonLong(it).toString())",
 }
 
 SETTINGS_DEFAULT_ENUM = {
@@ -1308,29 +1299,53 @@ def account_leaves(leaves):
     return found
 
 
+UNSTORED_TYPES = {"password", "checkServer", "pinerc", "settingsFile"}
+
+INT_MAX = 2147483647
+INT_MIN = -2147483648
+
+
+def number_is_long(leaf):
+    if leaf.get("many"):
+        return False
+    if "max" not in leaf or leaf.get("max") is None:
+        return True
+    limit = int(leaf["max"])
+    return limit > INT_MAX or limit < INT_MIN
+
+
 def kt_type(leaf):
     key = leaf["setting"]
     if key in ENUM_CLASS:
         return ENUM_CLASS[key]
-    if key in SET_FIELDS:
-        return "Set<String>"
     if key in TYPE_OVERRIDE:
         return TYPE_OVERRIDE[key]
+    if key in SET_FIELDS:
+        return "Set<String>"
     kind = leaf["type"]
-    if kind in ("String", "Encoded"):
-        return "String"
-    if kind == "Int":
-        return "Int"
-    if kind == "Bool":
+    many = bool(leaf.get("many"))
+    if kind in ("bool", "either", "Bool"):
         return "Boolean"
+    if kind in ("number", "Int", "Long"):
+        if many or kind == "IntList":
+            return "List<Int>"
+        if kind == "Long" or number_is_long(leaf):
+            return "Long"
+        return "Int"
+    if kind in ("text", "String", "Encoded", "mailbox", "clientCert", "paneLayout", "rules"):
+        return "List<String>" if many else "String"
     if kind == "StringList":
         return "List<String>"
-    if kind == "Long":
-        return "Long"
     if kind == "IntList":
         return "List<Int>"
-    if kind == "Enum":
+    if kind in ("choice", "Enum"):
         return "String"
+    if kind == "folder":
+        return "List<FolderFavorite>" if many else "String"
+    if kind == "swipe":
+        return "SwipeBinding"
+    if kind == "toolbar":
+        return TYPE_OVERRIDE[key]
     raise SystemExit("no Kotlin type for " + key)
 
 
@@ -1363,9 +1378,24 @@ def kt_default(leaf):
             return "emptyList()"
         return "listOf(%s)" % ", ".join(str(int(item)) for item in default)
     if typ == "FolderView":
-        return "parseView(%s)" % kt_string(default)
+        return "FolderView(SortKey.Arrival, true)"
     if typ == "SwipeBinding":
-        return "parseSwipe(%s)" % kt_string(default)
+        action = "Delete"
+        if isinstance(default, dict) and isinstance(default.get("action"), str):
+            action = default["action"]
+        return "SwipeBinding(SwipeAction.%s)" % action
+    if typ == "IndexBarLayout":
+        return "defaultIndexBar()"
+    if typ == "SelectionBarLayout":
+        return "defaultSelectionBar()"
+    if typ == "FolderBarLayout":
+        return "defaultFolderBar()"
+    if typ == "ReaderToolbarLayout":
+        return "defaultReaderToolbar()"
+    if typ == "ComposeBarLayout":
+        return "defaultComposeBar()"
+    if typ == "List<AddressBookEntry>":
+        return "emptyList()"
     if typ.startswith("Map"):
         if default not in (None, ""):
             raise SystemExit("map default " + key)
@@ -1375,122 +1405,111 @@ def kt_default(leaf):
             raise SystemExit("set default " + key)
         return "emptySet()"
     if typ.startswith("List"):
-        if key == "completionSources":
-            if default != ["pine"]:
-                raise SystemExit("completionSources default")
-            return "listOf(pineSourceId)"
         if default not in (None, "", []):
             raise SystemExit("list default " + key)
         return "emptyList()"
     raise SystemExit("default " + key)
 
 
+JSON_EXPR = {
+    "defaultView": "viewJson(defaultView)",
+    "folderViews": "folderViewsJson(folderViews)",
+    "folderStarts": "folderStartsJson(folderStarts)",
+    "favorites": "favoritesJson(favorites)",
+    "addressBooks": "addressBooksJson(addressBooks)",
+    "inboundRules": "inboundRulesJson(inboundRules)",
+    "savedSearches": "savedSearchesJson(savedSearches)",
+    "savedAdvanced": "savedAdvancedJson(savedAdvanced)",
+    "swipeTrailing": "swipeJson(swipeTrailing)",
+    "swipeLeading": "swipeJson(swipeLeading)",
+    "readerSwipeTrailing": "swipeJson(readerSwipeTrailing)",
+    "readerSwipeLeading": "swipeJson(readerSwipeLeading)",
+    "indexBar": "indexBarJson(indexBar)",
+    "selectionBar": "selectionBarJson(selectionBar)",
+    "folderBar": "folderBarJson(folderBar)",
+    "readerToolbar": "readerToolbarJson(readerToolbar)",
+    "composeBar": "composeBarJson(composeBar)",
+}
+
+JSON_READ = {
+    "defaultView": "readView(it)",
+    "folderViews": "readFolderViews(it)",
+    "folderStarts": "readFolderStarts(it)",
+    "favorites": "readFavorites(it)",
+    "addressBooks": "readAddressBooks(it)",
+    "inboundRules": "readInboundRules(it)",
+    "savedSearches": "readSavedSearches(it)",
+    "savedAdvanced": "readSavedAdvanced(it)",
+    "swipeTrailing": "readSwipe(it)",
+    "swipeLeading": "readSwipe(it)",
+    "readerSwipeTrailing": "readSwipe(it)",
+    "readerSwipeLeading": "readSwipe(it)",
+    "indexBar": "readIndexBar(it)",
+    "selectionBar": "readSelectionBar(it)",
+    "folderBar": "readFolderBar(it)",
+    "readerToolbar": "readReaderToolbar(it)",
+    "composeBar": "readComposeBar(it)",
+}
+
+
+def json_expr(leaf):
+    key = leaf["setting"]
+    if key in JSON_EXPR:
+        return JSON_EXPR[key]
+    typ = kt_type(leaf)
+    if typ == "Boolean":
+        return "JsonValue.Bool(%s)" % key
+    if typ == "Int":
+        return "JsonValue.Num(%s.toLong())" % key
+    if typ == "Long":
+        return "JsonValue.Num(%s)" % key
+    if typ == "String":
+        return "JsonValue.Str(%s)" % key
+    if typ == "List<Int>":
+        return "intListJson(%s)" % key
+    if typ == "List<String>":
+        return "stringListJson(%s)" % key
+    if key in ENUM_CLASS:
+        return "JsonValue.Str(%s.name)" % key
+    raise SystemExit("json " + key + " " + typ)
+
+
 def encode_put(leaf):
     key = leaf["setting"]
-    if key in COMPLEX:
-        value = COMPLEX[key][0]
-    else:
-        typ = kt_type(leaf)
-        if leaf.get("type") == "Encoded":
-            value = key
-        elif typ == "String":
-            value = "percentEncode(%s)" % key
-        elif typ in ("Int", "Boolean", "Long"):
-            value = key
-        elif typ == "List<Int>":
-            value = '%s.joinToString(",")' % key
-        elif key in ENUM_CLASS:
-            value = "%s.name" % key
-        else:
-            raise SystemExit("encode " + key)
-    return 'put("%s=${%s}")' % (key, value)
+    return 'put("%s", %s)' % (key, json_expr(leaf))
 
 
 def decode_reader(leaf):
     key = leaf["setting"]
     if key in DECODE_READER:
         return DECODE_READER[key]
-    if key in COMPLEX and key != "clientSortCollation":
-        return COMPLEX[key][1].replace("value.text", 'values.getValue("%s")' % key)
+    if key in JSON_READ:
+        return JSON_READ[key]
     typ = kt_type(leaf)
-    if leaf.get("type") == "Encoded":
-        return 'values.getValue("%s")' % key
     if typ == "String":
-        return 'percentDecode(values.getValue("%s"))' % key
+        return "jsonString(it)"
     if typ == "Boolean":
-        return 'parseBoolean(values.getValue("%s"))' % key
+        return "jsonBool(it)"
     if typ == "Int":
-        return 'parseIntField(values.getValue("%s"))' % key
+        return "jsonInt(it)"
     if typ == "Long":
-        return 'values.getValue("%s").toLong()' % key
+        return "jsonLong(it)"
     if typ == "List<Int>":
-        return 'decodeIntList(values.getValue("%s"))' % key
+        return "readIntList(it)"
+    if typ == "List<String>":
+        return "readStringList(it)"
     if key in ENUM_CLASS:
-        return "enumValueOf<%s>(values.getValue(%s))" % (ENUM_CLASS[key], json.dumps(key))
+        return "enumValueOf<%s>(jsonString(it))" % ENUM_CLASS[key]
     raise SystemExit("decode " + key)
 
 
 def special_decode(key):
-    if key == "tlsMode":
-        return "tlsMode = decodedTlsMode,"
-    if key == "smtpTlsMode":
-        return "smtpTlsMode = decodedSmtpTls,"
-    if key == "readerTextLayout":
-        return 'readerTextLayout = if ("readerTextLayout" !in values) d.readerTextLayout else enumValueOf<TextLayout>(values.getValue("readerTextLayout")),'
-    if key == "compression":
-        return "\n".join([
-            'compression = if ("compression" !in values) d.compression else when (values.getValue("compression")) {',
-            '    "Auto" -> Compression.On',
-            '    else -> enumValueOf<Compression>(values.getValue("compression"))',
-            "},",
-        ])
-    if key == "smtpNoAuth":
-        return "\n".join([
-            'smtpNoAuth = if ("smtpNoAuth" !in values) d.smtpNoAuth else when (values.getValue("smtpNoAuth")) {',
-            '    "Auto" -> SmtpNoAuth.Off',
-            '    else -> enumValueOf<SmtpNoAuth>(values.getValue("smtpNoAuth"))',
-            "},",
-        ])
-    if key == "paneArrangement":
-        return 'paneArrangement = if ("paneArrangement" !in values) d.paneArrangement else enumValueOf<ArrangementChoice>(values.getValue("paneArrangement")),'
-    if key == "folderPosition":
-        return 'folderPosition = if ("folderPosition" !in values) d.folderPosition else enumValueOf<FolderPositionChoice>(values.getValue("folderPosition")),'
-    if key == "dsnMode":
-        return 'dsnMode = if ("dsnMode" !in values) d.dsnMode else enumValueOf<org.dlang.liveimap.ui.compose.DsnMode>(values.getValue("dsnMode")),'
-    if key == "nonAsciiDisplay":
-        return 'nonAsciiDisplay = if ("nonAsciiDisplay" !in values) d.nonAsciiDisplay else enumValueOf<NonAsciiDisplay>(values.getValue("nonAsciiDisplay")),'
-    if key == "previewSize":
-        return 'previewSize = if ("previewSize" !in values) d.previewSize else enumValueOf<PreviewChoice>(values.getValue("previewSize")),'
-    if key == "idleWakeSeconds":
-        return "\n".join([
-            'idleWakeSeconds = field("idleWakeSeconds", d.idleWakeSeconds) {',
-            '    val seconds = parseIntField(values.getValue("idleWakeSeconds"))',
-            '    if (seconds !in IdleWakeSeconds) throw IllegalArgumentException("bad idleWakeSeconds")',
-            "    seconds",
-            "},",
-        ])
     if key == "clientSortCollation":
         return "\n".join([
-            'clientSortCollation = if ("clientSortCollation" !in values) {',
-            "    d.clientSortCollation",
-            "} else {",
-            '    val word = values.getValue("clientSortCollation")',
+            'clientSortCollation = field("clientSortCollation", d.clientSortCollation) {',
+            "    val word = jsonString(it)",
             '    if (word != "locale" && word != "plain") throw IllegalArgumentException("clientSortCollation")',
-            '    field("clientSortCollation", d.clientSortCollation) { clientSortCollationOf(word) }',
-            "},",
-        ])
-    if key == "unlabeledCharset":
-        return "\n".join([
-            'unlabeledCharset = if ("unlabeledCharset" !in values) {',
-            "    d.unlabeledCharset",
-            "} else {",
-            "    val decoded = try {",
-            '        percentDecode(values.getValue("unlabeledCharset"))',
-            "    } catch (_: IllegalArgumentException) {",
-            '        throw IllegalArgumentException("unlabeledCharset")',
-            "    }",
-            '    if (!knownUnlabeledCharset(decoded)) throw IllegalArgumentException("unlabeledCharset")',
-            '    field("unlabeledCharset", d.unlabeledCharset) { decoded }',
+            "    clientSortCollationOf(word)",
             "},",
         ])
     return None
@@ -1517,6 +1536,8 @@ def generated_account_record(leaves):
     ui_copy = []
     decoded = []
     for leaf in leaves:
+        if leaf.get("type") in UNSTORED_TYPES:
+            continue
         names.append('    "%s",' % leaf["setting"])
         if leaf.get("scope") == "ui":
             ui_puts.append("    " + encode_put(leaf))
@@ -1553,13 +1574,13 @@ def emit_access(doc, leaves, groups, kt_dir):
     global _FIELD_TYPES
     _FIELD_TYPES = {}
     for leaf in leaves:
-        if not leaf.get("derived"):
+        if not leaf.get("derived") and leaf.get("type") not in UNSTORED_TYPES:
             _FIELD_TYPES[leaf["setting"]] = kt_type(leaf)
     group_of = {}
     def visit(node, group):
         if "group" in node:
             group = node["group"]
-        if "setting" in node and not node.get("derived"):
+        if "setting" in node and not node.get("derived") and node.get("type") not in UNSTORED_TYPES:
             group_of[node["setting"]] = group or node.get("scope") or "account"
         for key in ("children", "settings"):
             kids = node.get(key)
@@ -1573,6 +1594,13 @@ def emit_access(doc, leaves, groups, kt_dir):
     for key, group in group_of.items():
         buckets.setdefault(group, []).append(key)
     imports = account_imports()
+    extra_imports = [
+        "import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar",
+    ]
+    have = set(imports.splitlines())
+    missing_imports = [line for line in extra_imports if line not in have]
+    if missing_imports:
+        imports = imports + "\n" + "\n".join(missing_imports)
     parts = [
         "@file:JvmName(\"SettingsAccessGeneratedKt\")",
         "package org.dlang.liveimap.settings",
@@ -1713,8 +1741,8 @@ def with_expr(key):
     }
     if key in special:
         return special[key]
-    if key in COMPLEX:
-        return "copy(%s = %s)" % (key, COMPLEX[key][1])
+    if key in JSON_READ:
+        return "copy(%s = %s)" % (key, JSON_READ[key].replace("(it)", "(parseJson(value.text))"))
     typ = field_types().get(key, "String")
     if typ == "String":
         return "copy(%s = value.text)" % key
@@ -1723,7 +1751,9 @@ def with_expr(key):
     if typ == "Long":
         return "copy(%s = value.text.toLong())" % key
     if typ == "List<Int>":
-        return "copy(%s = decodeIntList(value.text))" % key
+        return "copy(%s = readIntList(parseJson(value.text)))" % key
+    if typ == "List<String>":
+        return "copy(%s = readStringList(parseJson(value.text)))" % key
     if typ == "Boolean":
         return "copy(%s = value.text == \"true\")" % key
     return "copy(%s = %s.valueOf(value.text))" % (key, typ)
@@ -1741,11 +1771,13 @@ def account_imports():
 
 
 def get_expr(key):
-    if key in COMPLEX:
-        return COMPLEX[key][0]
+    if key in JSON_EXPR:
+        return "encodeJson(%s)" % JSON_EXPR[key]
     typ = field_types().get(key, "String")
     if typ == "List<Int>":
-        return '%s.joinToString(",")' % key
+        return "encodeJson(intListJson(%s))" % key
+    if typ == "List<String>":
+        return "encodeJson(stringListJson(%s))" % key
     if typ in ("String", "Int", "Boolean", "Long"):
         return "%s.toString()" % key if typ != "String" else key
     return "%s.name" % key
@@ -1777,10 +1809,10 @@ GROUP_KEYS = {
 }
 EDITOR_KEYS = {"editor", "opens", "title", "summary", "settings", "children", "label"}
 LEAF_KEYS = {
-    "setting", "type", "kind", "default", "title", "summary", "choiceTitles", "choices",
-    "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "server", "derived",
-    "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen", "editor",
-    "opens", "format", "label", "nullable", "titleArgs", "hidden",
+    "setting", "type", "default", "title", "summary", "choiceTitles", "choices",
+    "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "many", "server", "derived",
+    "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen",
+    "format", "label", "nullable", "titleArgs", "hidden",
 }
 
 
@@ -1851,9 +1883,22 @@ def validate_doc(doc):
 
     def leaf(node, where):
         _extra(node.keys(), LEAF_KEYS, where)
-        for required in ("setting", "type", "kind", "default"):
+        for required in ("setting", "type"):
             if required not in node:
                 raise SystemExit("settings-tree.json missing %s at %s" % (required, where))
+        if node["type"] not in UNSTORED_TYPES and "default" not in node:
+            raise SystemExit("settings-tree.json missing default at " + where)
+        allowed_types = {
+            "bool", "either", "number", "choice", "text", "password", "folder", "mailbox",
+            "checkServer", "clientCert", "pinerc", "settingsFile", "rules", "toolbar",
+            "paneLayout", "swipe",
+        }
+        if node["type"] not in allowed_types:
+            raise SystemExit("settings-tree.json type %s at %s" % (node["type"], where))
+        if node.get("many") and node.get("order") not in ("user", "sorted", "increasing"):
+            raise SystemExit("settings-tree.json order at " + where)
+        if node.get("order") and not node.get("many"):
+            raise SystemExit("settings-tree.json order at " + where)
         key = node["setting"]
         if not isinstance(key, str) or not key:
             raise SystemExit("settings-tree.json misspelt setting at " + where)
@@ -1977,7 +2022,8 @@ def kt_leaf(leaf):
         "setting = %s," % kt_string(leaf["setting"]),
         "typeName = %s," % kt_string(leaf.get("type") or ""),
         "scopeName = %s," % kt_string(leaf.get("scope") or ""),
-        "kind = %s," % kt_string(leaf.get("kind") or ""),
+        "kind = %s," % kt_string(leaf.get("type") or ""),
+        "many = %s," % ("true" if leaf.get("many") else "false"),
         "default = %s," % kt_json(leaf.get("default")),
         "title = %s," % kt_string(leaf.get("title") or ""),
         "summary = %s," % summary_kt,

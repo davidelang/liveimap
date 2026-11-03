@@ -168,9 +168,7 @@ private fun countOf(settings: Settings, key: String, accounts: Int): Int {
         "expandedFolders" -> settings.expandedFolders.size
         "favorites" -> settings.favorites.size
         "hiddenCapabilities" -> settings.hiddenCapabilities.size
-        "completionSources" -> settings.completionSources.size
-        "extraAddressBooks" -> settings.extraAddressBooks.size
-        "globalAddressBooks" -> settings.globalAddressBooks.size
+        "addressBooks" -> settings.addressBooks.size
         "altAddresses" -> settings.altAddresses.size
         "sendingRules" -> org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules).size
         "inboundRules" -> settings.inboundRules.size

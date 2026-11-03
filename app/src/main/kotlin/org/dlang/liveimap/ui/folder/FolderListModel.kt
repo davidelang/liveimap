@@ -277,7 +277,7 @@ class FolderListModel(
     }
 
     suspend fun saveDefaultView() {
-        val expanded = sessionExpanded().toSet()
+        val expanded = sessionExpanded().toList()
         store.update { it.copy(expandedFolders = expanded) } // F66
     }
 

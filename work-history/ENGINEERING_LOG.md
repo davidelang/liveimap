@@ -4089,3 +4089,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Leftover locale translations
 
 - Grok translated non-English locale strings that were still the en-US sentence, one request per locale through the xAI API. English regional files stayed English. Strings that stay literal were not sent. generateAppI18n still does not call a translator.
+
+## 2026-11-03 - Settings are JSON documents
+
+- Each leaf names one type and that type is the control. Account settings and UI settings are JSON. A key that changes record keeps its stored value on save. Advanced, Performance, address books, five toolbars, and compression, pipeline, move, and delete follow the 2026-11-03 screen.
+- XAI_API_KEY was unset, so Grok did not refresh changed display sentences. Those stay pending and a later build retries.

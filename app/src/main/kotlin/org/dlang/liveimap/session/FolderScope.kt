@@ -79,6 +79,7 @@ class FolderView(internal val base: MailSession, val folder: FolderAt) : MailSes
         uids { it.storeFlags(uids, add, remove) }
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>) = uids { it.storeFlagsAll(add, remove) }
     override suspend fun uidExpungeDeleted() = uids { it.uidExpungeDeleted() }
+    override suspend fun expungeAllDeleted() = uids { it.expungeAllDeleted() }
     override suspend fun uidExpunge(uids: List<Long>) = uids { it.uidExpunge(uids) }
     override suspend fun copyThenDelete(uids: List<Long>, targetMailbox: String) = uids { it.copyThenDelete(uids, targetMailbox) }
     override suspend fun copyUids(uids: List<Long>, targetMailbox: String) = uids { it.copyUids(uids, targetMailbox) }

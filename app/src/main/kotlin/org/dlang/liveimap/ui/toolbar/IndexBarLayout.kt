@@ -159,6 +159,7 @@ data class IndexBarLayout(
     val toolbar: List<IndexBarAction>,
     val overflow: List<IndexBarAction>,
     val hidden: List<IndexBarAction>,
+    val rows: Int = 2,
 )
 
 sealed interface IndexMenuEntry {
@@ -177,17 +178,17 @@ fun resetIndexBar(): IndexBarLayout = defaultIndexBar()
 
 fun moveIndexAction(layout: IndexBarLayout, action: IndexBarAction, section: BarSection): IndexBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
-        IndexBarLayout(toolbar, overflow, hidden)
+        IndexBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun moveIndexActionBy(layout: IndexBarLayout, action: IndexBarAction, delta: Int): IndexBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
-        IndexBarLayout(toolbar, overflow, hidden)
+        IndexBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun dragIndexLayout(layout: IndexBarLayout, from: Int, to: Int): IndexBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
-    return IndexBarLayout(toolbar, overflow, hidden)
+    return IndexBarLayout(toolbar, overflow, hidden, layout.rows)
 }
 
 fun indexMenuTail(layout: IndexBarLayout): List<IndexMenuEntry> {
@@ -247,6 +248,7 @@ data class SelectionBarLayout(
     val toolbar: List<SelectionBarAction>,
     val overflow: List<SelectionBarAction>,
     val hidden: List<SelectionBarAction>,
+    val rows: Int = 2,
 )
 
 sealed interface SelectionMenuEntry {
@@ -273,17 +275,17 @@ fun moveSelectionAction(
     section: BarSection,
 ): SelectionBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
-        SelectionBarLayout(toolbar, overflow, hidden)
+        SelectionBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun moveSelectionActionBy(layout: SelectionBarLayout, action: SelectionBarAction, delta: Int): SelectionBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
-        SelectionBarLayout(toolbar, overflow, hidden)
+        SelectionBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun dragSelectionLayout(layout: SelectionBarLayout, from: Int, to: Int): SelectionBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
-    return SelectionBarLayout(toolbar, overflow, hidden)
+    return SelectionBarLayout(toolbar, overflow, hidden, layout.rows)
 }
 
 fun selectionMenuTail(layout: SelectionBarLayout): List<SelectionMenuEntry> {
@@ -343,6 +345,7 @@ data class FolderBarLayout(
     val toolbar: List<FolderBarAction>,
     val overflow: List<FolderBarAction>,
     val hidden: List<FolderBarAction>,
+    val rows: Int = 2,
 )
 
 sealed interface FolderMenuEntry {
@@ -370,17 +373,17 @@ fun moveFolderAction(
     section: BarSection,
 ): FolderBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
-        FolderBarLayout(toolbar, overflow, hidden)
+        FolderBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun moveFolderActionBy(layout: FolderBarLayout, action: FolderBarAction, delta: Int): FolderBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
-        FolderBarLayout(toolbar, overflow, hidden)
+        FolderBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun dragFolderLayout(layout: FolderBarLayout, from: Int, to: Int): FolderBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
-    return FolderBarLayout(toolbar, overflow, hidden)
+    return FolderBarLayout(toolbar, overflow, hidden, layout.rows)
 }
 
 fun folderMenu(layout: FolderBarLayout, showUnsent: Boolean): List<FolderMenuEntry> {
@@ -443,6 +446,7 @@ data class ReaderToolbarLayout(
     val toolbar: List<ReaderToolbarAction>,
     val overflow: List<ReaderToolbarAction>,
     val hidden: List<ReaderToolbarAction>,
+    val rows: Int = 2,
 )
 
 fun defaultReaderToolbar(): ReaderToolbarLayout = ReaderToolbarLayout(
@@ -479,7 +483,7 @@ fun moveReaderAction(
     section: BarSection,
 ): ReaderToolbarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
-        ReaderToolbarLayout(toolbar, overflow, hidden)
+        ReaderToolbarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun moveReaderActionBy(
@@ -488,12 +492,12 @@ fun moveReaderActionBy(
     delta: Int,
 ): ReaderToolbarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
-        ReaderToolbarLayout(toolbar, overflow, hidden)
+        ReaderToolbarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun dragReaderLayout(layout: ReaderToolbarLayout, from: Int, to: Int): ReaderToolbarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
-    return ReaderToolbarLayout(toolbar, overflow, hidden)
+    return ReaderToolbarLayout(toolbar, overflow, hidden, layout.rows)
 }
 
 fun encodeReaderToolbar(layout: ReaderToolbarLayout): String =
@@ -539,6 +543,7 @@ data class ComposeBarLayout(
     val toolbar: List<ComposeBarAction>,
     val overflow: List<ComposeBarAction>,
     val hidden: List<ComposeBarAction>,
+    val rows: Int = 2,
 )
 
 sealed interface ComposeMenuEntry {
@@ -561,7 +566,7 @@ fun moveComposeAction(
     section: BarSection,
 ): ComposeBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveSection(layout.toolbar, layout.overflow, layout.hidden, action, section)) { toolbar, overflow, hidden ->
-        ComposeBarLayout(toolbar, overflow, hidden)
+        ComposeBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun moveComposeActionBy(
@@ -570,12 +575,12 @@ fun moveComposeActionBy(
     delta: Int,
 ): ComposeBarLayout =
     applyMove(layout, layout.toolbar, layout.overflow, layout.hidden, moveByDelta(layout.toolbar, layout.overflow, layout.hidden, action, delta)) { toolbar, overflow, hidden ->
-        ComposeBarLayout(toolbar, overflow, hidden)
+        ComposeBarLayout(toolbar, overflow, hidden, layout.rows)
     }
 
 fun dragComposeLayout(layout: ComposeBarLayout, from: Int, to: Int): ComposeBarLayout {
     val (toolbar, overflow, hidden) = dragActions(layout.toolbar, layout.overflow, layout.hidden, from, to)
-    return ComposeBarLayout(toolbar, overflow, hidden)
+    return ComposeBarLayout(toolbar, overflow, hidden, layout.rows)
 }
 
 fun composeMenu(layout: ComposeBarLayout): List<ComposeMenuEntry> {

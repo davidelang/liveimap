@@ -111,9 +111,34 @@ private class ToolbarSettings(
         write(ToolbarStore.record.copy(composeBar = next))
     }
 
-    fun writeToolbarRows(next: Int) {
-        if (next !in 1..4 || next == ToolbarStore.toolbarRows()) return
-        write(ToolbarStore.record.copy(toolbarRows = next))
+    fun writeIndexRows(next: Int) {
+        val bar = ToolbarStore.record.indexBar
+        if (next !in 1..4 || next == bar.rows) return
+        write(ToolbarStore.record.copy(indexBar = bar.copy(rows = next)))
+    }
+
+    fun writeSelectionRows(next: Int) {
+        val bar = ToolbarStore.record.selectionBar
+        if (next !in 1..4 || next == bar.rows) return
+        write(ToolbarStore.record.copy(selectionBar = bar.copy(rows = next)))
+    }
+
+    fun writeFolderRows(next: Int) {
+        val bar = ToolbarStore.record.folderBar
+        if (next !in 1..4 || next == bar.rows) return
+        write(ToolbarStore.record.copy(folderBar = bar.copy(rows = next)))
+    }
+
+    fun writeReaderRows(next: Int) {
+        val bar = ToolbarStore.record.readerToolbar ?: defaultReaderToolbar()
+        if (next !in 1..4 || next == bar.rows) return
+        write(ToolbarStore.record.copy(readerToolbar = bar.copy(rows = next)))
+    }
+
+    fun writeComposeRows(next: Int) {
+        val bar = ToolbarStore.record.composeBar
+        if (next !in 1..4 || next == bar.rows) return
+        write(ToolbarStore.record.copy(composeBar = bar.copy(rows = next)))
     }
 }
 
@@ -126,7 +151,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
     DisposableEffect(holder) {
         onDispose {
             if (!holder.committed) {
-                ToolbarStore.install(org.dlang.liveimap.settings.SettingsHub.uiNow().toolbars)
+                ToolbarStore.install(org.dlang.liveimap.settings.SettingsHub.uiNow())
             }
         }
     }
@@ -168,8 +193,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
                 }
             },
             onReset = { holder.persistIndex(resetIndexBar()) },
-            toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.writeToolbarRows(next) },
+            toolbarRows = loaded.indexBar.rows,
+            onToolbarRows = { next -> holder.writeIndexRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Selection -> SectionEditor(
@@ -195,8 +220,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
                 }
             },
             onReset = { holder.persistSelection(resetSelectionBar()) },
-            toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.writeToolbarRows(next) },
+            toolbarRows = loaded.selectionBar.rows,
+            onToolbarRows = { next -> holder.writeSelectionRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Folders -> SectionEditor(
@@ -222,8 +247,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
                 }
             },
             onReset = { holder.persistFolder(resetFolderBar()) },
-            toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.writeToolbarRows(next) },
+            toolbarRows = loaded.folderBar.rows,
+            onToolbarRows = { next -> holder.writeFolderRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Reader -> SectionEditor(
@@ -249,8 +274,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
                 }
             },
             onReset = { holder.persistReader(resetReaderToolbar()) },
-            toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.writeToolbarRows(next) },
+            toolbarRows = (loaded.readerToolbar ?: defaultReaderToolbar()).rows,
+            onToolbarRows = { next -> holder.writeReaderRows(next) },
             scrollState = scrollState,
         )
         ToolbarScreen.Compose -> SectionEditor(
@@ -276,8 +301,8 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
                 }
             },
             onReset = { holder.persistCompose(resetComposeBar()) },
-            toolbarRows = loaded.toolbarRows,
-            onToolbarRows = { next -> holder.writeToolbarRows(next) },
+            toolbarRows = loaded.composeBar.rows,
+            onToolbarRows = { next -> holder.writeComposeRows(next) },
             scrollState = scrollState,
         )
         }

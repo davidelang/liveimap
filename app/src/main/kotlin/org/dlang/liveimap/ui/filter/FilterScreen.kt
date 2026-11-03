@@ -180,8 +180,8 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                                 script,
                                 account.allowPlaintextAuth,
                                 org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId),
-                                account.sieveConnectSeconds,
-                                account.sieveReadSeconds,
+                                account.sieveConnectSeconds.toInt(),
+                                account.sieveReadSeconds.toInt(),
                             ) { plan ->
                                 val answer = CompletableDeferred<Boolean>()
                                 asking = plan to answer

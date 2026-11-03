@@ -207,6 +207,16 @@ data class FolderFavorite(
     val label: String = "",
 )
 
+/** One address book. `kind` is `pine` or `android`. Order in the list is completion order. */
+data class AddressBookEntry(
+    val kind: String,
+    val mailbox: String = "",
+    val readOnly: Boolean = false,
+    val saveTarget: Boolean = false,
+    val accountType: String = "",
+    val accountName: String = "",
+)
+
 fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
     if (mailbox.isEmpty()) {
         return if (node) "(empty prefix)[]" else "(empty prefix)"
@@ -261,19 +271,8 @@ enum class DeletePolicy {
     DeletePermanently,
 }
 
-/** COMPRESS=DEFLATE use: On (default) or Off. */
-enum class Compression {
-    On,
-    Off,
-}
-
-enum class MoveMethod {
-    CopyThenMarkDeleted,
-    ImapMove,
-}
-
-fun moveCommandKind(method: MoveMethod, moveAdvertised: Boolean): String =
-    if (method == MoveMethod.ImapMove && moveAdvertised) "Move" else "CopyThenDelete"
+fun moveCommandKind(disableImapMove: Boolean, moveAdvertised: Boolean): String =
+    if (!disableImapMove && moveAdvertised) "Move" else "CopyThenDelete"
 
 enum class SaveNameRule {
     DefaultFolder,
@@ -421,7 +420,7 @@ internal fun clientSortCollationOf(word: String): ClientSortCollation = when (wo
     else -> throw IllegalArgumentException("clientSortCollation")
 }
 
-fun overAskThreshold(exists: Int, threshold: Int): Boolean =
+fun overAskThreshold(exists: Int, threshold: Long): Boolean =
     threshold >= 0 && exists > threshold
 
 internal fun parseAskLimit(value: String): Int {
@@ -685,16 +684,29 @@ internal fun decodeCompletionSources(value: String?): List<String> {
     return value.split(',').map { percentDecode(it) }.filter { it.isNotEmpty() }
 }
 
-/** Every Alpine address book of this account: (mailbox, read-only), primary first, without duplicates. */
+/** Every Pine address book of this account: (mailbox, read-only), in list order, without duplicate mailboxes. */
 fun Settings.alpineBooks(): List<Pair<String, Boolean>> {
     val out = ArrayList<Pair<String, Boolean>>()
-    fun add(name: String, readOnly: Boolean) {
-        if (name.isNotEmpty() && out.none { it.first == name }) out += name to readOnly
+    for (book in addressBooks) {
+        if (book.kind != "pine" || book.mailbox.isEmpty()) continue
+        if (out.none { it.first == book.mailbox }) out += book.mailbox to book.readOnly
     }
-    add(addressBookMailbox, false)
-    for (b in extraAddressBooks) add(b, false)
-    for (b in globalAddressBooks) add(b, true)
     return out
+}
+
+/**
+ * Mailbox to save a contact into.
+ * Null means nothing writable. Empty means several writable books and no save target, so ask.
+ */
+fun Settings.addressSaveMailbox(): String? {
+    val target = addressBooks.firstOrNull { it.saveTarget && it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty() }
+    if (target != null) return target.mailbox
+    val writable = addressBooks.filter { it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty() }
+    return when (writable.size) {
+        0 -> null
+        1 -> writable[0].mailbox
+        else -> ""
+    }
 }
 
 /** Copy-screen id of one account's Alpine book (any account, not only the open one). */

@@ -38,6 +38,7 @@ data class TreeLeaf(
     val itemMin: Long? = null,
     val itemMax: Long? = null,
     val order: String? = null,
+    val many: Boolean = false,
     val server: Boolean = false,
     val derived: Boolean = false,
     val pinerc: String? = null,
@@ -117,11 +118,13 @@ private val serverRequired = listOf(
 )
 
 private val leafKeys = setOf(
-    "setting", "type", "kind", "default", "title", "summary", "choiceTitles", "choices",
-    "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "server", "derived",
-    "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen", "editor",
-    "opens", "format", "label", "nullable", "titleArgs", "hidden",
+    "setting", "type", "default", "title", "summary", "choiceTitles", "choices",
+    "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "many", "server", "derived",
+    "pinerc", "pinercFormat", "visibleWhen", "enabledWhen", "titleWhen", "noteWhen",
+    "format", "label", "nullable", "titleArgs", "hidden",
 )
+
+private val unstoredTypes = setOf("password", "checkServer", "pinerc", "settingsFile")
 
 private val groupKeys = setOf(
     "group", "title", "label", "header", "children", "summary", "visibleWhen", "enabledWhen",
@@ -151,7 +154,7 @@ private val editorsOk = mapOf(
     "pinerc" to setOf("screen"),
 )
 
-private object InstalledTree {
+internal object InstalledTree {
     var leaves: Map<String, TreeLeaf> = emptyMap()
     var roots: List<TreeNode> = emptyList()
     var specs: Map<String, SettingSpec> = emptyMap()
@@ -278,7 +281,10 @@ private fun readLeaf(obj: JsonValue.Obj, scopeName: String): TreeLeaf {
     for (name in obj.fields.keys) {
         if (name !in leafKeys) throw SettingsTreeParseException("settings-tree.json leaf $key field $name")
     }
-    if ("default" !in obj.fields) throw SettingsTreeParseException("settings-tree.json leaf $key default")
+    val typeName = str(obj, "type").orEmpty()
+    if ("default" !in obj.fields && typeName !in unstoredTypes) {
+        throw SettingsTreeParseException("settings-tree.json leaf $key default")
+    }
     fun longField(name: String): Long? = when (val v = obj.fields[name]) {
         null -> null
         is JsonValue.Num -> v.value
@@ -307,12 +313,17 @@ private fun readLeaf(obj: JsonValue.Obj, scopeName: String): TreeLeaf {
         is JsonValue.Bool -> v.value
         else -> throw SettingsTreeParseException("settings-tree.json leaf $key hidden")
     }
+    val many = when (val v = obj.fields["many"]) {
+        null -> false
+        is JsonValue.Bool -> v.value
+        else -> throw SettingsTreeParseException("settings-tree.json leaf $key many")
+    }
     return TreeLeaf(
         setting = key,
-        typeName = str(obj, "type").orEmpty(),
+        typeName = typeName,
         scopeName = scopeName,
-        kind = str(obj, "kind").orEmpty(),
-        default = obj.fields.getValue("default"),
+        kind = typeName,
+        default = obj.fields["default"] ?: JsonValue.Null,
         title = str(obj, "title").orEmpty(),
         summary = str(obj, "summary"),
         choiceTitles = choiceTitles,
@@ -324,6 +335,7 @@ private fun readLeaf(obj: JsonValue.Obj, scopeName: String): TreeLeaf {
         itemMin = longField("itemMin"),
         itemMax = longField("itemMax"),
         order = str(obj, "order"),
+        many = many,
         server = boolField(obj, "server") == true,
         derived = boolField(obj, "derived") == true,
         pinerc = str(obj, "pinerc"),
@@ -456,28 +468,34 @@ private fun checkLeaf(leaf: TreeLeaf, page: String?, complete: Boolean): List<St
     if (leaf.title.isEmpty()) errors.add("settings-tree.json leaf $key title")
     if (leaf.title.isNotEmpty()) checkResource(leaf.title, complete, errors)
     leaf.summary?.let { checkResource(it, complete, errors) }
-    val numeric = leaf.typeName == "Int" || leaf.typeName == "Long"
-    val list = leaf.typeName == "StringList" || leaf.typeName == "IntList" || leaf.typeName == "Encoded"
+    val numeric = leaf.typeName == "number" || leaf.typeName == "Int" || leaf.typeName == "Long"
+    val list = leaf.many
     if (!numeric && (leaf.min != null || leaf.max != null)) errors.add("settings-tree.json leaf $key has min or max")
     if (leaf.min != null && leaf.max != null && leaf.min > leaf.max) errors.add("settings-tree.json leaf $key min above max")
     if (leaf.choices != null && leaf.choices.isEmpty()) errors.add("settings-tree.json leaf $key empty choices")
-    if (leaf.typeName == "Enum" && leaf.choices != null) {
+    if ((leaf.typeName == "choice" || leaf.typeName == "Enum") && leaf.choices != null) {
         for (choice in leaf.choices) {
             val titled = leaf.choiceTitles[choice]
             if (titled == null) errors.add("settings-tree.json leaf $key choice $choice")
             else checkResource(titled, complete, errors)
         }
     }
-    if (leaf.typeName != "Int" && leaf.typeName != "Enum" && leaf.choices != null && leaf.typeName.isNotEmpty()) {
+    if (leaf.typeName != "number" && leaf.typeName != "Int" && leaf.typeName != "choice" && leaf.typeName != "Enum" && leaf.choices != null && leaf.typeName.isNotEmpty()) {
         errors.add("settings-tree.json leaf $key has choices")
     }
-    if (leaf.typeName == "Int" && leaf.choiceTitles.isNotEmpty()) errors.add("settings-tree.json leaf $key choiceTitles")
+    if ((leaf.typeName == "number" || leaf.typeName == "Int") && leaf.choiceTitles.isNotEmpty()) {
+        errors.add("settings-tree.json leaf $key choiceTitles")
+    }
+    if (leaf.typeName == "either" && (leaf.choiceTitles["false"] == null || leaf.choiceTitles["true"] == null)) {
+        errors.add("settings-tree.json leaf $key choiceTitles")
+    }
     if (!list && (leaf.minItems != null || leaf.maxItems != null || leaf.itemMin != null || leaf.itemMax != null)) {
         errors.add("settings-tree.json leaf $key has a list constraint")
     }
-    if (leaf.order != null && leaf.order !in setOf("nondecreasing", "increasing", "any")) {
+    if (leaf.many && leaf.order !in setOf("user", "sorted", "increasing")) {
         errors.add("settings-tree.json leaf $key order")
     }
+    if (!leaf.many && leaf.order != null) errors.add("settings-tree.json leaf $key order")
     if (leaf.pinerc != null && leaf.pinercFormat.isNullOrEmpty()) errors.add("settings-tree.json leaf $key pinercFormat")
     if (leaf.visibleWhen != null) checkCondition(leaf.visibleWhen, errors)
     if (leaf.enabledWhen != null) checkCondition(leaf.enabledWhen, errors)
@@ -490,31 +508,47 @@ private fun checkDefault(leaf: TreeLeaf): List<String> {
     val key = leaf.setting
     val value = leaf.default
     fun bad() = listOf("settings-tree.json leaf $key default")
+    val known = setOf(
+        "bool", "either", "number", "choice", "text", "password", "folder", "mailbox",
+        "checkServer", "clientCert", "pinerc", "settingsFile", "rules", "toolbar",
+        "paneLayout", "swipe", "Bool", "Int", "Long", "String", "Enum", "StringList", "IntList", "Encoded", "",
+    )
+    if (leaf.typeName !in known) return listOf("settings-tree.json leaf $key type")
+    if (leaf.typeName in unstoredTypes) return if (value is JsonValue.Null) emptyList() else bad()
     return when (leaf.typeName) {
-        "Bool" -> if (value is JsonValue.Bool) emptyList() else bad()
-        "Int", "Long" -> {
-            if (value !is JsonValue.Num) return bad()
-            if (numberRejection(key, leaf, value.value) != null) bad() else emptyList()
+        "bool", "either", "Bool" -> if (value is JsonValue.Bool) emptyList() else bad()
+        "number", "Int", "Long" -> {
+            if (leaf.many) {
+                if (value !is JsonValue.Arr || value.items.any { it !is JsonValue.Num }) return bad()
+                val nums = value.items.map { (it as JsonValue.Num).value }
+                if (leaf.order == "increasing" && nums.zipWithNext().any { (a, b) -> a >= b }) return bad()
+                emptyList()
+            } else {
+                if (value !is JsonValue.Num) return bad()
+                if (numberRejection(key, leaf, value.value) != null) bad() else emptyList()
+            }
         }
-        "String", "Encoded", "" -> if (value is JsonValue.Str || leaf.typeName.isEmpty()) {
-            if (leaf.typeName.isEmpty()) emptyList() else if (value is JsonValue.Str) emptyList() else bad()
-        } else bad()
-        "Enum" -> {
+        "text", "String", "Encoded", "mailbox", "clientCert", "paneLayout", "rules", "" -> when {
+            leaf.typeName.isEmpty() -> emptyList()
+            leaf.many && value is JsonValue.Arr -> emptyList()
+            !leaf.many && value is JsonValue.Str -> emptyList()
+            else -> bad()
+        }
+        "choice", "Enum" -> {
             if (value !is JsonValue.Str) return bad()
             if (leaf.choices != null && value.value !in leaf.choices) return bad()
             emptyList()
         }
+        "folder" -> if (value is JsonValue.Arr) emptyList() else bad()
+        "swipe", "toolbar" -> if (value is JsonValue.Obj) emptyList() else bad()
         "StringList" -> {
             if (value !is JsonValue.Arr || value.items.any { it !is JsonValue.Str }) bad() else emptyList()
         }
         "IntList" -> {
             if (value !is JsonValue.Arr || value.items.any { it !is JsonValue.Num }) return bad()
-            val nums = value.items.map { (it as JsonValue.Num).value }
-            if (!ordered(nums, leaf.order)) return bad()
-            if (nums.any { (leaf.itemMin != null && it < leaf.itemMin) || (leaf.itemMax != null && it > leaf.itemMax) }) return bad()
             emptyList()
         }
-        else -> listOf("settings-tree.json leaf $key type")
+        else -> emptyList()
     }
 }
 
@@ -526,8 +560,10 @@ private fun ordered(nums: List<Long>, order: String?): Boolean = when (order) {
 }
 
 fun numberRejection(key: String, leaf: TreeLeaf, value: Long): String? {
-    if (leaf.typeName != "Int" && leaf.typeName != "Long" && leaf.typeName.isNotEmpty()) return "$key rejected $value"
-    if ((leaf.typeName == "Int" || leaf.typeName.isEmpty()) && (value < Int.MIN_VALUE || value > Int.MAX_VALUE)) {
+    val numeric = leaf.typeName == "number" || leaf.typeName == "Int" || leaf.typeName == "Long" || leaf.typeName.isEmpty()
+    if (!numeric) return "$key rejected $value"
+    val fitsInt = leaf.typeName == "Int" || (leaf.typeName == "number" && leaf.max != null && leaf.max <= Int.MAX_VALUE && (leaf.min == null || leaf.min >= Int.MIN_VALUE))
+    if ((fitsInt || leaf.typeName.isEmpty()) && (value < Int.MIN_VALUE || value > Int.MAX_VALUE)) {
         return "$key rejected $value"
     }
     if (leaf.min != null && value < leaf.min) return "$key rejected $value"
@@ -622,6 +658,7 @@ private fun checkCondition(condition: Condition, errors: MutableList<String>) {
         is Condition.In -> if (condition.expected.isEmpty()) errors.add("settings-tree.json ${condition.setting} in")
         is Condition.Empty -> Unit
         is Condition.SdkAtLeast -> Unit
+        is Condition.Not -> checkCondition(condition.part, errors)
     }
 }
 
@@ -655,21 +692,22 @@ internal fun installBuiltTree(pages: List<TreeNode>) {
 
 private fun specOf(leaf: TreeLeaf): SettingSpec {
     val type = when (leaf.typeName) {
-        "Bool" -> SettingType.Bool
-        "Int" -> SettingType.Int
+        "bool", "either", "Bool" -> SettingType.Bool
+        "number", "Int" -> if (leaf.many) SettingType.IntList else if (leaf.max == null || leaf.max > Int.MAX_VALUE) SettingType.Long else SettingType.Int
         "Long" -> SettingType.Long
-        "Enum" -> SettingType.Enum
+        "choice", "Enum" -> SettingType.Enum
         "StringList" -> SettingType.StringList
         "IntList" -> SettingType.IntList
         "Encoded" -> SettingType.Encoded
+        "text" -> if (leaf.many) SettingType.StringList else SettingType.String
         else -> SettingType.String
     }
-    val control = when (leaf.kind) {
-        "number" -> ControlKind.Number
-        "bool" -> ControlKind.Bool
-        "choice" -> ControlKind.Choice
+    val control = when (leaf.typeName) {
+        "number", "Int", "Long" -> ControlKind.Number
+        "bool", "either", "Bool" -> ControlKind.Bool
+        "choice", "Enum" -> ControlKind.Choice
         "mailbox" -> ControlKind.Mailbox
-        "subscreen" -> ControlKind.Subscreen
+        "rules", "toolbar", "paneLayout", "swipe", "folder", "clientCert", "pinerc", "settingsFile", "checkServer" -> ControlKind.Subscreen
         else -> ControlKind.Text
     }
     val scope = if (leaf.scopeName == "ui") SettingScope.Ui else SettingScope.Account
@@ -731,18 +769,8 @@ fun rejectedAccountSettings(settings: Settings): String? {
 }
 
 fun globalRecordError(text: String): String? {
-    if (text.isBlank()) return null
-    for (line in text.lines()) {
-        if (line.isEmpty()) continue
-        val eq = line.indexOf('=')
-        if (eq <= 0) return "global_settings undecodable record"
-        val key = line.substring(0, eq)
-        val spec = settingsRegistry[key] ?: return "global_settings undecodable key $key"
-        if (spec.scope != SettingScope.Ui) return "global_settings undecodable key $key"
-        val value = line.substring(eq + 1)
-        if (!globalValueOk(spec, value)) return "global_settings undecodable key $key"
-    }
-    return null
+    if (documentError(text) == null) return null
+    return "global_settings undecodable record"
 }
 
 internal fun globalValueOk(spec: SettingSpec, value: String): Boolean {

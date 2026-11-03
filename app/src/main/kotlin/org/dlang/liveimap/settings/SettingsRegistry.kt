@@ -190,6 +190,60 @@ private class JsonParser(private val text: String) {
 
 fun parseJson(text: String): JsonValue = JsonParser(text).parse()
 
+fun encodeJson(value: JsonValue): String {
+    val out = StringBuilder()
+    fun write(item: JsonValue) {
+        when (item) {
+            is JsonValue.Obj -> {
+                out.append('{')
+                var first = true
+                for ((key, child) in item.fields) {
+                    if (!first) out.append(',')
+                    first = false
+                    out.append('"')
+                    appendJsonString(out, key)
+                    out.append("\":")
+                    write(child)
+                }
+                out.append('}')
+            }
+            is JsonValue.Arr -> {
+                out.append('[')
+                item.items.forEachIndexed { index, child ->
+                    if (index > 0) out.append(',')
+                    write(child)
+                }
+                out.append(']')
+            }
+            is JsonValue.Str -> {
+                out.append('"')
+                appendJsonString(out, item.value)
+                out.append('"')
+            }
+            is JsonValue.Num -> out.append(item.value.toString())
+            is JsonValue.Bool -> out.append(if (item.value) "true" else "false")
+            JsonValue.Null -> out.append("null")
+        }
+    }
+    write(value)
+    return out.toString()
+}
+
+private fun appendJsonString(out: StringBuilder, text: String) {
+    for (c in text) {
+        when (c) {
+            '"' -> out.append("\\\"")
+            '\\' -> out.append("\\\\")
+            '\b' -> out.append("\\b")
+            '\u000c' -> out.append("\\f")
+            '\n' -> out.append("\\n")
+            '\r' -> out.append("\\r")
+            '\t' -> out.append("\\t")
+            else -> if (c.code < 0x20) out.append("\\u%04x".format(c.code)) else out.append(c)
+        }
+    }
+}
+
 
 fun sha256Hex(bytes: ByteArray): String {
     val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
@@ -201,7 +255,7 @@ suspend fun startupSettingsError(context: Context): String? {
     SettingsTreeGenerated.warm()
     return try {
         SettingsHub.prepare(context)
-        ToolbarStore.install(SettingsHub.uiNow().toolbars)
+        ToolbarStore.install(SettingsHub.uiNow())
         null
     } catch (e: Exception) {
         e.message ?: "global_settings corrupt"
@@ -266,13 +320,12 @@ fun globalSettingsRecord(context: Context): Flow<String> =
     }
 
 suspend fun saveGlobal(context: Context, key: String, text: String) {
-    var stored = ""
-    context.globalSettingsDataStore.edit { prefs ->
-        val record = prefs[globalSettingsValue].orEmpty()
-        stored = updateGlobalRecord(record, key, text)
-        prefs[globalSettingsValue] = stored
-    }
+    val record = readGlobalRecord(context)
+    if (documentError(record) != null) throw IllegalArgumentException("global_settings undecodable record")
+    val next = decodeSettings(record).withSetting(key, SettingValue(text))
+    val stored = next.encodeUi()
+    writeGlobalRecord(context, stored)
     installGlobals(stored)
-    if (key == "toolbars") ToolbarStore.install(stored)
+    ToolbarStore.install(next)
 }
 

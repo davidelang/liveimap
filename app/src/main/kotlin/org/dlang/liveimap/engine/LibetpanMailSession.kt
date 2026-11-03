@@ -55,9 +55,9 @@ import org.dlang.liveimap.session.sameImapIdentity
 import org.dlang.liveimap.session.plusFallback
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SettingsHub
-import org.dlang.liveimap.settings.Compression
+
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.MoveMethod
+
 import org.dlang.liveimap.settings.SmtpNoAuth
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.StartRule
@@ -331,7 +331,7 @@ class LibetpanMailSession(
             account.readTimeoutSec,
             account.idleRenewMinutes * 60,
             account.idleWakeSeconds * 1000,
-            account.maxResultUids,
+            account.maxResultUids.toInt(),
             trafficDirectory(account),
             roll,
         )
@@ -365,7 +365,7 @@ class LibetpanMailSession(
                 if (logTurnedOn && compressed) {
                     close()
                 } else {
-                    nativeSetSessionFlags(handle, account.pipelineCommands)
+                    nativeSetSessionFlags(handle, !account.pipelineCommands)
                     applyLimits(handle, account)
                     this.account = account
                     return OpenResult.Connected
@@ -518,7 +518,7 @@ class LibetpanMailSession(
                 account.smtpHost,
                 account.smtpPort,
                 from,
-                account.pipelineCommands,
+                !account.pipelineCommands,
                 account.tlsMode.name,
                 account.smtpTlsMode.name,
                 account.certPin,
@@ -538,7 +538,7 @@ class LibetpanMailSession(
                 account.smtpHost,
                 account.smtpPort,
                 from,
-                account.pipelineCommands,
+                !account.pipelineCommands,
                 account.tlsMode.name,
                 account.smtpTlsMode.name,
                 account.certPin,
@@ -616,7 +616,7 @@ class LibetpanMailSession(
             nativeEnable(connected.handle, "UTF8=ACCEPT")
             utf8Names = true
         }
-        if (featureCaps.compressDeflate && !account.logImapTraffic && account.compression == Compression.On) {
+        if (featureCaps.compressDeflate && !account.logImapTraffic && !account.compression) {
             nativeCompress(connected.handle)
             compressed = true
         }
@@ -897,6 +897,14 @@ class LibetpanMailSession(
         }
     }
 
+    override suspend fun expungeAllDeleted() {
+        keeper.write("expunge") {
+            forgetSelected()
+            ensureReadWrite()
+            nativePlainExpunge(requireHandle())
+        }
+    }
+
     override suspend fun uidExpunge(uids: List<Long>) {
         if (uids.isEmpty()) return
         keeper.write("expunge") {
@@ -917,7 +925,7 @@ class LibetpanMailSession(
                 requireHandle(),
                 uids.toLongArray(),
                 wire(targetMailbox),
-                moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
+                moveCommandKind(account?.disableImapMove ?: false, featureCaps.move),
             ) ?: return@write
             copiedUidStore = moved.copiedUids
             copiedEpochStore = moved.targetEpoch
@@ -951,7 +959,7 @@ class LibetpanMailSession(
             val moved = nativeCopyAllThenDelete(
                 requireHandle(),
                 wire(targetMailbox),
-                moveCommandKind(account?.moveMethod ?: MoveMethod.CopyThenMarkDeleted, featureCaps.move),
+                moveCommandKind(account?.disableImapMove ?: false, featureCaps.move),
             ) ?: return@write
             copiedUidStore = moved.copiedUids
             copiedEpochStore = moved.targetEpoch
@@ -2201,7 +2209,7 @@ class LibetpanMailSession(
             account.smtpHost,
             account.smtpPort,
             from,
-            account.pipelineCommands,
+            !account.pipelineCommands,
             account.tlsMode.name,
             account.smtpTlsMode.name,
             account.certPin,
@@ -2535,6 +2543,7 @@ class LibetpanMailSession(
     private external fun nativeStoreFlags(handle: Long, uids: LongArray, add: Array<String>, remove: Array<String>)
     private external fun nativeStoreFlagsAll(handle: Long, add: Array<String>, remove: Array<String>)
     private external fun nativeUidExpungeDeleted(handle: Long)
+    private external fun nativePlainExpunge(handle: Long)
     private external fun nativeUidExpunge(handle: Long, uids: LongArray)
     private external fun nativeCopyThenDelete(handle: Long, uids: LongArray, target: String, moveKind: String): CopyMoveResult?
     private external fun nativeCopyAllThenDelete(handle: Long, target: String, moveKind: String): CopyMoveResult?

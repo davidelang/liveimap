@@ -8404,6 +8404,17 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeStoreFlagsAll(JNIEnv * 
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_org_dlang_liveimap_engine_LibetpanMailSession_nativePlainExpunge(JNIEnv * env, jobject, jlong handle) {
+    withOwnerCall(env, handle, [&](JNIEnv * env) -> void {
+    LiveSession * session = lockImapSession(env, handle);
+    if (session == nullptr) return;
+    int r = mailimap_expunge(session->imap);
+    if (!cmdOk(r)) throwImap(env, session, r, "expunge failed");
+    unlockSession(session);
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeUidExpungeDeleted(JNIEnv * env, jobject, jlong handle) {
     withOwnerCall(env, handle, [&](JNIEnv * env) -> void {
 

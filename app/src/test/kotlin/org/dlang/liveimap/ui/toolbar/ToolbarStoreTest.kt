@@ -6,9 +6,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import org.dlang.liveimap.settings.readUiLine
+import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.settingsRegistry
-import org.dlang.liveimap.settings.updateGlobalRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -26,10 +25,10 @@ class ToolbarStoreTest {
         try {
         ToolbarStore.install("")
         assertEquals(defaultIndexBar(), ToolbarStore.indexBar())
-        assertEquals(2, ToolbarStore.toolbarRows())
+        assertEquals(2, ToolbarStore.indexRows())
         val moved = moveIndexAction(defaultIndexBar(), IndexBarAction.Search, BarSection.Overflow)
-        ToolbarStore.replace(ToolbarStore.record.copy(indexBar = moved, toolbarRows = 3))
-        val encoded = ToolbarStore.encodeValue()
+        ToolbarStore.replace(ToolbarStore.record.copy(indexBar = moved.copy(rows = 3)))
+        val encoded = Settings(indexBar = moved.copy(rows = 3)).encodeUi()
         val dir = File("build/tmp/toolbar-store-test").apply { mkdirs() }
         val file = File(dir, "global.preferences_pb")
         if (file.exists()) file.delete()
@@ -37,17 +36,15 @@ class ToolbarStoreTest {
         val key = stringPreferencesKey("value")
         store.edit { prefs ->
             prefs.clear()
-            prefs[key] = updateGlobalRecord("", "toolbars", encoded)
+            prefs[key] = encoded
         }
         val prefs = store.data.first()
         assertEquals(setOf("value"), prefs.asMap().keys.map { it.name }.toSet())
         val value = prefs[key] ?: error("value")
-        assertTrue(value.startsWith("toolbars="))
-        assertEquals(1, value.lines().count { it.isNotEmpty() })
+        assertTrue(value.trimStart().startsWith("{"))
         ToolbarStore.install(value)
-        assertEquals(moved, ToolbarStore.indexBar())
-        assertEquals(3, ToolbarStore.toolbarRows())
-        assertEquals(encoded, readUiLine(value, "toolbars"))
+        assertEquals(moved.copy(rows = 3), ToolbarStore.indexBar())
+        assertEquals(3, ToolbarStore.indexRows())
         } finally {
             ToolbarStore.replace(previous)
         }

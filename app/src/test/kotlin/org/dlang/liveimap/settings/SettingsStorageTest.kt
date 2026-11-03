@@ -24,7 +24,7 @@ class SettingsStorageTest {
     fun emptyUiStringGivesDefaultToolbars() {
         ToolbarStore.install("")
         assertEquals(defaultIndexBar(), ToolbarStore.indexBar())
-        assertEquals(2, ToolbarStore.toolbarRows())
+        assertEquals(2, ToolbarStore.indexRows())
     }
 
     @Test
@@ -35,28 +35,31 @@ class SettingsStorageTest {
         val store = PreferenceDataStoreFactory.create { file }
         val key = stringPreferencesKey("value")
         ToolbarStore.install("")
-        val encoded = ToolbarStore.encodeValue()
+        val encoded = Settings().encodeUi()
         store.edit { prefs ->
-            val stored = updateGlobalRecord(prefs[key].orEmpty(), "toolbars", encoded)
             prefs.clear()
-            prefs[key] = stored
+            prefs[key] = encoded
         }
         val prefs = store.data.first()
         assertEquals(setOf("value"), prefs.asMap().keys.map { it.name }.toSet())
         val value = prefs[key] ?: error("missing value")
-        assertEquals("toolbars=$encoded", value)
+        assertTrue(value.trimStart().startsWith("{"))
         ToolbarStore.install(value)
-        assertEquals(encoded, readUiLine(value, "toolbars"))
+        assertEquals(defaultIndexBar(), ToolbarStore.indexBar())
     }
 
     @Test
     fun accountToolbarLinesDoNotChangeTheUiRecord() {
-        ToolbarStore.install("indexPageSize=60")
+        ToolbarStore.install(Settings(indexPageSize = 60).encodeUi())
         val before = ToolbarStore.encodeValue()
-        decodeSettings("indexBar=zzz\ntoolbarRows=9\nfriendlyName=A\n")
+        try {
+            decodeSettings("indexBar=zzz\ntoolbarRows=9\nfriendlyName=A\n")
+            error("key=value is not a settings document")
+        } catch (_: SettingsDocumentException) {
+        }
         assertEquals(before, ToolbarStore.encodeValue())
-        assertEquals("A", decodeSettings("indexBar=zzz\nfriendlyName=A\n").friendlyName)
-        assertFalse(Settings(friendlyName = "A").encode().contains("indexBar="))
+        assertEquals("A", decodeSettings("{\"friendlyName\":\"A\"}").friendlyName)
+        assertFalse(Settings(friendlyName = "A").encode().contains("indexBar"))
     }
 }
 

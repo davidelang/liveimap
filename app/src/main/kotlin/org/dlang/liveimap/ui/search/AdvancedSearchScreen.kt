@@ -180,7 +180,7 @@ private fun restoreDraftRows(saved: String): List<AdvancedDraft> {
 internal fun bodyPromptExists(scope: SearchScope, currentExists: Int, scopeExists: Int): Int =
     if (scope == SearchScope.Current) currentExists else scopeExists
 
-internal fun bodyPromptSkipped(scope: SearchScope, mailbox: String, skip: Set<String>): Boolean =
+internal fun bodyPromptSkipped(scope: SearchScope, mailbox: String, skip: Collection<String>): Boolean =
     scope == SearchScope.Current && mailbox in skip
 
 @Composable

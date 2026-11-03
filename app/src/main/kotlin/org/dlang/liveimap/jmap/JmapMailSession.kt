@@ -259,7 +259,7 @@ class JmapMailSession(
             val loginPassword = passwordOf(account)
             val loginAuthorization = jmapBasicAuthorization(account.username, loginPassword)
             val offer = try {
-                io { JmapResponseCap.use(account.maxJmapResponseBytes) { discover(account, loginAuthorization) } }
+                io { JmapResponseCap.use(account.maxJmapResponseBytes.toInt()) { discover(account, loginAuthorization) } }
             } catch (pinOffer: JmapPinOffer) {
                 // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
                 val shown = PeerTrust.offer(pinOffer.ders)
@@ -270,7 +270,7 @@ class JmapMailSession(
                 savePin(prompt.fingerprint)
                 trusted = account.copy(jmapCertPin = prompt.fingerprint)
                 try {
-                    io { JmapResponseCap.use(trusted.maxJmapResponseBytes) { discover(trusted, loginAuthorization) } }
+                    io { JmapResponseCap.use(trusted.maxJmapResponseBytes.toInt()) { discover(trusted, loginAuthorization) } }
                 } catch (again: JmapPinOffer) {
                     throw JmapFailure(again.text)
                 }
@@ -384,6 +384,9 @@ class JmapMailSession(
 
     override suspend fun uidExpungeDeleted() {
         // JMAP has no \Deleted: nothing is ever marked, so there is nothing to expunge.
+    }
+
+    override suspend fun expungeAllDeleted() {
     }
 
     override suspend fun uidExpunge(uids: List<Long>) {
@@ -818,7 +821,7 @@ class JmapMailSession(
             if (verdict.isNotEmpty()) throw JmapFailure(verdict)
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
-            val body = jmapNet { JmapResponseCap.use(account?.maxJmapResponseBytes ?: JmapMaxBody) { exchange.body() } }
+            val body = jmapNet { JmapResponseCap.use(account?.maxJmapResponseBytes?.toInt() ?: JmapMaxBody) { exchange.body() } }
             return if (body.isBlank()) emptyList() else parseJmapPushEvents(body)
         } finally {
             if (run.stream === exchange) run.stream = null
@@ -1066,7 +1069,7 @@ class JmapMailSession(
 
     private suspend fun <T> jmap(block: () -> T): T = io {
         try {
-            JmapResponseCap.use(account?.maxJmapResponseBytes ?: JmapMaxBody, block)
+            JmapResponseCap.use(account?.maxJmapResponseBytes?.toInt() ?: JmapMaxBody, block)
         } catch (failure: JmapFailure) {
             throw MailFailure(failure.text)
         }
@@ -1097,7 +1100,7 @@ class JmapMailSession(
 
     private fun jmapWindow(): Int = account?.jmapMaxWindow ?: 120
 
-    private fun stopWatchWaitMs(): Long = account?.jmapStopWatchWaitMs ?: 5_000L
+    private fun stopWatchWaitMs(): Long = account?.jmapStopWatchWaitMs?.toLong() ?: 5_000L
 
     companion object {
         const val DELIMITER = '/'

@@ -1390,6 +1390,14 @@ private fun LiveImapNavHostReady() {
                     }
                 }
             },
+            onManageAddresses = {
+                navigateFromDrawer {
+                    val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
+                    if (!chosen.isNullOrEmpty()) {
+                        navController.navigate("settings/account/$chosen/editor/addressBooks")
+                    }
+                }
+            },
             onHelp = {
                 navigateFromDrawer {
                     navController.navigate("help") {
@@ -1779,6 +1787,7 @@ private fun ColumnScope.DrawerSheetContent(
     onEditFilters: () -> Unit,
     showFilters: Boolean,
     onSettings: () -> Unit,
+    onManageAddresses: () -> Unit = {},
     onHelp: () -> Unit,
     onAbout: () -> Unit,
 ) {
@@ -1911,6 +1920,11 @@ private fun ColumnScope.DrawerSheetContent(
         label = { Text(stringResource(R.string.drawer_settings)) },
         selected = false,
         onClick = { UnsavedEdits.guard(onSettings) },
+    )
+    NavigationDrawerItem(
+        label = { Text(stringResource(R.string.drawer_manage_addresses)) },
+        selected = false,
+        onClick = { UnsavedEdits.guard(onManageAddresses) },
     )
     NavigationDrawerItem(
         label = { Text(stringResource(R.string.help_title)) },

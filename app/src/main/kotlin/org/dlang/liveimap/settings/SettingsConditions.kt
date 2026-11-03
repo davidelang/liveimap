@@ -9,6 +9,7 @@ sealed class Condition {
     data class All(val parts: List<Condition>) : Condition()
     data class AnyOf(val parts: List<Condition>) : Condition()
     data class Empty(val setting: String) : Condition()
+    data class Not(val part: Condition) : Condition()
 }
 
 fun Condition.holds(read: (String) -> String, sdk: Int): Boolean = when (this) {
@@ -19,6 +20,7 @@ fun Condition.holds(read: (String) -> String, sdk: Int): Boolean = when (this) {
     is Condition.Equals -> sameValue(expected, read(setting))
     is Condition.NotEquals -> !sameValue(expected, read(setting))
     is Condition.In -> read(setting) in expected
+    is Condition.Not -> !part.holds(read, sdk)
 }
 
 fun parseCondition(value: JsonValue, path: String): Condition {
@@ -40,6 +42,10 @@ fun parseCondition(value: JsonValue, path: String): Condition {
             Condition.SdkAtLeast(n.value.toInt())
         }
         "setting" in keys -> parseSettingCondition(obj, path)
+        "not" in keys -> {
+            requireConditionKeys(keys, setOf("not"), path)
+            Condition.Not(parseCondition(obj.fields.getValue("not"), path))
+        }
         else -> throw SettingsTreeParseException("$path condition")
     }
 }

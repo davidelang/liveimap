@@ -25,7 +25,7 @@ class SettingsTreeCoverageTest {
         for (key in listOf(
             "indexPageSize", "swipeThresholdPercent", "reconnectDelaysSec",
             "maxRawViewBytes", "maxImageTrustBytes", "moveChunk", "clientSortChunk",
-            "toolbars",
+            "indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar",
         )) {
             assertEquals(key, "ui", byKey.getValue(key).scopeName)
         }
@@ -34,7 +34,7 @@ class SettingsTreeCoverageTest {
         assertFalse(byKey.getValue("indexPageSize").hidden)
         assertFalse(byKey.getValue("friendlyName").hidden)
         for (key in listOf(
-            "settingsLastEditedAccount", "toolbars", "defaultAccount", "trafficRetentionDays",
+            "settingsLastEditedAccount", "defaultAccount", "trafficRetentionDays",
             "linkCheckMaxScanBytes", "linkCheckMaxAnchors", "pinercMaxBytes",
             "authenticatorLifeMinutes", "longSearchPollMs",
         )) {

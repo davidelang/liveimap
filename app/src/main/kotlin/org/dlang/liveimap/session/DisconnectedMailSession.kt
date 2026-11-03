@@ -36,6 +36,8 @@ class DisconnectedMailSession : MailSession {
 
     override suspend fun uidExpungeDeleted(): Unit = notConnected()
 
+    override suspend fun expungeAllDeleted(): Unit = notConnected()
+
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>): Unit = notConnected()
 
     override suspend fun uidExpunge(uids: List<Long>): Unit = notConnected()

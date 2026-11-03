@@ -7,5 +7,5 @@ const val IdleDroppedText = "IDLE dropped by server"
 fun idleDroppedByServer(failureText: String?): Boolean = failureText?.startsWith(IdleDroppedText) == true
 
 /** Poll interval for the IDLE fallback: [pollSeconds] when polling is on, otherwise the off-path wait. */
-fun idleFallbackSeconds(pollForNewMail: Boolean, pollSeconds: Int, idleFallbackSeconds: Int): Int =
-    if (pollForNewMail) pollSeconds else idleFallbackSeconds
+fun idleFallbackSeconds(pollForNewMail: Boolean, pollSeconds: Int, idleFallbackSeconds: Long): Int =
+    if (pollForNewMail) pollSeconds else idleFallbackSeconds.toInt()

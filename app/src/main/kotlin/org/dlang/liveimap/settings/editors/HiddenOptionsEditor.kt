@@ -179,7 +179,7 @@ internal fun HiddenOptionsEditor(editor: SettingsEditor) {
         BoolField(token, hidden) { on ->
             val next = settings.hiddenCapabilities
                 .filterNot { it.equals(token, ignoreCase = true) }
-                .toMutableSet()
+                .toMutableList()
             if (on) next.add(token)
             editor.persist(editor.settings.copy(hiddenCapabilities = next))
         }

@@ -142,6 +142,7 @@ class RoutedMailSession(
     override suspend fun storeFlagsAll(add: Set<String>, remove: Set<String>): Unit = current().storeFlagsAll(add, remove)
 
     override suspend fun uidExpungeDeleted(): Unit = current().uidExpungeDeleted()
+    override suspend fun expungeAllDeleted(): Unit = current().expungeAllDeleted()
 
     override suspend fun uidExpunge(uids: List<Long>): Unit = current().uidExpunge(uids)
 

@@ -18,15 +18,13 @@
               "children": [
                 {
                   "setting": "friendlyName",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Friendly name"
                 },
                 {
                   "setting": "email",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Email",
                   "pinerc": "user-domain",
@@ -34,8 +32,7 @@
                 },
                 {
                   "setting": "displayName",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Display name",
                   "pinerc": "personal-name",
@@ -43,13 +40,14 @@
                 },
                 {
                   "setting": "altAddresses",
-                  "type": "StringList",
-                  "kind": "text",
+                  "type": "text",
                   "default": [],
                   "title": "Alternate addresses",
                   "pinerc": "alt-addresses",
                   "pinercFormat": "list",
-                  "format": "commaList"
+                  "format": "commaList",
+                  "many": true,
+                  "order": "user"
                 }
               ],
               "summary": [
@@ -77,22 +75,23 @@
               "children": [
                 {
                   "setting": "jmapFolders",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "either",
                   "default": false,
-                  "title": "Mail access"
+                  "title": "Mail access",
+                  "choiceTitles": {
+                    "false": "IMAP",
+                    "true": "JMAP"
+                  }
                 },
                 {
                   "setting": "maxJmapResponseBytes",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 16777216,
                   "title": "Largest JMAP server response"
                 },
                 {
                   "setting": "jmapPartCacheMessages",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 200,
                   "title": "JMAP part cache",
                   "min": 1,
@@ -119,8 +118,7 @@
               "children": [
                 {
                   "setting": "imapHost",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "IMAP host",
                   "server": true,
@@ -138,8 +136,7 @@
                 },
                 {
                   "setting": "imapPort",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 993,
                   "title": "IMAP port",
                   "server": true,
@@ -154,8 +151,7 @@
                 },
                 {
                   "setting": "username",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Username",
                   "pinerc": "user-id",
@@ -163,8 +159,7 @@
                 },
                 {
                   "setting": "tlsMode",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Implicit",
                   "title": "TLS",
                   "server": true,
@@ -187,8 +182,7 @@
                 },
                 {
                   "setting": "allowPlaintextAuth",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Allow a clear-text password",
                   "visibleWhen": {
@@ -198,8 +192,7 @@
                 },
                 {
                   "setting": "acceptInvalidCert",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Accept invalid certificate",
                   "visibleWhen": {
@@ -211,8 +204,7 @@
                 },
                 {
                   "setting": "allowOldTls",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Allow old TLS and weak keys",
                   "visibleWhen": {
@@ -222,8 +214,7 @@
                 },
                 {
                   "setting": "authMechanism",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Authentication mechanism",
                   "visibleWhen": {
@@ -233,22 +224,18 @@
                 },
                 {
                   "setting": "clientCertAlias",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "clientCert",
                   "default": "",
                   "title": "Client certificate alias",
                   "server": true,
                   "visibleWhen": {
                     "setting": "jmapFolders",
                     "equals": false
-                  },
-                  "editor": "clientCert",
-                  "opens": "inline"
+                  }
                 },
                 {
                   "setting": "certPin",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Certificate pin",
                   "server": true,
@@ -259,18 +246,30 @@
                 },
                 {
                   "setting": "jmapCertPin",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "JMAP certificate pin",
                   "server": true
                 },
                 {
-                  "setting": "pipelineCommands",
-                  "type": "Bool",
-                  "kind": "bool",
-                  "default": true,
-                  "title": "Pipeline IMAP commands"
+                  "setting": "checkServer",
+                  "type": "checkServer",
+                  "title": "Check server"
+                },
+                {
+                  "setting": "imapPassword",
+                  "type": "password",
+                  "title": "IMAP password"
+                },
+                {
+                  "setting": "smtpPassword",
+                  "type": "password",
+                  "title": "SMTP password"
+                },
+                {
+                  "setting": "sievePassword",
+                  "type": "password",
+                  "title": "Sieve password"
                 }
               ],
               "summary": [
@@ -325,15 +324,13 @@
               "children": [
                 {
                   "setting": "emailSubmission",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "JMAP EmailSubmission"
                 },
                 {
                   "setting": "smtpNoAuth",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Off",
                   "title": "On sends with no SMTP login",
                   "choices": [
@@ -351,8 +348,7 @@
                 },
                 {
                   "setting": "smtpHost",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "SMTP host",
                   "server": true,
@@ -365,8 +361,7 @@
                 },
                 {
                   "setting": "smtpPort",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 465,
                   "title": "SMTP port",
                   "server": true,
@@ -381,8 +376,7 @@
                 },
                 {
                   "setting": "smtpTlsMode",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Implicit",
                   "title": "SMTP TLS",
                   "server": true,
@@ -405,8 +399,7 @@
                 },
                 {
                   "setting": "smtpUsername",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "SMTP username",
                   "server": true,
@@ -423,8 +416,7 @@
                 },
                 {
                   "setting": "smtpSameAsImap",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Same as IMAP password",
                   "visibleWhen": {
@@ -438,16 +430,14 @@
                 },
                 {
                   "setting": "sieveSameAsInbound",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Same as inbound server and login",
                   "server": true
                 },
                 {
                   "setting": "sieveHost",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Sieve host",
                   "server": true,
@@ -460,8 +450,7 @@
                 },
                 {
                   "setting": "sieveUsername",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Sieve user name",
                   "server": true,
@@ -472,8 +461,7 @@
                 },
                 {
                   "setting": "passwordStorage",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "googleRestore",
                   "title": "Password storage",
                   "server": true,
@@ -490,8 +478,7 @@
                 },
                 {
                   "setting": "sievePort",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 4190,
                   "title": "Sieve port",
                   "server": true,
@@ -500,8 +487,7 @@
                 },
                 {
                   "setting": "sieveTlsMode",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "StartTls",
                   "title": "Sieve TLS",
                   "server": true,
@@ -518,24 +504,21 @@
                 },
                 {
                   "setting": "sieveCertPin",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Sieve certificate pin",
                   "server": true
                 },
                 {
                   "setting": "sieveConnectSeconds",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 30,
                   "title": "Sieve connect timeout",
                   "server": true
                 },
                 {
                   "setting": "sieveReadSeconds",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 60,
                   "title": "Sieve read timeout",
                   "server": true
@@ -577,35 +560,15 @@
               "children": [
                 {
                   "setting": "watchedFolders",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
                   "title": "Watched folders",
-                  "editor": "folderLists",
-                  "opens": "screen"
-                },
-                {
-                  "setting": "extraIdleBudget",
-                  "type": "Int",
-                  "kind": "number",
-                  "default": 2,
-                  "title": "Connections for watched folders (within the maximum)",
-                  "min": 0,
-                  "max": 8
-                },
-                {
-                  "setting": "maxConnections",
-                  "type": "Int",
-                  "kind": "number",
-                  "default": 8,
-                  "title": "Most connections to the server",
-                  "min": 2,
-                  "max": 20
+                  "many": true,
+                  "order": "user"
                 },
                 {
                   "setting": "connectTimeoutSec",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 30,
                   "title": "Mail server connect timeout",
                   "min": 1,
@@ -613,8 +576,7 @@
                 },
                 {
                   "setting": "readTimeoutSec",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 60,
                   "title": "Mail server read timeout",
                   "min": 1,
@@ -648,19 +610,17 @@
               "children": [
                 {
                   "setting": "sendingRules",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "rules",
                   "default": "",
                   "title": "Sending rules",
                   "pinerc": "patterns-roles",
                   "pinercFormat": "roles",
-                  "editor": "rules",
-                  "opens": "screen"
+                  "many": true,
+                  "order": "user"
                 },
                 {
                   "setting": "signature",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Signature",
                   "pinerc": "literal-signature",
@@ -668,8 +628,7 @@
                 },
                 {
                   "setting": "sigDashes",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Start signature with “-- ”",
                   "pinerc": "feature-list",
@@ -677,8 +636,7 @@
                 },
                 {
                   "setting": "sigAtBottom",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Signature at bottom when replying above the quote",
                   "pinerc": "feature-list",
@@ -686,8 +644,7 @@
                 },
                 {
                   "setting": "quotePrefix",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "> ",
                   "title": "Reply quote prefix",
                   "pinerc": "reply-indent-string",
@@ -695,8 +652,7 @@
                 },
                 {
                   "setting": "replyLeadIn",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "On {date}, {from} wrote:",
                   "title": "Reply lead-in ({date}, {from}, {name}, {subject})",
                   "pinerc": "reply-leadin",
@@ -704,8 +660,7 @@
                 },
                 {
                   "setting": "dsnMode",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Off",
                   "title": "Delivery status notifications",
                   "choices": [
@@ -725,8 +680,7 @@
                 },
                 {
                   "setting": "composerHeaders",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Composer headers (e.g. Reply-To, X-Priority)",
                   "pinerc": "customized-hdrs",
@@ -734,12 +688,11 @@
                 },
                 {
                   "setting": "inboundRules",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "rules",
                   "default": "",
                   "title": "Inbound rules",
-                  "editor": "rules",
-                  "opens": "screen"
+                  "many": true,
+                  "order": "user"
                 }
               ],
               "summary": [
@@ -755,6 +708,11 @@
                   ]
                 }
               ]
+            },
+            {
+              "setting": "accountSettingsFile",
+              "type": "settingsFile",
+              "title": "Import or export this account"
             }
           ],
           "summary": [
@@ -786,8 +744,7 @@
               "children": [
                 {
                   "setting": "sentMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
+                  "type": "mailbox",
                   "default": "",
                   "title": "Sent mailbox",
                   "pinerc": "default-fcc",
@@ -795,33 +752,21 @@
                 },
                 {
                   "setting": "postponedMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
+                  "type": "mailbox",
                   "default": "",
                   "title": "Postponed mailbox",
                   "pinerc": "postponed-folder",
                   "pinercFormat": "folder"
                 },
                 {
-                  "setting": "addressBookMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
-                  "default": "",
-                  "title": "Save contacts to",
-                  "pinerc": "address-book",
-                  "pinercFormat": "books"
-                },
-                {
                   "setting": "spamMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
+                  "type": "mailbox",
                   "default": "",
                   "title": "Spam mailbox"
                 },
                 {
                   "setting": "trashMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
+                  "type": "mailbox",
                   "default": "",
                   "title": "Trash mailbox"
                 }
@@ -834,7 +779,6 @@
                       "countSet": [
                         "sentMailbox",
                         "postponedMailbox",
-                        "addressBookMailbox",
                         "spamMailbox",
                         "trashMailbox"
                       ]
@@ -852,7 +796,6 @@
                   "countSet": [
                     "sentMailbox",
                     "postponedMailbox",
-                    "addressBookMailbox",
                     "spamMailbox",
                     "trashMailbox"
                   ]
@@ -875,24 +818,21 @@
               "children": [
                 {
                   "setting": "showUnreadCounts",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Show unread counts"
                 },
                 {
                   "setting": "expandedFolders",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
                   "title": "Expanded folders",
-                  "editor": "folderLists",
-                  "opens": "screen"
+                  "many": true,
+                  "order": "user"
                 },
                 {
                   "setting": "folderCountFreshSeconds",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 300,
                   "title": "Refresh folder counts after",
                   "min": 1,
@@ -914,8 +854,7 @@
               "children": [
                 {
                   "setting": "defaultView",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": "Arrival|newest",
                   "title": "Default view",
                   "pinerc": "sort-key",
@@ -923,17 +862,13 @@
                 },
                 {
                   "setting": "folderViews",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": "",
-                  "title": "Folder views",
-                  "editor": "folderLists",
-                  "opens": "screen"
+                  "title": "Folder views"
                 },
                 {
                   "setting": "threadIndexStyle",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Expanded",
                   "title": "Thread index",
                   "choices": [
@@ -976,8 +911,7 @@
               "children": [
                 {
                   "setting": "inboxStart",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Newest",
                   "title": "INBOX opens at",
                   "choices": [
@@ -1005,8 +939,7 @@
                 },
                 {
                   "setting": "folderStart",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Newest",
                   "title": "Other folders open at",
                   "choices": [
@@ -1032,17 +965,13 @@
                 },
                 {
                   "setting": "folderStarts",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": "",
-                  "title": "Start position per folder",
-                  "editor": "folderLists",
-                  "opens": "screen"
+                  "title": "Start position per folder"
                 },
                 {
                   "setting": "startAfterChange",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "RerunRule",
                   "title": "After a sort, direction, filter or search change",
                   "choices": [
@@ -1056,22 +985,19 @@
                 },
                 {
                   "setting": "showRecentRules",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Show \\Recent-based rules"
                 },
                 {
                   "setting": "openAtInIndexMenu",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "'Open at' in the index menu"
                 },
                 {
                   "setting": "pinercStartDefault",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "LeaveUnchanged",
                   "title": "When a pinerc has no incoming-startup-rule",
                   "choices": [
@@ -1103,78 +1029,79 @@
               "children": [
                 {
                   "setting": "askSort",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": -1,
                   "title": "Ask before sorting folders larger than"
                 },
                 {
                   "setting": "askThread",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": -1,
                   "title": "Ask before threading folders larger than"
                 },
                 {
                   "setting": "askSearch",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": -1,
                   "title": "Ask before searching folders larger than"
                 },
                 {
                   "setting": "askFallback",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": -1,
                   "title": "Ask before a fallback on folders larger than"
                 },
                 {
                   "setting": "sortAskSkip",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
-                  "title": "Do not ask again for this sort"
+                  "title": "Do not ask again for this sort",
+                  "many": true,
+                  "order": "sorted"
                 },
                 {
                   "setting": "threadAskSkip",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
-                  "title": "Do not ask again for this thread"
+                  "title": "Do not ask again for this thread",
+                  "many": true,
+                  "order": "sorted"
                 },
                 {
                   "setting": "searchAskSkip",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
-                  "title": "Do not ask again for this search"
+                  "title": "Do not ask again for this search",
+                  "many": true,
+                  "order": "sorted"
                 },
                 {
                   "setting": "fallbackAskSkip",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": [],
-                  "title": "Do not ask again for this fallback"
+                  "title": "Do not ask again for this fallback",
+                  "many": true,
+                  "order": "sorted"
                 },
                 {
                   "setting": "savedSearches",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": "",
-                  "title": "Saved searches"
+                  "title": "Saved searches",
+                  "many": true,
+                  "order": "user"
                 },
                 {
                   "setting": "savedAdvanced",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "text",
                   "default": "",
-                  "title": "Saved advanced searches"
+                  "title": "Saved advanced searches",
+                  "many": true,
+                  "order": "user"
                 },
                 {
                   "setting": "maxResultUids",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 2000000,
                   "title": "Most search results",
                   "min": 1
@@ -1221,15 +1148,13 @@
               "children": [
                 {
                   "setting": "markSeenOnOpen",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Mark seen on open"
                 },
                 {
                   "setting": "bodyView",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "PlainOrError",
                   "title": "Message view",
                   "choices": [
@@ -1249,16 +1174,14 @@
                 },
                 {
                   "setting": "preferHtml",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Prefer HTML",
                   "derived": true
                 },
                 {
                   "setting": "readerTextLayout",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Text",
                   "title": "Message text layout",
                   "choices": [
@@ -1273,18 +1196,8 @@
                   }
                 },
                 {
-                  "setting": "bodyFetchChunk",
-                  "type": "Int",
-                  "kind": "number",
-                  "default": 65536,
-                  "title": "Bytes per body fetch",
-                  "min": 1024,
-                  "max": 1048576
-                },
-                {
                   "setting": "viewerHeaders",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Headers shown when reading (e.g. List-Id)",
                   "pinerc": "viewer-hdrs",
@@ -1292,8 +1205,7 @@
                 },
                 {
                   "setting": "nonAsciiDisplay",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "HighlightSuspicious",
                   "title": "Unusual characters (folders, senders, subjects)",
                   "choices": [
@@ -1310,6 +1222,12 @@
                     "Warn": "Warn on look-alikes",
                     "Escape": "Show as code points"
                   }
+                },
+                {
+                  "setting": "unlabeledCharset",
+                  "type": "text",
+                  "default": "ISO-8859-1",
+                  "title": "Charset of unlabeled text"
                 }
               ],
               "summary": [
@@ -1328,22 +1246,19 @@
               "children": [
                 {
                   "setting": "showDeleted",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Show deleted"
                 },
                 {
                   "setting": "autoExpunge",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Auto-expunge"
                 },
                 {
                   "setting": "askBeforeExpunge",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Confirm before expunge",
                   "pinerc": "feature-list",
@@ -1351,8 +1266,7 @@
                 },
                 {
                   "setting": "deletePolicy",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "MarkDeleted",
                   "title": "Delete button",
                   "choices": [
@@ -1364,50 +1278,19 @@
                     "MarkDeleted": "Mark as deleted",
                     "MoveToTrash": "Move to Trash",
                     "DeletePermanently": "Delete permanently"
-                  },
-                  "editor": "deletePolicy",
-                  "opens": "inline"
+                  }
                 },
                 {
-                  "setting": "moveMethod",
-                  "type": "Enum",
-                  "kind": "choice",
-                  "default": "CopyThenMarkDeleted",
-                  "title": "Move method",
-                  "choices": [
-                    "CopyThenMarkDeleted",
-                    "ImapMove"
-                  ],
-                  "choiceTitles": {
-                    "CopyThenMarkDeleted": "Copy, then mark deleted",
-                    "ImapMove": "IMAP MOVE"
-                  },
-                  "editor": "moveMethod",
-                  "opens": "inline"
+                  "setting": "disableImapMove",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Disable IMAP MOVE"
                 },
                 {
                   "setting": "moveAllIncludesDeleted",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Move entire folder includes deleted messages"
-                },
-                {
-                  "setting": "compression",
-                  "type": "Enum",
-                  "kind": "choice",
-                  "default": "On",
-                  "title": "Compression (COMPRESS)",
-                  "choices": [
-                    "On",
-                    "Off"
-                  ],
-                  "choiceTitles": {
-                    "On": "On",
-                    "Off": "Off"
-                  },
-                  "editor": "compression",
-                  "opens": "inline"
                 }
               ],
               "summary": [
@@ -1430,44 +1313,47 @@
               "children": [
                 {
                   "setting": "swipeTrailing",
-                  "type": "Encoded",
-                  "kind": "subscreen",
-                  "default": "Delete||",
-                  "title": "List swipe left",
-                  "editor": "swipes",
-                  "opens": "popup"
+                  "type": "swipe",
+                  "default": {
+                    "action": "Delete",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "List swipe left"
                 },
                 {
                   "setting": "swipeLeading",
-                  "type": "Encoded",
-                  "kind": "subscreen",
-                  "default": "ReplyAll||",
-                  "title": "List swipe right",
-                  "editor": "swipes",
-                  "opens": "popup"
+                  "type": "swipe",
+                  "default": {
+                    "action": "ReplyAll",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "List swipe right"
                 },
                 {
                   "setting": "readerSwipeTrailing",
-                  "type": "Encoded",
-                  "kind": "subscreen",
-                  "default": "Next||",
-                  "title": "Open-message swipe left",
-                  "editor": "swipes",
-                  "opens": "popup"
+                  "type": "swipe",
+                  "default": {
+                    "action": "Delete",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "Open-message swipe left"
                 },
                 {
                   "setting": "readerSwipeLeading",
-                  "type": "Encoded",
-                  "kind": "subscreen",
-                  "default": "Previous||",
-                  "title": "Open-message swipe right",
-                  "editor": "swipes",
-                  "opens": "popup"
+                  "type": "swipe",
+                  "default": {
+                    "action": "ReplyAll",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "Open-message swipe right"
                 },
                 {
                   "setting": "bounceFcc",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Bounce Fcc"
                 }
@@ -1511,8 +1397,7 @@
               "children": [
                 {
                   "setting": "composerWrapColumn",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 74,
                   "title": "Wrap column",
                   "min": 0,
@@ -1522,8 +1407,7 @@
                 },
                 {
                   "setting": "quellFlowed",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Flowed text"
                 }
@@ -1544,8 +1428,7 @@
               "children": [
                 {
                   "setting": "replyAboveQuote",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Reply above the quote"
                 }
@@ -1570,15 +1453,13 @@
               "children": [
                 {
                   "setting": "includeForwardAttachments",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "When forwarding inline, include the original's attachments"
                 },
                 {
                   "setting": "forwardAsAttachment",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Forward as attachment"
                 }
@@ -1611,8 +1492,7 @@
               "children": [
                 {
                   "setting": "savedMailbox",
-                  "type": "String",
-                  "kind": "mailbox",
+                  "type": "mailbox",
                   "default": "",
                   "title": "Default Save-to folder",
                   "pinerc": "default-saved-msg-folder",
@@ -1620,8 +1500,7 @@
                 },
                 {
                   "setting": "saveNameRule",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "DefaultFolder",
                   "title": "Save name rule",
                   "choices": [
@@ -1651,47 +1530,6 @@
               ]
             },
             {
-              "group": "address_completion",
-              "title": "Address completion",
-              "label": "Address completion",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "completionSources",
-                  "type": "StringList",
-                  "kind": "subscreen",
-                  "default": [
-                    "pine"
-                  ],
-                  "title": "Completion sources",
-                  "editor": "addressBooks",
-                  "opens": "screen"
-                }
-              ],
-              "summary": [
-                {
-                  "when": {
-                    "setting": "completionSources",
-                    "empty": true
-                  },
-                  "text": "No sources"
-                },
-                {
-                  "when": {
-                    "setting": "completionSources",
-                    "equals": [
-                      "pine"
-                    ]
-                  },
-                  "text": "Pine"
-                },
-                {
-                  "plural": "%1$d sources",
-                  "count": "completionSources"
-                }
-              ]
-            },
-            {
               "group": "address_book",
               "title": "Address book",
               "label": "Address book",
@@ -1699,8 +1537,7 @@
               "children": [
                 {
                   "setting": "addressBookHistory",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 3,
                   "title": "Address book history",
                   "pinerc": "remote-abook-history",
@@ -1708,37 +1545,23 @@
                 },
                 {
                   "setting": "addressBookNeverTrim",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": false,
                   "title": "Never trim"
                 },
                 {
-                  "setting": "extraAddressBooks",
-                  "type": "StringList",
-                  "kind": "subscreen",
+                  "setting": "addressBooks",
+                  "type": "folder",
                   "default": [],
-                  "title": "Extra address books",
+                  "title": "Address books",
+                  "many": true,
+                  "order": "user",
                   "pinerc": "address-book",
-                  "pinercFormat": "booksExtra",
-                  "editor": "addressBooks",
-                  "opens": "screen"
-                },
-                {
-                  "setting": "globalAddressBooks",
-                  "type": "StringList",
-                  "kind": "subscreen",
-                  "default": [],
-                  "title": "Global address books (read only)",
-                  "pinerc": "global-address-book",
-                  "pinercFormat": "books",
-                  "editor": "addressBooks",
-                  "opens": "screen"
+                  "pinercFormat": "books"
                 },
                 {
                   "setting": "androidContactsCacheSeconds",
-                  "type": "Int",
-                  "kind": "number",
+                  "type": "number",
                   "default": 300,
                   "title": "Android contacts cache",
                   "min": 0,
@@ -1790,8 +1613,7 @@
               "children": [
                 {
                   "setting": "theme",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "FollowSystem",
                   "title": "Theme",
                   "choices": [
@@ -1807,8 +1629,7 @@
                 },
                 {
                   "setting": "dynamicColor",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "type": "bool",
                   "default": true,
                   "title": "Dynamic color",
                   "visibleWhen": {
@@ -1851,8 +1672,7 @@
               "children": [
                 {
                   "setting": "density",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Compact",
                   "title": "Density",
                   "choices": [
@@ -1868,8 +1688,7 @@
                 },
                 {
                   "setting": "dateFormat",
-                  "type": "Enum",
-                  "kind": "choice",
+                  "type": "choice",
                   "default": "Short",
                   "title": "Date format",
                   "choices": [
@@ -1887,8 +1706,7 @@
                 },
                 {
                   "setting": "datePattern",
-                  "type": "String",
-                  "kind": "text",
+                  "type": "text",
                   "default": "",
                   "title": "Date pattern",
                   "visibleWhen": {
@@ -1934,16 +1752,13 @@
               "children": [
                 {
                   "setting": "customLayout",
-                  "type": "Encoded",
-                  "kind": "subscreen",
+                  "type": "paneLayout",
                   "default": "",
                   "title": "Custom panel layout",
                   "enabledWhen": {
                     "setting": "multiPane",
                     "notEquals": "Off"
-                  },
-                  "editor": "paneLayout",
-                  "opens": "screen"
+                  }
                 }
               ],
               "summary": [
@@ -1961,8 +1776,7 @@
             },
             {
               "setting": "multiPane",
-              "type": "Enum",
-              "kind": "choice",
+              "type": "choice",
               "default": "Auto",
               "title": "Multi-pane",
               "choices": [
@@ -1978,8 +1792,7 @@
             },
             {
               "setting": "folderPlace",
-              "type": "Enum",
-              "kind": "choice",
+              "type": "choice",
               "default": "Auto",
               "title": "Folder list pane",
               "choices": [
@@ -2001,8 +1814,7 @@
             },
             {
               "setting": "foldPosture",
-              "type": "Enum",
-              "kind": "choice",
+              "type": "choice",
               "default": "Off",
               "title": "Fold posture",
               "choices": [
@@ -2022,15 +1834,13 @@
             },
             {
               "setting": "fullScreen",
-              "type": "Bool",
-              "kind": "bool",
+              "type": "bool",
               "default": false,
               "title": "Full screen"
             },
             {
               "setting": "paneArrangement",
-              "type": "Enum",
-              "kind": "choice",
+              "type": "choice",
               "default": "Auto",
               "title": "List and message arrangement",
               "choices": [
@@ -2050,8 +1860,7 @@
             },
             {
               "setting": "previewSize",
-              "type": "Enum",
-              "kind": "choice",
+              "type": "choice",
               "default": "Auto",
               "title": "Message preview in list",
               "choices": [
@@ -2079,235 +1888,197 @@
           ]
         },
         {
-          "group": "slower",
-          "title": "Slower",
-          "label": "Slower",
+          "group": "favorites",
+          "title": "Favorites",
+          "label": "Favorites",
           "header": "label",
           "children": [
             {
-              "setting": "clientSort",
-              "type": "Bool",
-              "kind": "bool",
-              "default": false,
-              "title": "Client sort"
-            },
-            {
-              "setting": "clientSortCollation",
-              "type": "Enum",
-              "kind": "choice",
-              "default": "locale",
-              "title": "Client sort collation",
-              "choices": [
-                "locale",
-                "plain"
-              ],
-              "choiceTitles": {
-                "locale": "Locale",
-                "plain": "Plain"
-              }
-            },
-            {
-              "setting": "unlabeledCharset",
-              "type": "String",
-              "kind": "text",
-              "default": "ISO-8859-1",
-              "title": "Charset of unlabeled text"
-            },
-            {
-              "setting": "clientThread",
-              "type": "Bool",
-              "kind": "bool",
-              "default": false,
-              "title": "Client thread"
-            },
-            {
-              "setting": "pollForNewMail",
-              "type": "Bool",
-              "kind": "bool",
-              "default": false,
-              "title": "Poll for new mail"
-            },
-            {
-              "setting": "pollSeconds",
-              "type": "Int",
-              "kind": "number",
-              "default": 60,
-              "title": "Poll interval",
-              "min": 15,
-              "max": 600
-            },
-            {
-              "setting": "idleFallbackSeconds",
-              "type": "Int",
-              "kind": "number",
-              "default": 60,
-              "title": "Poll interval when IDLE fails"
-            },
-            {
-              "setting": "keepAliveMinutes",
-              "type": "Int",
-              "kind": "number",
-              "default": 9,
-              "title": "Keep-alive interval (NOOP on idle connections)"
-            },
-            {
-              "setting": "idleRenewMinutes",
-              "type": "Int",
-              "kind": "number",
-              "default": 9,
-              "title": "Restart IDLE every",
-              "min": 1,
-              "max": 29
-            },
-            {
-              "setting": "longSearchProgressSec",
-              "type": "Int",
-              "kind": "number",
-              "default": 60,
-              "title": "Long search progress"
-            },
-            {
-              "setting": "longSearchQuietSec",
-              "type": "Int",
-              "kind": "number",
-              "default": 600,
-              "title": "Long search quiet"
-            },
-            {
-              "setting": "statusVisibleCounts",
-              "type": "Bool",
-              "kind": "bool",
-              "default": false,
-              "title": "Fetch counts for visible folders (slower)"
-            },
-            {
-              "setting": "forceSlowerFallbacks",
-              "type": "Bool",
-              "kind": "bool",
-              "default": false,
-              "title": "Force slower fallbacks"
+              "setting": "favorites",
+              "type": "folder",
+              "default": [],
+              "title": "Favorites",
+              "pinerc": "incoming-folders",
+              "pinercFormat": "incoming",
+              "many": true,
+              "order": "user"
             }
           ],
           "summary": [
             {
-              "when": {
-                "any": [
-                  {
-                    "setting": "clientSort",
-                    "equals": true
-                  },
-                  {
-                    "setting": "clientThread",
-                    "equals": true
-                  },
-                  {
-                    "setting": "pollForNewMail",
-                    "equals": true
-                  },
-                  {
-                    "setting": "statusVisibleCounts",
-                    "equals": true
-                  }
-                ]
-              },
-              "text": "On"
-            },
-            {
-              "text": "Off"
+              "value": {
+                "count": "favorites"
+              }
             }
           ]
         },
         {
-          "group": "debug",
-          "title": "Debug",
-          "label": "Debug",
+          "group": "advanced",
+          "title": "Advanced",
+          "label": "Advanced",
           "header": "label",
           "children": [
             {
-              "group": "logging",
-              "title": "Logging",
-              "label": "Logging",
+              "group": "performance",
+              "title": "Performance",
+              "label": "Performance",
               "header": "label",
               "children": [
                 {
-                  "setting": "logImapTraffic",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "setting": "pipelineCommands",
+                  "type": "bool",
                   "default": false,
-                  "title": "Log IMAP traffic"
+                  "title": "Disable command pipelining"
                 },
                 {
-                  "setting": "trafficLogMaxMb",
-                  "type": "Int",
-                  "kind": "number",
-                  "default": 4,
-                  "title": "Traffic log size limit",
+                  "setting": "compression",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Disable compression"
+                },
+                {
+                  "setting": "bodyFetchChunk",
+                  "type": "number",
+                  "default": 65536,
+                  "title": "Bytes per body fetch",
+                  "min": 1024,
+                  "max": 1048576
+                },
+                {
+                  "setting": "extraIdleBudget",
+                  "type": "number",
+                  "default": 2,
+                  "title": "Connections for watched folders (within the maximum)",
                   "min": 0,
-                  "max": 64
+                  "max": 8
                 },
                 {
-                  "setting": "showUserInDebugReport",
-                  "type": "Bool",
-                  "kind": "bool",
+                  "setting": "maxConnections",
+                  "type": "number",
+                  "default": 8,
+                  "title": "Most connections to the server",
+                  "min": 2,
+                  "max": 20
+                },
+                {
+                  "setting": "clientSort",
+                  "type": "bool",
                   "default": false,
-                  "title": "Show user name in the debug report"
+                  "title": "Client sort"
                 },
                 {
-                  "setting": "idleWakeSeconds",
-                  "type": "Int",
-                  "kind": "number",
-                  "default": 5,
-                  "title": "Watch check interval (debug)",
+                  "setting": "clientSortCollation",
+                  "type": "choice",
+                  "default": "locale",
+                  "title": "Client sort collation",
                   "choices": [
-                    1,
-                    2,
-                    5,
-                    10,
-                    30,
-                    60
+                    "locale",
+                    "plain"
                   ],
+                  "choiceTitles": {
+                    "locale": "Locale",
+                    "plain": "Plain"
+                  }
+                },
+                {
+                  "setting": "clientThread",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Client thread"
+                },
+                {
+                  "setting": "pollForNewMail",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Poll for new mail"
+                },
+                {
+                  "setting": "pollSeconds",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Poll interval",
+                  "min": 15,
+                  "max": 600
+                },
+                {
+                  "setting": "idleFallbackSeconds",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Poll interval when IDLE fails"
+                },
+                {
+                  "setting": "keepAliveMinutes",
+                  "type": "number",
+                  "default": 9,
+                  "title": "Keep-alive interval (NOOP on idle connections)"
+                },
+                {
+                  "setting": "idleRenewMinutes",
+                  "type": "number",
+                  "default": 9,
+                  "title": "Restart IDLE every",
                   "min": 1,
-                  "max": 60
+                  "max": 29
+                },
+                {
+                  "setting": "longSearchProgressSec",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Long search progress"
+                },
+                {
+                  "setting": "longSearchQuietSec",
+                  "type": "number",
+                  "default": 600,
+                  "title": "Long search quiet"
+                },
+                {
+                  "setting": "statusVisibleCounts",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Fetch counts for visible folders (slower)"
+                },
+                {
+                  "setting": "forceSlowerFallbacks",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Force slower fallbacks"
                 }
               ],
               "summary": [
                 {
-                  "text": "%1$s%2$s",
-                  "args": [
-                    {
-                      "setting": "pipelineCommands",
-                      "titles": {
-                        "true": "Pipeline on",
-                        "false": "Pipeline off"
+                  "when": {
+                    "any": [
+                      {
+                        "setting": "clientSort",
+                        "equals": true
+                      },
+                      {
+                        "setting": "clientThread",
+                        "equals": true
+                      },
+                      {
+                        "setting": "pollForNewMail",
+                        "equals": true
+                      },
+                      {
+                        "setting": "statusVisibleCounts",
+                        "equals": true
                       }
-                    },
-                    {
-                      "setting": "logImapTraffic",
-                      "titles": {
-                        "true": ", log on",
-                        "false": ", log off"
-                      }
-                    }
-                  ]
+                    ]
+                  },
+                  "text": "On"
+                },
+                {
+                  "text": "Off"
                 }
               ]
             },
             {
-              "group": "hide_capabilities",
+              "setting": "hiddenCapabilities",
+              "type": "text",
+              "default": [],
               "title": "Hide capabilities",
-              "label": "Hide capabilities",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "hiddenCapabilities",
-                  "type": "StringList",
-                  "kind": "subscreen",
-                  "default": [],
-                  "title": "Hide capabilities",
-                  "editor": "hiddenOptions",
-                  "opens": "screen"
-                }
-              ],
               "summary": [
                 {
                   "when": {
@@ -2324,59 +2095,69 @@
                     }
                   ]
                 }
-              ]
-            }
-          ],
-          "summary": [
+              ],
+              "many": true,
+              "order": "sorted"
+            },
             {
-              "value": {
-                "setting": "logImapTraffic",
-                "titles": {
-                  "true": "Traffic log on",
-                  "false": "Traffic log off"
+              "group": "logging",
+              "title": "Logging",
+              "label": "Logging",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "logImapTraffic",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Log IMAP traffic"
+                },
+                {
+                  "setting": "trafficLogMaxMb",
+                  "type": "number",
+                  "default": 4,
+                  "title": "Traffic log size limit",
+                  "min": 0,
+                  "max": 64
+                },
+                {
+                  "setting": "showUserInDebugReport",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Show user name in the debug report"
+                },
+                {
+                  "setting": "idleWakeSeconds",
+                  "type": "number",
+                  "default": 5,
+                  "title": "Watch check interval (debug)",
+                  "min": 1,
+                  "max": 60
                 }
-              }
-            }
-          ]
-        },
-        {
-          "group": "favorites",
-          "title": "Favorites",
-          "label": "Favorites",
-          "header": "label",
-          "children": [
-            {
-              "setting": "favorites",
-              "type": "Encoded",
-              "kind": "subscreen",
-              "default": "",
-              "title": "Favorites",
-              "pinerc": "incoming-folders",
-              "pinercFormat": "incoming",
-              "editor": "folderLists",
-              "opens": "screen"
-            }
-          ],
-          "summary": [
-            {
-              "value": {
-                "count": "favorites"
-              }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "logImapTraffic",
+                    "titles": {
+                      "true": "Traffic log on",
+                      "false": "Traffic log off"
+                    }
+                  }
+                }
+              ]
             }
           ]
         },
         {
           "setting": "lastSaveMailbox",
-          "type": "String",
-          "kind": "mailbox",
+          "type": "mailbox",
           "default": "",
           "title": "Last save mailbox",
           "hidden": true
         },
         {
           "setting": "trafficFilesPerCap",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 0,
           "title": "Traffic files kept per account",
           "min": 0,
@@ -2385,8 +2166,7 @@
         },
         {
           "setting": "imageTrustMaxEntries",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 5000,
           "title": "Trusted image entries",
           "min": 1,
@@ -2395,8 +2175,7 @@
         },
         {
           "setting": "previewByteLimit",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 2048,
           "title": "Preview bytes",
           "min": 1,
@@ -2405,8 +2184,7 @@
         },
         {
           "setting": "unseenListLimit",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 300,
           "title": "Unseen folder lookups",
           "min": 0,
@@ -2415,8 +2193,7 @@
         },
         {
           "setting": "jmapStopWatchWaitMs",
-          "type": "Long",
-          "kind": "number",
+          "type": "number",
           "default": 5000,
           "title": "JMAP watch wait",
           "min": 1,
@@ -2425,8 +2202,7 @@
         },
         {
           "setting": "jmapMaxWindow",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 120,
           "title": "JMAP page size",
           "min": 1,
@@ -2446,8 +2222,7 @@
       "children": [
         {
           "setting": "appTextZoom",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 100,
           "title": "Font size",
           "min": 50,
@@ -2455,15 +2230,13 @@
         },
         {
           "setting": "indexPageSize",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 60,
           "title": "Messages loaded per page"
         },
         {
           "setting": "swipeThresholdPercent",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 40,
           "title": "Swipe threshold",
           "min": 1,
@@ -2471,8 +2244,7 @@
         },
         {
           "setting": "reconnectDelaysSec",
-          "type": "IntList",
-          "kind": "text",
+          "type": "number",
           "default": [
             2,
             10,
@@ -2481,26 +2253,25 @@
           "title": "Reconnect delays",
           "minItems": 1,
           "itemMin": 1,
-          "itemMax": 86400
+          "itemMax": 86400,
+          "many": true,
+          "order": "increasing"
         },
         {
           "setting": "maxRawViewBytes",
-          "type": "Long",
-          "kind": "number",
+          "type": "number",
           "default": 1048576,
           "title": "Largest message shown in raw view"
         },
         {
           "setting": "maxImageTrustBytes",
-          "type": "Long",
-          "kind": "number",
+          "type": "number",
           "default": 2000000,
           "title": "Largest remote image loaded"
         },
         {
           "setting": "moveChunk",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 1000,
           "title": "Messages per move command",
           "min": 1,
@@ -2508,8 +2279,7 @@
         },
         {
           "setting": "clientSortChunk",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 5000,
           "title": "Messages per sort batch",
           "min": 1,
@@ -2517,8 +2287,7 @@
         },
         {
           "setting": "settingsOpensOn",
-          "type": "Enum",
-          "kind": "choice",
+          "type": "choice",
           "default": "drawer",
           "title": "Settings opens on",
           "choices": [
@@ -2529,12 +2298,6 @@
             "drawer": "The account open in the drawer",
             "lastEdited": "The account edited last"
           }
-        },
-        {
-          "editor": "toolbars",
-          "opens": "screen",
-          "title": "Toolbars",
-          "settings": []
         },
         {
           "editor": "accountList",
@@ -2548,38 +2311,87 @@
           ]
         },
         {
-          "editor": "pinerc",
-          "opens": "screen",
-          "title": "Import"
+          "setting": "indexBar",
+          "type": "toolbar",
+          "title": "Message index toolbar",
+          "default": {
+            "rows": 2,
+            "toolbar": [],
+            "overflow": [],
+            "hidden": []
+          }
+        },
+        {
+          "setting": "selectionBar",
+          "type": "toolbar",
+          "title": "Selection bar",
+          "default": {
+            "rows": 2,
+            "toolbar": [],
+            "overflow": [],
+            "hidden": []
+          }
+        },
+        {
+          "setting": "folderBar",
+          "type": "toolbar",
+          "title": "Folder list toolbar",
+          "default": {
+            "rows": 2,
+            "toolbar": [],
+            "overflow": [],
+            "hidden": []
+          }
+        },
+        {
+          "setting": "readerToolbar",
+          "type": "toolbar",
+          "title": "Reader toolbar",
+          "default": {
+            "rows": 2,
+            "toolbar": [],
+            "overflow": [],
+            "hidden": []
+          }
+        },
+        {
+          "setting": "composeBar",
+          "type": "toolbar",
+          "title": "Compose toolbar",
+          "default": {
+            "rows": 2,
+            "toolbar": [],
+            "overflow": [],
+            "hidden": []
+          }
+        },
+        {
+          "setting": "pinerc",
+          "type": "pinerc",
+          "title": "Import Pine settings"
+        },
+        {
+          "setting": "uiSettingsFile",
+          "type": "settingsFile",
+          "title": "Import or export settings"
         },
         {
           "setting": "settingsLastEditedAccount",
-          "type": "String",
-          "kind": "text",
+          "type": "text",
           "default": "",
           "title": "Last edited account",
           "hidden": true
         },
         {
-          "setting": "toolbars",
-          "type": "Encoded",
-          "kind": "text",
-          "default": "",
-          "title": "Toolbars",
-          "hidden": true
-        },
-        {
           "setting": "defaultAccount",
-          "type": "String",
-          "kind": "text",
+          "type": "text",
           "default": "",
           "title": "Default account",
           "hidden": true
         },
         {
           "setting": "trafficRetentionDays",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 30,
           "title": "Days to keep traffic logs",
           "min": 1,
@@ -2588,8 +2400,7 @@
         },
         {
           "setting": "linkCheckMaxScanBytes",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 2000000,
           "title": "Link check scan",
           "min": 1,
@@ -2598,8 +2409,7 @@
         },
         {
           "setting": "linkCheckMaxAnchors",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 2000,
           "title": "Link check anchors",
           "min": 1,
@@ -2608,8 +2418,7 @@
         },
         {
           "setting": "pinercMaxBytes",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 1048576,
           "title": "Pinerc import size",
           "min": 1,
@@ -2618,8 +2427,7 @@
         },
         {
           "setting": "authenticatorLifeMinutes",
-          "type": "Int",
-          "kind": "number",
+          "type": "number",
           "default": 10,
           "title": "Setup token lifetime",
           "min": 1,
@@ -2628,8 +2436,7 @@
         },
         {
           "setting": "longSearchPollMs",
-          "type": "Long",
-          "kind": "number",
+          "type": "number",
           "default": 250,
           "title": "Long search poll",
           "min": 1,
