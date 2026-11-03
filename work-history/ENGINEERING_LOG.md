@@ -4083,3 +4083,5 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Play lint depends on staged assets
 
 - The staged asset directory is a generated asset source, so Play lint depends on stagePackagedAssets. src/main/assets is still not what AGP packages.
+
+## 2026-11-03 - A settings plural with the same one and other sentence updates both

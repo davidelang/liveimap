@@ -552,14 +552,20 @@ def _set_string(catalog, name, sentence):
 
 
 def _set_plural_other(catalog, name, sentence):
+    # When one and other are the same sentence, both move. A distinct one stays.
     quant = catalog.plurals.get(name)
     if quant is None:
         catalog.plurals[name] = {"one": sentence, "other": sentence}
-        return True
-    if quant.get("other") == sentence:
-        return False
+        return "both"
+    old_other = quant.get("other")
+    if old_other == sentence:
+        return None
+    same = quant.get("one") == old_other
     quant["other"] = sentence
-    return True
+    if same:
+        quant["one"] = sentence
+        return "both"
+    return "other"
 
 
 def _alloc_name(catalog, slot_id):
@@ -593,7 +599,8 @@ def _apply_string_xml(strings_path, catalog, edits):
     original = path.read_text(encoding="utf-8")
     text = original
     additions = []
-    for kind, name, sentence in edits:
+    for edit in edits:
+        kind, name, sentence = edit[0], edit[1], edit[2]
         escaped = _android_escape(sentence)
         if kind == "string":
             pattern = re.compile(
@@ -606,13 +613,28 @@ def _apply_string_xml(strings_path, catalog, edits):
             text = updated
         elif kind == "plural":
             pattern = re.compile(
-                r'(<plurals name="%s">.*?<item quantity="other">)(.*?)(</item>)' % re.escape(name),
+                r'(<plurals name="%s">)(.*?)(</plurals>)' % re.escape(name),
                 re.DOTALL,
             )
-            updated, count = pattern.subn(lambda match: match.group(1) + escaped + match.group(3), text, count=1)
-            if count != 1:
+            match = pattern.search(text)
+            if match is None:
                 raise SystemExit("strings.xml missing plural " + name)
-            text = updated
+            block = match.group(2)
+
+            def replace_quantity(body, quantity):
+                item = re.compile(
+                    r'(<item quantity="%s">)(.*?)(</item>)' % quantity,
+                    re.DOTALL,
+                )
+                replaced, count = item.subn(lambda found: found.group(1) + escaped + found.group(3), body, count=1)
+                if count != 1:
+                    raise SystemExit("strings.xml missing plural %s %s" % (name, quantity))
+                return replaced
+
+            block = replace_quantity(block, "other")
+            if len(edit) > 3 and edit[3] == "both":
+                block = replace_quantity(block, "one")
+            text = text[: match.start(2)] + block + text[match.end(2) :]
         elif kind == "new-string":
             additions.append('    <string name="%s">%s</string>' % (name, escaped))
         elif kind == "new-plural":
@@ -683,8 +705,9 @@ def align_display_english(tree_path, strings_path=None, binding_path=None):
         if isinstance(previous, str) and previous and not keepers and _resource_sentence(catalog, previous) is not None:
             sentence = slot["sentence"]
             if slot["plural"] or previous in catalog.plurals:
-                if _set_plural_other(catalog, previous, sentence):
-                    edits.append(("plural", previous, sentence))
+                plural_edit = _set_plural_other(catalog, previous, sentence)
+                if plural_edit:
+                    edits.append(("plural", previous, sentence, plural_edit))
             else:
                 if _set_string(catalog, previous, sentence):
                     edits.append(("string", previous, sentence))
