@@ -306,6 +306,52 @@ dependencies {
 }
 
 
+// AGP packages this directory, not src/main/assets. ignoreAssetsPattern still applies to it.
+val packagedAssetsDir = layout.buildDirectory.dir("generated/packagedAssets")
+
+abstract class StagePackagedAssetsTask : DefaultTask() {
+    @get:InputFile
+    abstract val scriptFile: RegularFileProperty
+
+    @get:InputDirectory
+    abstract val sourceDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outDir: DirectoryProperty
+
+    @TaskAction
+    fun stage() {
+        val pb = ProcessBuilder(
+            "python3",
+            scriptFile.get().asFile.absolutePath,
+            "stage",
+            sourceDir.get().asFile.absolutePath,
+            outDir.get().asFile.absolutePath,
+        )
+        pb.environment()["PYTHONDONTWRITEBYTECODE"] = "1"
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        val output = proc.inputStream.bufferedReader().readText()
+        val code = proc.waitFor()
+        if (code != 0) throw GradleException(output.ifBlank { "stagePackagedAssets failed" })
+        if (output.isNotBlank()) println(output.trim())
+    }
+}
+
+val stagePackagedAssets = tasks.register<StagePackagedAssetsTask>("stagePackagedAssets") {
+    scriptFile.set(file("packaged-assets.py"))
+    sourceDir.set(file("src/main/assets"))
+    outDir.set(packagedAssetsDir)
+}
+
+android.sourceSets.getByName("main").assets.setSrcDirs(listOf(stagePackagedAssets.flatMap { it.outDir }))
+
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("Assets")) {
+        dependsOn(stagePackagedAssets)
+    }
+}
+
 // The settings tree is the only source. app/gen-settings-tree.py emits defaults, R.string ids, and SettingsAccessGenerated.kt.
 val generateSettingsTree = tasks.register<liveimap.GenerateSettingsTreeTask>("generateSettingsTree") {
     treeFile.set(file("src/main/assets/settings-tree.json"))

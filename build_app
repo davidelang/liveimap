@@ -1151,8 +1151,34 @@ build_apks() {
     echo "ERROR: the $label build recorded no APKs." >&2
     exit 1
   fi
+  # App APKs must match the allowlist. instrumentation is the androidTest APK:
+  # it is not an app APK, so any assets/ entry fails and the three files are not required.
+  check_recorded_apk_assets "$stamped" || exit 1
   publish_deliverables "${apks[@]}"
   echo "=== $label build OK ==="
+}
+
+check_recorded_apk_assets() {
+  local stamped="$1" line role apk
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    role=$(printf '%s\n' "$line" | awk '{print $2}')
+    apk=$(printf '%s\n' "$line" | awk '{print $3}')
+    case "$role" in
+      app)
+        PYTHONDONTWRITEBYTECODE=1 python3 app/packaged-assets.py check-apk app "$apk" || return 1
+        ;;
+      instrumentation)
+        PYTHONDONTWRITEBYTECODE=1 python3 app/packaged-assets.py check-apk instrumentation "$apk" || return 1
+        ;;
+      *)
+        echo "ERROR: recorded APK line has unknown role: $line" >&2
+        return 1
+        ;;
+    esac
+  done <<EOF
+$stamped
+EOF
 }
 
 build_play() {
