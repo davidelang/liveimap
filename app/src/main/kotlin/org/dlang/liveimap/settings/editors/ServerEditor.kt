@@ -331,7 +331,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
         for (child in node.children) {
             renderSettingsNode(child, depth, walk)
         }
-        PinercEditor(editor, sections, depth)
+        if (!walk.settingsScroll) PinercEditor(editor, sections, depth)
         // David, 2026-10-12: Save and Test account side by side; Test account logs in (IMAP or JMAP, and SMTP).
         androidx.compose.foundation.layout.Row(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

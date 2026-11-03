@@ -1101,6 +1101,7 @@ fun SettingsTree(
             }
         },
         picking = picking,
+        settingsScroll = page == "settings",
     )
     BackHandler(enabled = picking.value != null) { picking.value = null }
     Column(Modifier.fillMaxSize()) {
@@ -1476,6 +1477,7 @@ internal class SettingsWalk(
     val onEditFavorite: (FolderFavorite) -> Unit,
     val picking: MutableState<MailboxPick?>,
     var drafts: ServerDrafts? = null,
+    val settingsScroll: Boolean = false,
 )
 
 @Composable
@@ -1872,7 +1874,7 @@ internal fun EditorEntry(node: TreeNode.Editor, walk: SettingsWalk) {
         OpenRow(stringResource(R.string.settings_toolbars)) { walk.onOpenPanel("index", "") }
         return
     }
-    if (node.editor == "accountList" && walk.editor.accounts.isEmpty()) {
+    if (node.editor == "accountList" && walk.editor.accounts.isEmpty() && !walk.settingsScroll) {
         AccountListEditor(
             accounts = emptyList(),
             onPick = {},
