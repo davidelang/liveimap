@@ -4136,3 +4136,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/settings-open-20261104-1036-plan.md
 - Work: Settings summaries read typed view and swipe fields; a non-object store record is "settings document is not an object"; pinerc sort and alt-addresses use the typed values.
+
+## 2026-11-04 - Clear storage drops the leftover account
+
+- Implementing sandbox/plans/clear-storage-account-20261104-1150-plan.md. Omit AccountManager rows with no settings document, restore a block-store record onto a listed id when one exists, then deleteAccount if the document is still absent. Compose snapshot writes (toolbar record, restore finished, restore report) go to the main looper when the caller is a background thread.

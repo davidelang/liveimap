@@ -382,10 +382,11 @@ class AccountStore private constructor(private val context: Context) {
         return onAccount {
             withContext(Dispatchers.IO) {
                 val open = parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
-                readAccounts().map { account ->
-                    val id = parseAccountId(account.userData[userAccountId])
-                    if (id == null) {
-                        AccountChoice(id = account.name, name = account.name, drawer = false, editing = false, corrupt = true)
+                readAccounts().mapNotNull { account ->
+                    val id = parseAccountId(account.userData[userAccountId]) ?: return@mapNotNull null
+                    val stored = storedPreference(id) ?: return@mapNotNull null
+                    if (runCatching { decodeSettings(stored) }.isFailure) {
+                        AccountChoice(id = id, name = account.name, drawer = id == open, editing = false, corrupt = true)
                     } else {
                         AccountChoice(
                             id = id,
@@ -403,29 +404,28 @@ class AccountStore private constructor(private val context: Context) {
         return onAccount {
             withContext(Dispatchers.IO) {
                 val open = parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
-                readAccounts().map { account ->
-                    val id = parseAccountId(account.userData[userAccountId])
-                    val stored = if (id == null) null else storedPreference(id)
-                    if (id == null || stored == null) {
+                readAccounts().mapNotNull { account ->
+                    val id = parseAccountId(account.userData[userAccountId]) ?: return@mapNotNull null
+                    val stored = storedPreference(id) ?: return@mapNotNull null
+                    val decoded = runCatching { decodeSettings(stored) }.getOrNull()
+                    if (decoded == null) {
                         DrawerAccount(
-                            id = id ?: account.name,
+                            id = id,
                             name = account.name,
-                            chosen = false,
+                            chosen = id == open,
                             postponedMailbox = "",
                             favorites = emptyList(),
                             corrupt = true,
                         )
                     } else {
-                        val decoded = runCatching { decodeSettings(stored) }.getOrNull()
-                        val folders = if (decoded == null) accountDrawerFolders(null) else accountDrawerFolders(stored)
-                        val friendly = decoded?.friendlyName?.takeIf { it.isNotEmpty() }
+                        val folders = accountDrawerFolders(stored)
+                        val friendly = decoded.friendlyName.takeIf { it.isNotEmpty() }
                         DrawerAccount(
                             id = id,
                             name = friendly ?: listedName(account),
                             chosen = id == open,
                             postponedMailbox = folders.postponedMailbox,
                             favorites = folders.favorites,
-                            corrupt = decoded == null,
                         )
                     }
                 }
@@ -558,8 +558,18 @@ class AccountStore private constructor(private val context: Context) {
     ) {
         onAccount {
             withContext(Dispatchers.IO) {
-                if (readAccounts().any { it.userData[userAccountId] == accountId }) return@withContext
                 if (accountId in readPendingDeletes(context)) return@withContext
+                val existing = findAccount(accountId)
+                if (existing != null) {
+                    if (storedPreference(accountId) != null) return@withContext
+                    if (imapPassword != null) {
+                        AccountManager.get(context).setPassword(existing, cipher.encrypt(accountId, imapPassword))
+                    }
+                    if (smtpPassword != null) writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
+                    if (sievePassword != null) writeSecretSlot(accountId, userSievePasswordSlot, sievePassword)
+                    writePreference(accountId, settings.encode())
+                    return@withContext
+                }
                 val accounts = readAccounts()
                 val slot = if (imapPassword == null) "" else cipher.encrypt(accountId, imapPassword)
                 writeAccount(

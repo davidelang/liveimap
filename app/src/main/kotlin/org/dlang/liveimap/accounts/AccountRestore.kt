@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.davidlang.liveimap.R
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import org.dlang.liveimap.settings.decodeSettings
 
@@ -15,7 +16,7 @@ internal object AccountRestoreReport {
         private set
 
     fun report(text: String) {
-        this.text = text
+        assignRestoreState { this.text = text }
     }
 
     fun clear(shown: String) {
@@ -29,7 +30,18 @@ internal object AccountRestoreGate {
         private set
 
     fun markFinished() {
-        finished = true
+        assignRestoreState { finished = true }
+    }
+}
+
+// A background caller posts when a main looper exists. No main looper: assign here and do not throw.
+private fun assignRestoreState(assign: () -> Unit) {
+    val mine = runCatching { android.os.Looper.myLooper() }.getOrNull()
+    val main = runCatching { android.os.Looper.getMainLooper() }.getOrNull()
+    if (main == null || mine === main) {
+        assign()
+    } else {
+        android.os.Handler(main).post(assign)
     }
 }
 
@@ -74,11 +86,25 @@ private suspend fun restoreSavedAccounts(context: Context) {
     for ((key, value) in bytes) {
         if (!key.startsWith("a:")) continue
         val id = key.removePrefix("a:")
-        if (id in listed || id in pending) continue
+        if (id in pending) continue
         if (prefs[stringPreferencesKey(id)] != null) continue
         val record = decodeBackupRecord(value) ?: continue
         store.restoreAccountEntry(id, record.settings, record.imapPassword, record.smtpPassword, record.sievePassword)
         restored += 1
+    }
+    val fresh = context.accountSettingsDataStore.data.first()
+    val stillListed = manager.getAccountsByType(liveimapAccountType).mapNotNull {
+        manager.getUserData(it, userAccountId)
+    }
+    for (id in stillListed) {
+        if (fresh[stringPreferencesKey(id)] != null) continue
+        try {
+            store.deleteAccount(id)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w("LiveIMAP", "leftover account not removed $id", error)
+        }
     }
     if (restored > 0) {
         AccountRestoreReport.report(context.resources.getQuantityString(R.plurals.backup_restored, restored, restored))

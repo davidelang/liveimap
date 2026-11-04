@@ -34,18 +34,20 @@ object ToolbarStore {
     fun composeRows(): Int = record.composeBar.rows
 
     fun install(settings: Settings) {
-        record = ToolbarRecord(
-            indexBar = settings.indexBar,
-            selectionBar = settings.selectionBar,
-            folderBar = settings.folderBar,
-            readerToolbar = settings.readerToolbar,
-            composeBar = settings.composeBar,
-        )
+        assignToolbarRecord {
+            record = ToolbarRecord(
+                indexBar = settings.indexBar,
+                selectionBar = settings.selectionBar,
+                folderBar = settings.folderBar,
+                readerToolbar = settings.readerToolbar,
+                composeBar = settings.composeBar,
+            )
+        }
     }
 
     fun install(uiRecord: String) {
         if (uiRecord.isBlank()) {
-            record = ToolbarRecord()
+            assignToolbarRecord { record = ToolbarRecord() }
             return
         }
         try {
@@ -83,6 +85,17 @@ object ToolbarStore {
             next,
             setOf("indexBar", "selectionBar", "folderBar", "readerToolbar", "composeBar"),
         )
+    }
+}
+
+// A background caller posts when a main looper exists. No main looper: assign here and do not throw.
+private fun assignToolbarRecord(assign: () -> Unit) {
+    val mine = runCatching { android.os.Looper.myLooper() }.getOrNull()
+    val main = runCatching { android.os.Looper.getMainLooper() }.getOrNull()
+    if (main == null || mine === main) {
+        assign()
+    } else {
+        android.os.Handler(main).post(assign)
     }
 }
 
