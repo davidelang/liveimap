@@ -114,7 +114,8 @@ class DataStoreSettingsStore(
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 
-    suspend fun commitKeys(draft: Settings, keys: Set<String>): Settings = bound { store.commitKeys(draft, keys) }
+    suspend fun commitKeys(draft: Settings, keys: Set<String>, writeUnknowns: Boolean = false): Settings =
+        bound { store.commitKeys(draft, keys, writeUnknowns) }
 
     suspend fun <T> onAccount(block: suspend () -> T): T = store.onAccount(block)
 

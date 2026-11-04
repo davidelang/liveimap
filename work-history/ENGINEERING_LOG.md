@@ -4094,3 +4094,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Each leaf names one type and that type is the control. Account settings and UI settings are JSON. A key that changes record keeps its stored value on save. Advanced, Performance, address books, five toolbars, and compression, pipeline, move, and delete follow the 2026-11-03 screen.
 - XAI_API_KEY was unset, so Grok did not refresh changed display sentences. Those stay pending and a later build retries.
+
+## 2026-11-03 - Clean stores the policy fix, and swipe delete warns
+
+- Clean writes the stored JSON: an unknown key is removed, a wrong-type value becomes the default, and a scope pick is stored. Save anyway still keeps the raw value and disagreeing copies.
+- An index swipe whose saved permanent delete cannot run warns and names the alternate, including when ask-before-expunge is off. Expunging every deleted message in the folder happens only after the user insists.

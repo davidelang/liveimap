@@ -2342,7 +2342,7 @@ private fun MessageIndexLoaded(
                                         emptyList()
                                     }
                                     var askedPermanent = false
-                                    if (binding.action == SwipeAction.Delete && account.askBeforeExpunge) {
+                                    if (binding.action == SwipeAction.Delete) {
                                         val trash = readKnownTrash()
                                         val policy = effectiveDeletePolicy(
                                             account.deletePolicy,
@@ -2351,12 +2351,24 @@ private fun MessageIndexLoaded(
                                             trash.isNotEmpty(),
                                             trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
                                         )
-                                        if (policy == DeletePolicy.DeletePermanently) {
+                                        val warn = deleteCapabilityWarn(
+                                            account.deletePolicy,
+                                            session.featureCaps.uidPlus,
+                                            trash.isNotEmpty(),
+                                        )
+                                        if (warn != 0 || (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge)) {
                                             pendingPermanent = PendingDelete(
                                                 listOf(row.uid) + also,
                                                 allMailbox = false,
                                                 fromSwipe = true,
                                                 rowMailbox = row.mailbox,
+                                                policy = if (warn == R.string.index_delete_needs_trash) {
+                                                    DeletePolicy.MarkDeleted
+                                                } else {
+                                                    policy
+                                                },
+                                                permanentOnlyInTrash = warn == 0,
+                                                warn = warn,
                                             )
                                             askedPermanent = true
                                         }
@@ -2447,7 +2459,28 @@ private fun MessageIndexLoaded(
                     val request = askedPermanent
                     pendingPermanent = null
                     enqueueModel {
-                        if (request.fromSwipe) {
+                        if (request.fromSwipe && request.warn != 0) {
+                            val foreign = request.rowMailbox.isNotEmpty() && request.rowMailbox != mailbox
+                            if (foreign) {
+                                applyDeletePolicy(
+                                    request.policy,
+                                    emptyList(),
+                                    false,
+                                    knownTrashName,
+                                    request.uids.map { request.rowMailbox to it },
+                                    false,
+                                )
+                            } else {
+                                applyDeletePolicy(
+                                    request.policy,
+                                    request.uids,
+                                    false,
+                                    knownTrashName,
+                                    emptyList(),
+                                    false,
+                                )
+                            }
+                        } else if (request.fromSwipe) {
                             val head = request.uids.first()
                             finishSwipe(
                                 head,

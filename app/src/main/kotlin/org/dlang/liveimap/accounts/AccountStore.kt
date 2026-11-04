@@ -181,8 +181,13 @@ class AccountStore private constructor(private val context: Context) {
      * Overlays [keys] from [draft] onto the blob stored now. UI keys go to the global record.
      * A throw leaves the stored account as it was and does not publish.
      */
-    suspend fun commitKeys(draft: org.dlang.liveimap.settings.Settings, keys: Set<String>): org.dlang.liveimap.settings.Settings {
-        if (keys.isEmpty()) return draft
+    suspend fun commitKeys(
+        draft: org.dlang.liveimap.settings.Settings,
+        keys: Set<String>,
+        writeUnknowns: Boolean = false,
+    ): org.dlang.liveimap.settings.Settings {
+        val picksPending = org.dlang.liveimap.settings.ScopePicks.chosen.isNotEmpty()
+        if (keys.isEmpty() && !writeUnknowns && !picksPending) return draft
         val registry = org.dlang.liveimap.settings.settingsRegistry
         val uiKeys = keys.filter { registry[it]?.scope == org.dlang.liveimap.settings.SettingScope.Ui }.toSet()
         val accountKeys = keys.filter { key ->
@@ -190,8 +195,9 @@ class AccountStore private constructor(private val context: Context) {
             scope != null && scope != org.dlang.liveimap.settings.SettingScope.Ui
         }.toSet()
         var published = draft
-        val mixed = uiKeys.isNotEmpty() && accountKeys.isNotEmpty()
-        if (accountKeys.isNotEmpty() && !mixed) {
+        val writeAccount = accountKeys.isNotEmpty() || writeUnknowns
+        val mixed = uiKeys.isNotEmpty() && writeAccount
+        if (writeAccount && !mixed) {
             onAccount {
                 var writtenId: String? = null
                 val writePreferences = withContext(Dispatchers.IO) {
@@ -199,6 +205,7 @@ class AccountStore private constructor(private val context: Context) {
                     for (key in accountKeys) {
                         current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
                     }
+                    if (writeUnknowns) current = current.copy(unknownSettings = draft.unknownSettings)
                     published = current
                     writtenId = parseAccountId(coroutineContext[AccountTarget]?.accountId)
                         ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
@@ -210,7 +217,10 @@ class AccountStore private constructor(private val context: Context) {
                 org.dlang.liveimap.settings.settleScope(context)
             }
         }
-        if (uiKeys.isEmpty()) return published
+        if (uiKeys.isEmpty()) {
+            if (!writeAccount && picksPending) org.dlang.liveimap.settings.settleScope(context)
+            return published
+        }
         val previousUi = if (mixed) org.dlang.liveimap.settings.readGlobalRecord(context) else null
         try {
             org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, draft, uiKeys)
@@ -227,6 +237,7 @@ class AccountStore private constructor(private val context: Context) {
                     for (key in accountKeys) {
                         current = current.withSetting(key, org.dlang.liveimap.settings.SettingValue(draft.getSetting(key)))
                     }
+                    if (writeUnknowns) current = current.copy(unknownSettings = draft.unknownSettings)
                     published = current
                     val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
                         ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)

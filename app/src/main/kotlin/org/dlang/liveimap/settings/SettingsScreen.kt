@@ -308,9 +308,11 @@ internal class SettingsEditor(
         val changed = retarget.settings.changedKeysAgainst(previous)
         val immediate = changed.filter { it in immediateSettingKeys }.toSet()
         val page = changed.filter { it !in immediateSettingKeys }.toSet()
-        if (page.isNotEmpty()) {
-            dirtyKeys.updateAndGet { it + page }
-            pageDirty = dirtyKeys.get().isNotEmpty()
+        val structural = retarget.settings.unknownSettings != previous.unknownSettings ||
+            ScopePicks.chosen.isNotEmpty()
+        if (page.isNotEmpty()) dirtyKeys.updateAndGet { it + page }
+        if (page.isNotEmpty() || structural) {
+            pageDirty = dirtyKeys.get().isNotEmpty() || structural
         }
         if (immediate.isEmpty()) return true
         val saving = retarget.settings
@@ -635,6 +637,8 @@ internal class SettingsEditor(
             val retarget = org.dlang.liveimap.accounts.retargetCredentials(attempt.before, attempt.screen)
             val saving = if (captured != null) retarget.settings else attempt.screen
             val keys = if (captured != null) saving.changedKeysAgainst(attempt.before) else dirtyKeys.get()
+            val unknownsChanged = saving.unknownSettings != attempt.before.unknownSettings
+            val scopePick = ScopePicks.chosen.isNotEmpty()
             // A moved server drops the old secret in the settings write. A password that is part of this attempt is written after that.
             val writePassword = attempt.password
             val writeSmtp = attempt.smtp
@@ -654,7 +658,10 @@ internal class SettingsEditor(
                 record = null,
                 checkRecord = false,
             )
-            if (!preview.stored) {
+            val structuralOnly = (unknownsChanged || scopePick) && keys.isEmpty() &&
+                saving.changedKeysAgainst(attempt.before).isEmpty() &&
+                writePassword == null && writeSmtp == null && writeSieve == null
+            if (!preview.stored && !structuralOnly) {
                 if (rejected != null || settingsSaveFailure.value.isNullOrEmpty()) {
                     settingsSaveFailure.value = preview.failure
                 }
@@ -663,19 +670,21 @@ internal class SettingsEditor(
             val id = attempt.accountId
             val storeTarget = id?.let { store.forAccount(it) }
             if (storeTarget == null) {
-                if (accountIdentityChanged(attempt.before, saving) || writePassword != null || writeSmtp != null || writeSieve != null || keys.isEmpty()) {
+                if (!structuralOnly && (accountIdentityChanged(attempt.before, saving) || writePassword != null || writeSmtp != null || writeSieve != null || keys.isEmpty())) {
                     if (settingsSaveFailure.value.isNullOrEmpty()) settingsSaveFailure.value = settingsSaveEmptyWrite
                     return false
                 }
                 settingsSaveFailure.value = null
-                SettingsHub.saveUiKeys(appContext, saving, keys)
+                SettingsHub.saveUiKeys(appContext, saving, keys, replaceUnknowns = unknownsChanged)
                 if (captured == null || editingMirror.get() == id) {
                     markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, replaceSettings = captured != null)
                 }
                 return true
             }
             settingsSaveFailure.value = null
-            if (keys.isNotEmpty()) storeTarget.commitKeys(saving, keys)
+            if (keys.isNotEmpty() || unknownsChanged || scopePick) {
+                storeTarget.commitKeys(saving, keys, writeUnknowns = unknownsChanged)
+            }
             if (writePassword != null) storeTarget.setPassword(writePassword)
             if (writeSmtp != null) storeTarget.setSmtpPassword(writeSmtp)
             if (writeSieve != null) {
@@ -695,7 +704,7 @@ internal class SettingsEditor(
                 record = store.accountFields(id),
                 checkRecord = true,
             )
-            if (!recorded.stored) {
+            if (!recorded.stored && !structuralOnly) {
                 settingsSaveFailure.value = recorded.failure
                 return false
             }
@@ -769,18 +778,22 @@ internal class SettingsEditor(
             }
             val keys = dirtyKeys.get()
             val draft = settingsMirror.get()
+            val unknownsChanged = draft.unknownSettings != baselineMirror.get().unknownSettings
+            val scopePick = ScopePicks.chosen.isNotEmpty()
             val id = editingMirror.get()
             val storeTarget = id?.let { store.forAccount(it) }
-            if (storeTarget != null && (keys.isNotEmpty() || passwordDirty || smtpDirty || sieveDirty)) {
-                if (keys.isNotEmpty()) storeTarget.commitKeys(draft, keys)
+            if (storeTarget != null && (keys.isNotEmpty() || unknownsChanged || scopePick || passwordDirty || smtpDirty || sieveDirty)) {
+                if (keys.isNotEmpty() || unknownsChanged || scopePick) {
+                    storeTarget.commitKeys(draft, keys, writeUnknowns = unknownsChanged)
+                }
                 if (passwordDirty) storeTarget.setPassword(password)
                 if (smtpDirty) storeTarget.setSmtpPassword(smtpPassword)
                 val sieve = sievePassword
                 if (sieveDirty) {
                     org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, sieve.ifEmpty { null })
                 }
-            } else if (storeTarget == null && keys.isNotEmpty()) {
-                SettingsHub.saveUiKeys(appContext, draft, keys)
+            } else if (storeTarget == null && (keys.isNotEmpty() || unknownsChanged || scopePick)) {
+                SettingsHub.saveUiKeys(appContext, draft, keys, replaceUnknowns = unknownsChanged)
             }
             baselineMirror.set(draft)
             dirtyKeys.set(emptySet())

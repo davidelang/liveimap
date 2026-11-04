@@ -129,10 +129,14 @@ object SettingsHub {
         finish(context, ui, accounts, "")
     }
 
-    suspend fun saveUiKeys(context: Context, draft: Settings, keys: Set<String>) {
-        if (keys.isEmpty()) return
+    suspend fun saveUiKeys(context: Context, draft: Settings, keys: Set<String>, replaceUnknowns: Boolean = false) {
+        if (keys.isEmpty() && !replaceUnknowns) {
+            if (ScopePicks.chosen.isNotEmpty()) settleScope(context)
+            return
+        }
         var next = decodeSettings(readGlobalRecord(context))
         for (key in keys) next = next.withSetting(key, SettingValue(draft.getSetting(key)))
+        if (replaceUnknowns) next = next.copy(unknownSettings = draft.unknownSettings)
         val text = next.encodeUi()
         writeGlobalRecord(context, text)
         publishUi(next)
