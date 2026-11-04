@@ -4125,3 +4125,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/settings-json-errors-20261104-0449-plan.md
 - Work: settings-tree failures name the file, line, id, and rule; repeated titles stay valid; --check and -Pliveimap.englishOnly. Do not add settings_group_imapSecurity_title.
+
+## 2026-11-04 - Create a missing group title
+
+- A group with no settings_group_<id>_title resolves to that name. align_display_english stores the JSON title when it writes, and --check only names the resource.
+- A resource whose text differs still fails, with the line and both texts.
+- imapSecurity is settings_group_imapSecurity_title, Imap Security. Locale sources follow the display-string rule. English-only does not change app/src/main/i18n.
