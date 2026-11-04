@@ -722,7 +722,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Διαγραφή οριστικά"},
 {"key": "settings_move_method", "source": "Move method", "text": "Μέθοδος μετακίνησης"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Αντιγράψτε και μετά επισημάνετε ως διαγραμμένο"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE", "same": true},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Σκουπίδια γραμματοκιβωτίου"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Χρειάζεται ακόμα ένα γραμματοκιβώτιο απορριμμάτων."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Δεν έχει οριστεί γραμματοκιβώτιο απορριμμάτων και δεν διαφημίζεται το LIST-EXTENDED."},

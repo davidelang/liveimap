@@ -679,7 +679,7 @@
 {"key": "status_reconnecting", "source": "Reconnecting…", "text": "At fáa samband aftur..."},
 {"key": "scaffold_up", "source": "Navigate up", "text": "Far upp"},
 {"key": "index_now", "source": "now", "text": "nú"},
-{"key": "index_min", "source": "min", "text": "min"},
+{"key": "index_min", "source": "min", "text": "min", "same": true},
 {"key": "index_hour", "source": "hour", "text": "tími"},
 {"key": "index_hours", "source": "hours", "text": "tímar"},
 {"key": "index_day", "source": "day", "text": "dagur"},
