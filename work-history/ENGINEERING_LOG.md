@@ -4153,3 +4153,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - Reader layout stays with the menu
 
 - The open message keeps its text layout with the display choice, so Flowed and Monospaced still lay out after a configuration change. The IMAP, SMTP, and Sieve password rows are back under Imap Security, and Sending shows its summary again.
+
+## 2026-11-04 - Flowed flags stay with the open message
+
+- format=flowed and DelSp stay with the loaded message, so a rotation does not show a Flowed message as ordinary reflow.

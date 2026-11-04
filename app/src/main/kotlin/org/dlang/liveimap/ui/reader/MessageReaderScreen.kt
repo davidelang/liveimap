@@ -333,6 +333,8 @@ internal class MessageReaderLoaded : ViewModel() {
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
     val messageDisplayState = mutableStateOf(ReaderDisplay.Monospaced)
     val textLayoutState = mutableStateOf(TextLayout.Monospaced)
+    val plainFlowedState = mutableStateOf(false)
+    val plainDelSpState = mutableStateOf(false)
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
     val bodyLinesState = mutableStateListOf<String>()
@@ -387,6 +389,8 @@ internal class MessageReaderLoaded : ViewModel() {
         selectedViewState.value = BodyView.PlainOrError
         messageDisplayState.value = ReaderDisplay.Monospaced
         textLayoutState.value = TextLayout.Monospaced
+        plainFlowedState.value = false
+        plainDelSpState.value = false
         renderedHtmlState.value = false
         bodyTextState.value = ""
         bodyTruncatedState.value = false
@@ -630,8 +634,8 @@ private fun ReaderScreen(
     var messageDisplay by held.messageDisplayState
     var textLayout by held.textLayoutState
     // RFC 3676 parameters of the plain part shown (format=flowed, DelSp=yes)
-    var plainFlowed by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
-    var plainDelSp by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
+    var plainFlowed by held.plainFlowedState
+    var plainDelSp by held.plainDelSpState
     var rawTruncated by remember { mutableStateOf(false) }
     var allHeadersOpen by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
     var allHeaderText by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf<String?>(null) }
