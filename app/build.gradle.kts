@@ -370,7 +370,7 @@ androidComponents {
 }
 
 // Checks app/src/main/i18n and writes values-<locale>/strings.xml.
-// A changed settings-tree display sentence is refreshed by Grok. Any other source mismatch fails the task.
+// Outstanding strings go to Grok once per non-English locale. Any other source mismatch fails the task.
 private val i18nPython: String = """
 
 import json
@@ -666,16 +666,14 @@ def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_name
 
     display_names = set(display_names or [])
     grok_note = ""
-    if gen is not None and display_names:
-        updated, kept = gen.refresh_display_translations(
+    if gen is not None:
+        grok_note = gen.refresh_display_translations(
             machines,
             items,
             display_names,
             keywords,
             {loc: language_tag(loc) for loc in target},
-        )
-        if updated or kept:
-            grok_note = "i18n grok: refreshed %d, kept %d" % (updated, kept)
+        ) or ""
 
     generated = {}
     for loc in target:
@@ -892,7 +890,7 @@ abstract class GenerateI18nTask : DefaultTask() {
     }
 }
 
-// A settings-tree display sentence is machine-translated by Grok when its English changes. An .override.json file is not edited. If Grok cannot run, the new English is still the source, the previous machine text stays, and a later build retries. Any other strings.xml add, change, or remove still has to be translated by the coder in the same change. generateAppI18n fails the build when a machine source outside this tree is not the current en-US text.
+// A settings-tree display sentence keeps its resource name. When its English changes, every locale source is updated and that sentence joins the locale batch. Outstanding strings in a non-English locale go in one Grok request. An .override.json file is not edited. A reply equal to the source is not sent again. If Grok cannot run, the previous text stays, pending is set, and the build finishes. A source mismatch for a string that is not part of that batch still fails the task. Any other strings.xml add, change, or remove still has to be translated by the coder in the same change.
 val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     stringsFile.set(file("src/main/res/values/strings.xml"))
     i18nDir.set(file("src/main/i18n"))

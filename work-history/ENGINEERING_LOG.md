@@ -4112,3 +4112,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - One writable book is used without asking. Several writable books ask, and the choices include Android accounts. The first book is not used as a silent default. A marked save target, Pine or Android, is used and does not ask. Marking one clears the others. A read-only Pine book is not a destination and cannot be marked. No writable book tells the user and writes nothing.
 - An Android choice uses the existing contacts write into that account. A Pine choice still writes the Alpine nickname, name, and address.
+
+## 2026-11-03 - One Grok request per locale
+
+- generateAppI18n asks Grok once per non-English locale for every outstanding string. A reply that matches the source is remembered and not sent again. If Grok cannot run, those entries stay pending and the build finishes.

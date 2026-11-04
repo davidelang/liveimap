@@ -375,6 +375,28 @@ _BINDINGS_NAME = "settings-display-bindings.json"
 _PH_RE = re.compile(r"%%|%(?:\d+\$)?[#+ 0,\-]*\d*(?:\.\d+)?[a-zA-Z]|%")
 _GROK_URL = "https://api.x.ai/v1/chat/completions"
 _GROK_MODELS = ("grok-4.20-0309-non-reasoning", "grok-4.3")
+_ENGLISH_LOCALES = {"b+en+001", "en-rAU", "en-rCA", "en-rGB", "en-rIN"}
+_STAY_KEYS = {
+    "app_name", "about_lib_etpan", "about_libfastjson", "settings_pine",
+    "settings_email_submission", "settings_access_imap", "settings_access_jmap",
+    "settings_tls", "settings_tls_starttls", "setting_smtpTlsMode_title",
+    "compose_body_html", "display_html", "label_html", "settings_ok", "index_ok",
+    "drawer_inbox", "filter_script", "filter_list_id", "compose_resent_to",
+    "settings_rule_reply_to", "compose_cc", "index_filter_cc", "index_sort_cc",
+    "compose_bcc", "compose_show_copies", "reader_cc", "book_fcc", "settings_fcc",
+    "settings_group_fcc_title", "copy_im", "toolbar_rows_more", "toolbar_rows_fewer",
+    "copy_name_email", "address_book_row", "index_pill_down", "index_pill_up",
+    "sending_rule_numbered", "settings_logging_line", "settings_view_line",
+    "pinerc_change", "settings_display_line", "settings_sort_line",
+    "settings_mailbox_rule", "settings_swipe_line", "settings_host_port",
+}
+_KEEP_SPELLINGS = (
+    "LiveIMAP", "libEtPan", "libfastjson", "MIT", "BSD", "Pine", "pinerc", "Pinerc",
+    "IMAP", "JMAP", "SMTP", "TLS", "STARTTLS", "HTML", "IDLE", "NOOP", "Sieve",
+    "ManageSieve", "EmailSubmission", "List-Id", "Reply-To", "Resent-To", "Cc", "Bcc",
+    "Fcc", "INBOX", "COMPRESS", "OpenSSL", ".p12",
+)
+_WORD_RE = re.compile(r"[A-Za-z]")
 
 
 def _android_escape(text):
@@ -766,7 +788,9 @@ def _ordered_text(value):
 
 def _entry_body(entry):
     obj = {"key": entry["key"], "source": _ordered_text(entry["source"]), "text": _ordered_text(entry["text"])}
-    if entry.get("pending") is True:
+    if entry.get("same") is True:
+        obj["same"] = True
+    elif entry.get("pending") is True:
         obj["pending"] = True
     return json.dumps(obj, ensure_ascii=False, separators=(", ", ": "))
 
@@ -844,21 +868,21 @@ def _grok_request(api_key, prompt):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=90) as response:
+            with urllib.request.urlopen(request, timeout=120) as response:
                 raw = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             exc.close()
-            if exc.code in (400, 404):
-                continue
-            return None
+            continue
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-            return None
+            continue
         try:
             body = json.loads(raw)
             content = body["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError, json.JSONDecodeError):
-            return None
-        return _parse_grok_json(content)
+            continue
+        parsed = _parse_grok_json(content)
+        if isinstance(parsed, dict):
+            return parsed
     return None
 
 
@@ -886,153 +910,248 @@ def _parse_grok_json(content):
     return parsed
 
 
-def _translation_ok(english, translated, quantities):
-    if isinstance(english, dict):
-        if not isinstance(translated, dict):
-            return False
+def _has_word(source):
+    if isinstance(source, dict):
+        return any(isinstance(value, str) and _WORD_RE.search(value) for value in source.values())
+    return isinstance(source, str) and _WORD_RE.search(source) is not None
+
+
+def _copy_text(value):
+    if isinstance(value, dict):
+        return _ordered_text(dict(value))
+    return value
+
+
+def _plural_quantities(source, locale_keywords):
+    wanted = set(source) | set(locale_keywords or [])
+    ordered = [quantity for quantity in ("zero", "one", "two", "few", "many", "other") if quantity in wanted]
+    for quantity in sorted(wanted):
+        if quantity not in ordered:
+            ordered.append(quantity)
+    return ordered
+
+
+def _accepted_text(source, translated, quantities):
+    # Non-empty, and placeholders match the source quantity (or other, for a quantity source lacks).
+    if isinstance(source, dict):
+        if not isinstance(translated, dict) or not quantities:
+            return None
+        kept = {}
         for quantity in quantities:
             got = translated.get(quantity)
-            sample = english.get(quantity, english.get("other", ""))
-            if not isinstance(got, str) or _placeholders(got) != _placeholders(sample):
-                return False
-        return True
-    return isinstance(translated, str) and _placeholders(translated) == _placeholders(english)
-
-
-def _grok_translate(api_key, english, locale_tags, quantities):
-    # One xAI call per batch. Any other host is not a translation service we call.
-    locales = list(locale_tags)
-    found = {}
-    step = 20
-    for start in range(0, len(locales), step):
-        batch = locales[start : start + step]
-        lines = []
-        for loc in batch:
-            tag = locale_tags[loc]
-            if quantities.get(loc):
-                lines.append("%s (%s) quantities %s" % (loc, tag, ", ".join(quantities[loc])))
-            else:
-                lines.append("%s (%s)" % (loc, tag))
-        if isinstance(english, dict):
-            prompt = (
-                "Translate this en-US Android plural into each locale. "
-                "Keep every placeholder and format argument exactly as written. "
-                "Return a JSON object whose keys are the locale ids and whose values are objects of quantity to text. "
-                "Use only the quantities listed for that locale.\n\n"
-                "en-US: %s\n\n%s" % (json.dumps(english, ensure_ascii=False), "\n".join(lines))
-            )
-        else:
-            prompt = (
-                "Translate this en-US Android string into each locale. "
-                "Keep every placeholder and format argument exactly as written. "
-                "Return a JSON object whose keys are the locale ids and whose values are the translations.\n\n"
-                "en-US: %s\n\n%s" % (json.dumps(english, ensure_ascii=False), "\n".join(lines))
-            )
-        parsed = _grok_request(api_key, prompt)
-        if not isinstance(parsed, dict):
-            return None
-        for loc in batch:
-            translated = parsed.get(loc)
-            if not _translation_ok(english, translated, quantities.get(loc) or []):
+            sample = source.get(quantity, source.get("other", ""))
+            if not isinstance(sample, str):
+                sample = ""
+            if not isinstance(got, str):
                 return None
-            if isinstance(translated, dict):
-                kept = {}
-                for quantity in quantities.get(loc) or []:
-                    kept[quantity] = translated[quantity]
-                found[loc] = kept
-            else:
-                found[loc] = translated.strip()
-    return found
+            got = got.strip()
+            if got == "" or _placeholders(got) != _placeholders(sample):
+                return None
+            kept[quantity] = got
+        return kept
+    if not isinstance(translated, str) or not isinstance(source, str):
+        return None
+    got = translated.strip()
+    if got == "" or _placeholders(got) != _placeholders(source):
+        return None
+    return got
 
 
-def _fallback_text(current, quantities):
-    if isinstance(current, dict):
-        text = {}
-        for quantity in quantities or ["other"]:
-            if quantity in current and isinstance(current[quantity], str):
-                text[quantity] = current[quantity]
-            else:
-                text[quantity] = current.get("other", "")
-        return text
-    return current
+def _locale_prompt(tag, batch):
+    # One locale, every outstanding key. No other translation host is called.
+    payload = {}
+    for key, source, quantities in batch:
+        if isinstance(source, dict):
+            shown = {}
+            for quantity in quantities:
+                sample = source.get(quantity, source.get("other", ""))
+                shown[quantity] = sample if isinstance(sample, str) else ""
+            payload[key] = shown
+        else:
+            payload[key] = source
+    return (
+        "Translate each en-US Android string into %s. "
+        "Return one JSON object and no other text. "
+        "Each key below is a top-level key of that object, and there are no other keys. "
+        "A string value is the translation. "
+        "A plural value is an object of quantity to text and uses only the quantities shown for that key. "
+        "Keep every placeholder and format argument exactly as written. "
+        "Leave these spellings unchanged: %s.\n\n%s"
+        % (
+            tag,
+            ", ".join(_KEEP_SPELLINGS),
+            json.dumps(payload, ensure_ascii=False, separators=(", ", ": ")),
+        )
+    )
+
+
+def _translate_locale(api_key, tag, entries, locale_keywords):
+    # First model, then the fallback model if that request fails. Placeholder misses are one more request.
+    batch = []
+    for entry in entries:
+        source = entry.get("source")
+        quantities = _plural_quantities(source, locale_keywords) if isinstance(source, dict) else None
+        batch.append((entry["key"], source, quantities))
+    parsed = _grok_request(api_key, _locale_prompt(tag, batch))
+    if not isinstance(parsed, dict):
+        return {}, True
+    accepted = {}
+    retry = []
+    for key, source, quantities in batch:
+        got = _accepted_text(source, parsed.get(key), quantities)
+        if got is None:
+            retry.append((key, source, quantities))
+        else:
+            accepted[key] = got
+    if not retry:
+        return accepted, False
+    parsed = _grok_request(api_key, _locale_prompt(tag, retry))
+    if not isinstance(parsed, dict):
+        return accepted, False
+    for key, source, quantities in retry:
+        got = _accepted_text(source, parsed.get(key), quantities)
+        if got is not None:
+            accepted[key] = got
+    return accepted, False
+
+
+def _outstanding(loc, entry, source_changed):
+    if loc in _ENGLISH_LOCALES:
+        return False
+    if entry.get("key") in _STAY_KEYS:
+        return False
+    source = entry.get("source")
+    if not _has_word(source):
+        return False
+    if entry.get("same") is True:
+        return False
+    if source_changed or entry.get("pending") is True:
+        return True
+    return _same_text(entry.get("text"), source)
+
+
+def _write_translation(entry, text):
+    entry["text"] = text
+    entry.pop("pending", None)
+    if _same_text(text, entry.get("source")):
+        entry["same"] = True
+        return True
+    entry.pop("same", None)
+    return False
+
+
+def _leave_pending(entry):
+    entry.pop("same", None)
+    entry["pending"] = True
 
 
 def refresh_display_translations(machines, items, display_names, keywords, locale_tags):
-    # Updates machine source for a changed settings-tree sentence.
-    # Grok writes text. If Grok cannot run, the previous text stays and pending retries later.
-    # Strings outside display_names are left for the caller to reject.
-    if not display_names:
-        return 0, 0
+    # One Grok request per non-English locale carries every outstanding string.
+    # A changed settings-tree source is updated first. source is not edited otherwise.
+    # If Grok cannot run, the previous text stays, pending is set, and the caller still finishes.
     by_current = {key: value for key, value in items}
-    work = {}
-    for loc, pair in machines.items():
-        _path, data = pair
-        found = {}
-        for entry in data:
-            if isinstance(entry, dict) and isinstance(entry.get("key"), str):
-                found[entry["key"]] = entry
-        for key in display_names:
-            if key not in by_current:
-                continue
-            current = by_current[key]
-            entry = found.get(key)
-            if entry is None:
-                work.setdefault(key, []).append((loc, None))
-                continue
-            pending = entry.get("pending") is True
-            if pending or not _same_text(entry.get("source"), current):
-                work.setdefault(key, []).append((loc, entry))
-    if not work:
-        return 0, 0
+    display_names = set(display_names or [])
     api_key = os.environ.get("XAI_API_KEY", "").strip()
-    updated = 0
-    kept = 0
+    requested = 0
+    wrote = 0
+    pending_count = 0
+    same_count = 0
+    failed_locales = []
+    named = []
     file_updates = {}
     file_additions = {}
-    for key, rows in work.items():
-        current = by_current[key]
-        quantities = {}
-        tags = {}
-        for loc, _entry in rows:
-            tags[loc] = locale_tags.get(loc, loc)
-            if isinstance(current, dict):
-                quantities[loc] = list(keywords.get(loc) or [])
-        translated = _grok_translate(api_key, current, tags, quantities) if api_key else None
-        for loc, entry in rows:
-            path, data = machines[loc]
-            got = None if translated is None else translated.get(loc)
-            if entry is None:
-                previous = _fallback_text(current, quantities.get(loc))
-                text = got if got is not None else previous
-                pending = got is None
-                created = {"key": key, "source": current, "text": text}
-                if pending:
-                    created["pending"] = True
-                    kept += 1
-                else:
-                    updated += 1
-                data.append(created)
-                file_additions.setdefault(path, []).append(_entry_body(created))
+    jobs = []
+    for loc in sorted(machines):
+        path, data = machines[loc]
+        found = {}
+        for entry in data:
+            if isinstance(entry, dict) and isinstance(entry.get("key"), str) and entry["key"] not in found:
+                found[entry["key"]] = entry
+        created = []
+        for key in sorted(display_names):
+            if key in found or key not in by_current:
                 continue
-            old_text = entry.get("text")
-            if got is None:
-                entry["source"] = current
-                entry["pending"] = True
-                if "text" not in entry:
-                    entry["text"] = _fallback_text(current, quantities.get(loc))
-                kept += 1
-            else:
-                entry["source"] = current
-                entry["text"] = got
+            current = by_current[key]
+            entry = {"key": key, "source": _copy_text(current), "text": _copy_text(current)}
+            data.append(entry)
+            found[key] = entry
+            created.append(entry)
+        created_ids = {id(entry) for entry in created}
+        outstanding = []
+        synced = []
+        for entry in data:
+            key = entry.get("key") if isinstance(entry, dict) else None
+            if not isinstance(key, str) or key not in by_current:
+                continue
+            current = by_current[key]
+            source_changed = False
+            if key in display_names and not _same_text(entry.get("source"), current):
+                entry["source"] = _copy_text(current)
+                entry.pop("same", None)
                 entry.pop("pending", None)
-                updated += 1
-            if entry.get("text") is None:
-                entry["text"] = old_text if isinstance(old_text, (str, dict)) else _fallback_text(current, quantities.get(loc))
-            file_updates.setdefault(path, {})[key] = _entry_body(entry)
+                source_changed = True
+                synced.append(entry)
+            if _outstanding(loc, entry, source_changed):
+                outstanding.append(entry)
+        if created:
+            file_additions[path] = created
+        jobs.append((loc, path, outstanding, synced, created_ids))
+    for loc, path, outstanding, synced, created_ids in jobs:
+        accepted = {}
+        if outstanding:
+            if not api_key:
+                failed_locales.append(loc)
+            else:
+                requested += 1
+                accepted, request_failed = _translate_locale(
+                    api_key,
+                    locale_tags.get(loc, loc),
+                    outstanding,
+                    keywords.get(loc) or [],
+                )
+                if request_failed:
+                    failed_locales.append(loc)
+            for entry in outstanding:
+                key = entry["key"]
+                got = accepted.get(key)
+                if got is None:
+                    _leave_pending(entry)
+                    pending_count += 1
+                    if api_key and loc not in failed_locales:
+                        named.append((loc, key))
+                else:
+                    if _write_translation(entry, got):
+                        same_count += 1
+                    wrote += 1
+        touched = []
+        seen = set()
+        for entry in outstanding + synced:
+            if id(entry) in seen or id(entry) in created_ids:
+                continue
+            seen.add(id(entry))
+            touched.append(entry)
+        if touched:
+            mapping = file_updates.setdefault(path, {})
+            for entry in touched:
+                mapping[entry["key"]] = entry
     paths = set(file_updates) | set(file_additions)
     for path in paths:
-        _rewrite_locale(path, file_updates.get(path, {}), file_additions.get(path, []))
-    return updated, kept
+        updates = {key: _entry_body(entry) for key, entry in file_updates.get(path, {}).items()}
+        additions = [_entry_body(entry) for entry in file_additions.get(path, [])]
+        _rewrite_locale(path, updates, additions)
+    if not (requested or wrote or pending_count or same_count or failed_locales or named):
+        return ""
+    lines = [
+        "i18n grok: requested %d, wrote %d, pending %d, same %d" % (requested, wrote, pending_count, same_count)
+    ]
+    if not api_key and failed_locales:
+        lines.append("i18n grok: grok unavailable")
+    for loc in failed_locales:
+        if api_key:
+            lines.append("i18n grok: request failed %s" % loc)
+    for loc, key in named:
+        lines.append("i18n grok: pending %s %s" % (loc, key))
+    return "\n".join(lines)
 
 
 def _remember_sentence(found, catalog, value):
