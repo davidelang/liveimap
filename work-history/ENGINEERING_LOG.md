@@ -4099,3 +4099,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Clean writes the stored JSON: an unknown key is removed, a wrong-type value becomes the default, and a scope pick is stored. Save anyway still keeps the raw value and disagreeing copies.
 - An index swipe whose saved permanent delete cannot run warns and names the alternate, including when ask-before-expunge is off. Expunging every deleted message in the folder happens only after the user insists.
+
+## 2026-11-03 - Trash swipe confirm expunges after the UIDPLUS warning
+
+- Confirming the index swipe UIDPLUS warning expunges every deleted message, including in Trash. Cancel still does nothing. The missing-trash warning still marks deleted.
