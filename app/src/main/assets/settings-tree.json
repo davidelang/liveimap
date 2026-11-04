@@ -20,7 +20,7 @@
                   "setting": "friendlyName",
                   "type": "text",
                   "default": "",
-                  "title": "Friendly name"
+                  "title": "Label"
                 },
                 {
                   "setting": "email",
@@ -34,7 +34,7 @@
                   "setting": "displayName",
                   "type": "text",
                   "default": "",
-                  "title": "Display name",
+                  "title": "Name",
                   "pinerc": "personal-name",
                   "pinercFormat": "text"
                 },
@@ -47,10 +47,15 @@
                   "pinercFormat": "list",
                   "format": "commaList",
                   "many": true,
-                  "order": "user"
+                  "order": "sorted"
                 }
               ],
               "summary": [
+                {
+                  "value": {
+                    "setting": "friendlyName"
+                  }
+                },
                 {
                   "when": {
                     "setting": "email",
@@ -96,26 +101,7 @@
                   "title": "JMAP part cache",
                   "min": 1,
                   "max": 10000
-                }
-              ],
-              "summary": [
-                {
-                  "value": {
-                    "setting": "jmapFolders",
-                    "titles": {
-                      "true": "JMAP",
-                      "false": "IMAP"
-                    }
-                  }
-                }
-              ]
-            },
-            {
-              "group": "server",
-              "title": "Server",
-              "label": "Server",
-              "header": "label",
-              "children": [
+                },
                 {
                   "setting": "imapHost",
                   "type": "text",
@@ -158,161 +144,124 @@
                   "pinercFormat": "text"
                 },
                 {
-                  "setting": "tlsMode",
-                  "type": "choice",
-                  "default": "Implicit",
-                  "title": "TLS",
-                  "server": true,
-                  "choices": [
-                    "None",
-                    "StartTls",
-                    "Implicit"
-                  ],
-                  "choiceTitles": {
-                    "None": "None",
-                    "StartTls": "STARTTLS",
-                    "Implicit": "Implicit TLS"
-                  },
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  },
-                  "pinerc": "inbox-path",
-                  "pinercFormat": "remote"
-                },
-                {
-                  "setting": "allowPlaintextAuth",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Allow a clear-text password",
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  }
-                },
-                {
-                  "setting": "acceptInvalidCert",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Accept invalid certificate",
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  },
-                  "pinerc": "inbox-path",
-                  "pinercFormat": "novalidate"
-                },
-                {
-                  "setting": "allowOldTls",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Allow old TLS and weak keys",
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  }
-                },
-                {
-                  "setting": "authMechanism",
-                  "type": "text",
-                  "default": "",
-                  "title": "Authentication mechanism",
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  }
-                },
-                {
-                  "setting": "clientCertAlias",
-                  "type": "clientCert",
-                  "default": "",
-                  "title": "Client certificate alias",
-                  "server": true,
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  }
-                },
-                {
-                  "setting": "certPin",
-                  "type": "text",
-                  "default": "",
-                  "title": "Certificate pin",
-                  "server": true,
-                  "visibleWhen": {
-                    "setting": "jmapFolders",
-                    "equals": false
-                  }
-                },
-                {
-                  "setting": "jmapCertPin",
-                  "type": "text",
-                  "default": "",
-                  "title": "JMAP certificate pin",
-                  "server": true
-                },
-                {
-                  "setting": "checkServer",
-                  "type": "checkServer",
-                  "title": "Check server"
-                },
-                {
-                  "setting": "imapPassword",
-                  "type": "password",
-                  "title": "IMAP password"
-                },
-                {
-                  "setting": "smtpPassword",
-                  "type": "password",
-                  "title": "SMTP password"
-                },
-                {
-                  "setting": "sievePassword",
-                  "type": "password",
-                  "title": "Sieve password"
-                }
-              ],
-              "summary": [
-                {
-                  "when": {
-                    "setting": "imapHost",
-                    "empty": true
-                  },
-                  "text": "No server"
-                },
-                {
-                  "when": {
-                    "setting": "jmapFolders",
-                    "equals": true
-                  },
-                  "value": {
-                    "setting": "imapHost"
-                  }
-                },
-                {
-                  "text": "%1$s:%2$d",
-                  "args": [
+                  "group": "imapSecurity",
+                  "title": "Imap Security",
+                  "children": [
                     {
-                      "setting": "imapHost"
+                      "setting": "tlsMode",
+                      "type": "choice",
+                      "default": "Implicit",
+                      "title": "TLS",
+                      "server": true,
+                      "choices": [
+                        "None",
+                        "StartTls",
+                        "Implicit"
+                      ],
+                      "choiceTitles": {
+                        "None": "None",
+                        "StartTls": "STARTTLS",
+                        "Implicit": "Implicit TLS"
+                      },
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      },
+                      "pinerc": "inbox-path",
+                      "pinercFormat": "remote"
                     },
                     {
-                      "setting": "imapPort"
+                      "setting": "allowPlaintextAuth",
+                      "type": "bool",
+                      "default": false,
+                      "title": "Allow a clear-text password",
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "acceptInvalidCert",
+                      "type": "bool",
+                      "default": false,
+                      "title": "Accept invalid certificate",
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      },
+                      "pinerc": "inbox-path",
+                      "pinercFormat": "novalidate"
+                    },
+                    {
+                      "setting": "allowOldTls",
+                      "type": "bool",
+                      "default": false,
+                      "title": "Allow old TLS and weak keys",
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "authMechanism",
+                      "type": "text",
+                      "default": "",
+                      "title": "Authentication mechanism",
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "clientCertAlias",
+                      "type": "clientCert",
+                      "default": "",
+                      "title": "Client certificate alias",
+                      "server": true,
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "certPin",
+                      "type": "text",
+                      "default": "",
+                      "title": "Certificate pin",
+                      "server": true,
+                      "visibleWhen": {
+                        "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "jmapCertPin",
+                      "type": "text",
+                      "default": "",
+                      "title": "JMAP certificate pin",
+                      "server": true
+                    },
+                    {
+                      "setting": "checkServer",
+                      "type": "checkServer",
+                      "title": "Check server"
+                    },
+                    {
+                      "setting": "imapPassword",
+                      "type": "password",
+                      "title": "IMAP password"
+                    },
+                    {
+                      "setting": "smtpPassword",
+                      "type": "password",
+                      "title": "SMTP password"
+                    },
+                    {
+                      "setting": "sievePassword",
+                      "type": "password",
+                      "title": "Sieve password"
                     }
                   ]
-                }
-              ],
-              "editor": "server",
-              "opens": "inline",
-              "introWhen": [
-                {
-                  "when": {
-                    "setting": "jmapFolders",
-                    "equals": true
-                  },
-                  "text": "Host, host:port, or an https (or http) URL. The JMAP service is found at https://HOST[:PORT]/.well-known/jmap; the port is 443 unless given."
-                },
-                {
-                  "text": "IMAP and SMTP are plaintext only when TLS is None. STARTTLS and implicit TLS encrypt them."
                 }
               ]
             },
