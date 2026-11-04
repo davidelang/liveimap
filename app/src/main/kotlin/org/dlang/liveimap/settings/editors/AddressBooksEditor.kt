@@ -236,14 +236,11 @@ internal fun ManageAddresses(
                     }
                     editor.persist(editor.settings.copy(addressBooks = next))
                 }) { Text(stringResource(R.string.settings_read_only)) }
-                if (!book.readOnly) {
-                    TextButton(onClick = {
-                        val next = editor.settings.addressBooks.mapIndexed { i, item ->
-                            item.copy(saveTarget = i == index && item.kind == "pine" && !item.readOnly)
-                        }
-                        editor.persist(editor.settings.copy(addressBooks = next))
-                    }) { Text(stringResource(R.string.settings_save_target)) }
-                }
+            }
+            if (book.isWritableBook()) {
+                TextButton(onClick = {
+                    editor.persist(editor.settings.copy(addressBooks = markAddressSaveTarget(editor.settings.addressBooks, index)))
+                }) { Text(stringResource(R.string.settings_save_target)) }
             }
         }
     }

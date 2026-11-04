@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.heightIn
 import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.session.TooDeepSubtype
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.webkit.WebResourceRequest
@@ -138,8 +140,10 @@ import org.dlang.liveimap.ui.compose.MimeDecodeException
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
@@ -163,7 +167,11 @@ import org.dlang.liveimap.settings.globalSettingsRecord
 import org.dlang.liveimap.settings.clampTextZoom
 import org.dlang.liveimap.settings.effectiveTextZoom
 import org.dlang.liveimap.settings.Settings
-import org.dlang.liveimap.settings.addressSaveMailbox
+import org.dlang.liveimap.settings.AddressBookEntry
+import org.dlang.liveimap.settings.AddressSave
+import org.dlang.liveimap.settings.addressSave
+import org.dlang.liveimap.settings.androidSourceId
+import org.dlang.liveimap.settings.saveBookChoices
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SwipeAction
@@ -175,10 +183,15 @@ import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.settings.moveCommandKind
 import org.dlang.liveimap.ui.contacts.AlpineEntry
+import org.dlang.liveimap.ui.contacts.AndroidContacts
+import org.dlang.liveimap.ui.contacts.CopyContact
 import org.dlang.liveimap.ui.contacts.PineRead
 import org.dlang.liveimap.ui.contacts.PineWriteResult
+import org.dlang.liveimap.ui.contacts.androidEntriesOnce
 import org.dlang.liveimap.ui.contacts.bookHasAddress
+import org.dlang.liveimap.ui.contacts.hasReadContacts
 import org.dlang.liveimap.ui.contacts.readPineBook
+import org.dlang.liveimap.ui.contacts.writeAndroidContacts
 import org.dlang.liveimap.ui.contacts.writePineBook
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.LocalScreenAccounts
@@ -699,6 +712,7 @@ private fun ReaderScreen(
     var confirmTake by remember { mutableStateOf(false) }
     var takeChoices by remember { mutableStateOf<List<TakeAddress>>(emptyList()) }
     var pendingTake by remember { mutableStateOf<TakeAddress?>(null) }
+    var pendingAndroidTake by remember { mutableStateOf<Pair<TakeAddress, AddressBookEntry>?>(null) }
     var headerExpanded by rememberSaveable { mutableStateOf(true) }
     var moreMenu by remember { mutableStateOf(false) }
     var displayMenu by remember { mutableStateOf(false) }
@@ -736,6 +750,44 @@ private fun ReaderScreen(
         snackMessage = text
         snackMode = "retry"
         snackEvent += 1
+    }
+
+    var launchWriteContacts: (() -> Unit)? = null
+
+    suspend fun writeAndroidContact(choice: TakeAddress, book: AddressBookEntry) {
+        try {
+            val exists = withContext(Dispatchers.IO) {
+                if (!hasReadContacts(appContext)) return@withContext false
+                when (val loaded = androidEntriesOnce(appContext.contentResolver)) {
+                    AndroidContacts.PermissionNeeded -> false
+                    is AndroidContacts.Ready -> {
+                        val id = androidSourceId(book.accountType, book.accountName)
+                        val entries = loaded.value[id].orEmpty().map {
+                            AlpineEntry(it.nickname, it.displayName, it.email, "", "")
+                        }
+                        bookHasAddress(entries, choice.email)
+                    }
+                }
+            }
+            if (exists) {
+                postSnack(addressExistsText)
+                return
+            }
+            val entry = CopyContact(
+                nickname = choice.email.substringBefore('@'),
+                displayName = choice.name,
+                emails = listOf(choice.email),
+                changed = true,
+            )
+            withContext(Dispatchers.IO) {
+                writeAndroidContacts(appContext.contentResolver, book.accountType, book.accountName, listOf(entry))
+            }
+            postSnack(addressAddedText)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            postSnack(error.message ?: context.getString(R.string.copy_write_failed))
+        }
     }
 
     LaunchedEffect(trustLoadFailed) {
@@ -2275,7 +2327,7 @@ private fun ReaderScreen(
                     text = { Text(takeAddress) },
                     onClick = {
                         moreMenu = false
-                        if (account.addressSaveMailbox() == null) {
+                        if (account.addressSave() is AddressSave.None) {
                             postSnack(noAddressBookText)
                         } else {
                             val found = takeAddresses(
@@ -3154,6 +3206,26 @@ private fun ReaderScreen(
                 }
         }
     }
+    fun startTake(choice: TakeAddress, book: AddressBookEntry) {
+        if (book.kind == "android") {
+            val granted = context.checkSelfPermission(Manifest.permission.WRITE_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingAndroidTake = choice to book
+                val launch = launchWriteContacts
+                if (launch == null) {
+                    pendingAndroidTake = null
+                    postSnack(context.getString(R.string.contacts_permission_needed))
+                    return
+                }
+                launch()
+                return
+            }
+            scope.launch { writeAndroidContact(choice, book) }
+            return
+        }
+        takeChosenAddress(choice, book.mailbox)
+    }
     @Composable
     fun TakeAddressDialog() {
         if (!confirmTake) return
@@ -3170,13 +3242,10 @@ private fun ReaderScreen(
                         }
                         TextButton(onClick = {
                             confirmTake = false
-                            val mailbox = account.addressSaveMailbox()
-                            when {
-                                mailbox == null || mailbox.isEmpty() && account.addressBooks.none {
-                                    it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty()
-                                } -> postSnack(noAddressBookText)
-                                mailbox.isEmpty() -> pendingTake = choice
-                                else -> takeChosenAddress(choice, mailbox)
+                            when (val save = account.addressSave()) {
+                                AddressSave.None -> postSnack(noAddressBookText)
+                                AddressSave.Ask -> pendingTake = choice
+                                is AddressSave.One -> startTake(choice, save.book)
                             }
                         }) { Text(label) }
                     }
@@ -3192,19 +3261,19 @@ private fun ReaderScreen(
     @Composable
     fun PickSaveBookDialog() {
         val choice = pendingTake ?: return
-        val books = account.addressBooks.mapNotNull { book ->
-            if (book.kind == "pine" && !book.readOnly && book.mailbox.isNotEmpty()) book.mailbox else null
-        }.distinct()
+        val androidFallback = stringResource(R.string.settings_add_android_book)
+        val books = saveBookChoices(account.addressBooks)
         AlertDialog(
             onDismissRequest = { pendingTake = null },
             title = { Text(stringResource(R.string.settings_pick_book)) },
             text = {
                 Column {
-                    for (box in books) {
+                    for (book in books) {
+                        val label = if (book.kind == "android") book.accountName.ifEmpty { androidFallback } else book.mailbox
                         TextButton(onClick = {
                             pendingTake = null
-                            takeChosenAddress(choice, box)
-                        }) { Text(box) }
+                            startTake(choice, book)
+                        }) { Text(label) }
                     }
                 }
             },
@@ -3221,6 +3290,16 @@ private fun ReaderScreen(
     PickSaveBookDialog()
     }
     ReaderTail()
+    val requestWriteContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val pending = pendingAndroidTake
+        pendingAndroidTake = null
+        if (!granted || pending == null) {
+            if (pending != null) postSnack(context.getString(R.string.settings_contacts_denied))
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch { writeAndroidContact(pending.first, pending.second) }
+    }
+    launchWriteContacts = { requestWriteContacts.launch(Manifest.permission.WRITE_CONTACTS) }
 
 }
 

@@ -105,7 +105,8 @@ import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
-import org.dlang.liveimap.settings.addressSaveMailbox
+import org.dlang.liveimap.settings.AddressSave
+import org.dlang.liveimap.settings.addressSave
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.pineSourceId
 import org.dlang.liveimap.ui.reader.decodePart
@@ -1857,7 +1858,9 @@ private fun ComposeForm(
                     draftLoaded = true
                 }
                 if (seed.kind != ComposeKind.Bounce) {
-                    plaintextEntries = readPlaintextBook(settings.addressSaveMailbox().orEmpty())
+                    val save = settings.addressSave()
+                    val pineBox = if (save is AddressSave.One && save.book.kind == "pine") save.book.mailbox else ""
+                    plaintextEntries = readPlaintextBook(pineBox)
                     addressSources = sourcesForCompose(settings)
                 }
             } catch (error: CancellationException) {

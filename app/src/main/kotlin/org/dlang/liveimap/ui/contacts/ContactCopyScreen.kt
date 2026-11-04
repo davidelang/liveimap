@@ -858,7 +858,7 @@ private fun phoneLabel(type: Int, context: Context): String = when (type) {
     else -> context.getString(R.string.copy_phone)
 }
 
-private fun writeAndroidContacts(
+internal fun writeAndroidContacts(
     resolver: ContentResolver,
     accountType: String,
     accountName: String,

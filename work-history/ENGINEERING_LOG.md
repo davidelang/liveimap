@@ -4107,3 +4107,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Selection and cross-folder Trash expunge after the UIDPLUS warning
 
 - A saved permanent delete stays permanent in Trash. Selection delete and a Trash folder that is not the open index expunge every deleted message after the UIDPLUS warning. Cancel still does nothing. A missing trash mailbox still marks deleted.
+
+## 2026-11-03 - A contact can be saved to a Pine book or an Android account
+
+- One writable book is used without asking. Several writable books ask, and the choices include Android accounts. The first book is not used as a silent default. A marked save target, Pine or Android, is used and does not ask. Marking one clears the others. A read-only Pine book is not a destination and cannot be marked. No writable book tells the user and writes nothing.
+- An Android choice uses the existing contacts write into that account. A Pine choice still writes the Alpine nickname, name, and address.

@@ -694,18 +694,46 @@ fun Settings.alpineBooks(): List<Pair<String, Boolean>> {
     return out
 }
 
-/**
- * Mailbox to save a contact into.
- * Null means nothing writable. Empty means several writable books and no save target, so ask.
- */
-fun Settings.addressSaveMailbox(): String? {
-    val target = addressBooks.firstOrNull { it.saveTarget && it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty() }
-    if (target != null) return target.mailbox
-    val writable = addressBooks.filter { it.kind == "pine" && !it.readOnly && it.mailbox.isNotEmpty() }
+/** A Pine book that is not read-only, or an Android account on the list. A read-only Pine book is not. */
+fun AddressBookEntry.isWritableBook(): Boolean =
+    kind == "android" || (kind == "pine" && !readOnly && mailbox.isNotEmpty())
+
+/** Mark [index] as the only save target. A book that is not writable is left unmarked, and every other mark is cleared. */
+fun markAddressSaveTarget(books: List<AddressBookEntry>, index: Int): List<AddressBookEntry> =
+    books.mapIndexed { i, item -> item.copy(saveTarget = i == index && item.isWritableBook()) }
+
+/** Writable books in list order. The same Pine mailbox is listed once. */
+fun saveBookChoices(books: List<AddressBookEntry>): List<AddressBookEntry> {
+    val seen = HashSet<String>()
+    val out = ArrayList<AddressBookEntry>()
+    for (book in books) {
+        if (!book.isWritableBook()) continue
+        val key = if (book.kind == "pine") {
+            "pine\u0000${book.mailbox}"
+        } else {
+            "android\u0000${book.accountType}\u0000${book.accountName}"
+        }
+        if (!seen.add(key)) continue
+        out += book
+    }
+    return out
+}
+
+/** Where a new contact is written. [AddressSave.None] writes nothing. [AddressSave.Ask] does not pick the first book. */
+sealed class AddressSave {
+    data object None : AddressSave()
+    data object Ask : AddressSave()
+    data class One(val book: AddressBookEntry) : AddressSave()
+}
+
+fun Settings.addressSave(): AddressSave {
+    val target = addressBooks.firstOrNull { it.saveTarget && it.isWritableBook() }
+    if (target != null) return AddressSave.One(target)
+    val writable = addressBooks.filter { it.isWritableBook() }
     return when (writable.size) {
-        0 -> null
-        1 -> writable[0].mailbox
-        else -> ""
+        0 -> AddressSave.None
+        1 -> AddressSave.One(writable[0])
+        else -> AddressSave.Ask
     }
 }
 
