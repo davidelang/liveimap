@@ -34,7 +34,7 @@
                   "setting": "displayName",
                   "type": "text",
                   "default": "",
-                  "title": "Name",
+                  "title": "Full Name",
                   "pinerc": "personal-name",
                   "pinercFormat": "text"
                 },
