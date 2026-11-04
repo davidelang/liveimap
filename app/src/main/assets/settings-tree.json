@@ -144,6 +144,11 @@
                   "pinercFormat": "text"
                 },
                 {
+                  "setting": "imapPassword",
+                  "type": "password",
+                  "title": "IMAP password"
+                },
+                {
                   "group": "imapSecurity",
                   "title": "Imap Security",
                   "children": [
@@ -240,28 +245,13 @@
                       "default": "",
                       "title": "JMAP certificate pin",
                       "server": true
-                    },
-                    {
-                      "setting": "checkServer",
-                      "type": "checkServer",
-                      "title": "Check server"
-                    },
-                    {
-                      "setting": "imapPassword",
-                      "type": "password",
-                      "title": "IMAP password"
-                    },
-                    {
-                      "setting": "smtpPassword",
-                      "type": "password",
-                      "title": "SMTP password"
-                    },
-                    {
-                      "setting": "sievePassword",
-                      "type": "password",
-                      "title": "Sieve password"
                     }
                   ]
+                },
+                {
+                  "setting": "checkServer",
+                  "type": "checkServer",
+                  "title": "Check server"
                 }
               ]
             },
@@ -378,6 +368,11 @@
                   }
                 },
                 {
+                  "setting": "smtpPassword",
+                  "type": "password",
+                  "title": "SMTP password"
+                },
+                {
                   "setting": "sieveSameAsInbound",
                   "type": "bool",
                   "default": true,
@@ -433,6 +428,11 @@
                   "server": true,
                   "min": 1,
                   "max": 65535
+                },
+                {
+                  "setting": "sievePassword",
+                  "type": "password",
+                  "title": "Sieve password"
                 },
                 {
                   "setting": "sieveTlsMode",
