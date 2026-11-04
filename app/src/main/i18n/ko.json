@@ -1220,5 +1220,7 @@
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android 연락처 추가"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "이 서버는 영구 삭제를 할 수 없습니다. 대신 삭제됨으로 표시합니다. 계속하면 이 폴더에서 삭제된 메시지를 모두 지웁니다."},
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "이 서버에는 휴지통 메일함이 없습니다. 대신 삭제됨으로 표시합니다."},
-{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
+{"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
 ]

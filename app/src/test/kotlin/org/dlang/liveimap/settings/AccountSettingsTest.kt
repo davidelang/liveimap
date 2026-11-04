@@ -8,6 +8,7 @@ import org.dlang.liveimap.ui.index.SavedAdvanced
 import org.dlang.liveimap.ui.index.SavedSearch
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.ui.index.SimpleSearchField
+import org.dlang.liveimap.ui.reader.ReaderDisplay
 import org.dlang.liveimap.ui.toolbar.BarSection
 import org.dlang.liveimap.ui.toolbar.ComposeBarAction
 import org.dlang.liveimap.ui.toolbar.FolderBarAction
@@ -90,8 +91,8 @@ class AccountSettingsTest {
                 "spamMailbox",
                 "markSeenOnOpen",
                 "showDeleted",
-                "preferHtml",
-                "bodyView",
+                "readerDisplay",
+                "displayImages",
                 "density",
                 "defaultView",
                 "folderViews",
@@ -154,7 +155,7 @@ class AccountSettingsTest {
         assertTrue(text.lines().contains("showRecentRules=true"))
         assertTrue(text.lines().contains("openAtInIndexMenu=false"))
         assertTrue(text.lines().contains("pinercStartDefault=LeaveUnchanged"))
-        assertTrue(keys.contains("readerTextLayout"))
+        assertTrue(keys.contains("displayImages"))
         assertTrue(text.lines().contains("altAddresses="))
         assertTrue(keys.contains("completionSources"))
         assertTrue(keys.contains("addressBookHistory"))
@@ -368,7 +369,7 @@ class AccountSettingsTest {
             addressBookMailbox = "Contacts",
             markSeenOnOpen = false,
             showDeleted = false,
-            bodyView = BodyView.PlainOrHtml,
+            readerDisplay = ReaderDisplay.Html,
             density = Density.Large,
             defaultView = FolderView(SortKey.Subject, newestFirst = false),
             folderViews = mapOf(
@@ -412,7 +413,10 @@ class AccountSettingsTest {
         assertEquals(d.imapPort, decodeSettings(d.encode().replace("imapPort=993", "imapPort=nope")).imapPort)
         assertEquals(d.density, decodeSettings(d.encode().replace("density=Compact", "density=Huge")).density)
         assertEquals(d.dateFormat, decodeSettings(d.encode().replace("dateFormat=Short", "dateFormat=Huge")).dateFormat)
-        assertEquals(d.bodyView, decodeSettings(d.encode().replace("bodyView=PlainOrError", "bodyView=Nope")).bodyView)
+        assertEquals(
+            d.readerDisplay,
+            decodeSettings(d.encode().replace("\"readerDisplay\":\"Monospaced\"", "\"readerDisplay\":\"Nope\"")).readerDisplay,
+        )
         val missing = d.encode().lineSequence().filterNot { it.startsWith("bounceFcc=") }.joinToString("\n")
         assertEquals(d.bounceFcc, decodeSettings(missing).bounceFcc)
     }
@@ -481,24 +485,53 @@ class AccountSettingsTest {
         assertEquals("", themeOnly.friendlyName)
         assertEquals(ThemeMode.Light, themeOnly.theme)
 
-        val withoutBodyView = Settings().encode().lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("bodyView=") }
-            .joinToString("\n")
-        assertEquals(BodyView.PlainOrError, decodeSettings(withoutBodyView).bodyView)
-        assertFalse(decodeSettings(withoutBodyView).preferHtml)
-        val neither = withoutBodyView.lineSequence()
-            .filter { !it.startsWith("preferHtml=") }
-            .joinToString("\n")
-        assertEquals(BodyView.PlainOrError, decodeSettings(neither).bodyView)
-        assertFalse(decodeSettings(neither).preferHtml)
-        val oldHtml = withoutBodyView.replace("preferHtml=false", "preferHtml=true")
-        assertEquals(BodyView.PlainOrHtml, decodeSettings(oldHtml).bodyView)
-        assertTrue(decodeSettings(oldHtml).preferHtml)
-        val headers = Settings(bodyView = BodyView.Headers).encode()
-        assertTrue(headers.contains("bodyView=Headers"))
-        assertTrue(headers.contains("preferHtml=false"))
-        assertEquals(BodyView.Headers, decodeSettings(headers).bodyView)
-        assertFalse(decodeSettings(headers).preferHtml)
+    }
+
+    @Test
+    fun readerDisplayKeepsStoredAndMapsOldPair() {
+        assertEquals(ReaderDisplay.Monospaced, Settings().readerDisplay)
+        assertFalse(Settings().preferHtml)
+        assertFalse(Settings().displayImages)
+        val saved = decodeSettings(
+            """{"readerDisplay":"Html","displayImages":true,"bodyView":"Raw","preferHtml":false}""",
+        )
+        assertEquals(ReaderDisplay.Html, saved.readerDisplay)
+        assertTrue(saved.preferHtml)
+        assertTrue(saved.displayImages)
+        val savedText = saved.encode()
+        assertTrue(savedText.contains("\"readerDisplay\":\"Html\""))
+        assertTrue(savedText.contains("\"displayImages\":true"))
+        assertFalse(savedText.contains("\"bodyView\""))
+        assertFalse(savedText.contains("\"readerTextLayout\""))
+        assertFalse(savedText.contains("\"preferHtml\""))
+        fun mapped(json: String) = decodeSettings(json).readerDisplay
+        assertEquals(ReaderDisplay.Html, mapped("""{"bodyView":"PlainOrHtml","readerTextLayout":"Flowed","preferHtml":false}"""))
+        assertEquals(ReaderDisplay.Html, mapped("""{"preferHtml":true,"readerTextLayout":"Flowed"}"""))
+        assertEquals(ReaderDisplay.HtmlAsText, mapped("""{"bodyView":"PlainOrText","readerTextLayout":"Text"}"""))
+        assertEquals(ReaderDisplay.HtmlAsText, mapped("""{"bodyView":"PlainOrText"}"""))
+        assertEquals(ReaderDisplay.Flowed, mapped("""{"bodyView":"PlainOrText","readerTextLayout":"Flowed"}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"bodyView":"PlainOrText","readerTextLayout":"Monospaced"}"""))
+        assertEquals(ReaderDisplay.Flowed, mapped("""{"bodyView":"PlainOrError","readerTextLayout":"Flowed"}"""))
+        assertEquals(ReaderDisplay.Flowed, mapped("""{"bodyView":"Headers","readerTextLayout":"Flowed"}"""))
+        assertEquals(ReaderDisplay.Flowed, mapped("""{"bodyView":"Raw","readerTextLayout":"Flowed"}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"bodyView":"PlainOrError","readerTextLayout":"Text"}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"bodyView":"Headers"}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"bodyView":"Raw","readerTextLayout":"Monospaced"}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"readerTextLayout":"Text","preferHtml":false}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("""{"preferHtml":false}"""))
+        assertEquals(ReaderDisplay.Monospaced, mapped("{}"))
+        val fromOld = decodeSettings("""{"bodyView":"PlainOrHtml","readerTextLayout":"Text","preferHtml":true}""")
+        val next = fromOld.encode()
+        assertEquals(ReaderDisplay.Html, fromOld.readerDisplay)
+        assertTrue(next.contains("\"readerDisplay\":\"Html\""))
+        assertFalse(next.contains("\"bodyView\""))
+        assertFalse(next.contains("\"readerTextLayout\""))
+        assertFalse(next.contains("\"preferHtml\""))
+        assertEquals(ReaderDisplay.Html, decodeSettings(next).readerDisplay)
+        val bad = decodeSettings("""{"readerDisplay":"Nope","bodyView":"PlainOrHtml"}""")
+        assertEquals(ReaderDisplay.Monospaced, bad.readerDisplay)
+        assertTrue(bad.encode().contains("\"readerDisplay\":\"Nope\""))
+        assertFalse(bad.encode().contains("\"bodyView\""))
     }
 
     @Test

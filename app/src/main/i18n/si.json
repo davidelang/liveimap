@@ -1220,5 +1220,7 @@
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android සබඳතා එක් කරන්න"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "මෙම සේවාදායකය ස්ථිරව මකන්න බැහැ. විකල්පය මකා ඇති ලෙස සලකුණු කිරීමයි. ඉදිරියට ගියහොත් මෙම ෆෝල්ඩරයේ මකා ඇති සෑම පණිවිඩයක්ම මකයි."},
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "මෙම සේවාදායකයට කුණු පෙට්ටියක් නැත. විකල්පය මකා ඇති ලෙස සලකුණු කිරීමයි."},
-{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
+{"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
 ]

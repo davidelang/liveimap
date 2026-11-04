@@ -14,6 +14,7 @@ import org.dlang.liveimap.session.NamespaceKind
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectResult
 import org.dlang.liveimap.session.ThreadNode
+import org.dlang.liveimap.ui.reader.ReaderDisplay
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -914,7 +915,7 @@ class PinercImportTest {
             askBeforeExpunge = false,
             quellFlowed = true,
             forwardAsAttachment = true,
-            bodyView = BodyView.PlainOrHtml,
+            readerDisplay = ReaderDisplay.Html,
             dateFormat = DateFormat.Local,
             autoExpunge = true,
             tlsMode = TlsMode.Implicit,
@@ -961,7 +962,7 @@ class PinercImportTest {
                 inboxStart = StartRule.Newest,
                 addressBookNeverTrim = true,
                 addressBookHistory = 9,
-                bodyView = BodyView.Headers,
+                readerDisplay = ReaderDisplay.HtmlAsText,
                 dateFormat = DateFormat.Short,
             ),
         )
@@ -969,8 +970,19 @@ class PinercImportTest {
         assertFalse(other.lines().any { it.startsWith("remote-abook-history=") })
         assertTrue(other.contains("# Newest"))
         assertTrue(other.contains("# Never trim"))
-        assertTrue(other.contains("# body view: Headers"))
+        assertFalse(other.contains("# body view"))
+        assertFalse(other.contains("render-html-internally"))
+        assertFalse(other.contains("prefer-plain-text"))
         assertTrue(other.contains("# date format: Short"))
+        val flowed = encodePinerc(Settings(readerDisplay = ReaderDisplay.Flowed))
+        val flowedFeatures = flowed.lines().first { it.startsWith("feature-list=") }
+        assertTrue(flowedFeatures.contains("prefer-plain-text"))
+        assertFalse(flowedFeatures.contains("render-html-internally"))
+        assertFalse(flowed.contains("# body view"))
+        val mono = encodePinerc(Settings(readerDisplay = ReaderDisplay.Monospaced))
+        val monoFeatures = mono.lines().first { it.startsWith("feature-list=") }
+        assertTrue(monoFeatures.contains("prefer-plain-text"))
+        assertFalse(monoFeatures.contains("render-html-internally"))
 
         val submitText = encodePinerc(
             Settings(

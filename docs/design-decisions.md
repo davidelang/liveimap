@@ -174,17 +174,18 @@ David, 2026-10-12. Code: `settings/PaneLayout.kt` (model), `settings/PaneLayoutE
   decoded through to the end, before anything is shown. An attachment is
   fetched only after a tap, in 65536-byte slices.
 * **View modes.** A body is shown in one of these modes:
-  * **Text**, **Flowed**, and **Monospaced**: the `text/plain` part when the
-    structure has one, and otherwise the HTML part as text, in that layout.
-  * **HTML**: the `text/html` part, rendered.
+  * **HTML**: the `text/html` part, rendered. No `text/html` part falls back
+    to plain text flowed.
   * **HTML as text**: the `text/html` part rendered the way a text-mode browser
     (lynx, links) would: paragraphs, lists, headings, quoted blocks and links
-    kept as text, with no styling.
+    kept as text, with no styling, even when a `text/plain` part exists. No
+    `text/html` part falls back to plain text flowed.
+  * **Flowed text** and **Monospaced text**: the `text/plain` part in that
+    layout. No plain part falls back to HTML as text.
 
   "There is no text part" is shown only when the structure has neither a
-  `text/plain` nor a `text/html` part. That card offers Show HTML when an HTML
-  part exists. Any message can be switched to another mode. Headers and Raw
-  source are inspection views, not body modes.
+  `text/plain` nor a `text/html` part. Any message can be switched to another
+  mode. Headers and Raw source are inspection views, not body modes.
 * HTML as text is also used for the index preview when a message has no
   `text/plain` part.
 * HTML as text is produced by parsing with jsoup and rendering the parsed
@@ -192,8 +193,9 @@ David, 2026-10-12. Code: `settings/PaneLayout.kt` (model), `settings/PaneLayoutE
   preformatted text kept, quoted blocks marked with `> `, list numbers, and
   table rows. The reader, the index preview and compose quoting use the same
   renderer.
-* HTML is rendered with JavaScript off and network loads blocked. Remote images
-  load only when the user asks, for that message.
+* HTML is rendered with JavaScript off. Remote images load in that view when
+  Display images by default is on, or when the user asks for that message.
+  HTML as text, Flowed text, and Monospaced text do not load remote images.
 * Decode in this order: transfer encoding (quoted-printable, base64), then the
   charset from `BODYSTRUCTURE`, using `java.nio.charset`. This applies to the
   reader and to previews.

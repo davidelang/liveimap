@@ -331,6 +331,7 @@ internal class MessageReaderLoaded : ViewModel() {
     val accountState = mutableStateOf(Settings())
     val structureState = mutableStateOf<MimePart?>(null)
     val selectedViewState = mutableStateOf(BodyView.PlainOrError)
+    val messageDisplayState = mutableStateOf(ReaderDisplay.Monospaced)
     val renderedHtmlState = mutableStateOf(false)
     val bodyTextState = mutableStateOf("")
     val bodyLinesState = mutableStateListOf<String>()
@@ -383,6 +384,7 @@ internal class MessageReaderLoaded : ViewModel() {
         accountState.value = Settings()
         structureState.value = null
         selectedViewState.value = BodyView.PlainOrError
+        messageDisplayState.value = ReaderDisplay.Monospaced
         renderedHtmlState.value = false
         bodyTextState.value = ""
         bodyTruncatedState.value = false
@@ -454,7 +456,6 @@ private class ReaderLabels(
     val copyChangedText: String,
     val retryLabel: String,
     val noTextPartText: String,
-    val noHtmlPartText: String,
     val shareTitle: String,
     val indexNow: String,
     val indexMin: String,
@@ -479,7 +480,6 @@ private fun readerLabels(): ReaderLabels = ReaderLabels(
     copyChangedText = stringResource(R.string.copy_changed),
     retryLabel = stringResource(R.string.reader_retry),
     noTextPartText = stringResource(R.string.reader_no_text),
-    noHtmlPartText = stringResource(R.string.reader_no_html),
     shareTitle = stringResource(R.string.reader_share),
     indexNow = stringResource(R.string.index_now),
     indexMin = stringResource(R.string.index_min),
@@ -573,7 +573,6 @@ private fun ReaderScreen(
     val copyChangedText = labels.copyChangedText
     val retryLabel = labels.retryLabel
     val noTextPartText = labels.noTextPartText
-    val noHtmlPartText = labels.noHtmlPartText
     val shareTitle = labels.shareTitle
     val indexNow = labels.indexNow
     val indexMin = labels.indexMin
@@ -626,6 +625,7 @@ private fun ReaderScreen(
     var knownTrashName by remember(mailbox) { mutableStateOf(account.trashMailbox) }
     var structure by held.structureState
     var selectedView by held.selectedViewState
+    var messageDisplay by held.messageDisplayState
     var textLayout by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(TextLayout.Text) }
     // RFC 3676 parameters of the plain part shown (format=flowed, DelSp=yes)
     var plainFlowed by remember(accountId, mailbox, uid, uidValidity) { mutableStateOf(false) }
@@ -1198,20 +1198,50 @@ private fun ReaderScreen(
             bodyComplete = true
             bodyTruncated = pulled.truncated
             // No plain part: the card keeps Show HTML. The words "no text part" stay off while HTML is shown as text.
-            if (asText) showHtmlButton = true
+            if (asText && plain == null) showHtmlButton = true
+        }
+        suspend fun showPlainFlowed(part: MimePart) {
+            messageDisplay = ReaderDisplay.Flowed
+            textLayout = TextLayout.Flowed
+            selectedView = BodyView.PlainOrError
+            showPlain(part)
+        }
+        suspend fun showHtmlText(part: MimePart) {
+            messageDisplay = ReaderDisplay.HtmlAsText
+            textLayout = TextLayout.Text
+            selectedView = BodyView.PlainOrText
+            showHtml(part, asText = true)
         }
         when (view) {
-            BodyView.PlainOrError, BodyView.PlainOrText -> when {
-                plain != null -> showPlain(plain)
+            // HTML as text is the HTML part, even when a plain part exists.
+            BodyView.PlainOrText -> when {
                 html != null -> showHtml(html, asText = true)
+                plain != null -> showPlainFlowed(plain)
                 else -> showMissing(noTextPartText, noText = true, offerHtml = false)
             }
-            BodyView.PlainOrHtml -> {
-                if (html == null) showMissing(noHtmlPartText) else showHtml(html, asText = false)
+            BodyView.PlainOrHtml -> when {
+                html != null -> showHtml(html, asText = false)
+                plain != null -> showPlainFlowed(plain)
+                else -> showMissing(noTextPartText, noText = true, offerHtml = false)
+            }
+            // Flowed and Monospaced are the plain part. No plain part is HTML as text.
+            BodyView.PlainOrError -> when {
+                plain != null -> showPlain(plain)
+                html != null -> showHtmlText(html)
+                else -> showMissing(noTextPartText, noText = true, offerHtml = false)
             }
             BodyView.Headers, BodyView.Raw -> Unit
         }
     }
+
+    fun useDisplay(display: ReaderDisplay) {
+        messageDisplay = display
+        textLayout = textLayoutOf(display, textLayout)
+        val view = bodyViewOf(display, selectedView)
+        if (view != selectedView) requestView(view)
+    }
+
+    fun quoteViewName(): String = if (held.ready) messageDisplay.name else ""
 
     fun requestView(view: BodyView) {
         selectedView = view
@@ -1457,6 +1487,7 @@ private fun ReaderScreen(
         headerReady = false
         rowFlags = emptySet()
         showHtmlButton = false
+        allowImages = false
         noTextPart = false
         var openOk = false
         coroutineScope {
@@ -1469,8 +1500,12 @@ private fun ReaderScreen(
                 return@coroutineScope
             }
             account = settings
-            if (token == bodyGeneration) selectedView = settings.bodyView
-            textLayout = settings.readerTextLayout
+            if (token == bodyGeneration) {
+                messageDisplay = settings.readerDisplay
+                textLayout = textLayoutOf(settings.readerDisplay, textLayout)
+                selectedView = bodyViewOf(settings.readerDisplay, selectedView)
+                allowImages = settings.displayImages
+            }
             try {
                 store.password()
             } catch (error: CancellationException) {
@@ -1898,9 +1933,9 @@ private fun ReaderScreen(
                 onAdvance(MessageRef(accountId, mailbox, readerEpoch, previous), previousSequence)
             }
             SwipeAction.Reply ->
-                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             SwipeAction.ReplyAll ->
-                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch))
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             SwipeAction.Delete -> runDelete()
             SwipeAction.Move -> choosingMove = true
             SwipeAction.SetFlag -> {
@@ -1963,11 +1998,11 @@ private fun ReaderScreen(
         when (action) {
             ReaderToolbarAction.Refresh -> if (!loading) loadToken += 1
             ReaderToolbarAction.Reply ->
-                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch))
+                onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             ReaderToolbarAction.ReplyAll ->
-                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch))
+                onCompose(ComposeSeed(ComposeKind.ReplyAll, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             ReaderToolbarAction.Forward ->
-                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch))
+                onCompose(ComposeSeed(ComposeKind.Forward, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             ReaderToolbarAction.Delete -> runDelete()
             ReaderToolbarAction.Move -> choosingMove = true
             ReaderToolbarAction.Spam -> runSpam()
@@ -2085,15 +2120,13 @@ private fun ReaderScreen(
                     }
                 },
                 actions = {
-                    if (selectedView != BodyView.Headers && selectedView != BodyView.Raw) {
-                        ReaderDisplayMenu(
-                            selected = readerDisplayOf(selectedView, textLayout),
-                            onOpen = {
-                                displayMenu = true
-                                moreMenu = false
-                            },
-                        )
-                    }
+                    ReaderDisplayMenu(
+                        selected = messageDisplay,
+                        onOpen = {
+                            displayMenu = true
+                            moreMenu = false
+                        },
+                    )
                     DebugStatusIcon(debugStatus)
                     if (renderedHtml) {
                         HelpIconButton(
@@ -2232,9 +2265,7 @@ private fun ReaderScreen(
                             text = { Text(label) },
                             onClick = {
                                 displayMenu = false
-                                textLayout = textLayoutOf(display, textLayout)
-                                val view = bodyViewOf(display, selectedView)
-                                if (view != selectedView) requestView(view)
+                                useDisplay(display)
                             },
                         )
                     }
@@ -2449,12 +2480,13 @@ private fun ReaderScreen(
                                 listOf(uid),
                                 readerEpoch,
                                 forwardAsAttachment = !account.forwardAsAttachment,
+                                quoteView = quoteViewName(),
                             ),
                         )
                     },
                 )
-                // HTML and plain text are positions of the display selector; the menu keeps the other views.
-                BodyView.entries.filter { it != BodyView.PlainOrHtml && it != BodyView.PlainOrError }.forEach { view ->
+                // Headers and Raw are this message only. They are not saved.
+                listOf(BodyView.Headers, BodyView.Raw).forEach { view ->
                     val viewLabel = bodyViewName(view)
                     HelpDropdownMenuItem(
                         label = viewLabel,
@@ -3999,11 +4031,16 @@ private fun readerDismissOffset(value: SwipeToDismissBoxValue, widthPx: Float, l
 }
 
 @Composable
-internal fun readerDisplayName(display: ReaderDisplay): String = stringResource(
-    when (display) {
-        ReaderDisplay.Html -> R.string.display_html
-        ReaderDisplay.Text -> R.string.display_text
-        ReaderDisplay.Flowed -> R.string.display_flowed
-        ReaderDisplay.Monospaced -> R.string.display_monospaced
-    },
-)
+internal fun readerDisplayName(display: ReaderDisplay): String {
+    val title = org.dlang.liveimap.settings.installedLeaf("readerDisplay")?.choiceTitles?.get(display.name)
+    val id = if (title.isNullOrEmpty()) 0 else org.dlang.liveimap.settings.SettingsTreeGenerated.resource(title)
+    if (id != 0) return stringResource(id)
+    return stringResource(
+        when (display) {
+            ReaderDisplay.Html -> R.string.label_html
+            ReaderDisplay.HtmlAsText -> R.string.label_html_text
+            ReaderDisplay.Flowed -> R.string.settings_flowed_text
+            ReaderDisplay.Monospaced -> R.string.display_monospaced
+        },
+    )
+}

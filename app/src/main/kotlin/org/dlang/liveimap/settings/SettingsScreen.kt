@@ -2015,7 +2015,6 @@ internal fun BoolRow(key: String, walk: SettingsWalk) {
         "showRecentRules" -> row_showRecentRules(walk)
         "openAtInIndexMenu" -> row_openAtInIndexMenu(walk)
         "markSeenOnOpen" -> row_markSeenOnOpen(walk)
-        "preferHtml" -> row_preferHtml(key, walk)
         "showDeleted" -> row_showDeleted(walk)
         "autoExpunge" -> row_autoExpunge(walk)
         "askBeforeExpunge" -> row_askBeforeExpunge(walk)
@@ -2214,8 +2213,7 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "folderStart" -> row_folderStart(walk)
         "startAfterChange" -> row_startAfterChange(walk)
         "pinercStartDefault" -> row_pinercStartDefault(walk)
-        "bodyView" -> row_bodyView(walk)
-        "readerTextLayout" -> row_readerTextLayout(walk)
+        "readerDisplay" -> row_readerDisplay(walk)
         "nonAsciiDisplay" -> row_nonAsciiDisplay(walk)
         "deletePolicy" -> row_deletePolicy(walk)
         "saveNameRule" -> row_saveNameRule(walk)
@@ -3270,51 +3268,16 @@ internal fun row_markSeenOnOpen(walk: SettingsWalk) {
 }
 
 @Composable
-internal fun row_bodyView(walk: SettingsWalk) {
+internal fun row_readerDisplay(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_message_view),
-        BodyView.entries,
-        settings.bodyView,
-        { bodyViewName(it) },
-    ) { view ->
-        editor.persist(editor.settings.copy(bodyView = view))
-    }
-}
-
-@Composable
-internal fun row_preferHtml(key: String, walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    BoolField(stringResource(SettingsTreeGenerated.regTitle(key)), settings.preferHtml) { enabled ->
-        val next = if (enabled) {
-            BodyView.PlainOrHtml
-        } else if (settings.bodyView == BodyView.PlainOrHtml) {
-            BodyView.PlainOrError
-        } else {
-            settings.bodyView
-        }
-        editor.persist(editor.settings.copy(bodyView = next))
-    }
-}
-
-@Composable
-internal fun row_readerTextLayout(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    ChoiceField(
-        stringResource(R.string.settings_reader_display),
+        stringResource(R.string.setting_bodyView_title),
         org.dlang.liveimap.ui.reader.ReaderDisplay.entries,
-        org.dlang.liveimap.ui.reader.readerDisplayOf(settings.bodyView, settings.readerTextLayout),
+        settings.readerDisplay,
         { org.dlang.liveimap.ui.reader.readerDisplayName(it) },
     ) { display ->
-        editor.persist(
-            editor.settings.copy(
-                bodyView = org.dlang.liveimap.ui.reader.bodyViewOf(display, editor.settings.bodyView),
-                readerTextLayout = org.dlang.liveimap.ui.reader.textLayoutOf(display, editor.settings.readerTextLayout),
-            ),
-        )
+        editor.persist(editor.settings.copy(readerDisplay = display))
     }
 }
 
@@ -4800,17 +4763,6 @@ internal fun densityName(density: Density): String = stringResource(
         Density.Compact -> R.string.label_compact
         Density.Medium -> R.string.label_comfortable
         Density.Large -> R.string.label_large
-    },
-)
-
-@Composable
-internal fun bodyViewName(view: BodyView): String = stringResource(
-    when (view) {
-        BodyView.PlainOrError -> R.string.label_plain
-        BodyView.PlainOrHtml -> R.string.label_html
-        BodyView.PlainOrText -> R.string.label_html_text
-        BodyView.Headers -> R.string.label_headers
-        BodyView.Raw -> R.string.label_raw
     },
 )
 

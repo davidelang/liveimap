@@ -1220,5 +1220,7 @@
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android-névjegyek hozzáadása"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ez a kiszolgáló nem tud véglegesen törölni. A helyette álló művelet a töröltnek jelölés. A folytatás kitörli a mappa minden töröltnek jelölt üzenetét."},
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ennek a kiszolgálónak nincs kuka postafiókja. A helyette álló művelet a töröltnek jelölés."},
-{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
+{"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
 ]

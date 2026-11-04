@@ -410,7 +410,8 @@ _CHOICE_NAME = {
     ("density", "Large"): "label_large",
     ("threadIndexStyle", "Expanded"): "settings_thread_expanded",
     ("threadIndexStyle", "Collapsed"): "settings_thread_collapsed",
-    ("bodyView", "PlainOrHtml"): "label_html",
+    ("readerDisplay", "Html"): "label_html",
+    ("readerDisplay", "Flowed"): "settings_flowed_text",
     ("clientSortCollation", "plain"): "setting_clientSortCollation_plain",
     ("dsnMode", "Off"): "settings_dsn_off",
     ("compression", "Off"): "settings_compression_off",
@@ -441,6 +442,7 @@ _LEAF_TITLE = {
     "quotePrefix": "pinerc_quote_prefix",
     "dsnMode": "settings_dsn",
     "forwardAsAttachment": "settings_forward_attachment",
+    "readerDisplay": "setting_bodyView_title",
 }
 
 
@@ -1716,8 +1718,7 @@ ENUM_CLASS = {
     "folderStart": "StartRule",
     "startAfterChange": "StartAfterChange",
     "pinercStartDefault": "PinercStartDefault",
-    "bodyView": "BodyView",
-    "readerTextLayout": "TextLayout",
+    "readerDisplay": "org.dlang.liveimap.ui.reader.ReaderDisplay",
     "nonAsciiDisplay": "NonAsciiDisplay",
     "deletePolicy": "DeletePolicy",
     "saveNameRule": "SaveNameRule",
@@ -1777,7 +1778,7 @@ SETTINGS_DEFAULT_ENUM = {
 def account_leaves(leaves):
     found = [leaf for leaf in leaves if leaf.get("scope") == "account"]
     for leaf in found:
-        if leaf.get("derived") and leaf["setting"] != "preferHtml":
+        if leaf.get("derived"):
             raise SystemExit("derived account leaf " + leaf["setting"])
     return found
 
@@ -2124,11 +2125,6 @@ def generated_with(buckets):
         "private val accountGroups: Array<String> = arrayOf(%s)" % ", ".join(json.dumps(group) for _key, group in pairs),
         "",
         "fun Settings.withSetting(key: String, value: SettingValue): Settings {",
-        "    if (key == \"preferHtml\") {",
-        "        val html = value.text == \"true\"",
-        "        val view = if (html) BodyView.PlainOrHtml else if (bodyView == BodyView.PlainOrHtml) BodyView.PlainOrText else bodyView",
-        "        return copy(bodyView = view)",
-        "    }",
         "    val index = accountKeys.binarySearch(key)",
         "    if (index < 0) return this",
         "    return when (accountGroups[index]) {",
@@ -2141,7 +2137,6 @@ def generated_with(buckets):
         "}",
         "",
         "fun Settings.getSetting(key: String): String {",
-        "    if (key == \"preferHtml\") return preferHtml.toString()",
         "    val index = accountKeys.binarySearch(key)",
         "    if (index < 0) return \"\"",
         "    return when (accountGroups[index]) {",

@@ -160,7 +160,7 @@ def check_layout(collapsed):
             fail("tlsMode missing %s" % needle)
     if any('"setting": "tlsMode"' in line and '"choices"' in line for line in lines):
         fail("tlsMode collapsed onto one line")
-    chain = '"summary": [ { "value": { "choiceTitle": "bodyView" } } ],'
+    chain = '"summary": [ { "value": { "choiceTitle": "readerDisplay" } } ],'
     if not any(line.strip() == chain for line in lines):
         fail("summary chain not one line")
     display = next(

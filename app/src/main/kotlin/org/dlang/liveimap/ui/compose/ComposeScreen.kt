@@ -72,6 +72,7 @@ import java.util.UUID
 import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
+import org.dlang.liveimap.ui.reader.ReaderDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -103,7 +104,6 @@ import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.favoriteDelimiter
 import org.dlang.liveimap.settings.tlsPolicy
-import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.AddressSave
 import org.dlang.liveimap.settings.addressSave
@@ -879,7 +879,7 @@ private fun ComposeForm(
         return completionSourcesInOrder(books, pine, entries, labels)
     }
 
-    suspend fun quotedBody(tree: MimePart, view: BodyView, uid: Long): String {
+    suspend fun quotedBody(tree: MimePart, display: ReaderDisplay, uid: Long): String {
         suspend fun decodedQuote(part: MimePart, html: Boolean): String {
             val box = seed.mailbox ?: throw MailFailure("message reference is incomplete; reload the list")
             val chunk = account.bodyFetchChunk
@@ -913,15 +913,28 @@ private fun ComposeForm(
             return if (html) htmlAsText(text) else text
         }
         val plain = textPart(tree, "plain")
-        if (plain != null) return decodedQuote(plain, html = false)
-        if (view == BodyView.PlainOrHtml || view == BodyView.PlainOrText) {
-            val html = textPart(tree, "html")
+        val html = textPart(tree, "html")
+        val wantHtml = display == ReaderDisplay.Html || display == ReaderDisplay.HtmlAsText
+        if (wantHtml) {
             if (html != null) return decodedQuote(html, html = true)
+            if (plain != null) return decodedQuote(plain, html = false)
             notice = missingPartText(true)
             return ""
         }
+        if (plain != null) return decodedQuote(plain, html = false)
+        if (html != null) return decodedQuote(html, html = true)
         notice = missingPartText(false)
         return ""
+    }
+
+    fun quoteDisplay(settings: Settings): ReaderDisplay {
+        val named = seed.quoteView
+        if (named.isEmpty()) return settings.readerDisplay
+        return try {
+            enumValueOf(named)
+        } catch (_: IllegalArgumentException) {
+            settings.readerDisplay
+        }
     }
 
     fun kindTag(): ComposeKindTag = when (seed.kind) {
@@ -958,7 +971,7 @@ private fun ComposeForm(
         val uid = seed.uids.firstOrNull() ?: return
         val parsed = parseRfc822(inBox(box) { s -> s.peekPart(uid, "HEADER", 0, rawViewCap) }, account.unlabeledCharset)
         originalParsed = parsed
-        val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, settings.bodyView, uid)
+        val quote = quotedBody(inBox(box) { s -> s.fetchStructure(uid) }, quoteDisplay(settings), uid)
         val rules0 = resolveNow(settings)
         val draft = replyDraft(replyAll, parsed, settings.email, quote, account.unlabeledCharset, rules0.quotePrefix, rules0.leadIn)
         val replyToAddrs = addresses(parsed, "Reply-To", account.unlabeledCharset)
@@ -1050,7 +1063,7 @@ private fun ComposeForm(
             originalParsed = parsed
             val r = resolveNow(settings)
             val fetched = inBox(box) { s -> s.fetchStructure(uid) }
-            val quote = quotedBody(fetched, settings.bodyView, uid)
+            val quote = quotedBody(fetched, quoteDisplay(settings), uid)
             val draft = forwardDraft(parsed, quote, r.quotePrefix, r.leadIn)
             val header = appContext.getString(
                 R.string.compose_quote_header,

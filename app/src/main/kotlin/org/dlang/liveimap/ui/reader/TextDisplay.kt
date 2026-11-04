@@ -3,38 +3,31 @@ package org.dlang.liveimap.ui.reader
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.TextLayout
 
-/** The reader's four-way display selector (David, 2026-10-12): one control, replacing the HTML/text toggle. */
-enum class ReaderDisplay { Html, Text, Flowed, Monospaced }
+/** The four saved body views. Headers and Raw are inspection views, not positions of this selector. */
+enum class ReaderDisplay { Html, HtmlAsText, Flowed, Monospaced }
 
 /** The selector position for a body view and a text layout. */
 fun readerDisplayOf(view: BodyView, layout: TextLayout): ReaderDisplay = when {
     view == BodyView.PlainOrHtml -> ReaderDisplay.Html
+    view == BodyView.PlainOrText -> ReaderDisplay.HtmlAsText
     layout == TextLayout.Flowed -> ReaderDisplay.Flowed
-    layout == TextLayout.Monospaced -> ReaderDisplay.Monospaced
-    else -> ReaderDisplay.Text
+    else -> ReaderDisplay.Monospaced
 }
 
-/** The text layout a selector position uses (HTML keeps [current] for its plain fallback). */
+/** The text layout a selector position uses. HTML as text keeps the lynx breaks. [current] is unused. */
+@Suppress("UNUSED_PARAMETER")
 fun textLayoutOf(display: ReaderDisplay, current: TextLayout): TextLayout = when (display) {
-    ReaderDisplay.Html -> current
-    ReaderDisplay.Text -> TextLayout.Text
+    ReaderDisplay.Html, ReaderDisplay.HtmlAsText -> TextLayout.Text
     ReaderDisplay.Flowed -> TextLayout.Flowed
     ReaderDisplay.Monospaced -> TextLayout.Monospaced
 }
 
-/** The body view a selector position asks for, given the view now shown. */
+/** The body view a selector position asks for. Headers and Raw are replaced. [current] is unused. */
+@Suppress("UNUSED_PARAMETER")
 fun bodyViewOf(display: ReaderDisplay, current: BodyView): BodyView = when (display) {
     ReaderDisplay.Html -> BodyView.PlainOrHtml
-    // Text, Flowed, and Monospaced are the text path (plain, or HTML as text). Headers and Raw stay.
-    ReaderDisplay.Text -> when (current) {
-        BodyView.Headers, BodyView.Raw -> current
-        else -> BodyView.PlainOrText
-    }
-    ReaderDisplay.Flowed, ReaderDisplay.Monospaced -> when (current) {
-        BodyView.Headers, BodyView.Raw -> current
-        BodyView.PlainOrHtml, BodyView.PlainOrText -> BodyView.PlainOrText
-        else -> current
-    }
+    ReaderDisplay.HtmlAsText -> BodyView.PlainOrText
+    ReaderDisplay.Flowed, ReaderDisplay.Monospaced -> BodyView.PlainOrError
 }
 
 /**

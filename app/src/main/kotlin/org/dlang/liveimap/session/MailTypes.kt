@@ -254,6 +254,8 @@ data class ComposeSeed(
     val accountId: String = "",
     /** Null uses the account's forward-as-attachment setting. */
     val forwardAsAttachment: Boolean? = null,
+    /** Reader display name when the reply starts from an open message. Empty uses the account. */
+    val quoteView: String = "",
 ) {
     /** The source messages as references (empty until the epoch is known). */
     fun refs(accountId: String): List<MessageRef> =

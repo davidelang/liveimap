@@ -4145,3 +4145,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/i18n-english-only-flag-20261104-1231-plan.md
 - Work: generateAppI18n reads i18n.englishOnly. liveimap.englishOnly does not set the task. The script flag --english-only and the task property englishOnly stay.
+
+## 2026-11-04 - One message display choice
+
+- Opening saves readerDisplay (HTML, HTML as text, Flowed text, Monospaced text) and displayImages. Old bodyView, readerTextLayout, and preferHtml are read once and not written back.

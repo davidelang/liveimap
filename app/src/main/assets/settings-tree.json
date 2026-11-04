@@ -269,9 +269,17 @@
                 },
                 {
                   "setting": "smtpNoAuth",
-                  "type": "boolean",
-                  "default": "false",
-                  "title": "no SMTP login",
+                  "type": "choice",
+                  "default": "Off",
+                  "title": "On sends with no SMTP login",
+                  "choices": [
+                    "On",
+                    "Off"
+                  ],
+                  "choiceTitles": {
+                    "On": "No SMTP login",
+                    "Off": "SMTP login is required"
+                  },
                   "visibleWhen": {
                     "setting": "emailSubmission",
                     "equals": false
@@ -1067,47 +1075,28 @@
                   "title": "Mark seen on open"
                 },
                 {
-                  "setting": "bodyView",
+                  "setting": "readerDisplay",
                   "type": "choice",
-                  "default": "PlainOrError",
+                  "default": "Monospaced",
                   "title": "Message view",
                   "choices": [
-                    "PlainOrHtml",
-                    "PlainOrText",
-                    "PlainOrError",
-                    "Headers",
-                    "Raw"
-                  ],
-                  "choiceTitles": {
-                    "PlainOrHtml": "HTML",
-                    "PlainOrText": "HTML as text",
-                    "PlainOrError": "Plain text",
-                    "Headers": "Headers",
-                    "Raw": "Raw source"
-                  }
-                },
-                {
-                  "setting": "preferHtml",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Prefer HTML",
-                  "derived": true
-                },
-                {
-                  "setting": "readerTextLayout",
-                  "type": "choice",
-                  "default": "Text",
-                  "title": "Message text layout",
-                  "choices": [
-                    "Text",
+                    "Html",
+                    "HtmlAsText",
                     "Flowed",
                     "Monospaced"
                   ],
                   "choiceTitles": {
-                    "Text": "Plain text",
-                    "Flowed": "Flowed",
-                    "Monospaced": "Plain text in monospace"
+                    "Html": "HTML",
+                    "HtmlAsText": "HTML as text",
+                    "Flowed": "Flowed text",
+                    "Monospaced": "Monospaced text"
                   }
+                },
+                {
+                  "setting": "displayImages",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Display images by default"
                 },
                 {
                   "setting": "viewerHeaders",
@@ -1147,7 +1136,7 @@
               "summary": [
                 {
                   "value": {
-                    "choiceTitle": "bodyView"
+                    "choiceTitle": "readerDisplay"
                   }
                 }
               ]
@@ -1292,7 +1281,7 @@
           "summary": [
             {
               "value": {
-                "choiceTitle": "bodyView"
+                "choiceTitle": "readerDisplay"
               }
             }
           ]

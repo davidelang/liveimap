@@ -1220,5 +1220,7 @@
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android ସମ୍ପର୍କ ଯୋଡ଼ନ୍ତୁ"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ଏହି ସର୍ଭର ସ୍ଥାୟୀ ଭାବେ ଡିଲିଟ୍ କରିପାରିବ ନାହିଁ। ବିକଳ୍ପ ହେଉଛି ଡିଲିଟ୍ ହୋଇଛି ବୋଲି ଚିହ୍ନ। ଜାରି ରଖିଲେ ଏହି ଫୋଲ୍ଡରର ପ୍ରତି ଡିଲିଟ୍ ବାର୍ତ୍ତା ସଫା ହୁଏ।"},
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ଏହି ସର୍ଭରର ଆବର୍ଜନା ବାକ୍ସ ନାହିଁ। ବିକଳ୍ପ ହେଉଛି ଡିଲିଟ୍ ହୋଇଛି ବୋଲି ଚିହ୍ନ।"},
-{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
+{"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
 ]

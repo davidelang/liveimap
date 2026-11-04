@@ -495,9 +495,6 @@ fun encodePinerc(settings: Settings): String {
     if (settings.inboxStart == StartRule.Newest) lines.add("# Newest")
     if (settings.autoExpunge) lines.add("# auto-expunge")
     if (settings.addressBookNeverTrim) lines.add("# Never trim")
-    if (settings.bodyView != BodyView.PlainOrError && settings.bodyView != BodyView.PlainOrHtml) {
-        lines.add("# body view: ${bodyViewLabel(settings.bodyView)}")
-    }
     if (settings.dateFormat != DateFormat.Local) {
         lines.add("# date format: ${dateFormatLabel(settings.dateFormat)}")
     }
@@ -1435,8 +1432,14 @@ private fun pinercFeatures(settings: Settings): String {
     )
     if (settings.quellFlowed) tokens.add("quell-flowed-text")
     if (settings.forwardAsAttachment) tokens.add("forward-as-attachment")
-    if (settings.bodyView == BodyView.PlainOrError) tokens.add("prefer-plain-text")
-    if (settings.bodyView == BodyView.PlainOrHtml) tokens.add("render-html-internally")
+    if (settings.readerDisplay == org.dlang.liveimap.ui.reader.ReaderDisplay.Flowed ||
+        settings.readerDisplay == org.dlang.liveimap.ui.reader.ReaderDisplay.Monospaced
+    ) {
+        tokens.add("prefer-plain-text")
+    }
+    if (settings.readerDisplay == org.dlang.liveimap.ui.reader.ReaderDisplay.Html) {
+        tokens.add("render-html-internally")
+    }
     if (settings.dateFormat == DateFormat.Local) tokens.add("convert-dates-to-localtime")
     return tokens.joinToString(",")
 }

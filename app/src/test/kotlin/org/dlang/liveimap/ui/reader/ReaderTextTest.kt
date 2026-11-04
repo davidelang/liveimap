@@ -1,6 +1,5 @@
 package org.dlang.liveimap.ui.reader
 
-import org.dlang.liveimap.settings.TextLayout
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SaveNameRule
@@ -118,15 +117,19 @@ class ReaderTextTest {
     }
 
     @Test
-    fun readerTextLayoutRoundTripAndMissingKey() {
-        assertEquals(TextLayout.Text, Settings().readerTextLayout)
-        for (layout in TextLayout.entries) {
-            assertEquals(layout, decodeSettings(Settings(readerTextLayout = layout).encode()).readerTextLayout)
+    fun readerDisplayRoundTripAndMissingKey() {
+        assertEquals(ReaderDisplay.Monospaced, Settings().readerDisplay)
+        assertFalse(Settings().preferHtml)
+        for (display in ReaderDisplay.entries) {
+            val decoded = decodeSettings(Settings(readerDisplay = display).encode())
+            assertEquals(display, decoded.readerDisplay)
+            assertEquals(
+                display == ReaderDisplay.Html || display == ReaderDisplay.HtmlAsText,
+                decoded.preferHtml,
+            )
         }
-        val absent = Settings(readerTextLayout = TextLayout.Flowed).encode().lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("readerTextLayout=") }
-            .joinToString("\n")
-        assertEquals(TextLayout.Text, decodeSettings(absent).readerTextLayout)
+        assertEquals(ReaderDisplay.Monospaced, decodeSettings("""{"friendlyName":"A"}""").readerDisplay)
+        assertFalse(decodeSettings("""{"friendlyName":"A"}""").preferHtml)
     }
 
     @Test

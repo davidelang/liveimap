@@ -1220,5 +1220,7 @@
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android పరిచయాలు జోడించండి"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ఈ సర్వర్ శాశ్వతంగా తొలగించలేదు. ప్రత్యామ్నాయం తొలగించినట్లు గుర్తు. కొనసాగిస్తే ఈ ఫోల్డర్‌లోని ప్రతి తొలగించిన సందేశం తుడిచివేయబడుతుంది."},
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ఈ సర్వర్‌కు చెత్త పెట్టె లేదు. ప్రత్యామ్నాయం తొలగించినట్లు గుర్తు."},
-{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
+{"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
 ]

@@ -5,7 +5,8 @@ data class Settings(
     val storedKeys: Set<String> = emptySet(),
 ) {
     val preferHtml: Boolean
-        get() = bodyView == BodyView.PlainOrHtml
+        get() = readerDisplay == org.dlang.liveimap.ui.reader.ReaderDisplay.Html ||
+            readerDisplay == org.dlang.liveimap.ui.reader.ReaderDisplay.HtmlAsText
 
     /** tlsMode, then deletePolicy, when that raw value is still kept. */
     fun preservedSecurityKey(): String? {
@@ -122,10 +123,35 @@ fun decodeSettings(text: String): Settings {
         if ("password" in lower || "secret" in lower || "token" in lower) continue
         unknown += key + "\n" + encodeJson(raw)
     }
-    return Settings(
+    val decoded = Settings(
 /* @gen-decode */
         unknownSettings = unknown,
         storedKeys = values.keys.filter { it !in documentSecretKeys }.toSet(),
     )
+    return migrateReaderDisplay(decoded, values)
+}
+
+private val retiredReaderKeys = setOf("bodyView", "readerTextLayout", "preferHtml")
+
+/** A stored readerDisplay is kept. An older pair is mapped once and is not written back. */
+private fun migrateReaderDisplay(decoded: Settings, values: Map<String, JsonValue>): Settings {
+    val kept = decoded.unknownSettings.filter { it.substringBefore('\n') !in retiredReaderKeys }
+    val stripped = if (kept.size == decoded.unknownSettings.size) decoded else decoded.copy(unknownSettings = kept)
+    if ("readerDisplay" in values) return stripped
+    return stripped.copy(readerDisplay = readerDisplayFromRetired(values))
+}
+
+private fun readerDisplayFromRetired(values: Map<String, JsonValue>): org.dlang.liveimap.ui.reader.ReaderDisplay {
+    val view = (values["bodyView"] as? JsonValue.Str)?.value
+    val layout = (values["readerTextLayout"] as? JsonValue.Str)?.value
+    val prefer = (values["preferHtml"] as? JsonValue.Bool)?.value == true
+    val textLayout = layout == null || layout == "Text"
+    return when {
+        view == "PlainOrHtml" || (view == null && prefer) -> org.dlang.liveimap.ui.reader.ReaderDisplay.Html
+        view == "PlainOrText" && textLayout -> org.dlang.liveimap.ui.reader.ReaderDisplay.HtmlAsText
+        view != "PlainOrHtml" && layout == "Flowed" -> org.dlang.liveimap.ui.reader.ReaderDisplay.Flowed
+        view != "PlainOrHtml" && layout == "Monospaced" -> org.dlang.liveimap.ui.reader.ReaderDisplay.Monospaced
+        else -> org.dlang.liveimap.ui.reader.ReaderDisplay.Monospaced
+    }
 }
 

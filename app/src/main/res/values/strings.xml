@@ -1266,4 +1266,6 @@ Your version: %2$s</string>
     <string name="leaf_pinerc_title">Import Pine settings</string>
     <string name="leaf_uisettingsfile_title">Import or export settings</string>
     <string name="settings_group_imapSecurity_title">Imap Security</string>
+    <string name="leaf_readerdisplay_choice_monospaced">Monospaced text</string>
+    <string name="leaf_displayimages_title">Display images by default</string>
 </resources>
