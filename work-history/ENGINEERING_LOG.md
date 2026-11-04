@@ -4103,3 +4103,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Trash swipe confirm expunges after the UIDPLUS warning
 
 - Confirming the index swipe UIDPLUS warning expunges every deleted message, including in Trash. Cancel still does nothing. The missing-trash warning still marks deleted.
+
+## 2026-11-03 - Selection and cross-folder Trash expunge after the UIDPLUS warning
+
+- A saved permanent delete stays permanent in Trash. Selection delete and a Trash folder that is not the open index expunge every deleted message after the UIDPLUS warning. Cancel still does nothing. A missing trash mailbox still marks deleted.

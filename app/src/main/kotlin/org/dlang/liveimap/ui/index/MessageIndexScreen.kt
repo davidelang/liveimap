@@ -2855,7 +2855,11 @@ private fun MessageIndexLoaded(
                                         entire,
                                         fromSwipe = false,
                                         hits = hits,
-                                        policy = if (warn == R.string.index_delete_needs_trash) DeletePolicy.MarkDeleted else policy,
+                                        policy = when (warn) {
+                                            R.string.index_delete_needs_trash -> DeletePolicy.MarkDeleted
+                                            R.string.index_delete_needs_uidplus -> DeletePolicy.DeletePermanently
+                                            else -> policy
+                                        },
                                         permanentOnlyInTrash = warn == 0,
                                         warn = warn,
                                     )

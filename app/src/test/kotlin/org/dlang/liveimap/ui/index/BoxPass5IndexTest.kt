@@ -31,7 +31,7 @@ class BoxPass5IndexTest {
             effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = true, trashKnown = true, trashNamedByUser = false),
         )
         assertEquals(
-            DeletePolicy.MarkDeleted,
+            DeletePolicy.DeletePermanently,
             effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = false, trashKnown = true, trashNamedByUser = false),
         )
         // A Trash the user named keeps the old rule.

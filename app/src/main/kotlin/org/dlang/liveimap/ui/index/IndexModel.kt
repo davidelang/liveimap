@@ -486,11 +486,10 @@ fun effectiveDeletePolicy(
     trashKnown: Boolean,
     trashNamedByUser: Boolean,
 ): DeletePolicy {
-    // F90: a folder is "Trash" for permanent deletion only when the user named it; one the server merely flags
-    // \Trash gets the user's own policy (never an escalation to an undo-less UID EXPUNGE).
-    if (inTrash && !trashNamedByUser) {
-        return if (policy == DeletePolicy.DeletePermanently && uidPlus) policy else DeletePolicy.MarkDeleted
-    }
+    // A saved permanent policy stays permanent, including in Trash without UIDPLUS. The delete action warns
+    // before that runs. A folder the server merely flags \Trash does not escalate any other policy.
+    if (policy == DeletePolicy.DeletePermanently) return policy
+    if (inTrash && !trashNamedByUser) return DeletePolicy.MarkDeleted
     if (inTrash) return if (uidPlus) DeletePolicy.DeletePermanently else DeletePolicy.MarkDeleted
     return policy
 }

@@ -28,7 +28,7 @@ class IndexWindowTest {
             effectiveDeletePolicy(DeletePolicy.MarkDeleted, inTrash = true, uidPlus = true, trashKnown = true, trashNamedByUser = true),
         )
         assertEquals(
-            DeletePolicy.MarkDeleted,
+            DeletePolicy.DeletePermanently,
             effectiveDeletePolicy(DeletePolicy.DeletePermanently, inTrash = true, uidPlus = false, trashKnown = true, trashNamedByUser = true),
         )
         assertEquals(
