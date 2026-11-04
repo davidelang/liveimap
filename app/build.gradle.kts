@@ -375,6 +375,7 @@ private val i18nPython: String = """
 
 import json
 import re
+import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
@@ -578,6 +579,12 @@ def same_source(stored, current):
     return isinstance(stored, str) and stored == current
 
 
+def placeholder_lists(got, expected):
+    got_list = placeholders(got) if isinstance(got, str) else []
+    expected_list = placeholders(expected) if isinstance(expected, str) else []
+    return "placeholder mismatch: %s vs %s" % (got_list, expected_list)
+
+
 def check_texts(issues, key, text, current, locale, file, plural, required, old):
     if plural:
         got = text if isinstance(text, dict) else {}
@@ -587,13 +594,13 @@ def check_texts(issues, key, text, current, locale, file, plural, required, old)
                 continue
             en_text = current[quantity] if quantity in current else current.get("other", "")
             if placeholders(got[quantity]) != placeholders(en_text):
-                add(issues, key, "placeholder mismatch", old, current, locale, file)
+                add(issues, key, placeholder_lists(got[quantity], en_text), old, current, locale, file)
     else:
         if not isinstance(text, str):
-            add(issues, key, "placeholder mismatch", old, current, locale, file)
+            add(issues, key, placeholder_lists("", current if isinstance(current, str) else ""), old, current, locale, file)
             return
         if placeholders(text) != placeholders(current):
-            add(issues, key, "placeholder mismatch", old, current, locale, file)
+            add(issues, key, placeholder_lists(text, current), old, current, locale, file)
 
 
 def entries_by_key(data, issues, locale, file):
@@ -753,6 +760,21 @@ def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_name
     return issues, generated, len(items), grok_note
 
 
+def issue_reason(key, why):
+    if why == "changed":
+        return "source text differs for %s" % key
+    if why == "missing":
+        return "key missing: %s" % key
+    if why == "extra":
+        return "extra key: %s" % key
+    if why.startswith("placeholder mismatch"):
+        detail = why[len("placeholder mismatch"):].lstrip(": ")
+        if detail:
+            return "placeholder mismatch for %s: %s" % (key, detail)
+        return "placeholder mismatch for %s" % key
+    return "%s for %s" % (why, key)
+
+
 def format_issues(issues):
     groups = OrderedDict()
     for item in issues:
@@ -765,15 +787,20 @@ def format_issues(issues):
             bucket["locales"].append(item["locale"])
         if item["file"] not in bucket["files"]:
             bucket["files"].append(item["file"])
-    lines = ["Regenerate the listed Android string translations.", ""]
+    first = None
+    lines = []
     for (key, why, old, new), bucket in groups.items():
+        reason = issue_reason(key, why)
+        if first is None:
+            first = reason
         lines.append("key: " + key)
-        lines.append("why: " + why)
+        lines.append("why: " + reason)
         lines.append("old: " + old)
         lines.append("new: " + new)
         lines.append("locales: " + ", ".join(bucket["locales"]))
         lines.append("files: " + ", ".join(bucket["files"]))
         lines.append("")
+    lines = [first or "translation check failed", ""] + lines
     lines.append("Rules:")
     lines.append("- keep every placeholder and format argument exactly as in the en-US text")
     lines.append("- set each source to the new en-US text, exactly")
@@ -797,20 +824,35 @@ def round_trip(xml_text):
     return seen
 
 
+def clear_generated_locales(out_dir):
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    for child in list(out.iterdir()):
+        if child.is_dir() and child.name.startswith("values-"):
+            shutil.rmtree(child)
+
+
 def main(argv):
-    if len(argv) not in (5, 8):
+    english_only = "--english-only" in argv[1:]
+    args = [argv[0]] + [arg for arg in argv[1:] if arg != "--english-only"]
+    if len(args) not in (5, 8):
         print(
             "usage: i18n_check.py strings.xml i18n_dir out_dir locale,filters [tree.json bindings.json gen.py]",
             file=sys.stderr,
         )
         return 2
-    strings_path, i18n_dir, out_dir, filter_arg = argv[1:5]
+    strings_path, i18n_dir, out_dir, filter_arg = args[1:5]
     gen = None
     display_names = set()
-    if len(argv) == 8:
-        tree_path, binding_path, gen_path = argv[5:]
+    if len(args) == 8:
+        tree_path, binding_path, gen_path = args[5:]
         gen = load_settings_gen(gen_path)
         display_names = gen.align_display_english(tree_path, strings_path, binding_path)
+    if english_only:
+        # Settings-tree failures already raised. No Grok, no locale writes, no stale-source failure.
+        clear_generated_locales(out_dir)
+        print("i18n english-only: translations skipped")
+        return 0
     filters = [part for part in filter_arg.split(",") if part]
     issues, generated, string_count, grok_note = check(
         strings_path, i18n_dir, filters, TARGET, gen, display_names
@@ -865,6 +907,9 @@ abstract class GenerateI18nTask : DefaultTask() {
     @get:InputFile
     abstract val settingsScript: RegularFileProperty
 
+    @get:Input
+    abstract val englishOnly: Property<Boolean>
+
     @get:OutputDirectory
     abstract val resOut: DirectoryProperty
 
@@ -872,7 +917,7 @@ abstract class GenerateI18nTask : DefaultTask() {
     fun generate() {
         val script = temporaryDir.resolve("i18n_check.py")
         script.writeText(python.get())
-        val proc = ProcessBuilder(
+        val command = mutableListOf(
             "python3",
             script.absolutePath,
             stringsFile.get().asFile.absolutePath,
@@ -882,7 +927,9 @@ abstract class GenerateI18nTask : DefaultTask() {
             treeFile.get().asFile.absolutePath,
             bindingFile.get().asFile.absolutePath,
             settingsScript.get().asFile.absolutePath,
-        ).redirectErrorStream(true).start()
+        )
+        if (englishOnly.get()) command.add("--english-only")
+        val proc = ProcessBuilder(command).redirectErrorStream(true).start()
         val output = proc.inputStream.bufferedReader().readText()
         val code = proc.waitFor()
         if (code != 0) throw GradleException(output.ifBlank { "generateAppI18n failed" })
@@ -899,6 +946,7 @@ val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     treeFile.set(file("src/main/assets/settings-tree.json"))
     bindingFile.set(file("settings-display-bindings.json"))
     settingsScript.set(file("gen-settings-tree.py"))
+    englishOnly.set(project.providers.gradleProperty("liveimap.englishOnly").map { true }.orElse(false))
     resOut.set(layout.buildDirectory.dir("generated/i18n/res"))
 }
 

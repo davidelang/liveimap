@@ -3,6 +3,7 @@ package liveimap;
 import java.nio.charset.StandardCharsets;
 import javax.inject.Inject;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.GradleException;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.tasks.InputFile;
@@ -30,6 +31,20 @@ public abstract class GenerateSettingsTreeTask extends DefaultTask {
     public void generate() {
         getKtOut().get().getAsFile().mkdirs();
         StringBuilder output = new StringBuilder();
+        try {
+            runScript(output);
+        } catch (RuntimeException failed) {
+            String text = output.toString().trim();
+            if (text.isEmpty()) throw failed;
+            throw new GradleException(text, failed);
+        }
+        String text = output.toString().trim();
+        if (!text.isEmpty()) {
+            getLogger().lifecycle(text);
+        }
+    }
+
+    private void runScript(StringBuilder output) {
         getExecOperations().exec(spec -> {
             spec.commandLine(
                 "python3",
@@ -58,9 +73,5 @@ public abstract class GenerateSettingsTreeTask extends DefaultTask {
                 }
             });
         });
-        String text = output.toString().trim();
-        if (!text.isEmpty()) {
-            getLogger().lifecycle(text);
-        }
     }
 }

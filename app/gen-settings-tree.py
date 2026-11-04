@@ -12,13 +12,258 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+
+class SettingsTreeError(SystemExit):
+    """A settings-tree failure. SystemExit so the Gradle task prints this text, not a traceback."""
+
+
+class TreeNode(dict):
+    def __init__(self, items=(), key_lines=None):
+        super().__init__(items)
+        self.key_lines = {} if key_lines is None else dict(key_lines)
+
+    def __deepcopy__(self, memo):
+        clone = TreeNode((), self.key_lines)
+        memo[id(self)] = clone
+        for key, value in self.items():
+            clone[copy.deepcopy(key, memo)] = copy.deepcopy(value, memo)
+        return clone
+
+
 def loads_settings_tree(data):
     # A comma after the last value of a list or object is not part of the tree.
     if isinstance(data, (bytes, bytearray)):
         text = data.decode("utf-8")
     else:
         text = data
-    return json.loads(_without_trailing_commas(text))
+    stripped = _without_trailing_commas(text)
+    value = json.loads(stripped)
+    mirror = _LineScan(stripped).parse()
+    return _attach_lines(value, mirror)
+
+
+def parse_settings_text(text):
+    try:
+        return loads_settings_tree(text)
+    except json.JSONDecodeError as exc:
+        raise SettingsTreeError(
+            "settings-tree.json:%d:%d: JSON syntax error: %s" % (exc.lineno, exc.colno, exc.msg)
+        ) from None
+
+
+def _origin_line(node):
+    if not isinstance(node, TreeNode):
+        return None
+    lines = node.key_lines
+    for key in ("setting", "group", "section", "editor"):
+        if key in lines:
+            return lines[key]
+    if lines:
+        return min(lines.values())
+    return None
+
+
+def _own_text(node):
+    # The node's own group or setting, title, and type. Not children.
+    if not isinstance(node, dict):
+        return ""
+    if "group" not in node and "setting" not in node:
+        return ""
+    lines = []
+    for key in ("group", "setting", "title", "type"):
+        if key not in node:
+            continue
+        value = node[key]
+        if isinstance(value, (dict, list)):
+            continue
+        lines.append("%s %r" % (key, value))
+    return "\n".join(lines)
+
+
+def _tree_fail(node, rule, ident=None):
+    if ident is None and isinstance(node, dict):
+        ident = node.get("group") or node.get("setting") or node.get("section") or node.get("editor") or ""
+    ident = ident or ""
+    line = _origin_line(node) if isinstance(node, dict) else None
+    if line:
+        head = "settings-tree.json:%d: %s: %s" % (line, ident, rule)
+    elif ident:
+        head = "settings-tree.json: %s: %s" % (ident, rule)
+    else:
+        head = "settings-tree.json: %s" % rule
+    own = _own_text(node) if isinstance(node, dict) else ""
+    if own:
+        head = head + "\n" + own
+    raise SettingsTreeError(head)
+
+
+class _LineScan:
+    # Key lines for the comma-stripped text. Line numbers match the file: only commas are removed.
+
+    def __init__(self, text):
+        self.text = text
+        self.n = len(text)
+        self.i = 0
+        self.line = 1
+
+    def parse(self):
+        self._skip()
+        value = self._value()
+        self._skip()
+        if self.i != self.n:
+            self._fail("Extra data")
+        return value
+
+    def _peek(self):
+        if self.i >= self.n:
+            return ""
+        return self.text[self.i]
+
+    def _bump(self):
+        char = self.text[self.i]
+        self.i += 1
+        if char == "\n":
+            self.line += 1
+        return char
+
+    def _skip(self):
+        # An empty peek is a substring of every string, so test the index first.
+        while self.i < self.n and self.text[self.i] in " \t\r\n":
+            self._bump()
+
+    def _fail(self, msg):
+        raise json.JSONDecodeError(msg, self.text, self.i)
+
+    def _value(self):
+        self._skip()
+        char = self._peek()
+        if char == "{":
+            return self._object()
+        if char == "[":
+            return self._array()
+        if char == '"':
+            self._string()
+            return None
+        if char in "-0123456789":
+            self._number()
+            return None
+        if char == "t":
+            self._literal("true")
+            return None
+        if char == "f":
+            self._literal("false")
+            return None
+        if char == "n":
+            self._literal("null")
+            return None
+        self._fail("Expecting value")
+
+    def _object(self):
+        self._bump()
+        keys = {}
+        vals = {}
+        self._skip()
+        if self._peek() == "}":
+            self._bump()
+            return {"keys": keys, "vals": vals}
+        while True:
+            self._skip()
+            if self._peek() != '"':
+                self._fail("Expecting property name")
+            line = self.line
+            key = self._string()
+            keys[key] = line
+            self._skip()
+            if self._peek() != ":":
+                self._fail("Expecting ':'")
+            self._bump()
+            vals[key] = self._value()
+            self._skip()
+            char = self._peek()
+            if char == ",":
+                self._bump()
+                self._skip()
+                if self._peek() == "}":
+                    self._bump()
+                    break
+                continue
+            if char == "}":
+                self._bump()
+                break
+            self._fail("Expecting ',' delimiter")
+        return {"keys": keys, "vals": vals}
+
+    def _array(self):
+        self._bump()
+        items = []
+        self._skip()
+        if self._peek() == "]":
+            self._bump()
+            return {"items": items}
+        while True:
+            items.append(self._value())
+            self._skip()
+            char = self._peek()
+            if char == ",":
+                self._bump()
+                self._skip()
+                if self._peek() == "]":
+                    self._bump()
+                    break
+                continue
+            if char == "]":
+                self._bump()
+                break
+            self._fail("Expecting ',' delimiter")
+        return {"items": items}
+
+    def _string(self):
+        start = self.i
+        if self._peek() != '"':
+            self._fail("Expecting string")
+        self._bump()
+        while True:
+            char = self._peek()
+            if char == "":
+                self._fail("Unterminated string")
+            if char == "\\":
+                self._bump()
+                if self._peek() == "":
+                    self._fail("Bad escape")
+                self._bump()
+                continue
+            if char == '"':
+                self._bump()
+                break
+            self._bump()
+        return json.loads(self.text[start:self.i])
+
+    def _number(self):
+        while self.i < self.n and self.text[self.i] in "0123456789+-.eE":
+            self._bump()
+
+    def _literal(self, word):
+        if not self.text.startswith(word, self.i):
+            self._fail("Expecting value")
+        for _ in word:
+            self._bump()
+
+
+def _attach_lines(value, mirror):
+    if isinstance(value, dict):
+        keys = mirror.get("keys", {}) if isinstance(mirror, dict) else {}
+        vals = mirror.get("vals", {}) if isinstance(mirror, dict) else {}
+        node = TreeNode((), keys)
+        for key, item in value.items():
+            node[key] = _attach_lines(item, vals.get(key))
+        return node
+    if isinstance(value, list):
+        items = mirror.get("items", []) if isinstance(mirror, dict) else []
+        return [
+            _attach_lines(item, items[index] if index < len(items) else None)
+            for index, item in enumerate(value)
+        ]
+    return value
 
 
 def _without_trailing_commas(text):
@@ -208,9 +453,13 @@ def _non_group(names):
 
 
 def _one_name(sentence, names, where):
+    # One resource with this sentence may be shared. More than one is not an error:
+    # the slot keeps its own resource, or receives a new one. It does not pick among them.
     if len(names) == 1:
         return names[0]
-    raise SystemExit("settings-tree.json display %r at %s matches %s" % (sentence, where, ", ".join(names)))
+    if not names:
+        raise SettingsTreeError("settings-tree.json display %r at %s" % (sentence, where))
+    return None
 
 
 def _resource_name(catalog, value):
@@ -222,7 +471,7 @@ def _string_name(catalog, sentence, prefer, where):
         return sentence
     names = _owners(catalog, sentence)
     if not names:
-        raise SystemExit("settings-tree.json display %r at %s" % (sentence, where))
+        raise SettingsTreeError("settings-tree.json display %r at %s" % (sentence, where))
     if prefer is not None and prefer in names:
         return prefer
     return _one_name(sentence, names, where)
@@ -248,13 +497,26 @@ def _page_or_editor_title(catalog, sentence, where):
     return _one_name(sentence, _non_group(names) or names, where)
 
 
-def _group_title(catalog, group_id, sentence):
+def _group_title(catalog, group_id, sentence, slot=None):
+    # The title is the English of settings_group_<id>_title. Label and header are not required.
     if _resource_name(catalog, sentence):
         return sentence
     name = "settings_group_%s_title" % group_id
-    if catalog.strings.get(name) != sentence:
-        raise SystemExit("settings-tree.json group %s title %r" % (group_id, sentence))
-    return name
+    if name not in catalog.strings:
+        rule = "missing resource %s" % name
+    elif catalog.strings.get(name) != sentence:
+        rule = "resource %s is %r not %r" % (name, catalog.strings.get(name), sentence)
+    else:
+        return name
+    line = slot.get("line") if isinstance(slot, dict) else None
+    own = slot.get("own") if isinstance(slot, dict) else ""
+    if line:
+        head = "settings-tree.json:%d: %s: %s" % (line, group_id, rule)
+    else:
+        head = "settings-tree.json: %s: %s" % (group_id, rule)
+    if own:
+        head = head + "\n" + own
+    raise SettingsTreeError(head)
 
 
 def _choice_name(catalog, setting, choice, sentence):
@@ -315,59 +577,118 @@ def _is_editor(node):
     )
 
 
-def _resolve_node(node, owner, catalog):
+def _use_name(bound, slot_id, lookup):
+    if bound is not None:
+        name = bound.get(slot_id)
+        if isinstance(name, str) and name:
+            return name
+    found = lookup()
+    if found:
+        return found
+    raise SettingsTreeError("settings-tree.json: %s: display name unresolved" % slot_id)
+
+
+def _slot_fields(node):
+    return {"line": _origin_line(node) or 0, "own": _own_text(node)}
+
+
+def _resolve_node(node, owner, catalog, bound, scope):
     if isinstance(node, list):
-        for item in node:
-            _resolve_node(item, owner, catalog)
+        for index, item in enumerate(node):
+            _resolve_node(item, owner, catalog, bound, "%s/%s" % (scope, index))
         return
     if not isinstance(node, dict):
         return
     if _is_leaf(node):
         owner = node["setting"]
+        scope = "leaf:" + owner
         if isinstance(node.get("title"), str):
-            node["title"] = _leaf_title(catalog, node["setting"], node["title"])
+            sentence = node["title"]
+            node["title"] = _use_name(
+                bound, scope + ":title", lambda: _leaf_title(catalog, owner, sentence)
+            )
         choices = node.get("choiceTitles")
         if isinstance(choices, dict):
             for key, value in list(choices.items()):
                 if isinstance(value, str):
-                    choices[key] = _choice_name(catalog, node["setting"], key, value)
+                    choices[key] = _use_name(
+                        bound,
+                        scope + ":choice:" + str(key),
+                        lambda value=value, key=key: _choice_name(catalog, owner, key, value),
+                    )
     elif _is_group(node):
         owner = node["group"]
+        scope = "group:" + owner
         if isinstance(node.get("title"), str):
-            node["title"] = _group_title(catalog, node["group"], node["title"])
+            sentence = node["title"]
+            place = _slot_fields(node)
+            node["title"] = _use_name(
+                bound,
+                scope + ":title",
+                lambda: _group_title(catalog, owner, sentence, place),
+            )
     elif _is_page(node):
         owner = node["section"]
+        scope = "section:" + owner
         if isinstance(node.get("title"), str):
-            node["title"] = _page_or_editor_title(catalog, node["title"], "section " + node["section"])
+            sentence = node["title"]
+            node["title"] = _use_name(
+                bound,
+                scope + ":title",
+                lambda: _page_or_editor_title(catalog, sentence, "section " + owner),
+            )
     elif _is_editor(node):
         owner = node["editor"]
+        scope = "editor:" + owner
         if isinstance(node.get("title"), str) and node["title"]:
-            node["title"] = _page_or_editor_title(catalog, node["title"], "editor " + node["editor"])
+            sentence = node["title"]
+            node["title"] = _use_name(
+                bound,
+                scope + ":title",
+                lambda: _page_or_editor_title(catalog, sentence, "editor " + owner),
+            )
     else:
         if isinstance(node.get("title"), str):
-            node["title"] = _string_name(catalog, node["title"], None, "title")
+            sentence = node["title"]
+            node["title"] = _use_name(
+                bound, scope + ":title", lambda: _string_name(catalog, sentence, None, "title")
+            )
         if isinstance(node.get("text"), str):
-            node["text"] = _summary_name(catalog, owner, node["text"])
+            sentence = node["text"]
+            node["text"] = _use_name(
+                bound, scope + ":text", lambda: _summary_name(catalog, owner, sentence)
+            )
         if isinstance(node.get("plural"), str):
+            sentence = node["plural"]
             count = node.get("count") if isinstance(node.get("count"), str) else ""
-            node["plural"] = _plural_name(catalog, node["plural"], count)
+            node["plural"] = _use_name(
+                bound, scope + ":plural", lambda: _plural_name(catalog, sentence, count)
+            )
         titles = node.get("titles")
         if isinstance(titles, dict):
             setting = node.get("setting") if isinstance(node.get("setting"), str) else owner
             for key, value in list(titles.items()):
                 if isinstance(value, str):
-                    titles[key] = _titles_name(catalog, setting, key, value)
+                    titles[key] = _use_name(
+                        bound,
+                        scope + ":titles:" + str(key),
+                        lambda value=value, key=key: _titles_name(catalog, setting, key, value),
+                    )
     if isinstance(node.get("description"), str):
-        node["description"] = _string_name(catalog, node["description"], None, "description")
-    for value in node.values():
+        sentence = node["description"]
+        node["description"] = _use_name(
+            bound, scope + ":description", lambda: _string_name(catalog, sentence, None, "description")
+        )
+    for key, value in node.items():
         if isinstance(value, (dict, list)):
-            _resolve_node(value, owner, catalog)
+            _resolve_node(value, owner, catalog, bound, scope + ":" + key)
 
 
-def resolve_display_names(doc, catalog):
+def resolve_display_names(doc, catalog, bound=None):
     # The file stores en-US sentences. Emitted Kotlin still uses the resource name.
+    # bound is this slot's resource. A repeated sentence keeps that resource.
     copy_doc = copy.deepcopy(doc)
-    _resolve_node(copy_doc, "", catalog)
+    _resolve_node(copy_doc, "", catalog, bound, "")
     return copy_doc
 
 
@@ -423,11 +744,14 @@ def _android_escape(text):
     return "".join(out)
 
 
-def _add_slot(out, slot_id, sentence, plural, role, meta):
+def _add_slot(out, slot_id, sentence, plural, role, meta, node=None):
     if not isinstance(sentence, str) or sentence == "":
         return
     item = {"id": slot_id, "sentence": sentence, "plural": plural, "role": role}
     item.update(meta)
+    if node is not None:
+        item["line"] = _origin_line(node) or 0
+        item["own"] = _own_text(node)
     out.append(item)
 
 
@@ -441,7 +765,7 @@ def _display_slots(node, scope, owner, out):
     if _is_leaf(node):
         scope = "leaf:" + node["setting"]
         owner = node["setting"]
-        _add_slot(out, scope + ":title", node.get("title"), False, "leaf-title", {"setting": owner})
+        _add_slot(out, scope + ":title", node.get("title"), False, "leaf-title", {"setting": owner}, node)
         choices = node.get("choiceTitles")
         if isinstance(choices, dict):
             for key, value in choices.items():
@@ -452,24 +776,25 @@ def _display_slots(node, scope, owner, out):
                     False,
                     "choice",
                     {"setting": owner, "choice": str(key)},
+                    node,
                 )
     elif _is_group(node):
         scope = "group:" + node["group"]
         owner = node["group"]
-        _add_slot(out, scope + ":title", node.get("title"), False, "group-title", {"group": owner})
+        _add_slot(out, scope + ":title", node.get("title"), False, "group-title", {"group": owner}, node)
     elif _is_page(node):
         scope = "section:" + node["section"]
         owner = node["section"]
-        _add_slot(out, scope + ":title", node.get("title"), False, "section-title", {"section": owner})
+        _add_slot(out, scope + ":title", node.get("title"), False, "section-title", {"section": owner}, node)
     elif _is_editor(node):
         scope = "editor:" + node["editor"]
         owner = node["editor"]
         if isinstance(node.get("title"), str) and node["title"]:
-            _add_slot(out, scope + ":title", node["title"], False, "editor-title", {"editor": owner})
+            _add_slot(out, scope + ":title", node["title"], False, "editor-title", {"editor": owner}, node)
     else:
         count = node.get("count") if isinstance(node.get("count"), str) else ""
-        _add_slot(out, scope + ":title", node.get("title"), False, "summary-text", {"owner": owner})
-        _add_slot(out, scope + ":text", node.get("text"), False, "summary-text", {"owner": owner})
+        _add_slot(out, scope + ":title", node.get("title"), False, "summary-text", {"owner": owner}, node)
+        _add_slot(out, scope + ":text", node.get("text"), False, "summary-text", {"owner": owner}, node)
         _add_slot(
             out,
             scope + ":plural",
@@ -477,6 +802,7 @@ def _display_slots(node, scope, owner, out):
             True,
             "summary-plural",
             {"owner": owner, "count": count},
+            node,
         )
         titles = node.get("titles")
         if isinstance(titles, dict):
@@ -489,9 +815,10 @@ def _display_slots(node, scope, owner, out):
                     False,
                     "titles",
                     {"owner": owner, "setting": setting, "key": str(key)},
+                    node,
                 )
     if isinstance(node.get("description"), str):
-        _add_slot(out, scope + ":description", node.get("description"), False, "description", {"owner": owner})
+        _add_slot(out, scope + ":description", node.get("description"), False, "description", {"owner": owner}, node)
     for key, value in node.items():
         if isinstance(value, (dict, list)):
             _display_slots(value, scope + ":" + key, owner, out)
@@ -517,7 +844,7 @@ def _lookup_slot(slot, catalog):
         if role == "choice":
             return _choice_name(catalog, slot["setting"], slot["choice"], sentence)
         if role == "group-title":
-            return _group_title(catalog, slot["group"], sentence)
+            return _group_title(catalog, slot["group"], sentence, slot)
         if role == "section-title":
             return _page_or_editor_title(catalog, sentence, "section " + slot["section"])
         if role == "editor-title":
@@ -530,18 +857,18 @@ def _lookup_slot(slot, catalog):
             return _plural_name(catalog, sentence, slot.get("count") or "")
         if role == "titles":
             return _titles_name(catalog, slot.get("setting") or slot.get("owner") or "", slot.get("key") or "", sentence)
-    except SystemExit as exc:
-        # "matches a, b" is ambiguous. "matches" with no name is a missing sentence.
-        text = str(exc)
-        listed = text.split(" matches ", 1)[1].strip() if " matches " in text else ""
-        if listed:
+    except SystemExit:
+        # A missing sentence is allocated, or the slot keeps its resource.
+        # A repeated sentence is not an error and is not retargeted.
+        # A group title still fails: that resource is required.
+        if role == "group-title":
             raise
         return None
     return None
 
 
-def _resolved_names(doc, catalog):
-    resolved = resolve_display_names(doc, catalog)
+def _resolved_names(doc, catalog, bound=None):
+    resolved = resolve_display_names(doc, catalog, bound)
     named = {}
     for slot in _slot_list(resolved):
         named[slot["id"]] = slot["sentence"]
@@ -681,9 +1008,10 @@ def _apply_string_xml(strings_path, catalog, edits):
     return True
 
 
-def align_display_english(tree_path, strings_path=None, binding_path=None):
+def align_display_english(tree_path, strings_path=None, binding_path=None, write=True):
     # A settings-tree sentence keeps the Android resource name it already has.
     # A shared name stays on the uses whose English did not change.
+    # write is false for --check: same failures, no strings.xml and no bindings write.
     tree_path = Path(tree_path)
     if strings_path is None:
         strings_path = tree_path.resolve().parents[1] / "res" / "values" / "strings.xml"
@@ -691,20 +1019,22 @@ def align_display_english(tree_path, strings_path=None, binding_path=None):
     if binding_path is None:
         binding_path = Path(__file__).resolve().parent / _BINDINGS_NAME
     binding_path = Path(binding_path)
-    doc = loads_settings_tree(tree_path.read_bytes())
+    doc = parse_settings_text(tree_path.read_bytes())
+    validate_doc(doc)
     catalog = load_string_catalog(tree_path, strings_path)
     slots = _slot_list(doc)
     if not binding_path.is_file():
         named = _resolved_names(doc, catalog)
         if set(named) != set(slot["id"] for slot in slots):
-            raise SystemExit("settings display slots do not match resolved names")
+            raise SettingsTreeError("settings display slots do not match resolved names")
         body = json.dumps(named, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-        _write_if_changed(binding_path, body)
+        if write:
+            _write_if_changed(binding_path, body)
         return set(named.values())
 
     saved = json.loads(binding_path.read_text(encoding="utf-8"))
     if not isinstance(saved, dict):
-        raise SystemExit("settings display bindings")
+        raise SettingsTreeError("settings-tree.json: settings display bindings")
     assigned = {}
     for slot in slots:
         name = saved.get(slot["id"])
@@ -748,14 +1078,18 @@ def align_display_english(tree_path, strings_path=None, binding_path=None):
         assigned[slot["id"]] = name
         saved[slot["id"]] = name
     if set(assigned) != set(slot["id"] for slot in slots):
-        raise SystemExit("settings display slot was not named")
-    named = _resolved_names(doc, catalog)
+        raise SettingsTreeError("settings-tree.json: display slot was not named")
+    named = _resolved_names(doc, catalog, assigned)
     for slot_id, name in assigned.items():
         if named.get(slot_id) != name:
-            raise SystemExit("settings display name drifted: %s -> %s, resolved %s" % (slot_id, name, named.get(slot_id)))
-    _apply_string_xml(strings_path, catalog, edits)
-    body = json.dumps(assigned, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    _write_if_changed(binding_path, body)
+            raise SettingsTreeError(
+                "settings-tree.json: display name drifted: %s -> %s, resolved %s"
+                % (slot_id, name, named.get(slot_id))
+            )
+    if write:
+        _apply_string_xml(strings_path, catalog, edits)
+        body = json.dumps(assigned, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        _write_if_changed(binding_path, body)
     return set(assigned.values())
 
 
@@ -1199,7 +1533,9 @@ def emit(doc, kt_root, tree_bytes, tree_path):
     align_display_english(tree_path)
     catalog = load_string_catalog(tree_path)
     sentences = display_sentences(doc, catalog)
-    doc = resolve_display_names(doc, catalog)
+    binding_path = Path(__file__).resolve().parent / _BINDINGS_NAME
+    bound = json.loads(binding_path.read_text(encoding="utf-8"))
+    doc = resolve_display_names(doc, catalog, bound)
     leaves = all_leaves(doc)
     groups = groups_of(doc)
     by_key = {}
@@ -1907,18 +2243,48 @@ def generated_ui(leaves):
     return ""
 
 
+def _default_tree_path():
+    return Path(__file__).resolve().parent / "src" / "main" / "assets" / "settings-tree.json"
+
+
+def _default_strings_path(tree_path):
+    return Path(tree_path).resolve().parents[1] / "res" / "values" / "strings.xml"
+
+
+def run_check(argv):
+    # Same display and structure checks as the build. Writes nothing. Does not read locale files.
+    if len(argv) > 3:
+        raise SystemExit("usage: gen-settings-tree.py --check [tree.json [strings.xml [bindings.json]]]")
+    tree = _default_tree_path() if not argv else Path(argv[0])
+    strings = _default_strings_path(tree) if len(argv) < 2 else Path(argv[1])
+    bindings = Path(__file__).resolve().parent / _BINDINGS_NAME if len(argv) < 3 else Path(argv[2])
+    align_display_english(tree, strings, bindings, write=False)
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "--upgrade":
         raise SystemExit("gen-settings-tree.py --upgrade is removed")
+    if len(sys.argv) >= 2 and sys.argv[1] == "--check":
+        try:
+            run_check(sys.argv[2:])
+        except SettingsTreeError as exc:
+            sys.stderr.write(str(exc).rstrip() + "\n")
+            raise SystemExit(1)
+        print("settings-tree.json ok")
+        return
     if len(sys.argv) != 3:
         raise SystemExit("usage: gen-settings-tree.py <tree.json> <ktOut>")
     self_check()
     tree_path, kt_root = sys.argv[1:]
-    raw = Path(tree_path).read_bytes()
-    doc = loads_settings_tree(raw)
-    validate_doc(doc)
-    stamp_scopes(doc)
-    emit(doc, kt_root, raw, tree_path)
+    try:
+        raw = Path(tree_path).read_bytes()
+        doc = parse_settings_text(raw)
+        validate_doc(doc)
+        stamp_scopes(doc)
+        emit(doc, kt_root, raw, tree_path)
+    except SettingsTreeError as exc:
+        sys.stderr.write(str(exc).rstrip() + "\n")
+        raise SystemExit(1)
 
 
 ROOT_KEYS = {"sections"}
@@ -1960,14 +2326,16 @@ def self_check():
     try:
         loads_settings_tree("[1,2,] extra")
     except json.JSONDecodeError:
-        return
-    raise SystemExit("trailing text loaded")
+        pass
+    else:
+        raise SystemExit("trailing text loaded")
+    _self_check_errors()
 
 
-def _extra(keys, allowed, where):
-    extra = [key for key in keys if key not in allowed]
+def _extra(node, allowed):
+    extra = [key for key in node.keys() if key not in allowed]
     if extra:
-        raise SystemExit("settings-tree.json extra key %s at %s" % (", ".join(extra), where))
+        _tree_fail(node, "extra key %s" % ", ".join(extra))
 
 
 def stamp_scopes(doc):
@@ -1993,84 +2361,369 @@ def stamp_scopes(doc):
 
 def validate_doc(doc):
     if not isinstance(doc, dict):
-        raise SystemExit("settings-tree.json root")
-    _extra(doc.keys(), ROOT_KEYS, "root")
+        raise SettingsTreeError("settings-tree.json: root")
+    _extra(doc, ROOT_KEYS)
     sections = doc.get("sections")
     if not isinstance(sections, list) or not sections:
-        raise SystemExit("settings-tree.json missing sections")
+        raise SettingsTreeError("settings-tree.json: missing sections")
     seen = set()
     seen_sections = []
 
     def leaf(node, where):
-        _extra(node.keys(), LEAF_KEYS, where)
+        _extra(node, LEAF_KEYS)
         for required in ("setting", "type"):
             if required not in node:
-                raise SystemExit("settings-tree.json missing %s at %s" % (required, where))
+                _tree_fail(node, "missing %s" % required)
         if node["type"] not in UNSTORED_TYPES and "default" not in node:
-            raise SystemExit("settings-tree.json missing default at " + where)
+            _tree_fail(node, "missing default")
         allowed_types = {
             "bool", "either", "number", "choice", "text", "password", "folder", "mailbox",
             "checkServer", "clientCert", "pinerc", "settingsFile", "rules", "toolbar",
             "paneLayout", "swipe",
         }
         if node["type"] not in allowed_types:
-            raise SystemExit("settings-tree.json type %s at %s" % (node["type"], where))
+            _tree_fail(node, "unknown type %r" % (node["type"],))
         if node.get("many") and node.get("order") not in ("user", "sorted", "increasing"):
-            raise SystemExit("settings-tree.json order at " + where)
+            _tree_fail(node, "many without user, sorted, or increasing")
         if node.get("order") and not node.get("many"):
-            raise SystemExit("settings-tree.json order at " + where)
+            _tree_fail(node, "order without many")
         key = node["setting"]
         if not isinstance(key, str) or not key:
-            raise SystemExit("settings-tree.json misspelt setting at " + where)
+            _tree_fail(node, "misspelt setting")
         if key in seen:
-            raise SystemExit("settings-tree.json duplicate " + key)
+            _tree_fail(node, "duplicate setting")
         seen.add(key)
         if node["type"] == "Int" and node.get("choiceTitles"):
-            raise SystemExit("settings-tree.json %s choiceTitles" % key)
+            _tree_fail(node, "choiceTitles")
         if "hidden" in node and node["hidden"] is not True and node["hidden"] is not False:
-            raise SystemExit("settings-tree.json hidden at " + where)
+            _tree_fail(node, "hidden")
 
     def walk(node, where):
         if not isinstance(node, dict):
-            raise SystemExit("settings-tree.json node " + where)
+            raise SettingsTreeError("settings-tree.json: node %s" % where)
         if "section" in node:
-            raise SystemExit("settings-tree.json nested section at " + where)
+            _tree_fail(node, "nested section")
         if "setting" in node and "type" in node:
             leaf(node, where)
             return
         if "group" in node:
-            _extra(node.keys(), GROUP_KEYS, where)
+            _extra(node, GROUP_KEYS)
             if "children" not in node:
-                raise SystemExit("settings-tree.json missing children at " + node["group"])
+                _tree_fail(node, "missing children")
             for index, child in enumerate(node["children"]):
                 walk(child, "%s/%s" % (node["group"], index))
             return
         if "editor" in node:
-            _extra(node.keys(), EDITOR_KEYS, where)
+            _extra(node, EDITOR_KEYS)
             kids = node.get("settings", node.get("children", []))
             if not isinstance(kids, list):
-                raise SystemExit("settings-tree.json editor " + node["editor"])
+                _tree_fail(node, "editor children")
             for index, child in enumerate(kids):
                 walk(child, "%s/%s" % (node["editor"], index))
             return
-        raise SystemExit("settings-tree.json missing kind at " + where)
+        _tree_fail(node, "missing kind")
 
     for index, section in enumerate(sections):
         if not isinstance(section, dict):
-            raise SystemExit("settings-tree.json section %s" % index)
-        _extra(section.keys(), SECTION_KEYS, "sections/%s" % index)
+            raise SettingsTreeError("settings-tree.json: section %s" % index)
+        _extra(section, SECTION_KEYS)
         sid = section.get("section")
         if sid not in ("account", "ui"):
-            raise SystemExit("settings-tree.json section %s" % sid)
+            _tree_fail(section, "section %s" % sid, ident=str(sid))
         if sid in seen_sections:
-            raise SystemExit("settings-tree.json duplicate section %s" % sid)
+            _tree_fail(section, "duplicate section", ident=str(sid))
         seen_sections.append(sid)
         if "title" not in section or not isinstance(section.get("children"), list):
-            raise SystemExit("settings-tree.json missing section field at " + str(sid))
+            _tree_fail(section, "missing section field", ident=str(sid))
         for child_index, child in enumerate(section["children"]):
             walk(child, "%s/%s" % (sid, child_index))
     if len(seen_sections) != 2 or set(seen_sections) != {"account", "ui"}:
-        raise SystemExit("settings-tree.json sections")
+        raise SettingsTreeError("settings-tree.json: sections")
+
+
+def _self_check_errors():
+    import json as json_mod
+    import subprocess
+    import tempfile
+
+    bad = "{\n  \"sections\": [,\n}\n"
+    try:
+        parse_settings_text(bad)
+    except SettingsTreeError as exc:
+        message = str(exc)
+        if "JSON syntax error" not in message or ":2:" not in message:
+            raise SystemExit("syntax line: " + message)
+    else:
+        raise SystemExit("syntax error was not raised")
+
+    def line_of(text, needle):
+        for number, line in enumerate(text.splitlines(), 1):
+            if needle in line:
+                return number
+        raise SystemExit("missing " + needle)
+
+    def resources(pairs):
+        body = ["<resources>"]
+        for name, value in pairs:
+            body.append('    <string name="%s">%s</string>' % (name, value))
+        body.append("</resources>")
+        return "\n".join(body) + "\n"
+
+    def expect_rule(text, rule):
+        number = line_of(text, '"setting"')
+        try:
+            validate_doc(parse_settings_text(text))
+        except SettingsTreeError as exc:
+            message = str(exc)
+        else:
+            raise SystemExit("structure passed: " + rule)
+        if "settings-tree.json:%d:" % number not in message:
+            raise SystemExit("line missing for %s: %s" % (rule, message))
+        if " s:" not in message and ": s:" not in message:
+            raise SystemExit("id missing for %s: %s" % (rule, message))
+        if rule not in message:
+            raise SystemExit("rule missing for %s: %s" % (rule, message))
+        if "setting 's'" not in message or "title 'T'" not in message:
+            raise SystemExit("own keys missing for %s: %s" % (rule, message))
+        if "children" in message:
+            raise SystemExit("dumped children for %s: %s" % (rule, message))
+        return message
+
+    def leaf_doc(leaf):
+        return "\n".join([
+            "{",
+            '  "sections": [',
+            '    {"section": "account", "title": "Account", "children": [',
+            "      " + leaf,
+            "    ]},",
+            '    {"section": "ui", "title": "UI", "children": []}',
+            "  ]",
+            "}",
+        ]) + "\n"
+
+    expect_rule(
+        leaf_doc('{"setting": "s", "type": "nope", "default": "", "title": "T"}'),
+        "unknown type",
+    )
+    expect_rule(
+        leaf_doc('{"setting": "s", "type": "text", "default": "", "title": "T", "order": "user"}'),
+        "order without many",
+    )
+    expect_rule(
+        leaf_doc('{"setting": "s", "type": "text", "default": "", "title": "T", "many": true}'),
+        "many without user, sorted, or increasing",
+    )
+    expect_rule(
+        leaf_doc('{"setting": "s", "type": "text", "default": "", "title": "T", "bogus": 1}'),
+        "extra key bogus",
+    )
+    expect_rule(
+        leaf_doc('{"setting": "s", "type": "text", "title": "T"}'),
+        "missing default",
+    )
+
+    group_extra = "\n".join([
+        "{",
+        '  "sections": [',
+        '    {"section": "account", "title": "Account", "children": [',
+        '      {"group": "g", "title": "T", "bogus": true, "children": [{"setting": "CHILDTOKEN", "type": "text", "default": "", "title": "HiddenChild"}]}',
+        "    ]},",
+        '    {"section": "ui", "title": "UI", "children": []}',
+        "  ]",
+        "}",
+    ]) + "\n"
+    try:
+        validate_doc(parse_settings_text(group_extra))
+    except SettingsTreeError as exc:
+        message = str(exc)
+    else:
+        raise SystemExit("group extra key passed")
+    if "CHILDTOKEN" in message or "HiddenChild" in message or "children" in message:
+        raise SystemExit("group failure dumped children: " + message)
+    if "extra key bogus" not in message or "settings-tree.json:%d:" % line_of(group_extra, '"group"') not in message:
+        raise SystemExit("group extra key: " + message)
+
+    bare_text = "\n".join([
+        "{",
+        '  "sections": [',
+        '    {"section": "account", "title": "Account", "children": [',
+        '      {"group": "onlyKeys", "title": "Only Keys", "children": []}',
+        "    ]},",
+        '    {"section": "ui", "title": "UI", "children": []}',
+        "  ]",
+        "}",
+    ]) + "\n"
+    bare_line = line_of(bare_text, '"group"')
+    bare = parse_settings_text(bare_text)
+    validate_doc(bare)
+    node = bare["sections"][0]["children"][0]
+    if set(node.keys()) != {"group", "title", "children"}:
+        raise SystemExit("bare group keys")
+    if (node.get("label") or node.get("title")) != "Only Keys":
+        raise SystemExit("label default")
+    if (node.get("header") or "label") != "label":
+        raise SystemExit("header default")
+
+    def placed(text, pairs, bindings, write):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            tree = root / "tree.json"
+            strings = root / "strings.xml"
+            bind = root / "bindings.json"
+            tree.write_text(text, encoding="utf-8")
+            strings.write_text(resources(pairs), encoding="utf-8")
+            bind.write_text(json_mod.dumps(bindings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            before = sorted((path.name, path.read_bytes()) for path in root.iterdir())
+            try:
+                names = align_display_english(tree, strings, bind, write=write)
+            except SettingsTreeError as exc:
+                after = sorted((path.name, path.read_bytes()) for path in root.iterdir())
+                if before != after:
+                    raise SystemExit("failure wrote a file")
+                return str(exc), None, strings.read_text(encoding="utf-8")
+            after = sorted((path.name, path.read_bytes()) for path in root.iterdir())
+            if not write and before != after:
+                raise SystemExit("--check wrote a file")
+            return None, names, strings.read_text(encoding="utf-8")
+
+    sections = [
+        ("section_account", "Account"),
+        ("section_ui", "UI"),
+    ]
+    section_bindings = {
+        "section:account:title": "section_account",
+        "section:ui:title": "section_ui",
+    }
+    missing, _, _ = placed(bare_text, sections, section_bindings, False)
+    if missing is None:
+        raise SystemExit("missing group resource passed")
+    for part in (
+        "settings-tree.json:%d:" % bare_line,
+        "onlyKeys",
+        "missing resource settings_group_onlyKeys_title",
+        "Only Keys",
+    ):
+        if part not in missing:
+            raise SystemExit("missing group message %r lacks %r" % (missing, part))
+    if "label" in missing or "header" in missing:
+        raise SystemExit("missing group mentions label or header: " + missing)
+
+    differed, _, _ = placed(
+        bare_text,
+        sections + [("settings_group_onlyKeys_title", "Other Title")],
+        section_bindings,
+        False,
+    )
+    if differed is None or "onlyKeys" not in differed or "settings-tree.json:%d:" % bare_line not in differed:
+        raise SystemExit("differed group: " + str(differed))
+    if "'Only Keys'" not in differed or "'Other Title'" not in differed:
+        raise SystemExit("differed group quotes: " + differed)
+
+    passed, passed_names, _ = placed(
+        bare_text,
+        sections + [("settings_group_onlyKeys_title", "Only Keys")],
+        dict(section_bindings, **{"group:onlyKeys:title": "settings_group_onlyKeys_title"}),
+        False,
+    )
+    if passed is not None or "settings_group_onlyKeys_title" not in passed_names:
+        raise SystemExit("bare group should pass: " + str(passed))
+
+    name_text = "\n".join([
+        "{",
+        '  "sections": [',
+        '    {"section": "account", "title": "Account", "children": [',
+        '      {"group": "g", "title": "Group", "children": [',
+        '        {"setting": "leaf", "type": "choice", "default": "A", "title": "Name", "choices": ["A"], "choiceTitles": {"A": "Name"}, "summary": [{"text": "Name"}]}',
+        "      ]}",
+        "    ]},",
+        '    {"section": "ui", "title": "UI", "children": []}',
+        "  ]",
+        "}",
+    ]) + "\n"
+    name_pairs = sections + [
+        ("drawer_name", "Name"),
+        ("index_search_name", "Name"),
+        ("settings_group_g_title", "Group"),
+        ("settings_leaf_title", "Old"),
+        ("settings_leaf_choice", "Old choice"),
+        ("settings_leaf_summary", "Old summary"),
+    ]
+    name_bindings = dict(section_bindings, **{
+        "group:g:title": "settings_group_g_title",
+        "leaf:leaf:title": "settings_leaf_title",
+        "leaf:leaf:choice:A": "settings_leaf_choice",
+        "leaf:leaf:summary/0:text": "settings_leaf_summary",
+    })
+    dry, dry_names, dry_text = placed(name_text, name_pairs, name_bindings, False)
+    if dry is not None:
+        raise SystemExit("repeated title failed: " + dry)
+    for kept in ("settings_leaf_title", "settings_leaf_choice", "settings_leaf_summary"):
+        if kept not in dry_names:
+            raise SystemExit("leaf lost its resource: " + str(sorted(dry_names)))
+    if "drawer_name" in dry_names or "index_search_name" in dry_names:
+        raise SystemExit("repeated title retargeted: " + str(sorted(dry_names)))
+    if ">Old</string>" not in dry_text or ">Name</string>" not in dry_text:
+        raise SystemExit("dry run wrote strings")
+    wrote, wrote_names, wrote_text = placed(name_text, name_pairs, name_bindings, True)
+    if wrote is not None:
+        raise SystemExit("repeated title write failed: " + wrote)
+    for snippet in (
+        '<string name="drawer_name">Name</string>',
+        '<string name="index_search_name">Name</string>',
+        '<string name="settings_leaf_title">Name</string>',
+        '<string name="settings_leaf_choice">Name</string>',
+        '<string name="settings_leaf_summary">Name</string>',
+    ):
+        if snippet not in wrote_text:
+            raise SystemExit("repeated title strings: missing " + snippet)
+    if "drawer_name" in wrote_names or "index_search_name" in wrote_names:
+        raise SystemExit("write retargeted")
+
+    script = str(Path(__file__).resolve())
+    repo_strings = (_default_strings_path(_default_tree_path())).read_bytes()
+    repo_bindings = (Path(__file__).resolve().parent / _BINDINGS_NAME).read_bytes()
+
+    def run_cli(folder, text, pairs, bindings):
+        root = Path(folder)
+        tree = root / "tree.json"
+        strings = root / "strings.xml"
+        bind = root / "bindings.json"
+        tree.write_text(text, encoding="utf-8")
+        strings.write_text(resources(pairs), encoding="utf-8")
+        bind.write_text(json_mod.dumps(bindings) + "\n", encoding="utf-8")
+        before = sorted((path.name, path.read_bytes()) for path in root.iterdir())
+        proc = subprocess.run(
+            [sys.executable, script, "--check", str(tree), str(strings), str(bind)],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+        )
+        after = sorted((path.name, path.read_bytes()) for path in root.iterdir())
+        if before != after:
+            raise SystemExit("--check wrote " + folder)
+        if repo_strings != _default_strings_path(_default_tree_path()).read_bytes():
+            raise SystemExit("--check wrote strings.xml")
+        if repo_bindings != (Path(__file__).resolve().parent / _BINDINGS_NAME).read_bytes():
+            raise SystemExit("--check wrote bindings")
+        return proc
+
+    with tempfile.TemporaryDirectory() as folder:
+        proc = run_cli(folder, bare_text, sections, section_bindings)
+        if proc.returncode != 1:
+            raise SystemExit("check exit %s %s" % (proc.returncode, proc.stderr))
+        if "missing resource settings_group_onlyKeys_title" not in proc.stderr:
+            raise SystemExit("check stderr: " + proc.stderr)
+        if "label" in proc.stderr or "header" in proc.stderr:
+            raise SystemExit("check mentions label or header: " + proc.stderr)
+    with tempfile.TemporaryDirectory() as folder:
+        proc = run_cli(
+            folder,
+            bare_text,
+            sections + [("settings_group_onlyKeys_title", "Only Keys")],
+            dict(section_bindings, **{"group:onlyKeys:title": "settings_group_onlyKeys_title"}),
+        )
+        if proc.returncode != 0:
+            raise SystemExit("check ok failed: " + proc.stderr + proc.stdout)
 
 
 def kt_json(value):

@@ -4120,3 +4120,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - Retry locale strings that came back unchanged
 
 - same is cleared when a non-English entry still has a word after the keep-spellings and placeholders are removed. One Grok request per locale asks again. A reply that matches the source sets same and is not sent next time. The prompt copies an en-US string only when the target language spells it the same way.
+
+## 2026-11-04 - settings-json-errors execution
+
+- Approved plan: sandbox/plans/settings-json-errors-20261104-0449-plan.md
+- Work: settings-tree failures name the file, line, id, and rule; repeated titles stay valid; --check and -Pliveimap.englishOnly. Do not add settings_group_imapSecurity_title.
