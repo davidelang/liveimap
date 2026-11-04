@@ -1234,15 +1234,6 @@ private fun ReaderScreen(
         }
     }
 
-    fun useDisplay(display: ReaderDisplay) {
-        messageDisplay = display
-        textLayout = textLayoutOf(display, textLayout)
-        val view = bodyViewOf(display, selectedView)
-        if (view != selectedView) requestView(view)
-    }
-
-    fun quoteViewName(): String = if (held.ready) messageDisplay.name else ""
-
     fun requestView(view: BodyView) {
         selectedView = view
         val token = nextBodyLoad()
@@ -1262,6 +1253,15 @@ private fun ReaderScreen(
                 }
         }
     }
+
+    fun useDisplay(display: ReaderDisplay) {
+        messageDisplay = display
+        textLayout = textLayoutOf(display, textLayout)
+        val view = bodyViewOf(display, selectedView)
+        if (view != selectedView) requestView(view)
+    }
+
+    fun quoteViewName(): String = if (held.ready) messageDisplay.name else ""
 
     fun markAttachment(section: String, fetched: Int, done: Boolean, busy: Boolean, path: String? = null) {
         attachments = attachments.map { item ->
