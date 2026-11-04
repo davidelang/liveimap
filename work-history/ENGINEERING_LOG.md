@@ -4140,3 +4140,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - Clear storage drops the leftover account
 
 - Implementing sandbox/plans/clear-storage-account-20261104-1150-plan.md. Omit AccountManager rows with no settings document, restore a block-store record onto a listed id when one exists, then deleteAccount if the document is still absent. Compose snapshot writes (toolbar record, restore finished, restore report) go to the main looper when the caller is a background thread.
+
+## 2026-11-04 - i18n english-only property
+
+- Approved plan: sandbox/plans/i18n-english-only-flag-20261104-1231-plan.md
+- Work: generateAppI18n reads i18n.englishOnly. liveimap.englishOnly does not set the task. The script flag --english-only and the task property englishOnly stay.

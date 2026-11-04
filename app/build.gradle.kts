@@ -946,7 +946,7 @@ val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     treeFile.set(file("src/main/assets/settings-tree.json"))
     bindingFile.set(file("settings-display-bindings.json"))
     settingsScript.set(file("gen-settings-tree.py"))
-    englishOnly.set(project.providers.gradleProperty("liveimap.englishOnly").map { true }.orElse(false))
+    englishOnly.set(project.providers.gradleProperty("i18n.englishOnly").map { true }.orElse(false))
     resOut.set(layout.buildDirectory.dir("generated/i18n/res"))
 }
 
