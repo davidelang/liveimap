@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-port"},
 {"key": "settings_identity", "source": "Identity", "text": "Identiteet"},
 {"key": "settings_no_user", "source": "No user", "text": "Pole kasutajat"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Sõbralik nimi"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Sõbralik nimi", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Kasutajanimi"},
 {"key": "settings_password", "source": "Password", "text": "Parool"},
 {"key": "settings_email", "source": "Email", "text": "Meil"},
-{"key": "settings_display_name", "source": "Display name", "text": "Kuvatav nimi"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Kuvatav nimi", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Saatmine"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP-serverit pole"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP host", "same": true},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Lisa Pine’i raamat"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Lisa Androidi kontaktid"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "See server ei saa jäädavalt kustutada. Asendus on märkida kustutatuks. Jätkamine kustutab selles kaustas iga kustutatud sõnumi."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Sellel serveril pole prügikasti kausta. Asendus on märkida kustutatuks."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Sellel serveril pole prügikasti kausta. Asendus on märkida kustutatuks."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

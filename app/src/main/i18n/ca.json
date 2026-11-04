@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitat"},
 {"key": "settings_no_user", "source": "No user", "text": "Cap usuari"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nom amable"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nom amable", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nom d'usuari"},
 {"key": "settings_password", "source": "Password", "text": "Contrasenya"},
 {"key": "settings_email", "source": "Email", "text": "Correu electrònic"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nom de visualització"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nom de visualització", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Enviament"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "No hi ha servidor SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Amfitrió SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Afegeix una llibreta Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Afegeix contactes d’Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Aquest servidor no pot suprimir de manera permanent. L’alternativa és marcar com a suprimit. Continuar expurga cada missatge suprimit d’aquesta carpeta."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Aquest servidor no té una carpeta de paperera. L’alternativa és marcar com a suprimit."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Aquest servidor no té una carpeta de paperera. L’alternativa és marcar com a suprimit."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

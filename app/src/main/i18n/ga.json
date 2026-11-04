@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Féiniúlacht"},
 {"key": "settings_no_user", "source": "No user", "text": "Gan úsáideoir"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ainm cairdiúil"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ainm cairdiúil", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ainm úsáideora"},
 {"key": "settings_password", "source": "Password", "text": "Pasfhocal"},
 {"key": "settings_email", "source": "Email", "text": "Ríomhphost"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ainm taispeána"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ainm taispeána", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ag seoladh"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Níl aon fhreastalaí SMTP ann"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "óstach SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Cuir leabhar Pine leis"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Cuir teagmhálaithe Android leis"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ní féidir leis an bhfreastalaí seo scriosadh go buan. Is é an rogha eile é a mharcáil scriosta. Má leanann tú, glantar gach teachtaireacht scriosta san fhillteán seo."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Níl bosca bruscair ag an bhfreastalaí seo. Is é an rogha eile é a mharcáil scriosta."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Níl bosca bruscair ag an bhfreastalaí seo. Is é an rogha eile é a mharcáil scriosta."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

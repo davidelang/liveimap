@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-portti"},
 {"key": "settings_identity", "source": "Identity", "text": "Identiteetti"},
 {"key": "settings_no_user", "source": "No user", "text": "Ei käyttäjää"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ystävällinen nimi"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ystävällinen nimi", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Käyttäjätunnus"},
 {"key": "settings_password", "source": "Password", "text": "Salasana"},
 {"key": "settings_email", "source": "Email", "text": "Sähköposti"},
-{"key": "settings_display_name", "source": "Display name", "text": "Näyttönimi"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Näyttönimi", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Lähetetään"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ei SMTP-palvelinta"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP-isäntä"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Lisää Pine-kirja"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Lisää Android-yhteystiedot"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Tämä palvelin ei voi poistaa pysyvästi. Vaihtoehto on merkitä poistetuksi. Jatkaminen poistaa jokaisen poistetuksi merkityn viestin tästä kansiosta."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Tällä palvelimella ei ole roskakori-kansiota. Vaihtoehto on merkitä poistetuksi."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Tällä palvelimella ei ole roskakori-kansiota. Vaihtoehto on merkitä poistetuksi."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP port", "same": true},
 {"key": "settings_identity", "source": "Identity", "text": "Pagkakakilanlan"},
 {"key": "settings_no_user", "source": "No user", "text": "Walang gumagamit"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Friendly na pangalan"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Friendly na pangalan", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Username", "same": true},
 {"key": "settings_password", "source": "Password", "text": "Password", "same": true},
 {"key": "settings_email", "source": "Email", "text": "Email", "same": true},
-{"key": "settings_display_name", "source": "Display name", "text": "Pangalan na ipapakita"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Pangalan na ipapakita", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Nagpapadala"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Walang SMTP server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP host", "same": true},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Magdagdag ng Pine book"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Magdagdag ng mga contact sa Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Hindi maaaring permanenteng magbura ang server na ito. Ang kahalili ay markahan bilang nabura. Ang pagpapatuloy ay nagpupurga ng bawat naburang mensahe sa folder na ito."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Walang trash mailbox ang server na ito. Ang kahalili ay markahan bilang nabura."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Walang trash mailbox ang server na ito. Ang kahalili ay markahan bilang nabura."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

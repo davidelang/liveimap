@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-poarte"},
 {"key": "settings_identity", "source": "Identity", "text": "Identiteit"},
 {"key": "settings_no_user", "source": "No user", "text": "Gjin brûker"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Freonlike namme"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Freonlike namme", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Brûkersnamme"},
 {"key": "settings_password", "source": "Password", "text": "Wachtwurd"},
 {"key": "settings_password_show", "source": "Show password", "text": "Wachtwurd sjen litte"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Wachtwurd ferbergje"},
 {"key": "settings_email", "source": "Email", "text": "E-post"},
-{"key": "settings_display_name", "source": "Display name", "text": "Displaynamme"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Displaynamme", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ferstjoere"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Gjin SMTP-tsjinner"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP-host"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine-boek tafoegje"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android-kontakten tafoegje"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Dizze server kin net bliuwend wiskje. It alternatyf is markearje as wiske. Trochgean wisket elk wiske berjocht yn dizze map."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dizze server hat gjin jiskemap. It alternatyf is markearje as wiske."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dizze server hat gjin jiskemap. It alternatyf is markearje as wiske."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

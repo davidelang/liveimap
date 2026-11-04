@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "आईएमएपी पोर्ट"},
 {"key": "settings_identity", "source": "Identity", "text": "पहचान"},
 {"key": "settings_no_user", "source": "No user", "text": "कोई उपयोगकर्ता नहीं"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "मिलनसार नाम"},
+{"key": "settings_friendly_name", "source": "Label", "text": "मिलनसार नाम", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "उपयोगकर्ता नाम"},
 {"key": "settings_password", "source": "Password", "text": "पासवर्ड"},
 {"key": "settings_email", "source": "Email", "text": "ईमेल"},
-{"key": "settings_display_name", "source": "Display name", "text": "प्रदर्शित होने वाला नाम"},
+{"key": "settings_display_name", "source": "Full Name", "text": "प्रदर्शित होने वाला नाम", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "भेजा जा रहा है"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "कोई एसएमटीपी सर्वर नहीं"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "एसएमटीपी होस्ट"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine पुस्तिका जोड़ें"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android संपर्क जोड़ें"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "यह सर्वर स्थायी रूप से नहीं हटा सकता। विकल्प है हटाया हुआ चिह्नित करना। जारी रखने पर इस फ़ोल्डर का हर हटाया संदेश मिट जाता है।"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "इस सर्वर के पास रद्दी मेलबॉक्स नहीं है। विकल्प है हटाया हुआ चिह्नित करना।"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "इस सर्वर के पास रद्दी मेलबॉक्स नहीं है। विकल्प है हटाया हुआ चिह्नित करना।"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

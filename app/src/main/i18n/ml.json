@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP പോർട്ട്"},
 {"key": "settings_identity", "source": "Identity", "text": "ഐഡൻ്റിറ്റി"},
 {"key": "settings_no_user", "source": "No user", "text": "ഉപയോക്താവില്ല"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "സൗഹൃദപരമായ പേര്"},
+{"key": "settings_friendly_name", "source": "Label", "text": "സൗഹൃദപരമായ പേര്", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ഉപയോക്തൃനാമം"},
 {"key": "settings_password", "source": "Password", "text": "രഹസ്യവാക്ക്"},
 {"key": "settings_email", "source": "Email", "text": "ഇമെയിൽ"},
-{"key": "settings_display_name", "source": "Display name", "text": "പ്രദർശന നാമം"},
+{"key": "settings_display_name", "source": "Full Name", "text": "പ്രദർശന നാമം", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "അയയ്ക്കുന്നു"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP സെർവർ ഇല്ല"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ഹോസ്റ്റ്"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine പുസ്തകം ചേർക്കുക"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android കോൺടാക്റ്റുകൾ ചേർക്കുക"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ഈ സെർവറിന് ശാശ്വതമായി ഇല്ലാതാക്കാൻ കഴിയില്ല. പകരം ഇല്ലാതാക്കിയതായി അടയാളപ്പെടുത്തുക എന്നതാണ്. തുടരുന്നത് ഈ ഫോൾഡറിലെ ഇല്ലാതാക്കിയ ഓരോ സന്ദേശവും മായ്ക്കും."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ഈ സെർവറിന് ചവറ്റുകുട്ട മെയിൽബോക്സ് ഇല്ല. പകരം ഇല്ലാതാക്കിയതായി അടയാളപ്പെടുത്തുക എന്നതാണ്."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ഈ സെർവറിന് ചവറ്റുകുട്ട മെയിൽബോക്സ് ഇല്ല. പകരം ഇല്ലാതാക്കിയതായി അടയാളപ്പെടുത്തുക എന്നതാണ്."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

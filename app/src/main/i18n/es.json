@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Puerto IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identidad"},
 {"key": "settings_no_user", "source": "No user", "text": "Ningún usuario"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nombre amigable"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nombre amigable", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nombre de usuario"},
 {"key": "settings_password", "source": "Password", "text": "Contraseña"},
 {"key": "settings_email", "source": "Email", "text": "Correo electrónico"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nombre para mostrar"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nombre para mostrar", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Envío"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Sin servidor SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "servidor SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Añadir libreta Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Añadir contactos de Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Este servidor no puede borrar de forma permanente. La alternativa es marcar como borrado. Continuar expurga cada mensaje borrado de esta carpeta."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor no tiene un buzón de papelera. La alternativa es marcar como borrado."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor no tiene un buzón de papelera. La alternativa es marcar como borrado."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

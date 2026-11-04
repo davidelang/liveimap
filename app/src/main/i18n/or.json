@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ପୋର୍ଟ |"},
 {"key": "settings_identity", "source": "Identity", "text": "ପରିଚୟ"},
 {"key": "settings_no_user", "source": "No user", "text": "କ user ଣସି ବ୍ୟବହାରକାରୀ ନାହିଁ |"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ବନ୍ଧୁତ୍ୱପୂର୍ଣ୍ଣ ନାମ"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ବନ୍ଧୁତ୍ୱପୂର୍ଣ୍ଣ ନାମ", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ଉପଯୋଗକର୍ତ୍ତା ନାମ"},
 {"key": "settings_password", "source": "Password", "text": "ପାସୱାର୍ଡ"},
 {"key": "settings_email", "source": "Email", "text": "ଇମେଲ୍ କରନ୍ତୁ |"},
-{"key": "settings_display_name", "source": "Display name", "text": "ନାମ ପ୍ରଦର୍ଶନ କରନ୍ତୁ |"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ନାମ ପ୍ରଦର୍ଶନ କରନ୍ତୁ |", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "ପଠାଉଛି"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "କ SM ଣସି SMTP ସର୍ଭର ନାହିଁ |"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ହୋଷ୍ଟ |"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine ବହି ଯୋଡ଼ନ୍ତୁ"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android ସମ୍ପର୍କ ଯୋଡ଼ନ୍ତୁ"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ଏହି ସର୍ଭର ସ୍ଥାୟୀ ଭାବେ ଡିଲିଟ୍ କରିପାରିବ ନାହିଁ। ବିକଳ୍ପ ହେଉଛି ଡିଲିଟ୍ ହୋଇଛି ବୋଲି ଚିହ୍ନ। ଜାରି ରଖିଲେ ଏହି ଫୋଲ୍ଡରର ପ୍ରତି ଡିଲିଟ୍ ବାର୍ତ୍ତା ସଫା ହୁଏ।"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ଏହି ସର୍ଭରର ଆବର୍ଜନା ବାକ୍ସ ନାହିଁ। ବିକଳ୍ପ ହେଉଛି ଡିଲିଟ୍ ହୋଇଛି ବୋଲି ଚିହ୍ନ।"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ଏହି ସର୍ଭରର ଆବର୍ଜନା ବାକ୍ସ ନାହିଁ। ବିକଳ୍ପ ହେଉଛି ଡିଲିଟ୍ ହୋଇଛି ବୋଲି ଚିହ୍ନ।"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

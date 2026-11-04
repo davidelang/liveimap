@@ -498,16 +498,16 @@ def _page_or_editor_title(catalog, sentence, where):
 
 
 def _group_title(catalog, group_id, sentence, slot=None):
-    # The title is the English of settings_group_<id>_title. Label and header are not required.
+    # Absent settings_group_<id>_title resolves to that name. align_display_english stores the JSON title.
+    # An existing resource whose text differs still fails. Label and header are not required.
     if _resource_name(catalog, sentence):
         return sentence
     name = "settings_group_%s_title" % group_id
     if name not in catalog.strings:
-        rule = "missing resource %s" % name
-    elif catalog.strings.get(name) != sentence:
-        rule = "resource %s is %r not %r" % (name, catalog.strings.get(name), sentence)
-    else:
         return name
+    if catalog.strings.get(name) == sentence:
+        return name
+    rule = "resource %s is %r not %r" % (name, catalog.strings.get(name), sentence)
     line = slot.get("line") if isinstance(slot, dict) else None
     own = slot.get("own") if isinstance(slot, dict) else ""
     if line:
@@ -860,7 +860,7 @@ def _lookup_slot(slot, catalog):
     except SystemExit:
         # A missing sentence is allocated, or the slot keeps its resource.
         # A repeated sentence is not an error and is not retargeted.
-        # A group title still fails: that resource is required.
+        # A group title whose stored text differs still fails. A missing one does not.
         if role == "group-title":
             raise
         return None
@@ -891,6 +891,22 @@ def _set_owner(catalog, name, old, sentence):
     catalog.owners.setdefault(sentence, [])
     if name not in catalog.owners[sentence]:
         catalog.owners[sentence].append(name)
+
+
+def _add_missing_string(catalog, edits, name, sentence):
+    # The group name is chosen before the resource exists. Only align_display_english writes it.
+    if not isinstance(name, str) or name in catalog.strings or name in catalog.plurals:
+        return
+    _set_string(catalog, name, sentence)
+    edits.append(("new-string", name, sentence))
+
+
+def _report_created(edits, report_new, write):
+    if write or not report_new:
+        return
+    for edit in edits:
+        if edit[0] in ("new-string", "new-plural"):
+            print(edit[1])
 
 
 def _set_string(catalog, name, sentence):
@@ -1008,7 +1024,7 @@ def _apply_string_xml(strings_path, catalog, edits):
     return True
 
 
-def align_display_english(tree_path, strings_path=None, binding_path=None, write=True):
+def align_display_english(tree_path, strings_path=None, binding_path=None, write=True, report_new=False):
     # A settings-tree sentence keeps the Android resource name it already has.
     # A shared name stays on the uses whose English did not change.
     # write is false for --check: same failures, no strings.xml and no bindings write.
@@ -1027,9 +1043,16 @@ def align_display_english(tree_path, strings_path=None, binding_path=None, write
         named = _resolved_names(doc, catalog)
         if set(named) != set(slot["id"] for slot in slots):
             raise SettingsTreeError("settings display slots do not match resolved names")
+        edits = []
+        for slot in slots:
+            if slot["role"] == "group-title":
+                _add_missing_string(catalog, edits, named.get(slot["id"]), slot["sentence"])
         body = json.dumps(named, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         if write:
+            _apply_string_xml(strings_path, catalog, edits)
             _write_if_changed(binding_path, body)
+        else:
+            _report_created(edits, report_new, write)
         return set(named.values())
 
     saved = json.loads(binding_path.read_text(encoding="utf-8"))
@@ -1046,6 +1069,8 @@ def align_display_english(tree_path, strings_path=None, binding_path=None, write
             continue
         found = _lookup_slot(slot, catalog)
         if found:
+            if slot["role"] == "group-title":
+                _add_missing_string(catalog, edits, found, slot["sentence"])
             assigned[slot["id"]] = found
             continue
         previous = saved.get(slot["id"])
@@ -1090,6 +1115,8 @@ def align_display_english(tree_path, strings_path=None, binding_path=None, write
         _apply_string_xml(strings_path, catalog, edits)
         body = json.dumps(assigned, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         _write_if_changed(binding_path, body)
+    else:
+        _report_created(edits, report_new, write)
     return set(assigned.values())
 
 
@@ -2258,7 +2285,7 @@ def run_check(argv):
     tree = _default_tree_path() if not argv else Path(argv[0])
     strings = _default_strings_path(tree) if len(argv) < 2 else Path(argv[1])
     bindings = Path(__file__).resolve().parent / _BINDINGS_NAME if len(argv) < 3 else Path(argv[2])
-    align_display_english(tree, strings, bindings, write=False)
+    align_display_english(tree, strings, bindings, write=False, report_new=True)
 
 
 def main():
@@ -2594,19 +2621,19 @@ def _self_check_errors():
         "section:account:title": "section_account",
         "section:ui:title": "section_ui",
     }
-    missing, _, _ = placed(bare_text, sections, section_bindings, False)
-    if missing is None:
-        raise SystemExit("missing group resource passed")
-    for part in (
-        "settings-tree.json:%d:" % bare_line,
-        "onlyKeys",
-        "missing resource settings_group_onlyKeys_title",
-        "Only Keys",
-    ):
-        if part not in missing:
-            raise SystemExit("missing group message %r lacks %r" % (missing, part))
-    if "label" in missing or "header" in missing:
-        raise SystemExit("missing group mentions label or header: " + missing)
+    missing, missing_names, missing_text = placed(bare_text, sections, section_bindings, False)
+    if missing is not None:
+        raise SystemExit("missing group resource failed: " + missing)
+    if "settings_group_onlyKeys_title" not in missing_names:
+        raise SystemExit("missing group did not resolve: " + str(sorted(missing_names)))
+    if "settings_group_onlyKeys_title" in missing_text:
+        raise SystemExit("missing group wrote the string when write is false")
+
+    created, created_names, created_text = placed(bare_text, sections, section_bindings, True)
+    if created is not None or "settings_group_onlyKeys_title" not in created_names:
+        raise SystemExit("missing group write failed: " + str(created))
+    if '<string name="settings_group_onlyKeys_title">Only Keys</string>' not in created_text:
+        raise SystemExit("missing group string was not stored")
 
     differed, _, _ = placed(
         bare_text,
@@ -2618,6 +2645,8 @@ def _self_check_errors():
         raise SystemExit("differed group: " + str(differed))
     if "'Only Keys'" not in differed or "'Other Title'" not in differed:
         raise SystemExit("differed group quotes: " + differed)
+    if "children" in differed or "label" in differed or "header" in differed:
+        raise SystemExit("differed group mentions label, header, or children: " + differed)
 
     passed, passed_names, _ = placed(
         bare_text,
@@ -2709,12 +2738,12 @@ def _self_check_errors():
 
     with tempfile.TemporaryDirectory() as folder:
         proc = run_cli(folder, bare_text, sections, section_bindings)
-        if proc.returncode != 1:
+        if proc.returncode != 0:
             raise SystemExit("check exit %s %s" % (proc.returncode, proc.stderr))
-        if "missing resource settings_group_onlyKeys_title" not in proc.stderr:
-            raise SystemExit("check stderr: " + proc.stderr)
-        if "label" in proc.stderr or "header" in proc.stderr:
-            raise SystemExit("check mentions label or header: " + proc.stderr)
+        if "settings_group_onlyKeys_title" not in proc.stdout:
+            raise SystemExit("check stdout: " + proc.stdout)
+        if "label" in proc.stdout or "header" in proc.stdout or "label" in proc.stderr or "header" in proc.stderr:
+            raise SystemExit("check mentions label or header: " + proc.stdout + proc.stderr)
     with tempfile.TemporaryDirectory() as folder:
         proc = run_cli(
             folder,

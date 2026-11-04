@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP પોર્ટ"},
 {"key": "settings_identity", "source": "Identity", "text": "ઓળખ"},
 {"key": "settings_no_user", "source": "No user", "text": "કોઈ વપરાશકર્તા નથી"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "મૈત્રીપૂર્ણ નામ"},
+{"key": "settings_friendly_name", "source": "Label", "text": "મૈત્રીપૂર્ણ નામ", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "વપરાશકર્તા નામ"},
 {"key": "settings_password", "source": "Password", "text": "પાસવર્ડ"},
 {"key": "settings_email", "source": "Email", "text": "ઈમેલ"},
-{"key": "settings_display_name", "source": "Display name", "text": "ડિસ્પ્લે નામ"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ડિસ્પ્લે નામ", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "મોકલી રહ્યું છે"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "કોઈ SMTP સર્વર નથી"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP હોસ્ટ"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine પુસ્તિકા ઉમેરો"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android સંપર્ક ઉમેરો"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "આ સર્વર કાયમ માટે કાઢી શકતું નથી. વિકલ્પ કાઢી નાખેલ તરીકે ચિહ્નિત કરવાનો છે. ચાલુ રાખવાથી આ ફોલ્ડરનો દરેક કાઢી નાખેલ સંદેશ સાફ થાય છે."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "આ સર્વર પાસે કચરાપેટી નથી. વિકલ્પ કાઢી નાખેલ તરીકે ચિહ્નિત કરવાનો છે."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "આ સર્વર પાસે કચરાપેટી નથી. વિકલ્પ કાઢી નાખેલ તરીકે ચિહ્નિત કરવાનો છે."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

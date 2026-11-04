@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Porto IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identidade"},
 {"key": "settings_no_user", "source": "No user", "text": "Ningún usuario"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nome amigable"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nome amigable", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nome de usuario"},
 {"key": "settings_password", "source": "Password", "text": "Contrasinal"},
 {"key": "settings_email", "source": "Email", "text": "Correo electrónico"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nome para mostrar"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nome para mostrar", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Enviando"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Non hai servidor SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Host SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Engadir axenda Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Engadir contactos de Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Este servidor non pode borrar de xeito permanente. A alternativa é marcar como borrado. Continuar expurga cada mensaxe borrada deste cartafol."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor non ten un cartafol do lixo. A alternativa é marcar como borrado."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor non ten un cartafol do lixo. A alternativa é marcar como borrado."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

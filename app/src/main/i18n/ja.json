@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAPポート"},
 {"key": "settings_identity", "source": "Identity", "text": "身元"},
 {"key": "settings_no_user", "source": "No user", "text": "ユーザーがいません"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "フレンドリーな名前"},
+{"key": "settings_friendly_name", "source": "Label", "text": "フレンドリーな名前", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ユーザー名"},
 {"key": "settings_password", "source": "Password", "text": "パスワード"},
 {"key": "settings_email", "source": "Email", "text": "電子メール"},
-{"key": "settings_display_name", "source": "Display name", "text": "表示名"},
+{"key": "settings_display_name", "source": "Full Name", "text": "表示名", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "送信中"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTPサーバーがありません"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTPホスト"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine のアドレス帳を追加"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android の連絡先を追加"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "このサーバーは完全には削除できません。代わりに削除済みにします。続けると、このフォルダーの削除済みメッセージをすべて消去します。"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "このサーバーにはごみ箱のメールボックスがありません。代わりに削除済みにします。"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "このサーバーにはごみ箱のメールボックスがありません。代わりに削除済みにします。"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

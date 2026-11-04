@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP porti"},
 {"key": "settings_identity", "source": "Identity", "text": "Identifikatsiya"},
 {"key": "settings_no_user", "source": "No user", "text": "Foydalanuvchi yo'q"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Do'stona ism"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Do'stona ism", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Foydalanuvchi nomi"},
 {"key": "settings_password", "source": "Password", "text": "Parol"},
 {"key": "settings_email", "source": "Email", "text": "Elektron pochta"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ko'rsatiladigan ism"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ko'rsatiladigan ism", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Yuborilmoqda"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP serveri yo'q"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP xost"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine kitobini qo‘shish"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android kontaktlarini qo‘shish"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Bu server butunlay o‘chira olmaydi. O‘rniga o‘chirilgan deb belgilash. Davom etish ushbu jilddagi har bir o‘chirilgan xatni tozalaydi."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Bu serverda chiqindi qutisi yo‘q. O‘rniga o‘chirilgan deb belgilash."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Bu serverda chiqindi qutisi yo‘q. O‘rniga o‘chirilgan deb belgilash."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

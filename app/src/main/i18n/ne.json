@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP पोर्ट"},
 {"key": "settings_identity", "source": "Identity", "text": "पहिचान"},
 {"key": "settings_no_user", "source": "No user", "text": "प्रयोगकर्ता छैन"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "मिलनसार नाम"},
+{"key": "settings_friendly_name", "source": "Label", "text": "मिलनसार नाम", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "प्रयोगकर्ता नाम"},
 {"key": "settings_password", "source": "Password", "text": "पासवर्ड"},
 {"key": "settings_email", "source": "Email", "text": "इमेल"},
-{"key": "settings_display_name", "source": "Display name", "text": "नाम प्रदर्शन गर्नुहोस्"},
+{"key": "settings_display_name", "source": "Full Name", "text": "नाम प्रदर्शन गर्नुहोस्", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "पठाउँदै"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "कुनै SMTP सर्भर छैन"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP होस्ट"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine पुस्तक थप्नुहोस्"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android सम्पर्क थप्नुहोस्"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "यो सर्भर स्थायी रूपमा मेटाउन सक्दैन। विकल्प मेटिएको चिन्ह लगाउनु हो। जारी राख्दा यो फोल्डरको हरेक मेटिएको सन्देश सफा हुन्छ।"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "यो सर्भरसँग रद्दी मेलबक्स छैन। विकल्प मेटिएको चिन्ह लगाउनु हो।"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "यो सर्भरसँग रद्दी मेलबक्स छैन। विकल्प मेटिएको चिन्ह लगाउनु हो।"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

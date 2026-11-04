@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP porty"},
 {"key": "settings_identity", "source": "Identity", "text": "Şahsyýet"},
 {"key": "settings_no_user", "source": "No user", "text": "Ulanyjy ýok"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Dostlukly at"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Dostlukly at", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ulanyjy ady"},
 {"key": "settings_password", "source": "Password", "text": "Parol"},
 {"key": "settings_password_show", "source": "Show password", "text": "Paroly görkez"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Paroly gizläň"},
 {"key": "settings_email", "source": "Email", "text": "E-poçta iberiň"},
-{"key": "settings_display_name", "source": "Display name", "text": "Görkezilýän ady"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Görkezilýän ady", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ibermek"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP serweri ýok"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP öý eýesi"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine kitabyny goş"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android kontaktlaryny goş"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Bu serwer hemişelik pozup bilmeýär. Çalyşma pozuldy diýip bellemegi. Dowam etmek bu papkadaky her pozulan haty arassalaýar."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Bu serwerde hapalanan guty ýok. Çalyşma pozuldy diýip bellemegi."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Bu serwerde hapalanan guty ýok. Çalyşma pozuldy diýip bellemegi."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

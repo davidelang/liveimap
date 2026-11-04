@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "tauranga IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Tuakiri"},
 {"key": "settings_no_user", "source": "No user", "text": "Kaore he kaiwhakamahi"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ingoa hoa"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ingoa hoa", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ingoa Kaiwhakamahi"},
 {"key": "settings_password", "source": "Password", "text": "Kupuhipa"},
 {"key": "settings_password_show", "source": "Show password", "text": "Whakaatuhia te kupuhipa"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Huna kupuhipa"},
 {"key": "settings_email", "source": "Email", "text": "Īmēra"},
-{"key": "settings_display_name", "source": "Display name", "text": "Whakaatu ingoa"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Whakaatu ingoa", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Tukuna"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Karekau he tūmau SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Kaihautu SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tāpiri pukapuka Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tāpiri hoapā Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Kāore e taea e tēnei tūmau te muku pūmau. Ko te kōwhiringa kē te tohu kua mukua. Mā te haere tonu ka murua ngā karere katoa kua mukua i tēnei kōpaki."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kāore he pouaka para a tēnei tūmau. Ko te kōwhiringa kē te tohu kua mukua."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kāore he pouaka para a tēnei tūmau. Ko te kōwhiringa kē te tohu kua mukua."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

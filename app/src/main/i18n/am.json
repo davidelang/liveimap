@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ወደብ"},
 {"key": "settings_identity", "source": "Identity", "text": "ማንነት"},
 {"key": "settings_no_user", "source": "No user", "text": "ተጠቃሚ የለም።"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ተስማሚ ስም"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ተስማሚ ስም", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "የተጠቃሚ ስም"},
 {"key": "settings_password", "source": "Password", "text": "የይለፍ ቃል"},
 {"key": "settings_email", "source": "Email", "text": "ኢሜይል"},
-{"key": "settings_display_name", "source": "Display name", "text": "የማሳያ ስም"},
+{"key": "settings_display_name", "source": "Full Name", "text": "የማሳያ ስም", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "በመላክ ላይ"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "የSMTP አገልጋይ የለም።"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP አስተናጋጅ"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "የPine መጽሐፍ ጨምር"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "የAndroid እውቂያዎችን ጨምር"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ይህ አገልጋይ በቋሚነት መሰረዝ አይችልም። ምትክ የተሰረዘ ምልክት ማድረግ ነው። መቀጠል በዚህ አቃፊ ውስጥ የተሰረዘን እያንዳንዱን መልዕክት ያጸዳል።"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ይህ አገልጋይ የቆሻሻ ሳጥን የለውም። ምትክ የተሰረዘ ምልክት ማድረግ ነው።"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ይህ አገልጋይ የቆሻሻ ሳጥን የለውም። ምትክ የተሰረዘ ምልክት ማድረግ ነው።"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP порты"},
 {"key": "settings_identity", "source": "Identity", "text": "Шәхес"},
 {"key": "settings_no_user", "source": "No user", "text": "Кулланучы юк"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Дус исем"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Дус исем", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Кулланучының исеме"},
 {"key": "settings_password", "source": "Password", "text": "Серсүз"},
 {"key": "settings_password_show", "source": "Show password", "text": "Серсүзне күрсәт"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Серсүзне яшер"},
 {"key": "settings_email", "source": "Email", "text": "Электрон почта"},
-{"key": "settings_display_name", "source": "Display name", "text": "Күрсәтү исеме"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Күрсәтү исеме", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "җибәрү"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP серверы юк"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP алып баручысы"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine китабын өстә"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android контактларын өстә"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Бу сервер мәңгегә бетерә алмый. Алмаш бетерелгән дип билгеләү. Дәвам итү бу папкадагы һәр бетерелгән хатны чистарта."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Бу серверда чүп тартмасы юк. Алмаш бетерелгән дип билгеләү."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Бу серверда чүп тартмасы юк. Алмаш бетерелгән дип билгеләү."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP nga pantalan"},
 {"key": "settings_identity", "source": "Identity", "text": "Identidad"},
 {"key": "settings_no_user", "source": "No user", "text": "Walay user"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Mahigalaon nga ngalan"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Mahigalaon nga ngalan", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ngalan sa tiggamit"},
 {"key": "settings_password", "source": "Password", "text": "Pulong tago"},
 {"key": "settings_password_show", "source": "Show password", "text": "Ipakita ang password"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Tagoa ang password"},
 {"key": "settings_email", "source": "Email", "text": "Koreo"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ipakita ang ngalan"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ipakita ang ngalan", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Nagpadala"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Walay SMTP server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Host sa SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Idugang ang libro sa Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Idugang ang mga kontak sa Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Kini nga server dili makapapas hangtod. Ang kapilian mao ang markahan nga napapas. Ang pagpadayon magpapas sa matag napapas nga mensahe niini nga folder."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kini nga server walay trash mailbox. Ang kapilian mao ang markahan nga napapas."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kini nga server walay trash mailbox. Ang kapilian mao ang markahan nga napapas."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

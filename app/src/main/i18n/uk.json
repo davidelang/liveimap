@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "порт IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Ідентичність"},
 {"key": "settings_no_user", "source": "No user", "text": "Немає користувача"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Дружнє ім'я"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Дружнє ім'я", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ім'я користувача"},
 {"key": "settings_password", "source": "Password", "text": "Пароль"},
 {"key": "settings_email", "source": "Email", "text": "Електронна пошта"},
-{"key": "settings_display_name", "source": "Display name", "text": "Відображуване ім'я"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Відображуване ім'я", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Відправка"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Немає сервера SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Хост SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Додати книгу Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Додати контакти Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Цей сервер не може видаляти остаточно. Заміна — позначити видаленим. Продовження вичищає кожне видалене повідомлення в цій папці."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "У цього сервера немає папки кошика. Заміна — позначити видаленим."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "У цього сервера немає папки кошика. Заміна — позначити видаленим."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

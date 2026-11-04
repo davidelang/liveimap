@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Dekedda IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Aqoonsi"},
 {"key": "settings_no_user", "source": "No user", "text": "Isticmaale ma jiro"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Magac saaxiibtinimo"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Magac saaxiibtinimo", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Magaca isticmaalaha"},
 {"key": "settings_password", "source": "Password", "text": "Furaha sirta"},
 {"key": "settings_password_show", "source": "Show password", "text": "Muuji furaha sirta"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Qari furaha sirta"},
 {"key": "settings_email", "source": "Email", "text": "Iimayl"},
-{"key": "settings_display_name", "source": "Display name", "text": "Magaca la muujiyo"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Magaca la muujiyo", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Dirid"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Adeegaha SMTP ma jiro"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Martigeliyaha SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ku dar buug Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ku dar xiriirada Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Adeegahan si joogto ah uma tirtiri karo. Beddelka waa in la calaamadiyo sida la tirtiray. Sii wadista waxay nadiifisaa fariin kasta oo la tirtiray gudaha faylkan."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Adeegahan ma laha sanduuq qashin. Beddelka waa in la calaamadiyo sida la tirtiray."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Adeegahan ma laha sanduuq qashin. Beddelka waa in la calaamadiyo sida la tirtiray."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

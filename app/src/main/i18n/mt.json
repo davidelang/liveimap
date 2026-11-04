@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identità"},
 {"key": "settings_no_user", "source": "No user", "text": "L-ebda utent"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Isem faċli"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Isem faċli", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Isem tal-utent"},
 {"key": "settings_password", "source": "Password", "text": "Password", "same": true},
 {"key": "settings_email", "source": "Email", "text": "Email", "same": true},
-{"key": "settings_display_name", "source": "Display name", "text": "Isem tal-wiri"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Isem tal-wiri", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Tibgħat"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "L-ebda server SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Ospitanti SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Żid ktieb Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Żid kuntatti Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Dan is-server ma jistax iħassar b'mod permanenti. L-alternattiva hija li timmarka bħala mħassar. Jekk tkompli, jitnaddaf kull messaġġ imħassar f'din il-folder."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dan is-server m'għandux kaxxa taż-żibel. L-alternattiva hija li timmarka bħala mħassar."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dan is-server m'għandux kaxxa taż-żibel. L-alternattiva hija li timmarka bħala mħassar."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

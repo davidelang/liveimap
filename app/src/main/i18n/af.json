@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-poort"},
 {"key": "settings_identity", "source": "Identity", "text": "Identiteit"},
 {"key": "settings_no_user", "source": "No user", "text": "Geen gebruiker nie"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Vriendelike naam"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Vriendelike naam", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Gebruikersnaam"},
 {"key": "settings_password", "source": "Password", "text": "Wagwoord"},
 {"key": "settings_email", "source": "Email", "text": "E-pos"},
-{"key": "settings_display_name", "source": "Display name", "text": "Vertoon naam"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Vertoon naam", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Stuur tans"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Geen SMTP-bediener nie"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP-gasheer"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Voeg Pine-boek by"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Voeg Android-kontakte by"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Hierdie bediener kan nie permanent skrap nie. Die alternatief is om as geskrap te merk. Voortgaan vee elke geskrapte boodskap in hierdie vouer uit."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Hierdie bediener het geen asbliklêer nie. Die alternatief is om as geskrap te merk."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Hierdie bediener het geen asbliklêer nie. Die alternatief is om as geskrap te merk."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

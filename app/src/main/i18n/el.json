@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Θύρα IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Ταυτότητα"},
 {"key": "settings_no_user", "source": "No user", "text": "Κανένας χρήστης"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Φιλικό όνομα"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Φιλικό όνομα", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Όνομα χρήστη"},
 {"key": "settings_password", "source": "Password", "text": "Σύνθημα"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Εμφανιζόμενο όνομα"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Εμφανιζόμενο όνομα", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Αποστολή"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Δεν υπάρχει διακομιστής SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Κεντρικός υπολογιστής SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Προσθήκη βιβλίου Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Προσθήκη επαφών Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Αυτός ο διακομιστής δεν μπορεί να διαγράψει οριστικά. Η εναλλακτική είναι η σήμανση ως διαγραμμένο. Η συνέχεια εκκαθαρίζει κάθε διαγραμμένο μήνυμα σε αυτόν τον φάκελο."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Αυτός ο διακομιστής δεν έχει φάκελο απορριμμάτων. Η εναλλακτική είναι η σήμανση ως διαγραμμένο."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Αυτός ο διακομιστής δεν έχει φάκελο απορριμμάτων. Η εναλλακτική είναι η σήμανση ως διαγραμμένο."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

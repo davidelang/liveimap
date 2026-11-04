@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Pelabuhan IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitas"},
 {"key": "settings_no_user", "source": "No user", "text": "Tidak ada pengguna"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nama yang ramah"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nama yang ramah", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nama belakang"},
 {"key": "settings_password", "source": "Password", "text": "Kata sandi"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nama tampilan"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nama tampilan", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Mengirim"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Tidak ada server SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "tuan rumah SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tambah buku Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tambah kontak Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Server ini tidak dapat menghapus permanen. Penggantinya adalah menandai terhapus. Melanjutkan akan menghapus setiap pesan terhapus di folder ini."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server ini tidak memiliki kotak sampah. Penggantinya adalah menandai terhapus."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server ini tidak memiliki kotak sampah. Penggantinya adalah menandai terhapus."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

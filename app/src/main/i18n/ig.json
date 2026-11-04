@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Ọdụ ụgbọ mmiri IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Njirimara"},
 {"key": "settings_no_user", "source": "No user", "text": "Enweghị onye ọrụ"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Aha enyi"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Aha enyi", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Aha onye ọrụ"},
 {"key": "settings_password", "source": "Password", "text": "Okwuntughe"},
 {"key": "settings_password_show", "source": "Show password", "text": "Gosi okwuntughe"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Zoo okwuntughe"},
 {"key": "settings_email", "source": "Email", "text": "Ozi-e"},
-{"key": "settings_display_name", "source": "Display name", "text": "Aha ngosi"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Aha ngosi", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Izipu"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Enweghị sava SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Onye nnabata SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tinye akwụkwọ Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tinye kọntaktị Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Sava a enweghị ike ihichapụ kpamkpam. Nhọrọ ọzọ bụ ịkanye akara dị ka ehichapụrụ. Ịga n'ihu na-ehichapụ ozi ọ bụla ehichapụrụ n'ime folda a."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Sava a enweghị igbe mkpofu. Nhọrọ ọzọ bụ ịkanye akara dị ka ehichapụrụ."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Sava a enweghị igbe mkpofu. Nhọrọ ọzọ bụ ịkanye akara dị ka ehichapụrụ."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

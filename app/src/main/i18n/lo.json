@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "ພອດ IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "ເອກະລັກ"},
 {"key": "settings_no_user", "source": "No user", "text": "ບໍ່ມີຜູ້ໃຊ້"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ຊື່ເປັນມິດ"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ຊື່ເປັນມິດ", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ຊື່ຜູ້ໃຊ້"},
 {"key": "settings_password", "source": "Password", "text": "ລະຫັດຜ່ານ"},
 {"key": "settings_email", "source": "Email", "text": "ອີເມວ"},
-{"key": "settings_display_name", "source": "Display name", "text": "ສະແດງຊື່"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ສະແດງຊື່", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "ກຳລັງສົ່ງ"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "ບໍ່ມີເຊີບເວີ SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "ເຈົ້າພາບ SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "ເພີ່ມປຶ້ມ Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "ເພີ່ມລາຍຊື່ Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ເຊີບເວີນີ້ລຶບຖາວອນບໍ່ໄດ້. ທາງເລືອກແມ່ນໝາຍວ່າລຶບແລ້ວ. ການດຳເນີນຕໍ່ຈະລ້າງທຸກຂໍ້ຄວາມທີ່ລຶບແລ້ວໃນໂຟນເດີນີ້."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ເຊີບເວີນີ້ບໍ່ມີກ່ອງຂີ້ເຫຍື້ອ. ທາງເລືອກແມ່ນໝາຍວ່າລຶບແລ້ວ."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ເຊີບເວີນີ້ບໍ່ມີກ່ອງຂີ້ເຫຍື້ອ. ທາງເລືອກແມ່ນໝາຍວ່າລຶບແລ້ວ."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

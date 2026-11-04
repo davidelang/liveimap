@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP izibuko"},
 {"key": "settings_identity", "source": "Identity", "text": "Isazisi"},
 {"key": "settings_no_user", "source": "No user", "text": "Akukho msebenzisi"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Igama elinobuhlobo"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Igama elinobuhlobo", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Igama lomsebenzisi"},
 {"key": "settings_password", "source": "Password", "text": "Igama lokugqithisa"},
 {"key": "settings_password_show", "source": "Show password", "text": "Bonisa igama lokugqitha"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Fihla igama lokugqitha"},
 {"key": "settings_email", "source": "Email", "text": "I-imeyile"},
-{"key": "settings_display_name", "source": "Display name", "text": "Bonisa igama"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Bonisa igama", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Iyathumela"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Akukho mncedisi we SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP umamkeli"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Yongeza incwadi ye-Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Yongeza abanxibelelanayo be-Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Le seva ayinakucima ngonaphakade. Okunye kukuphawula njengocinyiweyo. Ukuqhubeka kucima yonke imiyalezo ecinyiweyo kule folda."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Le seva ayinabhokisi lenkunkuma. Okunye kukuphawula njengocinyiweyo."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Le seva ayinabhokisi lenkunkuma. Okunye kukuphawula njengocinyiweyo."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

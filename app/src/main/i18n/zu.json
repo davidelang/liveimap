@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Imbobo ye-IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Ubunikazi"},
 {"key": "settings_no_user", "source": "No user", "text": "Akekho umsebenzisi"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Igama elinobungane"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Igama elinobungane", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Igama lomsebenzisi"},
 {"key": "settings_password", "source": "Password", "text": "Iphasiwedi"},
 {"key": "settings_email", "source": "Email", "text": "I-imeyili"},
-{"key": "settings_display_name", "source": "Display name", "text": "Bonisa igama"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Bonisa igama", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Iyathumela"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ayikho iseva ye-SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Umphathi we-SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Engeza incwadi ye-Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Engeza oxhumana nabo be-Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Le seva ayikwazi ukususa unaphakade. Okunye ukumaka njengokususiwe. Ukuqhubeka kususa yonke imilayezo esusiwe kule folda."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Le seva ayinayo ibhokisi lokungcola. Okunye ukumaka njengokususiwe."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Le seva ayinayo ibhokisi lokungcola. Okunye ukumaka njengokususiwe."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

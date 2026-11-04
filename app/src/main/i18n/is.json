@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP tengi"},
 {"key": "settings_identity", "source": "Identity", "text": "Sjálfsmynd"},
 {"key": "settings_no_user", "source": "No user", "text": "Enginn notandi"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Vingjarnlegt nafn"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Vingjarnlegt nafn", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Notendanafn"},
 {"key": "settings_password", "source": "Password", "text": "Lykilorð"},
 {"key": "settings_email", "source": "Email", "text": "Tölvupóstur"},
-{"key": "settings_display_name", "source": "Display name", "text": "Birta nafn"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Birta nafn", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Sendir"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Enginn SMTP þjónn"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP gestgjafi"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Bæta við Pine-bók"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Bæta við Android-tengiliðum"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Þessi þjónn getur ekki eytt varanlega. Kosturinn er að merkja eytt. Áframhald hreinsar hvern eyddan póst í þessari möppu."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Þessi þjónn hefur enga ruslamöppu. Kosturinn er að merkja eytt."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Þessi þjónn hefur enga ruslamöppu. Kosturinn er að merkja eytt."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ဆိပ်ကမ်း"},
 {"key": "settings_identity", "source": "Identity", "text": "အထောက်အထား"},
 {"key": "settings_no_user", "source": "No user", "text": "အသုံးပြုသူမရှိပါ။"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ဖော်ရွေသောအမည်"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ဖော်ရွေသောအမည်", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "အသုံးပြုသူအမည်"},
 {"key": "settings_password", "source": "Password", "text": "စကားဝှက်"},
 {"key": "settings_email", "source": "Email", "text": "အီးမေးလ်"},
-{"key": "settings_display_name", "source": "Display name", "text": "ဖော်ပြမည့်အမည်"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ဖော်ပြမည့်အမည်", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "ပေးပို့ခြင်း။"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP ဆာဗာမရှိပါ။"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP လက်ခံဆောင်ရွက်ပေးသူ"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine စာအုပ် ထည့်ပါ"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android အဆက်အသွယ်များ ထည့်ပါ"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ဤဆာဗာသည် အပြီးဖျက်၍ မရပါ။ အစားထိုးမှာ ဖျက်ပြီးဟု မှတ်သားခြင်း ဖြစ်သည်။ ဆက်လုပ်လျှင် ဤဖိုလ်ဒါရှိ ဖျက်ပြီးစာတိုင်းကို ရှင်းသည်။"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ဤဆာဗာတွင် အမှိုက်ပုံး မရှိပါ။ အစားထိုးမှာ ဖျက်ပြီးဟု မှတ်သားခြင်း ဖြစ်သည်။"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ဤဆာဗာတွင် အမှိုက်ပုံး မရှိပါ။ အစားထိုးမှာ ဖျက်ပြီးဟု မှတ်သားခြင်း ဖြစ်သည်။"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

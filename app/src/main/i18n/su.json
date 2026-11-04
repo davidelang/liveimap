@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Idéntitas"},
 {"key": "settings_no_user", "source": "No user", "text": "Taya pamaké"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ngaran ramah"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ngaran ramah", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ngaran pamaké"},
 {"key": "settings_password", "source": "Password", "text": "Sandi"},
 {"key": "settings_password_show", "source": "Show password", "text": "Témbongkeun sandi"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Sumputkeun sandi"},
 {"key": "settings_email", "source": "Email", "text": "Surélék"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ngaran tampilan"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ngaran tampilan", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ngirim"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Taya server SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "host SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tambahkeun buku Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tambahkeun kontak Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Server ieu teu bisa mupus permanén. Gantina nyaéta nandaan geus dipupus. Neruskeun ngaberesihan unggal pesen anu dipupus dina folder ieu."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server ieu teu boga kotak runtah. Gantina nyaéta nandaan geus dipupus."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server ieu teu boga kotak runtah. Gantina nyaéta nandaan geus dipupus."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

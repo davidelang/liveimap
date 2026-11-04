@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Dearbh-aithne"},
 {"key": "settings_no_user", "source": "No user", "text": "Gun neach-cleachdaidh"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ainm càirdeil"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ainm càirdeil", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ainm-cleachdaidh"},
 {"key": "settings_password", "source": "Password", "text": "Facal-faire"},
 {"key": "settings_password_show", "source": "Show password", "text": "Seall facal-faire"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Falaich am facal-faire"},
 {"key": "settings_email", "source": "Email", "text": "Post-d"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ainm taisbeanaidh"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ainm taisbeanaidh", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "A' cur"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Chan eil frithealaiche SMTP ann"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP aoigheachd"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Cuir leabhar Pine ris"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Cuir luchd-aithne Android ris"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Chan urrainn don fhrithealaiche seo sguabadh às gu buan. Is e an roghainn eile a chomharrachadh mar air a sguabadh às. Ma leanas tu, thèid a h-uile teachdaireachd a chaidh a sguabadh às san phasgan seo a ghlanadh."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Chan eil bogsa sgudail aig an fhrithealaiche seo. Is e an roghainn eile a chomharrachadh mar air a sguabadh às."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Chan eil bogsa sgudail aig an fhrithealaiche seo. Is e an roghainn eile a chomharrachadh mar air a sguabadh às."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

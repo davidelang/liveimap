@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP nisqa puerto"},
 {"key": "settings_identity", "source": "Identity", "text": "Identidad nisqa"},
 {"key": "settings_no_user", "source": "No user", "text": "Mana llamk'aq"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Amistad suti"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Amistad suti", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Ruraqpa sutin"},
 {"key": "settings_password", "source": "Password", "text": "Yaykuna rimay"},
 {"key": "settings_password_show", "source": "Show password", "text": "Yaykuna rimayta rikuchiy"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Yaykuna rimayta pakay"},
 {"key": "settings_email", "source": "Email", "text": "Correo electrónico nisqapi"},
-{"key": "settings_display_name", "source": "Display name", "text": "Suti rikuchiy"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Suti rikuchiy", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Kachaspa"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Mana SMTP sirwiq"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP nisqa quq"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine libruta yapanay"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android tinkiykunata yapanay"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Kay sirwiq mana wiñaypaq qulluyta atinchu. Huknin qullusqa nispa unanchay. Qatiy kay karpachapi qullusqa willaykunata pichan."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kay sirwiqpi mana qupa tawak kanchu. Huknin qullusqa nispa unanchay."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Kay sirwiqpi mana qupa tawak kanchu. Huknin qullusqa nispa unanchay."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

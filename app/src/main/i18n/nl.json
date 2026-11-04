@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-poort"},
 {"key": "settings_identity", "source": "Identity", "text": "Identiteit"},
 {"key": "settings_no_user", "source": "No user", "text": "Geen gebruiker"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Vriendelijke naam"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Vriendelijke naam", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Gebruikersnaam"},
 {"key": "settings_password", "source": "Password", "text": "Wachtwoord"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Weergavenaam"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Weergavenaam", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Verzenden"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Geen SMTP-server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP-host"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine-adresboek toevoegen"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android-contacten toevoegen"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Deze server kan niet blijvend verwijderen. Het alternatief is markeren als verwijderd. Doorgaan verwijdert elk verwijderd bericht in deze map."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Deze server heeft geen prullenbakmap. Het alternatief is markeren als verwijderd."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Deze server heeft geen prullenbakmap. Het alternatief is markeren als verwijderd."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-port"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitet"},
 {"key": "settings_no_user", "source": "No user", "text": "Ingen bruger"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Venligt navn"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Venligt navn", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Brugernavn"},
 {"key": "settings_password", "source": "Password", "text": "Adgangskode"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Vist navn"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Vist navn", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Sender"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ingen SMTP-server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP vært"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tilføj Pine-bog"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tilføj Android-kontakter"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Denne server kan ikke slette permanent. Alternativet er at markere som slettet. Fortsætter du, fjernes hver slettet meddelelse i denne mappe."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Denne server har ingen papirkurv. Alternativet er at markere som slettet."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Denne server har ingen papirkurv. Alternativet er at markere som slettet."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

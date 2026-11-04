@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "ច្រក IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "អត្តសញ្ញាណ"},
 {"key": "settings_no_user", "source": "No user", "text": "គ្មានអ្នកប្រើប្រាស់"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ឈ្មោះមិត្តភាព"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ឈ្មោះមិត្តភាព", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ឈ្មោះអ្នកប្រើប្រាស់"},
 {"key": "settings_password", "source": "Password", "text": "ពាក្យសម្ងាត់"},
 {"key": "settings_email", "source": "Email", "text": "អ៊ីមែល"},
-{"key": "settings_display_name", "source": "Display name", "text": "បង្ហាញឈ្មោះ"},
+{"key": "settings_display_name", "source": "Full Name", "text": "បង្ហាញឈ្មោះ", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "កំពុងផ្ញើ"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "គ្មានម៉ាស៊ីនមេ SMTP ទេ។"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "ម៉ាស៊ីន SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "បន្ថែមសៀវភៅ Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "បន្ថែមទំនាក់ទំនង Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ម៉ាស៊ីនមេនេះមិនអាចលុបជាអចិន្ត្រៃយ៍បានទេ។ ជម្រើសផ្សេងគឺសម្គាល់ថាបានលុប។ ការបន្តសម្អាតរាល់សារដែលបានលុបក្នុងថតនេះ។"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ម៉ាស៊ីនមេនេះគ្មានប្រអប់សំរាម។ ជម្រើសផ្សេងគឺសម្គាល់ថាបានលុប។"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ម៉ាស៊ីនមេនេះគ្មានប្រអប់សំរាម។ ជម្រើសផ្សេងគឺសម្គាល់ថាបានលុប។"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

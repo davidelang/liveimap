@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Porth IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Hunaniaeth"},
 {"key": "settings_no_user", "source": "No user", "text": "Dim defnyddiwr"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Enw cyfeillgar"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Enw cyfeillgar", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Enw defnyddiwr"},
 {"key": "settings_password", "source": "Password", "text": "Cyfrinair"},
 {"key": "settings_email", "source": "Email", "text": "Ebost"},
-{"key": "settings_display_name", "source": "Display name", "text": "Enw arddangos"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Enw arddangos", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Anfon"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Dim gweinydd SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "gwesteiwr SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ychwanegu llyfr Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ychwanegu cysylltiadau Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ni all y gweinydd hwn ddileu'n barhaol. Y dewis arall yw marcio fel wedi'i ddileu. Mae parhau yn clirio pob neges a ddilëwyd yn y ffolder hon."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Nid oes gan y gweinydd hwn flwch sbwriel. Y dewis arall yw marcio fel wedi'i ddileu."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Nid oes gan y gweinydd hwn flwch sbwriel. Y dewis arall yw marcio fel wedi'i ddileu."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

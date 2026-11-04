@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-Port"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitéit"},
 {"key": "settings_no_user", "source": "No user", "text": "Kee Benotzer"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Frëndlechen Numm"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Frëndlechen Numm", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Benotzernumm"},
 {"key": "settings_password", "source": "Password", "text": "Passwuert"},
 {"key": "settings_email", "source": "Email", "text": "E-Mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Affichéiert Numm"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Affichéiert Numm", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Schécken"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Kee SMTP Server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP Host"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine-Buch derbäisetzen"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android-Kontakter derbäisetzen"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Dëse Server kann net dauerhaft läschen. D'Alternativ ass als geläscht markéieren. Weidermaachen läscht all geläschte Message an dësem Dossier."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dëse Server huet keen Drecksdossier. D'Alternativ ass als geläscht markéieren."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Dëse Server huet keen Drecksdossier. D'Alternativ ass als geläscht markéieren."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

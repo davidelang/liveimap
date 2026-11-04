@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ਪੋਰਟ"},
 {"key": "settings_identity", "source": "Identity", "text": "ਪਛਾਣ"},
 {"key": "settings_no_user", "source": "No user", "text": "ਕੋਈ ਉਪਭੋਗਤਾ ਨਹੀਂ"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ਦੋਸਤਾਨਾ ਨਾਮ"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ਦੋਸਤਾਨਾ ਨਾਮ", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ਯੂਜ਼ਰਨੇਮ"},
 {"key": "settings_password", "source": "Password", "text": "ਪਾਸਵਰਡ"},
 {"key": "settings_email", "source": "Email", "text": "ਈਮੇਲ"},
-{"key": "settings_display_name", "source": "Display name", "text": "ਦਿਖਾਇਆ ਹੋਇਆ ਨਾਮ"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ਦਿਖਾਇਆ ਹੋਇਆ ਨਾਮ", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "ਭੇਜ ਰਿਹਾ ਹੈ"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "ਕੋਈ SMTP ਸਰਵਰ ਨਹੀਂ ਹੈ"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ਹੋਸਟ"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine ਪੁਸਤਕ ਜੋੜੋ"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android ਸੰਪਰਕ ਜੋੜੋ"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "ਇਹ ਸਰਵਰ ਪੱਕੇ ਤੌਰ ਤੇ ਮਿਟਾ ਨਹੀਂ ਸਕਦਾ। ਵਿਕਲਪ ਮਿਟਿਆ ਹੋਇਆ ਨਿਸ਼ਾਨ ਹੈ। ਜਾਰੀ ਰੱਖਣ ਨਾਲ ਇਸ ਫੋਲਡਰ ਦਾ ਹਰ ਮਿਟਿਆ ਸੁਨੇਹਾ ਸਾਫ਼ ਹੁੰਦਾ ਹੈ।"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ਇਸ ਸਰਵਰ ਕੋਲ ਰੱਦੀ ਡੱਬਾ ਨਹੀਂ। ਵਿਕਲਪ ਮਿਟਿਆ ਹੋਇਆ ਨਿਸ਼ਾਨ ਹੈ।"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ਇਸ ਸਰਵਰ ਕੋਲ ਰੱਦੀ ਡੱਬਾ ਨਹੀਂ। ਵਿਕਲਪ ਮਿਟਿਆ ਹੋਇਆ ਨਿਸ਼ਾਨ ਹੈ।"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

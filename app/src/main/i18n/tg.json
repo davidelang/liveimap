@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Порти IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Шахсият"},
 {"key": "settings_no_user", "source": "No user", "text": "Истифодабаранда нест"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Номи дӯстона"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Номи дӯстона", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Номи корбар"},
 {"key": "settings_password", "source": "Password", "text": "Рамз"},
 {"key": "settings_email", "source": "Email", "text": "Почтаи электронӣ"},
-{"key": "settings_display_name", "source": "Display name", "text": "Бозтоби ном"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Бозтоби ном", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Фиристодан"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Сервери SMTP нест"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Хости SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Китоби Pine илова кунед"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Тамосҳои Android илова кунед"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ин сервер доимӣ ҳазф карда наметавонад. Иваз аломати ҳазфшуда аст. Идома ҳар паёми ҳазфшудаи ин ҷузвдонро тоза мекунад."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ин сервер қуттии партов надорад. Иваз аломати ҳазфшуда аст."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ин сервер қуттии партов надорад. Иваз аломати ҳазфшуда аст."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

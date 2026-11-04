@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-port"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitet"},
 {"key": "settings_no_user", "source": "No user", "text": "Ingen användare"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Vänligt namn"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Vänligt namn", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Användarnamn"},
 {"key": "settings_password", "source": "Password", "text": "Lösenord"},
 {"key": "settings_email", "source": "Email", "text": "E-post"},
-{"key": "settings_display_name", "source": "Display name", "text": "Visningsnamn"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Visningsnamn", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Sändning"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ingen SMTP-server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP-värd"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Lägg till Pine-bok"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Lägg till Android-kontakter"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Den här servern kan inte radera permanent. Alternativet är att markera som raderad. Fortsätter du rensas varje raderat meddelande i den här mappen."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Den här servern har ingen papperskorg. Alternativet är att markera som raderad."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Den här servern har ingen papperskorg. Alternativet är att markera som raderad."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

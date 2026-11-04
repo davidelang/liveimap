@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitas"},
 {"key": "settings_no_user", "source": "No user", "text": "Ora ana pangguna"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "jeneng grapyak"},
+{"key": "settings_friendly_name", "source": "Label", "text": "jeneng grapyak", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Jeneng panganggo"},
 {"key": "settings_password", "source": "Password", "text": "Sandi"},
 {"key": "settings_password_show", "source": "Show password", "text": "Tampilake sandi"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Singidaken tembung sandhi"},
 {"key": "settings_email", "source": "Email", "text": "Layang"},
-{"key": "settings_display_name", "source": "Display name", "text": "Jeneng tampilan"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Jeneng tampilan", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ngirim"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ora ana server SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "inang SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Tambah buku Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Tambah kontak Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Server iki ora bisa mbusak permanen. Gantine yaiku nandhani wis dibusak. Nerusake ngresiki saben pesen sing wis dibusak ing folder iki."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server iki ora duwe kothak sampah. Gantine yaiku nandhani wis dibusak."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Server iki ora duwe kothak sampah. Gantine yaiku nandhani wis dibusak."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

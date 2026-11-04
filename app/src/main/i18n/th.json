@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "พอร์ต IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "ตัวตน"},
 {"key": "settings_no_user", "source": "No user", "text": "ไม่มีผู้ใช้"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "ชื่อที่เป็นมิตร"},
+{"key": "settings_friendly_name", "source": "Label", "text": "ชื่อที่เป็นมิตร", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "ชื่อผู้ใช้"},
 {"key": "settings_password", "source": "Password", "text": "รหัสผ่าน"},
 {"key": "settings_email", "source": "Email", "text": "อีเมล"},
-{"key": "settings_display_name", "source": "Display name", "text": "ชื่อที่แสดง"},
+{"key": "settings_display_name", "source": "Full Name", "text": "ชื่อที่แสดง", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "กำลังส่ง"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "ไม่มีเซิร์ฟเวอร์ SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "โฮสต์ SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "เพิ่มสมุด Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "เพิ่มรายชื่อ Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "เซิร์ฟเวอร์นี้ลบถาวรไม่ได้ ทางเลือกคือทำเครื่องหมายว่าลบแล้ว การทำต่อจะล้างทุกข้อความที่ลบแล้วในโฟลเดอร์นี้"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "เซิร์ฟเวอร์นี้ไม่มีกล่องจดหมายถังขยะ ทางเลือกคือทำเครื่องหมายว่าลบแล้ว"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "เซิร์ฟเวอร์นี้ไม่มีกล่องจดหมายถังขยะ ทางเลือกคือทำเครื่องหมายว่าลบแล้ว"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

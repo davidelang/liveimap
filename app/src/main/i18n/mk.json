@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP порта"},
 {"key": "settings_identity", "source": "Identity", "text": "Идентитетот"},
 {"key": "settings_no_user", "source": "No user", "text": "Нема корисник"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Пријателско име"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Пријателско име", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Корисничко име"},
 {"key": "settings_password", "source": "Password", "text": "Лозинка"},
 {"key": "settings_email", "source": "Email", "text": "Е-пошта"},
-{"key": "settings_display_name", "source": "Display name", "text": "Прикажано име"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Прикажано име", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Испраќање"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Нема SMTP сервер"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP домаќин"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Додај книга Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Додај контакти од Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Овој сервер не може трајно да брише. Замената е означување како избришано. Продолжувањето ги чисти сите избришани пораки во оваа папка."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Овој сервер нема папка за отпад. Замената е означување како избришано."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Овој сервер нема папка за отпад. Замената е означување како избришано."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

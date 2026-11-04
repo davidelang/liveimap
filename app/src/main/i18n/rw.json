@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Icyambu cya IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Indangamuntu"},
 {"key": "settings_no_user", "source": "No user", "text": "Nta mukoresha"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Izina ryinshuti"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Izina ryinshuti", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Izina ryukoresha"},
 {"key": "settings_password", "source": "Password", "text": "Ijambobanga"},
 {"key": "settings_password_show", "source": "Show password", "text": "Erekana ijambo ryibanga"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Hisha ijambo ryibanga"},
 {"key": "settings_email", "source": "Email", "text": "Imeri"},
-{"key": "settings_display_name", "source": "Display name", "text": "Erekana izina"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Erekana izina", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Kohereza"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Nta seriveri ya SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP uwakiriye"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ongeraho igitabo cya Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ongeraho abantu ba Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Iyi seriveri ntishobora gusiba burundu. Ihinduka ni gushyira akamenyetso ko yasibwe. Gukomeza bisukura ubutumwa bwasibwe muri dosiye."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Iyi seriveri nta gasanduku k'imyanda ifite. Ihinduka ni gushyira akamenyetso ko yasibwe."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Iyi seriveri nta gasanduku k'imyanda ifite. Ihinduka ni gushyira akamenyetso ko yasibwe."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

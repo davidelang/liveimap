@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identita"},
 {"key": "settings_no_user", "source": "No user", "text": "Žádný uživatel"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Přátelské jméno"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Přátelské jméno", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Uživatelské jméno"},
 {"key": "settings_password", "source": "Password", "text": "Heslo"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Zobrazovaný název"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Zobrazovaný název", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Odesílání"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Žádný SMTP server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Hostitel SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Přidat knihu Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Přidat kontakty Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Tento server nemůže mazat trvale. Náhradou je označit jako smazané. Pokračování vymaže každou smazanou zprávu v této složce."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Tento server nemá složku koše. Náhradou je označit jako smazané."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Tento server nemá složku koše. Náhradou je označit jako smazané."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

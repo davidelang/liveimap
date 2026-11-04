@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP 連接埠"},
 {"key": "settings_identity", "source": "Identity", "text": "身分"},
 {"key": "settings_no_user", "source": "No user", "text": "沒有用戶"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "友善的名字"},
+{"key": "settings_friendly_name", "source": "Label", "text": "友善的名字", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "使用者名稱"},
 {"key": "settings_password", "source": "Password", "text": "密碼"},
 {"key": "settings_email", "source": "Email", "text": "電子郵件"},
-{"key": "settings_display_name", "source": "Display name", "text": "顯示名稱"},
+{"key": "settings_display_name", "source": "Full Name", "text": "顯示名稱", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "傳送"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "沒有 SMTP 伺服器"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP主機"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "加入 Pine 通訊錄"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "加入 Android 聯絡人"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "此伺服器不能永久刪除。替代做法是標為已刪除。繼續會清除此資料夾中每封已刪除的郵件。"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "此伺服器沒有垃圾桶郵箱。替代做法是標為已刪除。"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "此伺服器沒有垃圾桶郵箱。替代做法是標為已刪除。"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

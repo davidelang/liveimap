@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP prievadas"},
 {"key": "settings_identity", "source": "Identity", "text": "Tapatybė"},
 {"key": "settings_no_user", "source": "No user", "text": "Nėra vartotojo"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Draugiškas vardas"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Draugiškas vardas", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Vartotojo vardas"},
 {"key": "settings_password", "source": "Password", "text": "Slaptažodis"},
 {"key": "settings_email", "source": "Email", "text": "El. paštas"},
-{"key": "settings_display_name", "source": "Display name", "text": "Rodomas vardas"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Rodomas vardas", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Siuntimas"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Nėra SMTP serverio"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP priegloba"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pridėti Pine knygą"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Pridėti Android kontaktus"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Šis serveris negali trinti visam laikui. Pakaitalas yra pažymėti kaip ištrintą. Tęsiant išvalomas kiekvienas ištrintas laiškas šioje aplanke."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Šis serveris neturi šiukšlinės aplanko. Pakaitalas yra pažymėti kaip ištrintą."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Šis serveris neturi šiukšlinės aplanko. Pakaitalas yra pažymėti kaip ištrintą."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP port"},
 {"key": "settings_identity", "source": "Identity", "text": "Identity"},
 {"key": "settings_no_user", "source": "No user", "text": "No user"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Friendly name"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Friendly name"},
 {"key": "settings_username", "source": "Username", "text": "Username"},
 {"key": "settings_password", "source": "Password", "text": "Password"},
 {"key": "settings_email", "source": "Email", "text": "Email"},
-{"key": "settings_display_name", "source": "Display name", "text": "Display name"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Display name"},
 {"key": "settings_sending", "source": "Sending", "text": "Sending"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "No SMTP server"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP host"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Add Pine book"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Add Android contacts"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "This server has no trash mailbox. The alternate is to mark deleted."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "This server has no trash mailbox. The alternate is to mark deleted."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security"}
 ]

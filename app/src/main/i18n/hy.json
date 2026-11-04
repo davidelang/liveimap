@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP պորտ"},
 {"key": "settings_identity", "source": "Identity", "text": "Ինքնություն"},
 {"key": "settings_no_user", "source": "No user", "text": "Ոչ մի օգտվող"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ընկերական անուն"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ընկերական անուն", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Օգտվողի անունը"},
 {"key": "settings_password", "source": "Password", "text": "Գաղտնաբառ"},
 {"key": "settings_email", "source": "Email", "text": "Էլ"},
-{"key": "settings_display_name", "source": "Display name", "text": "Ցուցադրվող անուն"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Ցուցադրվող անուն", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Ուղարկում"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP սերվեր չկա"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP հոսթ"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ավելացնել Pine գիրք"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ավելացնել Android կոնտակտներ"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Այս սերվերը չի կարող մշտապես ջնջել։ Փոխարինողը ջնջված նշելն է։ Շարունակելը մաքրում է այս պանակի յուրաքանչյուր ջնջված նամակ։"},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Այս սերվերը աղբարկղ չունի։ Փոխարինողը ջնջված նշելն է։"}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Այս սերվերը աղբարկղ չունի։ Փոխարինողը ջնջված նշելն է։"},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

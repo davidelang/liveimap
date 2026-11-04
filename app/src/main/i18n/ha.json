@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Tashar IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Shaida"},
 {"key": "settings_no_user", "source": "No user", "text": "Babu mai amfani"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Suna mai sada zumunci"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Suna mai sada zumunci", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Sunan mai amfani"},
 {"key": "settings_password", "source": "Password", "text": "Kalmar sirri"},
 {"key": "settings_password_show", "source": "Show password", "text": "Nuna kalmar sirri"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Ɓoye kalmar sirri"},
 {"key": "settings_email", "source": "Email", "text": "Imel"},
-{"key": "settings_display_name", "source": "Display name", "text": "Sunan nuni"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Sunan nuni", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Aikawa"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Babu sabar SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Mai masaukin SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ƙara littafin Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ƙara lambobin Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Wannan uwar garken ba zai iya gogewa har abada ba. Madadin shine alama a matsayin an goge. Ci gaba yana share kowane saƙon da aka goge a wannan folda."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Wannan uwar garken ba ta da akwatin shara. Madadin shine alama a matsayin an goge."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Wannan uwar garken ba ta da akwatin shara. Madadin shine alama a matsayin an goge."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

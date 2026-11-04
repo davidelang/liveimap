@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ataka"},
 {"key": "settings_identity", "source": "Identity", "text": "Identitatea"},
 {"key": "settings_no_user", "source": "No user", "text": "Erabiltzailerik ez"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Izen atsegina"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Izen atsegina", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Erabiltzaile izena"},
 {"key": "settings_password", "source": "Password", "text": "Pasahitza"},
 {"key": "settings_email", "source": "Email", "text": "Posta elektronikoa"},
-{"key": "settings_display_name", "source": "Display name", "text": "Bistaratzeko izena"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Bistaratzeko izena", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Bidaltzen"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ez dago SMTP zerbitzaririk"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ostalaria"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Gehitu Pine liburua"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Gehitu Android kontaktuak"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Zerbitzari honek ezin du betiko ezabatu. Ordezkoa ezabatutzat markatzea da. Jarraitzeak karpeta honetako ezabatutako mezu guztiak garbitzen ditu."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Zerbitzari honek ez du zakarrontzi-karpeta. Ordezkoa ezabatutzat markatzea da."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Zerbitzari honek ez du zakarrontzi-karpeta. Ordezkoa ezabatutzat markatzea da."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

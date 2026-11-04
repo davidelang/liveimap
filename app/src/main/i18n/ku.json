@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Porta IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Nasname"},
 {"key": "settings_no_user", "source": "No user", "text": "Bikarhêner tune"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Navê dostane"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Navê dostane", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Navê bikarhêner"},
 {"key": "settings_password", "source": "Password", "text": "Şîfre"},
 {"key": "settings_password_show", "source": "Show password", "text": "Şîfreyê nîşan bide"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Şîfreyê veşêre"},
 {"key": "settings_email", "source": "Email", "text": "E-name"},
-{"key": "settings_display_name", "source": "Display name", "text": "Navê nîşandanê"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Navê nîşandanê", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Şandin"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Pêşkêşkara SMTP tune"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Mêvandarê SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pirtûka Pine zêde bike"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Têkiliyên Android zêde bike"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ev server nikare bi dawî jê bibe. Alternatîf nîşankirina wekî jêbirî ye. Berdewamkirin her nameya jêbirî ya vê peldankê paqij dike."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ev server qutiya zibilê nîne. Alternatîf nîşankirina wekî jêbirî ye."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ev server qutiya zibilê nîne. Alternatîf nîşankirina wekî jêbirî ye."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

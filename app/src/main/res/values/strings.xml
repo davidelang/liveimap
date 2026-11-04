@@ -450,13 +450,13 @@
     <string name="settings_imap_port">IMAP port</string>
     <string name="settings_identity">Identity</string>
     <string name="settings_no_user">No user</string>
-    <string name="settings_friendly_name">Friendly name</string>
+    <string name="settings_friendly_name">Label</string>
     <string name="settings_username">Username</string>
     <string name="settings_password">Password</string>
     <string name="settings_password_show">Show password</string>
     <string name="settings_password_hide">Hide password</string>
     <string name="settings_email">Email</string>
-    <string name="settings_display_name">Display name</string>
+    <string name="settings_display_name">Full Name</string>
     <string name="settings_sending">Sending</string>
     <string name="settings_no_smtp">No SMTP server</string>
     <string name="settings_smtp_host">SMTP host</string>
@@ -1265,4 +1265,5 @@ Your version: %2$s</string>
     <string name="leaf_folderbar_title">Folder list toolbar</string>
     <string name="leaf_pinerc_title">Import Pine settings</string>
     <string name="leaf_uisettingsfile_title">Import or export settings</string>
+    <string name="settings_group_imapSecurity_title">Imap Security</string>
 </resources>

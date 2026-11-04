@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP ibudo"},
 {"key": "settings_identity", "source": "Identity", "text": "Idanimọ"},
 {"key": "settings_no_user", "source": "No user", "text": "Ko si olumulo"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Ore orukọ"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Ore orukọ", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Orukọ olumulo"},
 {"key": "settings_password", "source": "Password", "text": "Ọrọigbaniwọle"},
 {"key": "settings_email", "source": "Email", "text": "Imeeli"},
-{"key": "settings_display_name", "source": "Display name", "text": "Fi oruko han"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Fi oruko han", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Fifiranṣẹ"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Ko si olupin SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ogun"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Fi iwe Pine kun"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Fi awọn olubasọrọ Android kun"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Olupin yii ko le parẹ patapata. Aṣayan miiran ni lati samisi bi ti a ti parẹ. Tesiwaju n pa gbogbo ifiranṣẹ ti a samisi parẹ ninu folda yii."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Olupin yii ko ni apoti idoti. Aṣayan miiran ni lati samisi bi ti a ti parẹ."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Olupin yii ko ni apoti idoti. Aṣayan miiran ni lati samisi bi ti a ti parẹ."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Port IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identité"},
 {"key": "settings_no_user", "source": "No user", "text": "Aucun utilisateur"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nom convivial"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nom convivial", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nom d'utilisateur"},
 {"key": "settings_password", "source": "Password", "text": "Mot de passe"},
 {"key": "settings_email", "source": "Email", "text": "Courriel"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nom d'affichage"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nom d'affichage", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Envoi"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Pas de serveur SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Hôte SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Ajouter un carnet Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Ajouter les contacts Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Ce serveur ne peut pas supprimer définitivement. L’autre choix est de marquer comme supprimé. Continuer expurge chaque message supprimé de ce dossier."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ce serveur n’a pas de dossier corbeille. L’autre choix est de marquer comme supprimé."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Ce serveur n’a pas de dossier corbeille. L’autre choix est de marquer comme supprimé."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

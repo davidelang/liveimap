@@ -408,13 +408,13 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP-portur"},
 {"key": "settings_identity", "source": "Identity", "text": "Samleiki"},
 {"key": "settings_no_user", "source": "No user", "text": "Eingin brúkari"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Vinarligt navn"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Vinarligt navn", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Brúkaranavn"},
 {"key": "settings_password", "source": "Password", "text": "Loyniorð"},
 {"key": "settings_password_show", "source": "Show password", "text": "Vís loyniorð"},
 {"key": "settings_password_hide", "source": "Hide password", "text": "Goym loyniorð"},
 {"key": "settings_email", "source": "Email", "text": "Teldupostur"},
-{"key": "settings_display_name", "source": "Display name", "text": "Vís navn"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Vís navn", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Sendi"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Eingin SMTP-ambætari"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP vertur"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Legg Pine-bók aftrat"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Legg Android-kontaktir aftrat"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Hesin ambætari kann ikki strika varandi. Annað val er at merkja sum strikað. Heldur tú fram, verður hvør strikað boð í hesari mappuni ruddað."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Hesin ambætari hevur onga ruslamappu. Annað val er at merkja sum strikað."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Hesin ambætari hevur onga ruslamappu. Annað val er at merkja sum strikað."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

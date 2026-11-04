@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "Porta IMAP"},
 {"key": "settings_identity", "source": "Identity", "text": "Identidade"},
 {"key": "settings_no_user", "source": "No user", "text": "Nenhum utilizador"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "Nome amigável"},
+{"key": "settings_friendly_name", "source": "Label", "text": "Nome amigável", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "Nome de utilizador"},
 {"key": "settings_password", "source": "Password", "text": "Palavra-passe"},
 {"key": "settings_email", "source": "Email", "text": "E-mail"},
-{"key": "settings_display_name", "source": "Display name", "text": "Nome de exibição"},
+{"key": "settings_display_name", "source": "Full Name", "text": "Nome de exibição", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "Enviando"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "Sem servidor SMTP"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "Anfitrião SMTP"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Adicionar livro Pine"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Adicionar contactos Android"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "Este servidor não pode eliminar de forma permanente. A alternativa é marcar como eliminado. Continuar expurga cada mensagem eliminada nesta pasta."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor não tem uma pasta de lixo. A alternativa é marcar como eliminado."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor não tem uma pasta de lixo. A alternativa é marcar como eliminado."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]

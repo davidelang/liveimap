@@ -400,11 +400,11 @@
 {"key": "settings_imap_port", "source": "IMAP port", "text": "IMAP போர்ட்"},
 {"key": "settings_identity", "source": "Identity", "text": "அடையாளம்"},
 {"key": "settings_no_user", "source": "No user", "text": "பயனர் இல்லை"},
-{"key": "settings_friendly_name", "source": "Friendly name", "text": "நட்புப் பெயர்"},
+{"key": "settings_friendly_name", "source": "Label", "text": "நட்புப் பெயர்", "pending": true},
 {"key": "settings_username", "source": "Username", "text": "பயனர் பெயர்"},
 {"key": "settings_password", "source": "Password", "text": "கடவுச்சொல்"},
 {"key": "settings_email", "source": "Email", "text": "மின்னஞ்சல்"},
-{"key": "settings_display_name", "source": "Display name", "text": "காட்சி பெயர்"},
+{"key": "settings_display_name", "source": "Full Name", "text": "காட்சி பெயர்", "pending": true},
 {"key": "settings_sending", "source": "Sending", "text": "அனுப்புகிறது"},
 {"key": "settings_no_smtp", "source": "No SMTP server", "text": "SMTP சேவையகம் இல்லை"},
 {"key": "settings_smtp_host", "source": "SMTP host", "text": "SMTP ஹோஸ்ட்"},
@@ -1219,5 +1219,6 @@
 {"key": "settings_add_pine_book", "source": "Add Pine book", "text": "Pine புத்தகத்தைச் சேர்"},
 {"key": "settings_add_android_book", "source": "Add Android contacts", "text": "Android தொடர்புகளைச் சேர்"},
 {"key": "index_delete_needs_uidplus", "source": "This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.", "text": "இந்த சேவையகம் நிரந்தரமாக அழிக்க முடியாது. மாற்று நீக்கப்பட்டதாகக் குறிப்பது. தொடர்ந்தால் இந்த அடைவின் நீக்கப்பட்ட ஒவ்வொரு செய்தியும் அழிக்கப்படும்."},
-{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "இந்த சேவையகத்திற்கு குப்பைப் பெட்டி இல்லை. மாற்று நீக்கப்பட்டதாகக் குறிப்பது."}
+{"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "இந்த சேவையகத்திற்கு குப்பைப் பெட்டி இல்லை. மாற்று நீக்கப்பட்டதாகக் குறிப்பது."},
+{"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true}
 ]
