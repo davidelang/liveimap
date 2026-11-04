@@ -4157,3 +4157,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - Flowed flags stay with the open message
 
 - format=flowed and DelSp stay with the loaded message, so a rotation does not show a Flowed message as ordinary reflow.
+
+## 2026-11-04 - i18n build packages the catalog
+
+- Approved plan: sandbox/plans/i18n-build-catalog-20261104-1505-plan.md
+- Work: a normal build packages the committed catalog, prints i18n fallback, and does not call a translator. i18n.englishOnly is removed.

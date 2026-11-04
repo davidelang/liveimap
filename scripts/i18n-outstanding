@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""List sentences the catalog does not already match.
+
+Scans res/values/strings.xml and settings-tree.json. No flags: added, changed,
+and removed sentences. Unchanged sentences are not printed. --all lists every
+machine sentence. --manuals adds docs/user-manual/manual.md when that file
+exists. --check rejects a catalog text whose format tokens differ from its
+source, restores the previous text, and marks that entry pending. Overrides are
+skipped. A token-mismatched override is reported and is not sent for translation.
+This script does not translate.
+"""
+import importlib.util
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+
+ROOT = Path(__file__).resolve().parents[1]
+STRINGS = ROOT / "app/src/main/res/values/strings.xml"
+TREE = ROOT / "app/src/main/assets/settings-tree.json"
+BINDINGS = ROOT / "app/settings-display-bindings.json"
+CATALOG = ROOT / "app/src/main/i18n"
+MANUAL = ROOT / "docs/user-manual/manual.md"
+TERMS = CATALOG / "keep-terms.txt"
+
+PH_RE = re.compile(r"%%|%(?:\d+\$)?[#+ 0,\-]*\d*(?:\.\d+)?[a-zA-Z]|%")
+Q_ORDER = ("zero", "one", "two", "few", "many", "other")
+
+
+def android_unescape(text):
+    if text is None:
+        return ""
+    out = []
+    i = 0
+    simple = {"n": "\n", "t": "\t", "'": "'", '"': '"', "\\": "\\", "r": "\r"}
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt in simple:
+                out.append(simple[nxt])
+                i += 2
+                continue
+            if nxt == "u" and i + 5 < len(text):
+                hexv = text[i + 2 : i + 6]
+                try:
+                    out.append(chr(int(hexv, 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+            out.append(nxt)
+            i += 2
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+def format_tokens(text):
+    if not isinstance(text, str):
+        return None
+    return sorted(PH_RE.findall(text))
+
+
+def same_tokens(text, source):
+    # A plural may omit a quantity the locale does not use. A quantity that is
+    # present must carry the source quantity's format tokens, or other's.
+    if isinstance(source, dict):
+        if not isinstance(text, dict):
+            return False
+        for quantity, got in text.items():
+            sample = source[quantity] if quantity in source else source.get("other", "")
+            if not isinstance(sample, str):
+                return False
+            if format_tokens(got) != format_tokens(sample):
+                return False
+        return True
+    if not isinstance(source, str):
+        return False
+    return format_tokens(text) == format_tokens(source)
+
+
+def read_keep_terms():
+    if not TERMS.is_file():
+        return []
+    return [line.strip() for line in TERMS.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def worth_sending(sentence, terms):
+    if not isinstance(sentence, str):
+        return False
+    stripped = PH_RE.sub(" ", sentence)
+    for term in sorted(terms, key=len, reverse=True):
+        stripped = stripped.replace(term, " ")
+    return any(ch.isalpha() for ch in stripped)
+
+
+def flatten(value):
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        out = []
+        seen = set()
+        for quantity in Q_ORDER:
+            if quantity in value and isinstance(value[quantity], str):
+                out.append(value[quantity])
+                seen.add(quantity)
+        for quantity in sorted(value):
+            if quantity not in seen and isinstance(value[quantity], str):
+                out.append(value[quantity])
+        return out
+    return []
+
+
+def load_english():
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(STRINGS).getroot()
+    items = []
+    for el in root:
+        name = el.attrib.get("name")
+        if not isinstance(name, str):
+            continue
+        if el.tag == "string":
+            items.append((name, android_unescape(el.text)))
+        elif el.tag == "plurals":
+            quant = {}
+            for item in el:
+                quant[item.attrib.get("quantity")] = android_unescape(item.text)
+            items.append((name, quant))
+    return items
+
+
+def _settings_module():
+    path = ROOT / "app" / "gen-settings-tree.py"
+    spec = importlib.util.spec_from_file_location("settings_tree_gen", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def apply_settings_tree(items):
+    # The tree is the en-US sentence for a display resource. A sentence with no
+    # resource yet is added. A bound resource whose text changed uses the tree.
+    mod = _settings_module()
+    doc = mod.parse_settings_text(TREE.read_bytes())
+    slots = mod._slot_list(doc)
+    bindings = json.loads(BINDINGS.read_text(encoding="utf-8"))
+    if not isinstance(bindings, dict):
+        raise SystemExit("settings display bindings")
+    english = {key: value for key, value in items}
+    known = set()
+    for value in english.values():
+        known.update(flatten(value))
+    extras = []
+    by_name = {}
+    for slot in slots:
+        name = bindings.get(slot["id"])
+        if isinstance(name, str):
+            by_name.setdefault(name, []).append(slot)
+    for slot in slots:
+        sentence = slot.get("sentence")
+        if not isinstance(sentence, str) or sentence == "":
+            continue
+        name = bindings.get(slot["id"])
+        current = english.get(name) if isinstance(name, str) else None
+        if isinstance(current, str):
+            if current == sentence:
+                continue
+            shared = any(
+                other is not slot and other.get("sentence") == current
+                for other in by_name.get(name, [])
+            )
+            if shared:
+                if sentence not in known:
+                    extras.append(sentence)
+                    known.add(sentence)
+            else:
+                english[name] = sentence
+                known.add(sentence)
+            continue
+        if isinstance(current, dict):
+            if sentence in current.values():
+                continue
+            shared = any(
+                other is not slot and other.get("sentence") in current.values()
+                for other in by_name.get(name, [])
+            )
+            if shared or sentence in known:
+                if sentence not in known:
+                    extras.append(sentence)
+                    known.add(sentence)
+            else:
+                updated = dict(current)
+                updated["other"] = sentence
+                english[name] = updated
+                known.add(sentence)
+            continue
+        if sentence not in known:
+            extras.append(sentence)
+            known.add(sentence)
+    merged = [(key, english[key]) for key, _value in items]
+    for sentence in extras:
+        merged.append(("\x00" + sentence, sentence))
+    return merged
+
+
+def catalog_paths():
+    paths = []
+    for path in sorted(CATALOG.glob("*.json")):
+        if path.name.endswith(".override.json"):
+            continue
+        paths.append(path)
+    return paths
+
+
+def load_entries(path):
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise SystemExit("%s is not a list" % path.name)
+    entries = []
+    for item in data:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            continue
+        entries.append(item)
+    return entries
+
+
+def load_catalogs():
+    catalogs = []
+    for path in catalog_paths():
+        found = {}
+        for item in load_entries(path):
+            if item["key"] not in found:
+                found[item["key"]] = item.get("source")
+        catalogs.append(found)
+    return catalogs
+
+
+def load_override_maps():
+    maps = []
+    for path in catalog_paths():
+        override = path.with_name(path.stem + ".override.json")
+        found = {}
+        if override.is_file():
+            for item in load_entries(override):
+                if item["key"] not in found and "text" in item:
+                    found[item["key"]] = item["text"]
+        maps.append(found)
+    return maps
+
+
+def _emit_unique(bucket, sentences, terms, limit):
+    for sentence in sentences:
+        if limit and not worth_sending(sentence, terms):
+            continue
+        if sentence not in bucket:
+            bucket.append(sentence)
+
+
+def _changed_sentences(current, sources):
+    if not sources:
+        return flatten(current)
+    if isinstance(current, str):
+        if any(source != current for source in sources):
+            return [current]
+        return []
+    if isinstance(current, dict):
+        out = []
+        for quantity in list(Q_ORDER) + sorted(set(current) - set(Q_ORDER)):
+            sentence = current.get(quantity)
+            if not isinstance(sentence, str):
+                continue
+            for source in sources:
+                if not isinstance(source, dict) or source.get(quantity) != sentence:
+                    out.append(sentence)
+                    break
+        return out
+    return []
+
+
+def fully_overridden(key, current, override_maps):
+    if not override_maps:
+        return False
+    for omap in override_maps:
+        if key not in omap or not same_tokens(omap[key], current):
+            return False
+    return True
+
+
+def classify(items, catalogs, terms, override_maps):
+    sources_by_key = {}
+    order = []
+    for cat in catalogs:
+        for key, source in cat.items():
+            sources_by_key.setdefault(key, []).append(source)
+            if key not in order:
+                order.append(key)
+    english = {key: value for key, value in items}
+    locale_count = len(catalogs)
+    added = []
+    changed = []
+    removed = []
+    for key, current in items:
+        if fully_overridden(key, current, override_maps):
+            continue
+        sources = sources_by_key.get(key, [])
+        missing = len(sources) < locale_count
+        differs = any(source != current for source in sources)
+        if differs:
+            _emit_unique(changed, _changed_sentences(current, sources), terms, True)
+        elif missing:
+            _emit_unique(added, flatten(current), terms, True)
+    for key in order:
+        if key in english:
+            continue
+        if fully_overridden(key, sources_by_key[key][0] if sources_by_key[key] else "", override_maps):
+            continue
+        for source in sources_by_key.get(key, []):
+            _emit_unique(removed, flatten(source), terms, True)
+    return added, changed, removed
+
+
+def override_reports(items, override_maps):
+    reported = []
+    for key, current in items:
+        for omap in override_maps:
+            if key not in omap:
+                continue
+            if same_tokens(omap[key], current):
+                continue
+            for sentence in flatten(current):
+                if sentence not in reported:
+                    reported.append(sentence)
+            break
+    return reported
+
+
+def manual_paragraphs():
+    if not MANUAL.is_file():
+        return []
+    text = MANUAL.read_text(encoding="utf-8")
+    paragraphs = []
+    for block in re.split(r"\n\s*\n", text):
+        paragraph = block.strip()
+        if paragraph:
+            paragraphs.append(paragraph)
+    return paragraphs
+
+
+def _emit_blocks(header, sentences):
+    if not sentences:
+        return
+    sys.stdout.write(header + "\n")
+    for sentence in sentences:
+        sys.stdout.write(sentence + "\n\n")
+
+
+def _entry_line(item):
+    obj = {"key": item["key"], "source": item.get("source"), "text": item.get("text")}
+    if item.get("same") is True:
+        obj["same"] = True
+    elif item.get("pending") is True:
+        obj["pending"] = True
+    return json.dumps(obj, ensure_ascii=False, separators=(", ", ": "))
+
+
+def _write_entry_lines(path, updates):
+    original = path.read_text(encoding="utf-8")
+    lines = original.splitlines()
+    changed = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        payload = stripped[:-1] if stripped.endswith(",") else stripped
+        try:
+            obj = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        key = obj.get("key") if isinstance(obj, dict) else None
+        if key not in updates:
+            continue
+        comma = stripped.endswith(",")
+        indent = line[: len(line) - len(line.lstrip())]
+        new_line = indent + _entry_line(updates[key]) + ("," if comma else "")
+        if new_line != line:
+            lines[index] = new_line
+            changed = True
+        del updates[key]
+    if updates:
+        raise SystemExit("i18n entry missing in " + path.name)
+    if not changed:
+        return
+    ending = "\n" if original.endswith("\n") else ""
+    path.write_text("\n".join(lines) + ending, encoding="utf-8")
+
+
+def _check():
+    bad = 0
+    for path in catalog_paths():
+        rel = path.relative_to(ROOT).as_posix()
+        proc = subprocess.run(
+            ["git", "show", "HEAD:" + rel],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        previous = {}
+        if proc.returncode == 0:
+            old = json.loads(proc.stdout)
+            if isinstance(old, list):
+                for item in old:
+                    if isinstance(item, dict) and isinstance(item.get("key"), str):
+                        previous[item["key"]] = item.get("text")
+        updates = {}
+        for item in load_entries(path):
+            if same_tokens(item.get("text"), item.get("source")):
+                continue
+            bad += 1
+            item["text"] = previous.get(item["key"], item.get("source"))
+            item["pending"] = True
+            item.pop("same", None)
+            updates[item["key"]] = item
+            sys.stdout.write("token mismatch: %s: %s\n" % (path.name, item["key"]))
+        if updates:
+            _write_entry_lines(path, updates)
+    if bad:
+        return 1
+    sys.stdout.write("no token mismatch\n")
+    return 0
+
+
+def main(argv):
+    known = {"--manuals", "--all", "--check"}
+    unknown = [arg for arg in argv if arg.startswith("-") and arg not in known]
+    if unknown:
+        raise SystemExit("unknown flag " + unknown[0])
+    if "--check" in argv:
+        raise SystemExit(_check())
+    terms = read_keep_terms()
+    items = apply_settings_tree(load_english())
+    catalogs = load_catalogs()
+    override_maps = load_override_maps()
+    if "--manuals" in argv:
+        known_text = set()
+        for _key, value in items:
+            known_text.update(flatten(value))
+        for paragraph in manual_paragraphs():
+            if paragraph not in known_text:
+                items.append(("\x00" + paragraph, paragraph))
+                known_text.add(paragraph)
+    if "--all" in argv:
+        rows = []
+        for key, current in items:
+            if fully_overridden(key, current, override_maps):
+                continue
+            _emit_unique(rows, flatten(current), terms, True)
+        for sentence in rows:
+            sys.stdout.write(sentence + "\n\n")
+        return
+    added, changed, removed = classify(items, catalogs, terms, override_maps)
+    _emit_blocks("added", added)
+    _emit_blocks("changed", changed)
+    _emit_blocks("removed", removed)
+    _emit_blocks("override", override_reports(items, override_maps))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

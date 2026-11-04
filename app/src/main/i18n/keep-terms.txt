@@ -1,0 +1,32 @@
+LiveIMAP
+libEtPan
+libfastjson
+MIT
+BSD
+Pine
+pinerc
+Pinerc
+IMAP
+JMAP
+SMTP
+TLS
+STARTTLS
+HTML
+IDLE
+NOOP
+Sieve
+ManageSieve
+EmailSubmission
+List-Id
+Reply-To
+Resent-To
+Cc
+Bcc
+Fcc
+INBOX
+COMPRESS
+OpenSSL
+.p12
+IM
+libEtPan!, BSD 3-Clause
+libfastjson, MIT

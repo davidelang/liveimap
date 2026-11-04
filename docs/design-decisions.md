@@ -700,33 +700,9 @@ trivial, complex things are possible, and roles are built on the same rules.
 
 ## Translations
 
-* The coder writes the translations. A change that adds, changes, or removes any
-  string in `app/src/main/res/values/strings.xml` (including settings titles,
-  summaries, and group titles) also writes that string in every
-  `app/src/main/i18n/<locale>.json` in the same change. The coder translates
-  it. An `<locale>.override.json` entry stays; only the machine file's
-  `source` changes. A removed string is removed from every i18n file.
-  `generateAppI18n` fails the build otherwise.
-* The en-US source stays the hand-edited `app/src/main/res/values/strings.xml`.
-  String ids are not generated.
-* Each shipped locale is a committed machine translation,
-  `app/src/main/i18n/<locale>.json`, one object per string: `key`, `source`
-  (the en-US text), and `text`. An optional `<locale>.override.json` replaces
-  `text` for the keys it names. The build never edits an override. The
-  override is what gets generated when its placeholders still match, even if
-  the en-US source has changed; the machine file must still record the new
-  source.
-* `generateAppI18n` checks those files and writes `values-<locale>/strings.xml`
-  under the build directory. That output is not hand-edited. The task does not
-  open a network connection and does not call a translator. `localeFilters` is
-  `en` plus these 87 qualifiers, so no other locale is packaged.
-* The check compares `source` to the en-US text after Android unescaping. It
-  fails when that text changed and a machine `source` was not updated, when a
-  key is missing or extra, when `source` is missing, when a placeholder
-  differs in a machine entry or an override, when a plural quantity required
-  for that locale is missing, or when a locale is missing from `localeFilters`.
-  The failure is the instruction for the next translation pass: it names the
-  key, the old and new en-US text, the locales, and the file.
+* `docs/facts/translations.md` is the contract for the catalog, the outstanding
+  script, and the build. Call sites stay `R.string`. Non-settings English stays
+  in `res/values/strings.xml`. String ids are not generated.
 * Plural quantities are the keywords ICU `PluralRules` returns for that
   locale, the same rules Android uses, including `cy`, `ga`, `mt`, `lb`,
   `tg`, `ha`, `yo`, and `ig`. The check does not keep its own table.

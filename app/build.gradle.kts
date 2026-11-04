@@ -369,13 +369,11 @@ androidComponents {
     }
 }
 
-// Checks app/src/main/i18n and writes values-<locale>/strings.xml.
-// Outstanding strings go to Grok once per non-English locale. Any other source mismatch fails the task.
+// Packages app/src/main/i18n into values-<locale>/strings.xml. No translator. A miss is English.
 private val i18nPython: String = """
 
 import json
 import re
-import shutil
 import sys
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
@@ -625,10 +623,43 @@ def load_settings_gen(path):
     return mod
 
 
-def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_names=None):
+def tokens_match(text, current, plural, required):
+    if plural:
+        if not isinstance(text, dict) or not isinstance(current, dict):
+            return False
+        for quantity in required:
+            got = text.get(quantity)
+            sample = current[quantity] if quantity in current else current.get("other", "")
+            if not isinstance(got, str) or not isinstance(sample, str):
+                return False
+            if placeholders(got) != placeholders(sample):
+                return False
+        return True
+    if not isinstance(text, str) or not isinstance(current, str):
+        return False
+    return placeholders(text) == placeholders(current)
+
+
+def choose_packaged(entry, override_entry, current, plural, required):
+    # An override with matching tokens replaces the catalog text.
+    # A token-mismatched override is English, not the machine text.
+    if override_entry is not None:
+        if tokens_match(override_entry.get("text"), current, plural, required):
+            return override_entry.get("text"), False
+        return current, True
+    if (
+        entry is not None
+        and same_source(entry.get("source"), current)
+        and tokens_match(entry.get("text"), current, plural, required)
+    ):
+        return entry.get("text"), False
+    return current, True
+
+
+def check(strings_path, i18n_dir, locale_filters, target):
     i18n_dir = Path(i18n_dir)
     issues = []
-    items, by_key = load_source(strings_path)
+    items, _by_key = load_source(strings_path)
     filters = list(locale_filters)
     target = list(target)
     expected = ["en"] + [loc for loc in target if loc != "en"]
@@ -646,12 +677,14 @@ def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_name
     overrides = {}
     if not i18n_dir.is_dir():
         add(issues, "i18n", "missing", "", "", "en", "app/src/main/i18n")
-        return issues, {}, 0, ""
+        return issues, {}, 0, 0
     for path in sorted(i18n_dir.iterdir()):
         if not path.is_file():
             add(issues, path.name, "extra", "", "", path.name, rel_file(path))
             continue
         name = path.name
+        if name == "keep-terms.txt":
+            continue
         if name.endswith(".override.json"):
             loc = name[: -len(".override.json")]
             if loc not in target:
@@ -671,79 +704,53 @@ def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_name
         else:
             add(issues, name, "extra", "", "", name, rel_file(path))
 
-    display_names = set(display_names or [])
-    grok_note = ""
-    if gen is not None:
-        grok_note = gen.refresh_display_translations(
-            machines,
-            items,
-            display_names,
-            keywords,
-            {loc: language_tag(loc) for loc in target},
-        ) or ""
-
     generated = {}
+    fallback_keys = set()
     for loc in target:
         file = "app/src/main/i18n/" + loc + ".json"
         pair = machines.get(loc)
-        if pair is None:
-            for key, current in items:
-                add(issues, key, "missing", "", current, loc, file)
-            continue
-        path, data = pair
-        found = entries_by_key(data, issues, loc, file)
-        for key in found:
-            if key not in by_key:
-                stored = found[key].get("source", "")
-                add(issues, key, "extra", stored if isinstance(stored, (str, dict)) else "", "", loc, file)
+        found = {}
+        if pair is not None:
+            _path, data = pair
+            found = entries_by_key(data, issues, loc, file)
         override_file = "app/src/main/i18n/" + loc + ".override.json"
         override_found = {}
         if loc in overrides:
-            opath, odata = overrides[loc]
+            _opath, odata = overrides[loc]
             override_found = entries_by_key(odata, issues, loc, override_file)
-            for key in override_found:
-                if key not in by_key:
-                    add(issues, key, "extra", "", "", loc, override_file)
         lines = ['<?xml version="1.0" encoding="utf-8"?>', "<resources>"]
         required = keywords[loc]
         expect = []
         for key, current in items:
             plural = isinstance(current, dict)
-            entry = found.get(key)
-            if entry is None:
-                add(issues, key, "missing", "", current, loc, file)
-                chosen = None
-                old = ""
-            else:
-                if "source" not in entry or entry["source"] is None:
-                    add(issues, key, "no source", "", current, loc, file)
-                    old = ""
-                else:
-                    old = entry["source"]
-                    if not same_source(old, current):
-                        add(issues, key, "changed", old, current, loc, file)
-                text = entry.get("text")
-                if entry.get("pending") is not True:
-                    check_texts(issues, key, text, current, loc, file, plural, required, old)
-                chosen = text
-                if key in override_found:
-                    otext = override_found[key].get("text")
-                    check_texts(issues, key, otext, current, loc, override_file, plural, required, old)
-                    chosen = otext
+            chosen, used_english = choose_packaged(
+                found.get(key), override_found.get(key), current, plural, required
+            )
+            if used_english:
+                fallback_keys.add(key)
             if plural:
-                got = chosen if isinstance(chosen, dict) else {}
                 emitted = OrderedDict()
                 lines.append('    <plurals name="%s">' % key)
                 for quantity in required:
-                    value = got.get(quantity, "")
-                    if not isinstance(value, str):
+                    if isinstance(chosen, dict) and isinstance(chosen.get(quantity), str):
+                        value = chosen[quantity]
+                    elif isinstance(current, dict) and isinstance(current.get(quantity), str):
+                        value = current[quantity]
+                    elif isinstance(current, dict) and isinstance(current.get("other"), str):
+                        value = current["other"]
+                    else:
                         value = ""
                     emitted[quantity] = value
                     lines.append('        <item quantity="%s">%s</item>' % (quantity, android_escape(value)))
                 lines.append("    </plurals>")
                 expect.append((key, emitted))
             else:
-                value = chosen if isinstance(chosen, str) else ""
+                if isinstance(chosen, str):
+                    value = chosen
+                elif isinstance(current, str):
+                    value = current
+                else:
+                    value = ""
                 lines.append('    <string name="%s">%s</string>' % (key, android_escape(value)))
                 expect.append((key, value))
         lines.append("</resources>")
@@ -757,7 +764,7 @@ def check(strings_path, i18n_dir, locale_filters, target, gen=None, display_name
                     add(issues, want_name, "changed", show(value), show(want_value), loc, file)
                     break
         generated[loc] = xml
-    return issues, generated, len(items), grok_note
+    return issues, generated, len(items), len(fallback_keys)
 
 
 def issue_reason(key, why):
@@ -824,16 +831,9 @@ def round_trip(xml_text):
     return seen
 
 
-def clear_generated_locales(out_dir):
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    for child in list(out.iterdir()):
-        if child.is_dir() and child.name.startswith("values-"):
-            shutil.rmtree(child)
-
 
 def main(argv):
-    english_only = "--english-only" in argv[1:]
+    # --english-only is ignored. Locale xml is still written.
     args = [argv[0]] + [arg for arg in argv[1:] if arg != "--english-only"]
     if len(args) not in (5, 8):
         print(
@@ -842,23 +842,14 @@ def main(argv):
         )
         return 2
     strings_path, i18n_dir, out_dir, filter_arg = args[1:5]
-    gen = None
-    display_names = set()
     if len(args) == 8:
         tree_path, binding_path, gen_path = args[5:]
         gen = load_settings_gen(gen_path)
-        display_names = gen.align_display_english(tree_path, strings_path, binding_path)
-    if english_only:
-        # Settings-tree failures already raised. No Grok, no locale writes, no stale-source failure.
-        clear_generated_locales(out_dir)
-        print("i18n english-only: translations skipped")
-        return 0
+        gen.align_display_english(tree_path, strings_path, binding_path)
     filters = [part for part in filter_arg.split(",") if part]
-    issues, generated, string_count, grok_note = check(
-        strings_path, i18n_dir, filters, TARGET, gen, display_names
+    issues, generated, _string_count, fallback_count = check(
+        strings_path, i18n_dir, filters, TARGET
     )
-    if grok_note:
-        print(grok_note)
     if len(TARGET) != 106:
         issues.append({
             "key": "locales",
@@ -877,7 +868,7 @@ def main(argv):
         folder = out / ("values-" + loc)
         folder.mkdir(parents=True, exist_ok=True)
         (folder / "strings.xml").write_text(xml_text, encoding="utf-8")
-    print("i18n ok: %d locales, %d strings" % (len(generated), string_count))
+    print("i18n fallback: %d" % fallback_count)
     return 0
 
 
@@ -907,9 +898,6 @@ abstract class GenerateI18nTask : DefaultTask() {
     @get:InputFile
     abstract val settingsScript: RegularFileProperty
 
-    @get:Input
-    abstract val englishOnly: Property<Boolean>
-
     @get:OutputDirectory
     abstract val resOut: DirectoryProperty
 
@@ -928,7 +916,6 @@ abstract class GenerateI18nTask : DefaultTask() {
             bindingFile.get().asFile.absolutePath,
             settingsScript.get().asFile.absolutePath,
         )
-        if (englishOnly.get()) command.add("--english-only")
         val proc = ProcessBuilder(command).redirectErrorStream(true).start()
         val output = proc.inputStream.bufferedReader().readText()
         val code = proc.waitFor()
@@ -937,7 +924,7 @@ abstract class GenerateI18nTask : DefaultTask() {
     }
 }
 
-// A settings-tree display sentence keeps its resource name. When its English changes, every locale source is updated and that sentence joins the locale batch. Outstanding strings in a non-English locale go in one Grok request. An .override.json file is not edited. A reply equal to the source is not sent again. If Grok cannot run, the previous text stays, pending is set, and the build finishes. A source mismatch for a string that is not part of that batch still fails the task. Any other strings.xml add, change, or remove still has to be translated by the coder in the same change.
+// Packages the committed catalog into values-<locale>/strings.xml. No translator. A miss stays English.
 val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     stringsFile.set(file("src/main/res/values/strings.xml"))
     i18nDir.set(file("src/main/i18n"))
@@ -946,7 +933,6 @@ val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
     treeFile.set(file("src/main/assets/settings-tree.json"))
     bindingFile.set(file("settings-display-bindings.json"))
     settingsScript.set(file("gen-settings-tree.py"))
-    englishOnly.set(project.providers.gradleProperty("i18n.englishOnly").map { true }.orElse(false))
     resOut.set(layout.buildDirectory.dir("generated/i18n/res"))
 }
 
