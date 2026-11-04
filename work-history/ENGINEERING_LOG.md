@@ -4149,3 +4149,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - One message display choice
 
 - Opening saves readerDisplay (HTML, HTML as text, Flowed text, Monospaced text) and displayImages. Old bodyView, readerTextLayout, and preferHtml are read once and not written back.
+
+## 2026-11-04 - Reader layout stays with the menu
+
+- The open message keeps its text layout with the display choice, so Flowed and Monospaced still lay out after a configuration change. The IMAP, SMTP, and Sieve password rows are back under Imap Security, and Sending shows its summary again.
