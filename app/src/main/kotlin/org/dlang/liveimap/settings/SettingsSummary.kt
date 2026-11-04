@@ -134,15 +134,21 @@ private fun argPiece(raw: JsonValue, settings: Settings, accounts: Int): Summary
 private fun fieldText(settings: Settings, key: String, field: String?): String {
     if (field == null) return settings.getSetting(key)
     if (key == "defaultView") {
-        val view = parseView(settings.getSetting(key))
+        val view = settings.defaultView
         return when (field) {
             "key" -> view.key.name
             "newestFirst" -> view.newestFirst.toString()
             else -> settings.getSetting(key)
         }
     }
-    if (key == "swipeTrailing" || key == "swipeLeading" || key == "readerSwipeTrailing" || key == "readerSwipeLeading") {
-        val binding = parseSwipe(settings.getSetting(key))
+    val binding = when (key) {
+        "swipeTrailing" -> settings.swipeTrailing
+        "swipeLeading" -> settings.swipeLeading
+        "readerSwipeTrailing" -> settings.readerSwipeTrailing
+        "readerSwipeLeading" -> settings.readerSwipeLeading
+        else -> null
+    }
+    if (binding != null) {
         return when (field) {
             "action" -> binding.action.name
             "moveMailbox" -> binding.moveMailbox

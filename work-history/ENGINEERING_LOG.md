@@ -4131,3 +4131,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - A group with no settings_group_<id>_title resolves to that name. align_display_english stores the JSON title when it writes, and --check only names the resource.
 - A resource whose text differs still fails, with the line and both texts.
 - imapSecurity is settings_group_imapSecurity_title, Imap Security. Locale sources follow the display-string rule. English-only does not change app/src/main/i18n.
+
+## 2026-11-04 - settings-open execution
+
+- Approved plan: sandbox/plans/settings-open-20261104-1036-plan.md
+- Work: Settings summaries read typed view and swipe fields; a non-object store record is "settings document is not an object"; pinerc sort and alt-addresses use the typed values.

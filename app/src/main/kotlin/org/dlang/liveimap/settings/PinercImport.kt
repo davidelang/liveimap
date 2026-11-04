@@ -564,8 +564,7 @@ private fun writePinercLeaf(
             add(key, pinercQuoted(settings.getSetting(leaf.setting)))
         }
         "list" -> if (done.add(key)) {
-            val items = decodeAltAddresses(settings.getSetting(leaf.setting))
-            add(key, items.joinToString(", ") { pinercQuoted(it) })
+            add(key, settings.altAddresses.joinToString(", ") { pinercQuoted(it) })
         }
         "remote", "novalidate" -> if (done.add("inbox-path")) add("inbox-path", pinercQuoted(pinercInbox(settings)))
         "smtp" -> if (done.add("smtp-server")) add("smtp-server", pinercQuoted(pinercSmtp(settings)))
@@ -578,7 +577,7 @@ private fun writePinercLeaf(
         "roles" -> if (done.add(key)) {
             add(key, pinercRoles(org.dlang.liveimap.ui.compose.decodeRules(settings.sendingRules)))
         }
-        "sort" -> if (done.add(key)) lines.add("$key=${pinercSort(parseView(settings.getSetting(leaf.setting)))}")
+        "sort" -> if (done.add(key)) lines.add("$key=${pinercSort(settings.defaultView)}")
         "startup" -> if (done.add(key)) {
             val startup = pinercStartup(StartRule.valueOf(settings.getSetting(leaf.setting)))
             if (startup != null) lines.add("$key=$startup")

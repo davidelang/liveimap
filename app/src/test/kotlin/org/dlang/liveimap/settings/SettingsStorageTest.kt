@@ -10,6 +10,7 @@ import org.dlang.liveimap.ui.toolbar.ToolbarStore
 import org.dlang.liveimap.ui.toolbar.defaultIndexBar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -60,6 +61,25 @@ class SettingsStorageTest {
         assertEquals(before, ToolbarStore.encodeValue())
         assertEquals("A", decodeSettings("{\"friendlyName\":\"A\"}").friendlyName)
         assertFalse(Settings(friendlyName = "A").encode().contains("indexBar"))
+    }
+
+    @Test
+    fun documentErrorNamesANonObject() {
+        assertNull(documentError(""))
+        assertNull(documentError("  "))
+        assertNull(documentError("""{"a":1}"""))
+        for (text in listOf("[]", "imapHost=mail", "garbage", "true")) {
+            val error = documentError(text) ?: error("missing document error")
+            assertEquals("settings document is not an object", error)
+            assertFalse(error.contains("settings-tree.json"))
+        }
+    }
+
+    @Test
+    fun freshPinercExportUsesTypedSortAndAddresses() {
+        val text = encodePinerc(Settings())
+        assertTrue(text.lines().contains("sort-key=arrival/reverse"))
+        assertFalse(text.lines().any { it.startsWith("alt-addresses=") })
     }
 }
 

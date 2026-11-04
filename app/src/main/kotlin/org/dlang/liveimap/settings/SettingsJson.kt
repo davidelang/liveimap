@@ -47,8 +47,8 @@ fun documentError(text: String): String? {
     return try {
         val root = parseJson(text)
         if (root !is JsonValue.Obj) "settings document is not an object" else null
-    } catch (error: Exception) {
-        error.message ?: "settings document"
+    } catch (_: Exception) {
+        "settings document is not an object"
     }
 }
 
