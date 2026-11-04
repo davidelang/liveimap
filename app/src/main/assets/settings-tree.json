@@ -269,17 +269,9 @@
                 },
                 {
                   "setting": "smtpNoAuth",
-                  "type": "choice",
-                  "default": "Off",
-                  "title": "On sends with no SMTP login",
-                  "choices": [
-                    "On",
-                    "Off"
-                  ],
-                  "choiceTitles": {
-                    "On": "No SMTP login",
-                    "Off": "SMTP login is required"
-                  },
+                  "type": "boolean",
+                  "default": "false",
+                  "title": "no SMTP login",
                   "visibleWhen": {
                     "setting": "emailSubmission",
                     "equals": false
@@ -471,33 +463,6 @@
                   "default": 60,
                   "title": "Sieve read timeout",
                   "server": true
-                }
-              ],
-              "summary": [
-                {
-                  "when": {
-                    "setting": "emailSubmission",
-                    "equals": true
-                  },
-                  "text": "Send over JMAP"
-                },
-                {
-                  "when": {
-                    "setting": "smtpHost",
-                    "empty": true
-                  },
-                  "text": "No SMTP server"
-                },
-                {
-                  "text": "%1$s:%2$d",
-                  "args": [
-                    {
-                      "setting": "smtpHost"
-                    },
-                    {
-                      "setting": "smtpPort"
-                    }
-                  ]
                 }
               ]
             },
