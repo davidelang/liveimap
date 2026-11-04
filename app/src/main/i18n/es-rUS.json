@@ -620,7 +620,7 @@
 {"key": "label_dark", "source": "Dark", "text": "Oscuro"},
 {"key": "label_light", "source": "Light", "text": "Luz"},
 {"key": "label_system", "source": "System default", "text": "Valor predeterminado del sistema"},
-{"key": "label_local", "source": "Local", "text": "Local", "same": true},
+{"key": "label_local", "source": "Local", "text": "Local"},
 {"key": "label_short", "source": "Short", "text": "Corto"},
 {"key": "label_relative", "source": "Relative", "text": "Relativo"},
 {"key": "label_custom", "source": "Custom", "text": "Costumbre"},

@@ -4116,3 +4116,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-03 - One Grok request per locale
 
 - generateAppI18n asks Grok once per non-English locale for every outstanding string. A reply that matches the source is remembered and not sent again. If Grok cannot run, those entries stay pending and the build finishes.
+
+## 2026-11-03 - Retry locale strings that came back unchanged
+
+- same is cleared when a non-English entry still has a word after the keep-spellings and placeholders are removed. One Grok request per locale asks again. A reply that matches the source sets same and is not sent next time. The prompt copies an en-US string only when the target language spells it the same way.

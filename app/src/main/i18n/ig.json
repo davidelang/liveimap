@@ -730,7 +730,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Hichapụ kpamkpam"},
 {"key": "settings_move_method", "source": "Move method", "text": "Usoro ibugharị"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Detuo, wee kaa akara ehichapụrụ"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE", "same": true},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Igbe ihe mkpofu"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "A ka chọrọ igbe Ihe mkpofu."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Edobeghị igbe Ihe mkpofu, a kpọsaghịkwa LIST-EXTENDED."},

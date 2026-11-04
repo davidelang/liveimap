@@ -971,6 +971,7 @@ def _locale_prompt(tag, batch):
             payload[key] = source
     return (
         "Translate each en-US Android string into %s. "
+        "Copy an en-US string only when the target language spells that string the same way. "
         "Return one JSON object and no other text. "
         "Each key below is a top-level key of that object, and there are no other keys. "
         "A string value is the translation. "

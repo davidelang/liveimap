@@ -722,7 +722,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "Избриши трајно"},
 {"key": "settings_move_method", "source": "Move method", "text": "Метод на движење"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "Копирај, па означи како избришано"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE", "same": true},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "Ѓубре поштенско сандаче"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "Сè уште е потребно поштенско сандаче за ѓубре."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "Не е поставено поштенско сандаче за ѓубре, а ЛИСТА-ПРОДОЛЕЖЕН не се рекламира."},

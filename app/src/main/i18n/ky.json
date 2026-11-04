@@ -947,7 +947,7 @@
 {"key": "display_monospaced", "source": "Mono", "text": "Моно"},
 {"key": "about_lib_etpan", "source": "libEtPan!, BSD 3-Clause", "text": "libEtPan!, BSD 3-Clause"},
 {"key": "about_libfastjson", "source": "libfastjson, MIT", "text": "libfastjson, MIT"},
-{"key": "about_openssl", "source": "OpenSSL, Apache License 2.0", "text": "OpenSSL, Apache License 2.0", "same": true},
+{"key": "about_openssl", "source": "OpenSSL, Apache License 2.0", "text": "OpenSSL, Apache License 2.0"},
 {"key": "about_cyrus_sasl", "source": "Cyrus SASL, Carnegie Mellon University license", "text": "Сайрус SASL, Карнеги Меллон университетинин лицензиясы"},
 {"key": "toolbar_rows_fewer", "source": "−", "text": "−"},
 {"key": "toolbar_rows_more", "source": "+", "text": "+"},

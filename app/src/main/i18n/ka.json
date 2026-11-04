@@ -722,7 +722,7 @@
 {"key": "settings_delete_permanently", "source": "Delete permanently", "text": "სამუდამოდ წაშლა"},
 {"key": "settings_move_method", "source": "Move method", "text": "გადაადგილების მეთოდი"},
 {"key": "settings_copy_then_mark", "source": "Copy, then mark deleted", "text": "დააკოპირეთ, შემდეგ მონიშნეთ წაშლილად"},
-{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE", "same": true},
+{"key": "settings_imap_move", "source": "IMAP MOVE", "text": "IMAP MOVE"},
 {"key": "settings_trash_mailbox", "source": "Trash mailbox", "text": "ნაგვის საფოსტო ყუთი"},
 {"key": "settings_trash_needed", "source": "A Trash mailbox is still needed.", "text": "ნაგვის საფოსტო ყუთი ჯერ კიდევ საჭიროა."},
 {"key": "settings_reason_no_trash", "source": "No Trash mailbox is set, and LIST-EXTENDED is not advertised.", "text": "ნაგვის საფოსტო ყუთი არ არის დაყენებული და LIST-EXTENDED არ არის რეკლამა."},

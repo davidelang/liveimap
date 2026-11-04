@@ -679,7 +679,7 @@
 {"key": "status_reconnecting", "source": "Reconnecting…", "text": "Ferbine opnij..."},
 {"key": "scaffold_up", "source": "Navigate up", "text": "Navigearje omheech"},
 {"key": "index_now", "source": "now", "text": "no"},
-{"key": "index_min", "source": "min", "text": "min", "same": true},
+{"key": "index_min", "source": "min", "text": "min"},
 {"key": "index_hour", "source": "hour", "text": "oere"},
 {"key": "index_hours", "source": "hours", "text": "oeren"},
 {"key": "index_day", "source": "day", "text": "dei"},
