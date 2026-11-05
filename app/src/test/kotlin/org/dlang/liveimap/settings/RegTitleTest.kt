@@ -9,6 +9,7 @@ class RegTitleTest {
     fun regTitleFindsTheLeafResource() {
         assertEquals(SettingsTreeGenerated.resource("settings_imap_host"), SettingsTreeGenerated.regTitle("imapHost"))
         assertEquals(SettingsTreeGenerated.resource("setting_indexPageSize_title"), SettingsTreeGenerated.regTitle("indexPageSize"))
+        assertTrue(SettingsTreeGenerated.resource("settings_group_server_title") != 0)
         assertEquals(SettingsTreeGenerated.resource("settings_group_server_title"), SettingsTreeGenerated.titleOf("server"))
         val summary = listOf(
             "label_arrival",

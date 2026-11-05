@@ -976,7 +976,7 @@ internal fun LoadCheckDialog() {
             },
             confirmButton = {
                 Button(onClick = { scope.launch { SettingsHub.answer(context, true, picks) } }) {
-                    Text(S("Remove"))
+                    Text(S("Remove", name = "settings_remove_extras"))
                 }
             },
             dismissButton = {
@@ -992,7 +992,7 @@ internal fun LoadCheckDialog() {
             title = { Text(S("The default account was removed. Choose an account.")) },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
-                    Text(S("OK"))
+                    Text(S("OK", name = "settings_ok"))
                 }
             },
         )
@@ -1003,7 +1003,7 @@ internal fun LoadCheckDialog() {
             text = { Text(notice ?: "") },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
-                    Text(S("OK"))
+                    Text(S("OK", name = "settings_ok"))
                 }
             },
         )
@@ -1494,7 +1494,7 @@ internal fun PolicyDialog(editor: SettingsEditor) {
         dismissButton = {
             Row {
                 TextButton(onClick = { editor.policy = emptyList() }) {
-                    Text(S("Keep editing"))
+                    Text(S("Keep editing", name = "settings_keep_editing"))
                 }
                 TextButton(onClick = {
                     ScopePicks.chosen = emptyMap()
@@ -1829,7 +1829,7 @@ internal fun ShowUnreadLeaf(editor: SettingsEditor) {
                 }) { Text(S("Confirm")) }
             },
             dismissButton = {
-                TextButton(onClick = { warnUnread = false }) { Text(S("Dismiss")) }
+                TextButton(onClick = { warnUnread = false }) { Text(S("Dismiss", name = "settings_dismiss")) }
             },
         )
     }
@@ -2598,7 +2598,7 @@ internal fun row_allowOldTls(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     BoolField(
-        S("Allow old TLS and weak keys"),
+        S("Allow old TLS and weak keys", name = "settings_allow_old_tls"),
         server.allowOldTls,
         note = S("Warning: allows TLS 1.0 and 1.1, small Diffie-Hellman keys and legacy ciphers for this account only. These can be broken; use only for an old server you cannot upgrade. Off by default."),
     ) { enabled ->
@@ -2738,7 +2738,7 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
     val settings = editor.settings
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
     BoolField(
-        S("Same as IMAP password"),
+        S("Same as IMAP password", name = "settings_smtp_same_as_imap"),
         settings.smtpSameAsImap,
         enabled = !authOn,
     ) {
@@ -2965,7 +2965,7 @@ internal fun row_quotePrefix(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        S("Reply quote prefix"),
+        S("Reply quote prefix", name = "settings_quote_prefix"),
         settings.quotePrefix,
         ready = editor.ready,
         interpret = { draft, _ -> draft },
@@ -3120,7 +3120,7 @@ internal fun row_folderStart(walk: SettingsWalk) {
 internal fun row_folderStarts(walk: SettingsWalk) {
 
     val editor = walk.editor
-    Text(S("Start position per folder"))
+    Text(S("Start position per folder", name = "settings_start_per_folder"))
     FolderStartsBody(editor)
 }
 
@@ -3161,7 +3161,7 @@ internal fun row_pinercStartDefault(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        S("When a pinerc has no incoming-startup-rule"),
+        S("When a pinerc has no incoming-startup-rule", name = "settings_pinerc_missing"),
         PinercStartDefault.entries,
         settings.pinercStartDefault,
         { pinercStartDefaultName(it) },
@@ -3389,7 +3389,7 @@ internal fun row_moveAllIncludesDeleted(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        S("Move entire folder includes deleted messages"),
+        S("Move entire folder includes deleted messages", name = "settings_move_all_deleted"),
         settings.moveAllIncludesDeleted,
         note = S("Off: messages already marked deleted stay behind (UID SEARCH UNDELETED)."),
     ) {

@@ -281,7 +281,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                 }) { Text(S("Save anyway")) }
             },
             dismissButton = {
-                TextButton(onClick = { drafts.serverReview = null; drafts.leaveAfter = null }) { Text(S("Keep editing")) }
+                TextButton(onClick = { drafts.serverReview = null; drafts.leaveAfter = null }) { Text(S("Keep editing", name = "settings_keep_editing")) }
             },
         )
     }
@@ -300,7 +300,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             },
             dismissButton = {
                 androidx.compose.foundation.layout.Row {
-                    TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(S("Keep editing")) }
+                    TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(S("Keep editing", name = "settings_keep_editing")) }
                     TextButton(onClick = {
                         drafts.discardAsk = false
                         drafts.discard()
@@ -443,14 +443,14 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
         inboxBraces = S("inbox-path needs a server in braces"),
         missingFolder = S("%1\$s was not found"),
         folderCheck = S("Could not check folders"),
-        favorite = S("Favorite"),
+        favorite = S("Favorite", name = "pinerc_favorite"),
         signatureFile = S("signature-file is not read; paste the text into the account's signature"),
         signatureLabel = S("Signature"),
         quotePrefixLabel = stringResource(SettingsTreeGenerated.resource("pinerc_quote_prefix")),
         leadInLabel = S("Reply lead-in"),
         sigDashesLabel = S("Signature dashes"),
         sigBottomLabel = S("Signature at bottom"),
-        dsnLabel = S("Delivery status notifications"),
+        dsnLabel = S("Delivery status notifications", name = "pinerc_dsn"),
         composerHeadersLabel = S("Composer headers"),
         viewerHeadersLabel = S("Viewer headers"),
         rolesLabel = S("Sending rule from role"),
@@ -630,7 +630,7 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { importPreview = null }) { Text(S("Cancel")) }
+                        TextButton(onClick = { importPreview = null }) { Text(S("Cancel", name = "unsent_cancel")) }
                         TextButton(
                             onClick = {
                                 editor.persist(applied)

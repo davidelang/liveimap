@@ -1,5 +1,7 @@
 package org.dlang.liveimap.ui.toolbar
 import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.i18n.Phrase
+import org.dlang.liveimap.i18n.phrase
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -342,7 +344,7 @@ private sealed interface EditorLine<out A> {
 @Composable
 private fun <A : Enum<A>> SectionEditor(
     rowsIn: (BarSection) -> List<A>,
-    labelRes: (A) -> String,
+    labelRes: (A) -> Phrase,
     onMoveBy: (A, Int) -> Unit,
     onMoveTo: (A, BarSection) -> Unit,
     onDrag: (Int, Int) -> Unit,
@@ -454,7 +456,7 @@ private fun <A : Enum<A>> SectionEditor(
 
 @Composable
 private fun ReorderableListItemScope.ToolbarEditorRow(
-    labelRes: String,
+    labelRes: Phrase,
     section: BarSection,
     index: Int,
     count: Int,
@@ -462,7 +464,7 @@ private fun ReorderableListItemScope.ToolbarEditorRow(
     onMoveTo: (BarSection) -> Unit,
 ) {
     val moveUp = S("Move up")
-    val moveDown = S("Move down")
+    val moveDown = S("Move down", name = "toolbar_move_down")
     val moveTo = BarSection.entries.filter { it != section }.map { target ->
         target to S("Move to %1\$s", sectionTitle(target))
     }
@@ -553,7 +555,7 @@ private fun <A> movedBySentence(
     context: Context,
     action: A,
     delta: Int,
-    labelOf: (A) -> String,
+    labelOf: (A) -> Phrase,
 ): String? {
     val label = S(context, labelOf(action))
     return when (delta) {
@@ -567,46 +569,46 @@ private fun <A> movedToSentence(
     context: Context,
     action: A,
     section: BarSection,
-    labelOf: (A) -> String,
+    labelOf: (A) -> Phrase,
 ): String = S(context, "Moved %1\$s to %2\$s",
     S(context, labelOf(action)),
     S(context, sectionTitleRes(section)),
 )
 
-private fun indexBarActionRes(action: IndexBarAction): String = when (action) {
-    IndexBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
-    IndexBarAction.Search -> org.dlang.liveimap.i18n.literal.S("Search")
-    IndexBarAction.Filter -> org.dlang.liveimap.i18n.literal.S("Filter")
+private fun indexBarActionRes(action: IndexBarAction): Phrase = when (action) {
+    IndexBarAction.Refresh -> phrase("Refresh")
+    IndexBarAction.Search -> phrase("Search")
+    IndexBarAction.Filter -> phrase("Filter")
 }
 
-private fun selectionBarActionRes(action: SelectionBarAction): String = when (action) {
-    SelectionBarAction.Seen -> org.dlang.liveimap.i18n.literal.S("Mark read")
-    SelectionBarAction.Flag -> org.dlang.liveimap.i18n.literal.S("Flag")
-    SelectionBarAction.Move -> org.dlang.liveimap.i18n.literal.S("Move")
-    SelectionBarAction.Delete -> org.dlang.liveimap.i18n.literal.S("Delete")
+private fun selectionBarActionRes(action: SelectionBarAction): Phrase = when (action) {
+    SelectionBarAction.Seen -> phrase("Mark read", name = "toolbar_mark_read")
+    SelectionBarAction.Flag -> phrase("Flag")
+    SelectionBarAction.Move -> phrase("Move", name = "index_move")
+    SelectionBarAction.Delete -> phrase("Delete")
 }
 
-private fun folderBarActionRes(action: FolderBarAction): String = when (action) {
-    FolderBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
-    FolderBarAction.CollapseAll -> org.dlang.liveimap.i18n.literal.S("Collapse all")
-    FolderBarAction.SaveDefault -> org.dlang.liveimap.i18n.literal.S("Save as default view")
-    FolderBarAction.ResetDefault -> org.dlang.liveimap.i18n.literal.S("Reset to default view")
+private fun folderBarActionRes(action: FolderBarAction): Phrase = when (action) {
+    FolderBarAction.Refresh -> phrase("Refresh")
+    FolderBarAction.CollapseAll -> phrase("Collapse all")
+    FolderBarAction.SaveDefault -> phrase("Save as default view")
+    FolderBarAction.ResetDefault -> phrase("Reset to default view")
 }
 
-private fun readerToolbarActionRes(action: ReaderToolbarAction): String = when (action) {
-    ReaderToolbarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
-    ReaderToolbarAction.Reply -> org.dlang.liveimap.i18n.literal.S("Reply")
-    ReaderToolbarAction.ReplyAll -> org.dlang.liveimap.i18n.literal.S("Reply all")
-    ReaderToolbarAction.Forward -> org.dlang.liveimap.i18n.literal.S("Forward")
-    ReaderToolbarAction.Delete -> org.dlang.liveimap.i18n.literal.S("Delete")
-    ReaderToolbarAction.Move -> org.dlang.liveimap.i18n.literal.S("Move")
-    ReaderToolbarAction.Spam -> org.dlang.liveimap.i18n.literal.S("Spam")
-    ReaderToolbarAction.Bounce -> org.dlang.liveimap.i18n.literal.S("Bounce")
-    ReaderToolbarAction.Headers -> org.dlang.liveimap.i18n.literal.S("All headers")
+private fun readerToolbarActionRes(action: ReaderToolbarAction): Phrase = when (action) {
+    ReaderToolbarAction.Refresh -> phrase("Refresh")
+    ReaderToolbarAction.Reply -> phrase("Reply")
+    ReaderToolbarAction.ReplyAll -> phrase("Reply all")
+    ReaderToolbarAction.Forward -> phrase("Forward")
+    ReaderToolbarAction.Delete -> phrase("Delete")
+    ReaderToolbarAction.Move -> phrase("Move")
+    ReaderToolbarAction.Spam -> phrase("Spam")
+    ReaderToolbarAction.Bounce -> phrase("Bounce")
+    ReaderToolbarAction.Headers -> phrase("All headers")
 }
 
-private fun composeBarActionRes(action: ComposeBarAction): String = when (action) {
-    ComposeBarAction.Postpone -> org.dlang.liveimap.i18n.literal.S("Postpone")
+private fun composeBarActionRes(action: ComposeBarAction): Phrase = when (action) {
+    ComposeBarAction.Postpone -> phrase("Postpone")
 }
 
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {

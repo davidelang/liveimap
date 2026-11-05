@@ -50,7 +50,7 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                 )
                 TextButton(onClick = onRetry) {
-                    Text(S("Retry"))
+                    Text(S("Retry", name = "reader_retry"))
                 }
             }
         }

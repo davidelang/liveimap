@@ -1227,6 +1227,8 @@ def emit(doc, kt_root, tree_bytes, tree_path):
         "label_flag_screen",
         "reader_next",
         "reader_previous",
+        # titleOf("server") is this name. The tree has no server group.
+        "settings_group_server_title",
     ):
         add_res(name)
     resource_names = sorted(set(resource_names))

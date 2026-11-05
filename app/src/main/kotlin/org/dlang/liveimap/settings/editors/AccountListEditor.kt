@@ -62,7 +62,7 @@ fun AccountListEditor(
         if (deletingName != null) Text(S("Deleting %1\$s…", deletingName))
         if (deleteError != null) {
             Text(deleteError)
-            TextButton(onClick = onRetryDelete) { Text(S("Retry")) }
+            TextButton(onClick = onRetryDelete) { Text(S("Retry", name = "account_delete_retry")) }
         }
     }
     val pending = removing
@@ -79,7 +79,7 @@ fun AccountListEditor(
             },
             dismissButton = {
                 TextButton(onClick = { removing = null }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "settings_cancel"))
                 }
             },
         )

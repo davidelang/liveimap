@@ -1104,7 +1104,7 @@ private fun LiveImapNavHostReady() {
                 }
             }
             composable("folderLists/starts") {
-                UpPage(S("Start position per folder"), onUp = {
+                UpPage(S("Start position per folder", name = "settings_start_per_folder"), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderStartsScreen()
@@ -1423,7 +1423,7 @@ private fun LiveImapNavHostReady() {
     @Composable
     fun BoxScope.ComposeFab(modifier: Modifier = Modifier) {
         HelpExtendedFab(
-            label = S("Compose"),
+            label = S("Compose", name = "screen_compose"),
             help = S("Starts a new message."),
             page = "writing.html",
             onClick = {
@@ -1447,7 +1447,7 @@ private fun LiveImapNavHostReady() {
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Edit,
-                    contentDescription = S("Compose"),
+                    contentDescription = S("Compose", name = "screen_compose"),
                 )
             },
         )
@@ -1723,7 +1723,7 @@ private fun LiveImapNavHostReady() {
         if (listed != null && composeChoice == ComposeButton.Pick) {
             AlertDialog(
                 onDismissRequest = { composeAccounts = null },
-                title = { Text(S("Compose")) },
+                title = { Text(S("Compose", name = "screen_compose")) },
                 text = {
                     if (listed.isEmpty()) {
                         Text(S("No mail account yet"))

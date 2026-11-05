@@ -337,7 +337,7 @@ private fun ContactCopyLoaded(
                 TextButton(onClick = {
                     step = CopyStep.Source
                     notice = null
-                }, enabled = !writing) { Text(S("Back")) }
+                }, enabled = !writing) { Text(S("Back", name = "reader_back")) }
                 TextButton(
                     onClick = { step = CopyStep.Destination },
                     enabled = selected.isNotEmpty() && !writing,
@@ -373,7 +373,7 @@ private fun ContactCopyLoaded(
                         }
                     }, enabled = !reading && !writing) { Text(choice.label) }
                 }
-                TextButton(onClick = { step = CopyStep.Contacts }, enabled = !writing) { Text(S("Back")) }
+                TextButton(onClick = { step = CopyStep.Contacts }, enabled = !writing) { Text(S("Back", name = "reader_back")) }
             }
             CopyStep.Preview -> {
                 val intoPine = alpineBookOf(destinationId) != null
@@ -408,7 +408,7 @@ private fun ContactCopyLoaded(
                 }
                 if (preview.isEmpty()) Text(S("Nothing will change."))
                 for (line in preview) Text(line)
-                TextButton(onClick = { step = CopyStep.Destination }, enabled = !writing) { Text(S("Back")) }
+                TextButton(onClick = { step = CopyStep.Destination }, enabled = !writing) { Text(S("Back", name = "reader_back")) }
                 if (!finished) {
                     TextButton(
                         onClick = {

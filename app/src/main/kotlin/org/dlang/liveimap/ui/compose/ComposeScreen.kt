@@ -2101,20 +2101,20 @@ private fun ComposeForm(
                             S("Reply"),
                             S("Reply all"),
                             S("Forward"),
-                            S("Compose"),
+                            S("Compose", name = "compose_new"),
                         ),
                     )
                 },
                 navigationIcon = {
                     HelpIconButton(
-                        label = S("Back"),
+                        label = S("Back", name = "reader_back"),
                         help = S("Leaves this message."),
                         page = "writing.html#back",
                         onClick = { requestClose() },
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = S("Back"),
+                            contentDescription = S("Back", name = "reader_back"),
                         )
                     }
                 },
@@ -2162,14 +2162,14 @@ private fun ComposeForm(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Send,
-                                    contentDescription = S(sendDescription),
+                                    contentDescription = if (held?.appendOnly == true) S("Retry", name = "reader_retry") else S(sendDescription),
                                 )
                             }
                         } else {
                             IconButton(onClick = { sendMessage() }) {
                                 Icon(
                                     imageVector = Icons.Filled.Send,
-                                    contentDescription = S(sendDescription),
+                                    contentDescription = if (held?.appendOnly == true) S("Retry", name = "reader_retry") else S(sendDescription),
                                 )
                             }
                         }
@@ -2329,7 +2329,7 @@ private fun ComposeForm(
             TextButton(onClick = {
                 pickerTarget = AddressTarget.Bounce
                 pickerOpen = true
-            }) { Text(S("Address book")) }
+            }) { Text(S("Address book", name = "compose_address_book")) }
             if (pickerOpen) {
                 AddressBookPicker(
                     onPicked = { picked ->
@@ -2648,7 +2648,7 @@ private fun ComposeForm(
                 html = !html
                 bodyField = TextFieldValue(converted, TextRange(converted.length))
             }) {
-                Text(if (html) S("HTML") else S("Plain"))
+                Text(if (html) S("HTML") else S("Plain", name = "compose_body_plain"))
             }
             OutlinedTextField(
                 value = bodyField,

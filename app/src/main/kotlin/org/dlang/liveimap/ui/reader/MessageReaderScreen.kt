@@ -485,7 +485,7 @@ private fun readerLabels(): ReaderLabels = ReaderLabels(
     addressAddedText = S("Added to the address book"),
     addressExistsText = S("Already in the address book"),
     copyChangedText = S("The address book changed. Nothing was written."),
-    retryLabel = S("Retry"),
+    retryLabel = S("Retry", name = "reader_retry"),
     noTextPartText = S("There is no text part"),
     shareTitle = S("Share"),
     indexNow = S("now"),
@@ -2115,14 +2115,14 @@ private fun ReaderScreen(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },
                 navigationIcon = {
                     HelpIconButton(
-                        label = S("Back"),
+                        label = S("Back", name = "reader_back"),
                         help = S("Returns to the message list."),
                         page = "reading.html#back",
                         onClick = onBack,
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = S("Back"),
+                            contentDescription = S("Back", name = "reader_back"),
                         )
                     }
                 },
@@ -2916,9 +2916,9 @@ private fun ReaderScreen(
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {
-                        TextButton(onClick = { runReaderUndo(offer) }) { Text(S("Undo")) }
+                        TextButton(onClick = { runReaderUndo(offer) }) { Text(S("Undo", name = "reader_undo")) }
                         if (showExpunge) {
-                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text(S("Expunge")) }
+                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text(S("Expunge", name = "reader_expunge")) }
                         }
                     },
                 ) { Text(data.visuals.message) }
@@ -3008,14 +3008,14 @@ private fun ReaderScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingLink = null }) { Text(S("Cancel")) }
+                TextButton(onClick = { pendingLink = null }) { Text(S("Cancel", name = "reader_cancel")) }
             },
         )
     }
     if (confirmExpunge) {
         val uidPlus = session.featureCaps.uidPlus
-        val expungeBody = S("Permanently removes messages marked deleted in this folder. This cannot be undone.")
-        val expungeOthers = S("This includes messages marked deleted by other clients.")
+        val expungeBody = S("Permanently removes messages marked deleted in this folder. This cannot be undone.", name = "reader_expunge_body")
+        val expungeOthers = S("This includes messages marked deleted by other clients.", name = "reader_expunge_others")
         val body = if (uidPlus) expungeBody else "$expungeBody $expungeOthers"
         AlertDialog(
             onDismissRequest = { confirmExpunge = false },
@@ -3026,10 +3026,10 @@ private fun ReaderScreen(
                     val uids = expungeUids
                     confirmExpunge = false
                     runReaderExpunge(uids)
-                }) { Text(S("Expunge"), color = MaterialTheme.colorScheme.error) }
+                }) { Text(S("Expunge", name = "reader_expunge"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmExpunge = false }) { Text(S("Cancel")) }
+                TextButton(onClick = { confirmExpunge = false }) { Text(S("Cancel", name = "reader_cancel")) }
             },
         )
     }
@@ -3053,7 +3053,7 @@ private fun ReaderScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmPermanent = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "reader_cancel"))
                 }
             },
         )
@@ -3165,7 +3165,7 @@ private fun ReaderScreen(
                         choosingSave = true
                     }) { Text(S("Choose")) }
                     TextButton(onClick = { confirmSave = false }) {
-                        Text(S("Cancel"))
+                        Text(S("Cancel", name = "reader_cancel"))
                     }
                 }
             },
@@ -3274,7 +3274,7 @@ private fun ReaderScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmTake = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "reader_cancel"))
                 }
             },
         )
@@ -3301,7 +3301,7 @@ private fun ReaderScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { pendingTake = null }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "reader_cancel"))
                 }
             },
         )
@@ -3343,7 +3343,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(S("Retry")) }
+            TextButton(onClick = onRetry) { Text(S("Retry", name = "reader_retry")) }
         }
     }
 }
@@ -3404,7 +3404,7 @@ private fun bodyViewName(view: BodyView): String = when (view) {
 @Composable
 private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
     S("Forward inline"),
-    S("Forward as attachment"),
+    S("Forward as attachment", name = "label_forward_attachment"),
     asAttachment,
 )
 
@@ -3519,7 +3519,7 @@ private fun ReaderHeaderCard(
             if (deleted) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AssistChip(onClick = {}, label = { Text(S("Deleted")) })
-                    TextButton(onClick = onUndelete) { Text(S("Undelete")) }
+                    TextButton(onClick = onUndelete) { Text(S("Undelete", name = "reader_undelete")) }
                 }
             }
         }
@@ -3932,7 +3932,7 @@ internal fun TypeMismatchDialog(
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onSave) { Text(S("Save")) }
+                TextButton(onClick = onSave) { Text(S("Save", name = "reader_type_mismatch_save")) }
                 TextButton(onClick = onOpenAs) {
                     Text(
                         if (share) S("Share as %1\$s", openAs) else S("Open as %1\$s", openAs),
@@ -3940,7 +3940,7 @@ internal fun TypeMismatchDialog(
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(S("Cancel")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S("Cancel", name = "reader_cancel")) } },
     )
 }
 

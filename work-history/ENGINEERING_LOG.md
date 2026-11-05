@@ -4167,3 +4167,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Approved plan: sandbox/plans/i18n-s-calls-20261104-1515-plan.md
 - Work: hand-written call sites use S or the plural helper. Resource names stay. The build writes en-US strings.xml from those calls and the settings tree. The catalog is not rewritten.
+
+## 2026-11-04 - Same English keeps its catalog key
+
+- Fixup: a call keeps its resource name when the same English has a different translation. titleOf("server") stays settings_group_server_title.

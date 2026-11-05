@@ -108,7 +108,7 @@ fun UnsentScreen(
             },
             dismissButton = {
                 TextButton(onClick = { discardId = null }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "unsent_cancel"))
                 }
             },
         )

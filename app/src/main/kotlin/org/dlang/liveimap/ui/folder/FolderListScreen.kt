@@ -371,7 +371,7 @@ private fun FolderListLoaded(
     var toolbarRows by remember { mutableIntStateOf(2) }
     var iconRows by remember { mutableIntStateOf(1) }
     val emptyPrefixLabel = S("(empty prefix)")
-    val retryLabel = S("Retry")
+    val retryLabel = S("Retry", name = "folders_retry")
 
     LifecycleStartEffect(store) {
         val job = scope.launch {
@@ -1061,7 +1061,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(S("Retry")) }
+            TextButton(onClick = onRetry) { Text(S("Retry", name = "folders_retry")) }
         }
     }
 }

@@ -161,7 +161,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
             title = { Text(S("Delete %1\$s?", nick)) },
             text = { Text(S("The entry is removed in a new copy of the book; earlier copies stay until the history trim.")) },
             confirmButton = { TextButton(onClick = { deleting = null; save(BookEdit.Delete(nick)) }) { Text(S("Delete")) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text(S("Cancel")) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(S("Cancel", name = "book_cancel")) } },
         )
     }
 
@@ -207,7 +207,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                 OutlinedTextField(fcc, { fcc = it }, label = { Text(S("Fcc")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(comments, { comments = it }, label = { Text(S("Comments")) }, modifier = Modifier.fillMaxWidth())
                 Row {
-                    TextButton(onClick = { draft = null }, enabled = !busy) { Text(S("Cancel")) }
+                    TextButton(onClick = { draft = null }, enabled = !busy) { Text(S("Cancel", name = "book_cancel")) }
                     TextButton(onClick = {
                         val e = AlpineEntry(nick, full, addr, fcc, comments)
                         save(if (d.original == null) BookEdit.Add(e) else BookEdit.Update(d.original, e))
@@ -218,7 +218,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                 val st = state
                 Text(chosen.first)
                 Row {
-                    TextButton(onClick = { book = null; state = null; notice = null }, enabled = !busy) { Text(S("Back")) }
+                    TextButton(onClick = { book = null; state = null; notice = null }, enabled = !busy) { Text(S("Back", name = "reader_back")) }
                     if (!chosen.second && st != null) {
                         TextButton(onClick = { draft = Draft(null, AlpineEntry("", "", "", "", "")) }, enabled = !busy) {
                             Text(S("Add entry"))

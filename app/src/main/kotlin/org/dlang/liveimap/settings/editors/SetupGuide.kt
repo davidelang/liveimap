@@ -120,7 +120,7 @@ fun SetupGuide(
                 Text(stringResource(SettingsTreeGenerated.resource("settings_username")))
                 Text(username)
             }
-            Text(S("Password"))
+            Text(S("Password", name = "setup_password"))
             androidx.compose.material3.OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true)
             if (missingBlob && smtpPasswordText.isNotEmpty()) {
                 Text(stringResource(SettingsTreeGenerated.resource("settings_smtp_password")))
@@ -153,13 +153,13 @@ fun SetupGuide(
             Text(S("Sending server"))
             androidx.compose.material3.OutlinedTextField(smtpHost, { smtpHost = it }, Modifier.fillMaxWidth(), singleLine = true)
             androidx.compose.material3.OutlinedTextField(smtpPort, { smtpPort = it }, Modifier.fillMaxWidth(), singleLine = true)
-            TextButton(onClick = { smtpSame = !smtpSame }) { Text(S("Same as IMAP password")) }
+            TextButton(onClick = { smtpSame = !smtpSame }) { Text(S("Same as IMAP password", name = "settings_smtp_same_as_imap")) }
         }
         if (report.isNotEmpty()) Text(report)
-        if (busy) Text(S("Testing…"))
+        if (busy) Text(S("Testing…", name = "setup_testing"))
         androidx.compose.foundation.layout.Row {
             if (step > 0) {
-                TextButton(onClick = { step -= 1 }) { Text(S("Back")) }
+                TextButton(onClick = { step -= 1 }) { Text(S("Back", name = "setup_back")) }
             }
             TextButton(onClick = {
                 if (step == 0 && host.isBlank()) host = email.substringAfter('@', "")
@@ -177,7 +177,7 @@ fun SetupGuide(
                         busy = false
                     }
                 }
-            }) { Text(if (step < 2) S("Next") else S("Test")) }
+            }) { Text(if (step < 2) S("Next", name = "setup_next") else S("Test")) }
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
                 val loaded = loadedAccount
@@ -198,7 +198,7 @@ fun SetupGuide(
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
                 onAdvanced(settings, password, if (smtpSame) password else "")
-            }) { Text(S("Advanced")) }
+            }) { Text(S("Advanced", name = "setup_advanced")) }
         }
     }
 }

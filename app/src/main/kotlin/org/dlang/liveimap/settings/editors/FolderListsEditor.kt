@@ -278,7 +278,7 @@ internal fun FolderStartsBody(editor: SettingsEditor) {
                 }
                 TextButton(onClick = {
                     editor.persist(withFolderStart(editor.settings, mailbox, null))
-                }) { Text(S("Default")) }
+                }) { Text(S("Default", name = "settings_default")) }
             }
         }
         LineField(

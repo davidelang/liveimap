@@ -208,7 +208,7 @@ internal fun ManageAddresses(
         if (loaded is AndroidContacts.Ready) sets = loaded.value
     }
     val books = editor.settings.addressBooks
-    Text(S("Address book"))
+    Text(S("Address book", name = "settings_address_book"))
     books.forEachIndexed { index, book ->
         val label = if (book.kind == "android") {
             book.accountName.ifEmpty { S("Add Android contacts") }

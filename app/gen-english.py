@@ -269,10 +269,37 @@ def _decode_kotlin_string(literal):
     return "".join(out)
 
 
+def _explicit_name(args):
+    # name = "resource" outside a sentence. The catalog key for this call.
+    i = 0
+    n = len(args)
+    while i < n:
+        if args[i] == '"':
+            i = _skip_string(args, i)
+            continue
+        if args.startswith("name", i) and (i == 0 or not (args[i - 1].isalnum() or args[i - 1] == "_")):
+            j = i + 4
+            while j < n and args[j] in " \t\n\r":
+                j += 1
+            if j < n and args[j] == "=":
+                j += 1
+                while j < n and args[j] in " \t\n\r":
+                    j += 1
+                if j < n and args[j] == '"':
+                    end = _skip_string(args, j)
+                    decoded = _decode_kotlin_string(args[j:end])
+                    if isinstance(decoded, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", decoded):
+                        return decoded
+        i += 1
+    return None
+
+
 def _scan_kotlin(text):
     sentences = []
     plurals = []
     resources = []
+    explicit_s = []
+    explicit_p = []
     i = 0
     n = len(text)
     while i < n:
@@ -302,12 +329,12 @@ def _scan_kotlin(text):
                 j += 1
             if j >= n or text[j] != "(":
                 continue
-            if word not in ("S", "P", "resource"):
+            if word not in ("S", "P", "phrase", "resource"):
                 continue
             prev = start - 1
             while prev >= 0 and text[prev] in " \t\n\r":
                 prev -= 1
-            if word in ("S", "P") and text[max(0, prev - 2) : prev + 1] == "fun":
+            if word in ("S", "P", "phrase") and text[max(0, prev - 2) : prev + 1] == "fun":
                 continue
             if word == "resource":
                 dot = prev
@@ -320,14 +347,20 @@ def _scan_kotlin(text):
                 if text[name_start + 1 : name_end] != "SettingsTreeGenerated":
                     continue
             end, args = _parse_call(text, j)
-            if word == "S":
+            if word in ("S", "phrase"):
                 sentence = _first_string(args)
                 if sentence is not None:
                     sentences.append(sentence)
+                explicit = _explicit_name(args)
+                if explicit:
+                    explicit_s.append(explicit)
             elif word == "P":
                 one, other = _named_quantities(args)
                 if other is not None:
                     plurals.append((one, other))
+                explicit = _explicit_name(args)
+                if explicit:
+                    explicit_p.append(explicit)
             else:
                 name = _first_string(args)
                 if name is not None:
@@ -335,7 +368,7 @@ def _scan_kotlin(text):
             i = end
             continue
         i += 1
-    return sentences, plurals, resources
+    return sentences, plurals, resources, explicit_s, explicit_p
 
 
 def _parse_call(text, open_paren):
@@ -473,11 +506,15 @@ def scan_sources():
     sentences = []
     plurals = []
     resources = []
+    explicit_s = []
+    explicit_p = []
     seen_s = set()
     seen_p = set()
+    seen_es = set()
+    seen_ep = set()
     for path in kotlin_sources():
         text = path.read_text(encoding="utf-8")
-        found_s, found_p, found_r = _scan_kotlin(text)
+        found_s, found_p, found_r, found_es, found_ep = _scan_kotlin(text)
         for sentence in found_s:
             if sentence not in seen_s:
                 seen_s.add(sentence)
@@ -486,6 +523,14 @@ def scan_sources():
             if pair not in seen_p:
                 seen_p.add(pair)
                 plurals.append(pair)
+        for name in found_es:
+            if name not in seen_es:
+                seen_es.add(name)
+                explicit_s.append(name)
+        for name in found_ep:
+            if name not in seen_ep:
+                seen_ep.add(name)
+                explicit_p.append(name)
         resources.extend(found_r)
     # A leftover R.string in hand-written code still has to be generated or the build breaks.
     res_re = re.compile(r"\bR\.(?:string|plurals)\.([A-Za-z0-9_]+)")
@@ -497,7 +542,7 @@ def scan_sources():
         text = path.read_text(encoding="utf-8")
         extra.extend(res_re.findall(text))
         extra.extend(fq_re.findall(text))
-    return sentences, plurals, resources, extra
+    return sentences, plurals, resources, extra, explicit_s, explicit_p
 
 
 def _alloc(sentence, used):
@@ -534,7 +579,7 @@ def _owners(order, table, sentence, plural):
 def build():
     order, strings, plurals = load_catalog()
     order, strings, plurals, bound = align_catalog(order, strings, plurals)
-    sentences, plural_calls, resource_names, leftover = scan_sources()
+    sentences, plural_calls, resource_names, leftover, explicit_s, explicit_p = scan_sources()
     prefer = set(bound)
     prefer.update(name for name in FIXED_NAMES if name in strings or name in plurals)
     if "app_name" in strings:
@@ -570,15 +615,28 @@ def build():
             plurals[name] = quant
         chosen_p[pair] = name
         prefer.add(name)
+    # Same English with different translations stays on the call's own catalog key.
     keep = set(prefer)
     keep.update(name for name in resource_names if name in strings or name in plurals)
     keep.update(name for name in leftover if name in strings or name in plurals)
+    keep.update(name for name in explicit_s if name in strings or name in plurals)
+    keep.update(name for name in explicit_p if name in strings or name in plurals)
+    # titleOf("server") reads this name. The tree has no server group.
+    if "settings_group_server_title" in strings:
+        keep.add("settings_group_server_title")
     kept_order = [name for name in order if name in keep and (name in strings or name in plurals)]
-    return kept_order, strings, plurals, chosen_s, chosen_p
+    named = [
+        name
+        for name in order
+        if name in keep
+        and (name in explicit_s or name in explicit_p)
+        and (name in strings or name in plurals)
+    ]
+    return kept_order, strings, plurals, chosen_s, chosen_p, named
 
 
 def defined_items():
-    order, strings, plurals, _chosen_s, _chosen_p = build()
+    order, strings, plurals, _chosen_s, _chosen_p, _named = build()
     items = []
     for name in order:
         if name in strings:
@@ -623,7 +681,7 @@ def _chunked_map(lines, name, entries, item, chunk=60):
 
 
 def write_outputs(res_out, kt_out):
-    order, strings, plurals, chosen_s, chosen_p = build()
+    order, strings, plurals, chosen_s, chosen_p, named = build()
     res_out = Path(res_out)
     kt_out = Path(kt_out)
     values = res_out / "values"
@@ -658,11 +716,24 @@ def write_outputs(res_out, kt_out):
             % (_kt(row[0][0] or ""), _kt(row[0][1]), row[1]),
         ),
     )
+    lines.append("")
+    _chunked_map(
+        lines,
+        "named",
+        named,
+        (
+            "String, Int",
+            lambda name: "        %s to R.%s.%s,"
+            % (_kt(name), "plurals" if name in plurals else "string", name),
+        ),
+    )
     lines += [
         "",
-        "    fun id(english: String): Int = ids[english] ?: 0",
+        "    fun id(english: String, name: String? = null): Int =",
+        "        if (name != null) named[name] ?: 0 else ids[english] ?: 0",
         "",
-        "    fun plural(one: String?, other: String): Int = plurals[(one ?: \"\") to other] ?: 0",
+        "    fun plural(one: String?, other: String, name: String? = null): Int =",
+        "        if (name != null) named[name] ?: 0 else plurals[(one ?: \"\") to other] ?: 0",
         "}",
         "",
     ]

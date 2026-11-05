@@ -1,6 +1,8 @@
 package org.dlang.liveimap.ui.search
 import org.dlang.liveimap.i18n.S
 import org.dlang.liveimap.i18n.P
+import org.dlang.liveimap.i18n.Phrase
+import org.dlang.liveimap.i18n.phrase
 
 import org.dlang.liveimap.session.folderInfo
 import androidx.compose.foundation.clickable
@@ -68,30 +70,30 @@ import org.dlang.liveimap.ui.mailScreenInsets
 
 private data class AdvancedField(
     val kind: String,
-    val labelRes: String,
+    val labelRes: Phrase,
 )
 
 private val advancedFields = listOf(
-    AdvancedField("New", org.dlang.liveimap.i18n.literal.S("New")),
-    AdvancedField("Deleted", org.dlang.liveimap.i18n.literal.S("Deleted")),
-    AdvancedField("Answered", org.dlang.liveimap.i18n.literal.S("Answered")),
-    AdvancedField("Important", org.dlang.liveimap.i18n.literal.S("Important")),
-    AdvancedField("Forwarded", org.dlang.liveimap.i18n.literal.S("Forwarded")),
-    AdvancedField("From", org.dlang.liveimap.i18n.literal.S("From")),
-    AdvancedField("To", org.dlang.liveimap.i18n.literal.S("To")),
-    AdvancedField("Cc", org.dlang.liveimap.i18n.literal.S("Cc")),
-    AdvancedField("Subject", org.dlang.liveimap.i18n.literal.S("Subject")),
-    AdvancedField("Recipient", org.dlang.liveimap.i18n.literal.S("Recipient")),
-    AdvancedField("Participant", org.dlang.liveimap.i18n.literal.S("Participating")),
-    AdvancedField("Since", org.dlang.liveimap.i18n.literal.S("Since")),
-    AdvancedField("Before", org.dlang.liveimap.i18n.literal.S("Before")),
-    AdvancedField("On", org.dlang.liveimap.i18n.literal.S("On")),
-    AdvancedField("Age", org.dlang.liveimap.i18n.literal.S("Age")),
-    AdvancedField("Larger", org.dlang.liveimap.i18n.literal.S("Larger")),
-    AdvancedField("Smaller", org.dlang.liveimap.i18n.literal.S("Smaller")),
-    AdvancedField("Keyword", org.dlang.liveimap.i18n.literal.S("Keyword")),
-    AdvancedField("Body", org.dlang.liveimap.i18n.literal.S("Body")),
-    AdvancedField("Text", org.dlang.liveimap.i18n.literal.S("Full text")),
+    AdvancedField("New", phrase("New")),
+    AdvancedField("Deleted", phrase("Deleted")),
+    AdvancedField("Answered", phrase("Answered")),
+    AdvancedField("Important", phrase("Important")),
+    AdvancedField("Forwarded", phrase("Forwarded")),
+    AdvancedField("From", phrase("From")),
+    AdvancedField("To", phrase("To")),
+    AdvancedField("Cc", phrase("Cc")),
+    AdvancedField("Subject", phrase("Subject")),
+    AdvancedField("Recipient", phrase("Recipient")),
+    AdvancedField("Participant", phrase("Participating")),
+    AdvancedField("Since", phrase("Since")),
+    AdvancedField("Before", phrase("Before")),
+    AdvancedField("On", phrase("On", name = "index_filter_on")),
+    AdvancedField("Age", phrase("Age")),
+    AdvancedField("Larger", phrase("Larger")),
+    AdvancedField("Smaller", phrase("Smaller")),
+    AdvancedField("Keyword", phrase("Keyword")),
+    AdvancedField("Body", phrase("Body")),
+    AdvancedField("Text", phrase("Full text")),
 )
 
 private val valuedAdvancedKinds = setOf(
@@ -261,7 +263,7 @@ private fun AdvancedSearchLoaded(
         if (kept.isEmpty()) return null
         return encodeAdvancedQuery(combiner, kept, fuzzyAdvertised && fuzzyOn)
     }
-    Scaffold(topBar = { UpTopAppBar(S("Advanced"), onBack) }) { innerPadding ->
+    Scaffold(topBar = { UpTopAppBar(S("Advanced", name = "index_search_advanced"), onBack) }) { innerPadding ->
         Column(
             Modifier
                 .padding(innerPadding)
@@ -388,7 +390,7 @@ private fun AdvancedSearchLoaded(
                                 openRow = -1
                                 rows = rows.filterIndexed { rowIndex, _ -> rowIndex != index }
                             },
-                        ) { Text(S("Remove")) }
+                        ) { Text(S("Remove", name = "index_search_remove_term")) }
                     }
                 }
                 if (row.kind == "Body" || row.kind == "Text") {
@@ -514,7 +516,7 @@ private fun AdvancedSearchLoaded(
                         saveName = ""
                         saveNameOpen = true
                     },
-                ) { Text(S("Save")) }
+                ) { Text(S("Save", name = "index_search_save")) }
                 Box {
                     TextButton(
                         onClick = {
@@ -537,7 +539,7 @@ private fun AdvancedSearchLoaded(
                     ) {
                         ObscuredTouchFilter()
                         if (savedItems.isEmpty()) {
-                            val none = S("None")
+                            val none = S("None", name = "index_search_none")
                             HelpDropdownMenuItem(
                                 label = none,
                                 help = S("Clears the saved search."),
@@ -594,7 +596,7 @@ private fun AdvancedSearchLoaded(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = progress, modifier = Modifier.weight(1f))
                     TextButton(onClick = { cancelCount.value = true }) {
-                        Text(S("Cancel"))
+                        Text(S("Cancel", name = "index_search_cancel"))
                     }
                 }
             }
@@ -655,7 +657,7 @@ private fun AdvancedSearchLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { saveNameOpen = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_search_cancel"))
                 }
             },
         )
@@ -685,7 +687,7 @@ private fun AdvancedSearchLoaded(
                     TextButton(onClick = {
                         countAsk = false
                         countChoice.trySend(BodyAsk.Cancel)
-                    }) { Text(S("Cancel")) }
+                    }) { Text(S("Cancel", name = "index_cancel")) }
                 }
             },
         )

@@ -107,7 +107,7 @@ private suspend fun restoreSavedAccounts(context: Context) {
         }
     }
     if (restored > 0) {
-        AccountRestoreReport.report(P(context, restored, restored, one = "%1\$d account", other = "%1\$d accounts"))
+        AccountRestoreReport.report(P(context, restored, restored, one = "%1\$d account", other = "%1\$d accounts", name = "backup_restored"))
     }
 }
 

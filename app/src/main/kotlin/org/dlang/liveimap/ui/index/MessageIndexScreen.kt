@@ -1,6 +1,8 @@
 package org.dlang.liveimap.ui.index
 import org.dlang.liveimap.i18n.S
 import org.dlang.liveimap.i18n.P
+import org.dlang.liveimap.i18n.Phrase
+import org.dlang.liveimap.i18n.phrase
 import org.dlang.liveimap.settings.SettingsTreeGenerated
 
 import org.dlang.liveimap.session.folderInfo
@@ -225,7 +227,7 @@ private enum class FilterRole {
 }
 
 private data class FilterChoice(
-    val labelRes: String,
+    val labelRes: Phrase,
     val kind: String = "",
     val needsValue: Boolean = false,
     val role: FilterRole = FilterRole.Criterion,
@@ -248,35 +250,35 @@ private data class PendingDelete(
 )
 
 private val filterChoices = listOf(
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("All"), role = FilterRole.All),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("New"), "New"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not new"), "NotNew"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Deleted"), "Deleted"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not deleted"), "NotDeleted"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Answered"), "Answered"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not answered"), "NotAnswered"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Important"), "Important"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not important"), "NotImportant"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Forwarded"), "Forwarded"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not forwarded"), "NotForwarded"),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("to me"), ToMeFilter),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("From"), "From", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("To"), "To", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Cc"), "Cc", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Subject"), "Subject", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("All text"), "Text", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Recipient"), "Recipient", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Participant"), "Participant", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Since"), "Since", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Before"), "Before", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("On"), "On", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Age"), "Age", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Larger"), "Larger", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Smaller"), "Smaller", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Keyword"), "Keyword", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not keyword"), "NotKeyword", needsValue = true),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Narrow"), role = FilterRole.Narrow),
-    FilterChoice(org.dlang.liveimap.i18n.literal.S("Widen"), role = FilterRole.Widen),
+    FilterChoice(phrase("All"), role = FilterRole.All),
+    FilterChoice(phrase("New"), "New"),
+    FilterChoice(phrase("Not new"), "NotNew"),
+    FilterChoice(phrase("Deleted"), "Deleted"),
+    FilterChoice(phrase("Not deleted"), "NotDeleted"),
+    FilterChoice(phrase("Answered"), "Answered"),
+    FilterChoice(phrase("Not answered"), "NotAnswered"),
+    FilterChoice(phrase("Important"), "Important"),
+    FilterChoice(phrase("Not important"), "NotImportant"),
+    FilterChoice(phrase("Forwarded"), "Forwarded"),
+    FilterChoice(phrase("Not forwarded"), "NotForwarded"),
+    FilterChoice(phrase("to me"), ToMeFilter),
+    FilterChoice(phrase("From"), "From", needsValue = true),
+    FilterChoice(phrase("To"), "To", needsValue = true),
+    FilterChoice(phrase("Cc"), "Cc", needsValue = true),
+    FilterChoice(phrase("Subject"), "Subject", needsValue = true),
+    FilterChoice(phrase("All text"), "Text", needsValue = true),
+    FilterChoice(phrase("Recipient"), "Recipient", needsValue = true),
+    FilterChoice(phrase("Participant"), "Participant", needsValue = true),
+    FilterChoice(phrase("Since"), "Since", needsValue = true),
+    FilterChoice(phrase("Before"), "Before", needsValue = true),
+    FilterChoice(phrase("On", name = "index_filter_on"), "On", needsValue = true),
+    FilterChoice(phrase("Age"), "Age", needsValue = true),
+    FilterChoice(phrase("Larger"), "Larger", needsValue = true),
+    FilterChoice(phrase("Smaller"), "Smaller", needsValue = true),
+    FilterChoice(phrase("Keyword"), "Keyword", needsValue = true),
+    FilterChoice(phrase("Not keyword"), "NotKeyword", needsValue = true),
+    FilterChoice(phrase("Narrow"), role = FilterRole.Narrow),
+    FilterChoice(phrase("Widen"), role = FilterRole.Widen),
 )
 
 @Composable
@@ -2090,7 +2092,7 @@ private fun MessageIndexLoaded(
                             .testTag("index-search-field"),
                     )
                     TextButton(onClick = onAdvanced) {
-                        Text(S("Advanced"))
+                        Text(S("Advanced", name = "index_search_advanced"))
                     }
                 }
                 Row(
@@ -2105,7 +2107,7 @@ private fun MessageIndexLoaded(
                         saveName = ""
                         saveNameOpen = true
                     }) {
-                        Text(S("Save"))
+                        Text(S("Save", name = "index_search_save"))
                     }
                     Box {
                         TextButton(onClick = {
@@ -2129,7 +2131,7 @@ private fun MessageIndexLoaded(
                         ) {
                             ObscuredTouchFilter()
                             if (savedItems.isEmpty()) {
-                                val none = S("None")
+                                val none = S("None", name = "index_search_none")
                                 HelpDropdownMenuItem(
                                     label = none,
                                     help = S("Clears the saved search."),
@@ -2401,7 +2403,7 @@ private fun MessageIndexLoaded(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         TextButton(onClick = { cancelSearch.value = true }) {
-                            Text(S("Cancel"))
+                            Text(S("Cancel", name = "index_search_cancel"))
                         }
                     }
                 }
@@ -2507,7 +2509,7 @@ private fun MessageIndexLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { pendingPermanent = null }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_cancel"))
                 }
             },
         )
@@ -2560,7 +2562,7 @@ private fun MessageIndexLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { jumpOpen = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_cancel"))
                 }
             },
         )
@@ -2595,7 +2597,7 @@ private fun MessageIndexLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { saveNameOpen = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_search_cancel"))
                 }
             },
         )
@@ -2613,7 +2615,7 @@ private fun MessageIndexLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { nextFolderTarget = null }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_cancel"))
                 }
             },
         )
@@ -2635,7 +2637,7 @@ private fun MessageIndexLoaded(
             },
             dismissButton = {
                 TextButton(onClick = { confirmMarkAllRead = false }) {
-                    Text(S("Cancel"))
+                    Text(S("Cancel", name = "index_cancel"))
                 }
             },
         )
@@ -2662,7 +2664,7 @@ private fun MessageIndexLoaded(
                 }) { Text(S("OK")) }
             },
             dismissButton = {
-                TextButton(onClick = { prompt = null }) { Text(S("Dismiss")) }
+                TextButton(onClick = { prompt = null }) { Text(S("Dismiss", name = "index_dismiss")) }
             },
         )
     }
@@ -2671,7 +2673,7 @@ private fun MessageIndexLoaded(
         val choices = startRuleChoices(account.showRecentRules, selected)
         AlertDialog(
             onDismissRequest = { openAt = false },
-            title = { Text(S("Open this folder at…")) },
+            title = { Text(S("Open this folder at…", name = "label_open_at")) },
             text = {
                 Column {
                     choices.forEach { rule ->
@@ -2795,9 +2797,9 @@ private fun MessageIndexLoaded(
     fun RowScope.IndexBulkBar() {
                         DebugStatusIcon(debugStatus)
                         val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
-                        val seenText = if (markUnread) S("Mark unread") else S("Mark read")
+                        val seenText = if (markUnread) S("Mark unread") else S("Mark read", name = "toolbar_mark_read")
                         val flagText = if (clearFlag) S("Unflag") else S("Flag")
-                        val moveText = S("Move")
+                        val moveText = S("Move", name = "index_move")
                         val toggleSeen = {
                             if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
                             else applySelectionFlags(emptySet(), setOf("\\Seen"))
@@ -3176,7 +3178,7 @@ private fun MessageIndexLoaded(
                             )
                         }
                         if (account.openAtInIndexMenu) {
-                            val openAtLabel = S("Open this folder at…")
+                            val openAtLabel = S("Open this folder at…", name = "label_open_at")
                             HelpDropdownMenuItem(
                                 label = openAtLabel,
                                 help = S("Chooses where the index opens."),
@@ -3575,7 +3577,7 @@ private fun MessageIndexLoaded(
                 } else {
                     LinearProgressIndicator(modifier = Modifier.weight(1f).height(4.dp))
                 }
-                TextButton(onClick = { model.cancelSearch() }) { Text(S("Cancel")) }
+                TextButton(onClick = { model.cancelSearch() }) { Text(S("Cancel", name = "index_search_cancel")) }
             }
         } else if (loading && banner == null) {
             LinearProgressIndicator(
@@ -3637,7 +3639,7 @@ private fun MessageIndexLoaded(
                             TextButton(onClick = {
                                 confirmExpunge = false
                                 pendingExpungeUids = null
-                            }) { Text(S("Cancel")) }
+                            }) { Text(S("Cancel", name = "index_cancel")) }
                         },
                     )
                 }
@@ -3739,7 +3741,7 @@ private fun LargeFolderAskDialog(
         dismissButton = {
             Row {
                 TextButton(onClick = onAlways) { Text(S("Always for this folder")) }
-                TextButton(onClick = onCancel) { Text(S("Cancel")) }
+                TextButton(onClick = onCancel) { Text(S("Cancel", name = "index_cancel")) }
             }
         },
     )
@@ -4105,7 +4107,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(S("Retry")) }
+            TextButton(onClick = onRetry) { Text(S("Retry", name = "index_retry")) }
         }
     }
 }
@@ -4149,7 +4151,7 @@ private fun swipeActionName(action: SwipeAction): String = when (action) {
 @Composable
 private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
     S("Forward inline"),
-    S("Forward as attachment"),
+    S("Forward as attachment", name = "label_forward_attachment"),
     asAttachment,
 )
 
