@@ -4171,3 +4171,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - Same English keeps its catalog key
 
 - Fixup: a call keeps its resource name when the same English has a different translation. titleOf("server") stays settings_group_server_title.
+
+## 2026-11-04 - Manual draft and screenshot walk
+
+- The manual draft and manual-capture.yaml name the screenshots. Incoming mail is the existing cyrus-3137 image at 10.2.3.133 port 20000 with TLS off. Sending is 10.0.0.1 port 25 with no password. David runs the phone captures.
