@@ -4,9 +4,9 @@ title: Messages
 
 # Messages
 
-Open a folder to see its messages. The title is the folder name. The line under it is the sort, such as Arrival, Newest.
+Open a folder to see its messages. The title is the folder name. The line under it is the sort, such as Arrival, Newest. There is no picture of an open message.
 
-![Message list](images/messages.png)
+![Message list](images/phone/messages.jpg)
 
 ## Back
 
@@ -14,11 +14,11 @@ Back returns to the folder list.
 
 ## Search
 
-Search searches this folder. Subject is the usual field. Full text is a separate, slower search. Advanced search can ask the server for a fuzzy match when the server advertises `SEARCH=FUZZY`, and the switch stays off when it does not.
+Search is this folder. Subject is first. Full text is a separate, slower search. Advanced search can ask the server for a fuzzy match when the server advertises `SEARCH=FUZZY`, and the switch stays off when it does not.
 
 ## Sort
 
-Sort changes the order of this folder. The choice lasts until you leave the app. The usual sort for the folder is under Settings, Folders. The Sort menu also holds Expunge, Select all, Folder info, Jump to number, Next unread, Mark all read, and Customize toolbar. Settings, Folders, Large folders sets how many messages make the app ask before a sort, a thread, a body or full-text search, or a client-side fallback. The default is `-1`, which does not ask.
+Sort changes the order of this folder. The choice lasts until the app is left. The usual sort is under Folders in Settings. The Sort menu also holds Expunge, Select all, Folder info, Jump to number, Next unread, Mark all read, and Customize toolbar. Large-folder asks default to `-1` (never ask); `0` always asks. Those asks cover a sort, a thread, a body or full-text search, and a client-side fallback.
 
 ## Filter
 

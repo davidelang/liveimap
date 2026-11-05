@@ -1,0 +1,107 @@
+# David runs the capture after the setup pass. An agent may run --check.
+# There is no hooks file. This walk does not switch language.
+# language.field and language.system are not a language picker.
+# settings_save, drawer_save, reader_save, and book_save are not English
+# resources; Save is filter_save. unsent_discard and filter_delete are not
+# English resources; Discard is filter_discard and Delete is drawer_delete.
+
+package: com.davidlang.liveimap
+activity: com.davidlang.liveimap/org.dlang.liveimap.MainActivity
+strings_res: app/build/generated/english/res
+ignore_text: ["1x", "2x", "4x"]
+never_tap_prefix: []
+never_tap:
+  - filter_save
+  - filter_discard
+  - index_search_save
+  - reader_type_mismatch_save
+  - compose_send
+  - compose_postpone
+  - compose_attach
+  - settings_remove_account
+  - settings_test_account
+  - settings_check_save_anyway
+  - settings_change_layout
+  - settings_discard
+  - leaf_checkserver_title
+  - leaf_accountsettingsfile_title
+  - leaf_uisettingsfile_title
+  - leaf_pinerc_title
+  - leaf_imappassword_title
+  - settings_smtp_password
+  - settings_sieve_password
+  - plaintext_auth_confirm
+  - cert_trust_confirm
+  - folders_save_default
+  - folders_reset_default
+  - index_expunge
+  - index_expunge_menu
+  - reader_expunge
+  - drawer_delete
+  - setup_help
+  - setup_finish
+  - setup_test
+  - setup_advanced
+  - settings_add_account
+  - settings_accounts
+  - leaf_indexbar_title
+  - leaf_selectionbar_title
+  - leaf_folderbar_title
+  - settings_panel_reader
+  - settings_panel_compose
+output:
+  en: docs/manual/images/{form}
+  other: docs/i18n/{segment}/images/{form}
+endonym_key: about_title
+drawer:
+  open: folders_menu
+  labels:
+    - drawer_inbox
+    - drawer_settings
+    - drawer_manage_addresses
+    - help_title
+    - about_title
+  open_if_text:
+    - drawer_settings
+    - help_title
+  unblock_when_same: []
+language:
+  menu: folders_menu
+  settings: drawer_settings
+  field: help_title
+  system: label_system
+  ready: folders_menu
+launch:
+  dismiss: []
+locales:
+  - {pref: en, values: values, segment: ""}
+sections:
+  - group: walk
+    shots:
+      - drawer.jpg
+      - folders.jpg
+      - messages.jpg
+      - compose.jpg
+      - help.jpg
+      - about.jpg
+      - settings-closed.jpg
+    steps:
+      - open_drawer: true
+      - shot: drawer.jpg
+      - close_drawer: true
+        on_fail: stop
+      - shot: folders.jpg
+      - drawer: drawer_inbox
+      - shot: messages.jpg
+      - tap_desc: screen_compose
+      - shot: compose.jpg
+      - back: 1
+      - drawer: help_title
+      - shot: help.jpg
+      - back: 1
+      - drawer: about_title
+      - shot: about.jpg
+      - back: 1
+      - drawer: drawer_settings
+      - shot: settings-closed.jpg
+      - back: 1

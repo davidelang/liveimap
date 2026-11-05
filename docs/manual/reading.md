@@ -8,7 +8,7 @@ Open a message from the list. From, To, the date, and the subject are at the top
 
 ## Back
 
-Back returns to the message list.
+Back returns to the list.
 
 ## Header
 
@@ -16,7 +16,7 @@ The header button hides or shows From, To, the date, and the subject.
 
 ## Images
 
-On an HTML message, the image button shows or hides remote images. A new message starts with images hidden.
+On an HTML message, the image button shows or hides remote images. Images on a new HTML message start hidden.
 
 ## Reply
 
@@ -24,7 +24,7 @@ Reply answers the sender. Reply all answers the sender and the other recipients.
 
 ## Delete
 
-Delete follows Settings, Reading, Deleting. With Confirm before expunge on, the message is marked deleted. Auto-expunge sends CLOSE when you leave the folder.
+Delete follows the Deleting group: mark deleted, confirm before expunge, auto-expunge off.
 
 ## More
 
