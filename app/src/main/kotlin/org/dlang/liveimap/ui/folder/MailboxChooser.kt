@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.folder
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +33,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -48,7 +48,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.OpenResult
@@ -172,7 +171,7 @@ private fun MailboxChooserLoaded(
     exclude: String = "",
     suggestUse: String = "",
 ) {
-    val notConnected = stringResource(R.string.reader_not_connected)
+    val notConnected = S("not connected")
     val session = remember(accountId) { mailSession(accountId) }
     val held = viewModel<MailboxChooserHeld>()
     val model = held.bind(session, store)
@@ -248,7 +247,7 @@ private fun MailboxChooserLoaded(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.chooser_title))
+                Text(S("Choose mailbox"))
                 val message = notice
                 if (message != null) {
                     Text(text = message)
@@ -257,7 +256,7 @@ private fun MailboxChooserLoaded(
                     val suggested = markedMailbox(rows, suggestUse, { it.mailbox }, { it.specialUse })
                     if (suggested != null) {
                         TextButton(onClick = { onPick(suggested) }) {
-                            Text(stringResource(R.string.chooser_server_marked, suggested))
+                            Text(S("Use %1\$s (marked by the server)", suggested))
                         }
                     }
                     val pickRows = chooserRows(rows, exclude) { it.mailbox }
@@ -310,7 +309,7 @@ private fun MailboxChooserLoaded(
                         }
                     }
                 }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
+                TextButton(onClick = onDismiss) { Text(S("Close")) }
             }
         }
     }

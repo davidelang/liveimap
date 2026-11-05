@@ -1,4 +1,5 @@
 package org.dlang.liveimap.engine
+import org.dlang.liveimap.i18n.S
 
 import android.content.Context
 import java.io.File
@@ -12,7 +13,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.Capabilities
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ClientFetch
@@ -419,7 +419,7 @@ class LibetpanMailSession(
         if (opened is OpenResult.Failed && opened !is OpenResult.AuthRejected && opened.text == "plaintext login needs confirmation") {
             val confirm = plaintextConfirmer
             val accepted = confirm != null && confirm()
-            val stopped = context.getString(R.string.plaintext_auth_stopped)
+            val stopped = S(context, "The password was not sent.")
             if (!accepted) {
                 opened = OpenResult.Failed(stopped)
             } else {
@@ -479,7 +479,7 @@ class LibetpanMailSession(
         val opened = loginOnce(retry, knownPassword)
         if (opened !is OpenResult.Failed) {
             channelBindingDropped = true
-            statusNote(retry, context.getString(R.string.session_no_channel_binding, retry.authMechanism))
+            statusNote(retry, S(context, "Logged in without channel binding (%1\$s)", retry.authMechanism))
         }
         return openResultAfterPlusFallback(first, opened)
     }

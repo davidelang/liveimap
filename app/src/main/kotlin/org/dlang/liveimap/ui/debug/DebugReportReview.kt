@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.debug
+import org.dlang.liveimap.i18n.S
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -28,12 +29,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.davidlang.liveimap.R
 
 @Composable
 fun DebugReportReview(
@@ -60,8 +59,8 @@ fun DebugReportReview(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.debug_report_title), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(R.string.traffic_share_warning), color = MaterialTheme.colorScheme.error)
+                Text(S("Debug report"), style = MaterialTheme.typography.titleLarge)
+                Text(S("Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail."), color = MaterialTheme.colorScheme.error)
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -77,18 +76,18 @@ fun DebugReportReview(
                             )
                             TextButton(onClick = {
                                 onLines(lines.filterIndexed { i, _ -> i != index })
-                            }) { Text(stringResource(R.string.debug_remove_line)) }
+                            }) { Text(S("Remove line")) }
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = {
                         copyDebugReport(context, lines)
-                    }) { Text(stringResource(R.string.debug_copy)) }
+                    }) { Text(S("Copy")) }
                     TextButton(onClick = {
                         shareDebugReport(context, lines)
-                    }) { Text(stringResource(R.string.debug_share)) }
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.debug_dismiss)) }
+                    }) { Text(S("Share")) }
+                    TextButton(onClick = onDismiss) { Text(S("Dismiss")) }
                 }
             }
         }
@@ -97,7 +96,7 @@ fun DebugReportReview(
 
 private fun copyDebugReport(context: Context, lines: List<String>) {
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return
-    val clip = ClipData.newPlainText(context.getString(R.string.debug_clipboard), lines.joinToString("\n"))
+    val clip = ClipData.newPlainText(S(context, "LiveIMAP debug report"), lines.joinToString("\n"))
     // F56: keep the report out of clipboard previews and keyboard suggestions.
     clip.description.extras = android.os.PersistableBundle().apply {
         putBoolean(if (android.os.Build.VERSION.SDK_INT >= 33) android.content.ClipDescription.EXTRA_IS_SENSITIVE else "android.content.extra.IS_SENSITIVE", true)
@@ -110,5 +109,5 @@ private fun shareDebugReport(context: Context, lines: List<String>) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, lines.joinToString("\n"))
     }
-    context.startActivity(Intent.createChooser(send, context.getString(R.string.debug_share_title)))
+    context.startActivity(Intent.createChooser(send, S(context, "Share debug report")))
 }

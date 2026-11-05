@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,7 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -126,7 +126,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -174,11 +173,11 @@ internal fun ExpandedFoldersBody(editor: SettingsEditor, drafts: () -> ServerDra
                 IconButton(onClick = {
                     editor.persist(editor.settings.copy(expandedFolders = editor.settings.expandedFolders - mailbox))
                 }) {
-                    Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(R.string.compose_remove))
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = S("Remove"))
                 }
             }
         }
-        TextButton(onClick = { picking = true }) { Text(stringResource(R.string.settings_add)) }
+        TextButton(onClick = { picking = true }) { Text(S("Add")) }
     }
     if (picking) {
         SettingsFolderChooser(
@@ -214,31 +213,29 @@ internal fun FolderViewsBody(editor: SettingsEditor, drafts: () -> ServerDrafts?
         settings.folderViews.forEach { (mailbox, view) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(
-                        R.string.settings_view_line,
+                    S(
+                        "%1\$s %2\$s %3\$s",
                         mailbox,
                         sortKeyName(view.key),
-                        stringResource(
-                            if (view.newestFirst) R.string.reader_newest else R.string.reader_oldest,
-                        ),
+                        if (view.newestFirst) stringResource(SettingsTreeGenerated.resource("reader_newest")) else stringResource(SettingsTreeGenerated.resource("reader_oldest")),
                     ),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = {
                     editor.persist(editor.settings.copy(folderViews = editor.settings.folderViews - mailbox))
                 }) {
-                    Icon(imageVector = Icons.Filled.Close, contentDescription = stringResource(R.string.compose_remove))
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = S("Remove"))
                 }
             }
         }
         ChoiceField(
-            stringResource(R.string.settings_folder_view_sort),
+            S("Folder view sort"),
             SortKey.entries,
             draftSort,
             { sortKeyName(it) },
         ) { draftSort = it }
-        BoolField(stringResource(R.string.settings_folder_view_newest), draftNewest) { draftNewest = it }
-        TextButton(onClick = { picking = true }) { Text(stringResource(R.string.settings_add)) }
+        BoolField(S("Folder view newest first"), draftNewest) { draftNewest = it }
+        TextButton(onClick = { picking = true }) { Text(S("Add")) }
     }
     if (picking) {
         SettingsFolderChooser(
@@ -276,23 +273,23 @@ internal fun FolderStartsBody(editor: SettingsEditor) {
         settings.folderStarts.forEach { (mailbox, rule) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_mailbox_rule, mailbox, startRuleName(rule)))
-                    if (startRuleIsRecent(rule)) Text(stringResource(R.string.label_recent_note))
+                    Text(S("%1\$s: %2\$s", mailbox, startRuleName(rule)))
+                    if (startRuleIsRecent(rule)) Text(S("\\Recent belongs to whichever app opens the folder first"))
                 }
                 TextButton(onClick = {
                     editor.persist(withFolderStart(editor.settings, mailbox, null))
-                }) { Text(stringResource(R.string.settings_default)) }
+                }) { Text(S("Default")) }
             }
         }
         LineField(
-            stringResource(R.string.settings_mailbox),
+            S("Mailbox"),
             draftStartMailbox,
             ready = editor.ready,
             commitOnLeave = false,
             onDraft = { draftStartMailbox = it },
         ) { draftStartMailbox = it }
         StartRuleField(
-            stringResource(R.string.settings_opens_at),
+            S("Opens at"),
             draftStartRule,
             settings.showRecentRules,
         ) { draftStartRule = it }
@@ -300,6 +297,6 @@ internal fun FolderStartsBody(editor: SettingsEditor) {
             if (draftStartMailbox.isEmpty()) return@TextButton
             editor.persist(withFolderStart(editor.settings, draftStartMailbox, draftStartRule))
             draftStartMailbox = ""
-        }) { Text(stringResource(R.string.settings_add)) }
+        }) { Text(S("Add")) }
     }
 }

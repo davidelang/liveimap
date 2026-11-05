@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.compose
+import org.dlang.liveimap.i18n.S
 
 import android.content.ContentResolver
 import android.net.Uri
@@ -69,7 +70,6 @@ import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.util.UUID
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.ui.reader.ReaderDisplay
@@ -457,7 +457,7 @@ private fun AddressChips(
                 trailingIcon = {
                     Icon(
                         Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.compose_remove),
+                        contentDescription = S("Remove"),
                     )
                 },
             )
@@ -539,16 +539,16 @@ private fun ComposeForm(
     onCustomize: () -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
-    val acceptedNotice = stringResource(R.string.compose_accepted)
-    val notSentNotice = stringResource(R.string.unsent_not_sent)
-    val sentMailboxMissing = stringResource(R.string.compose_sent_mailbox)
-    val postponedMailboxMissing = stringResource(R.string.compose_postponed_mailbox)
-    val fromMissing = stringResource(R.string.compose_from_missing)
-    val resentMissing = stringResource(R.string.compose_resent_missing)
-    val unsentGone = stringResource(R.string.compose_unsent_gone)
-    val notConnected = stringResource(R.string.reader_not_connected)
-    val fetchFailed = stringResource(R.string.compose_fetch_failed)
-    val attachUnreadable = stringResource(R.string.compose_attach_unreadable)
+    val acceptedNotice = S("Accepted but not saved")
+    val notSentNotice = S("Not sent")
+    val sentMailboxMissing = S("Sent mailbox is not set")
+    val postponedMailboxMissing = S("Postponed mailbox is not set")
+    val fromMissing = S("From address is not set")
+    val resentMissing = S("Resent-To is not set")
+    val unsentGone = S("That unsent copy is no longer on this device.")
+    val notConnected = S("not connected")
+    val fetchFailed = S("fetch failed")
+    val attachUnreadable = S("Could not read that file")
     val session = remember(accountId) { mailSession(accountId) }
     val scope = rememberCoroutineScope()
     val screen = remember { ComposeLoaded() }
@@ -695,7 +695,7 @@ private fun ComposeForm(
     }
 
     fun deleteFailedText(error: java.io.IOException, fallback: String): String =
-        appContext.getString(R.string.error_delete_failed, ioFailureName(error, fallback))
+        S(appContext, "Could not delete %1\$s", ioFailureName(error, fallback))
 
     /** Null when the copy is gone. A delete failure is the notice line, not a throw: the send already finished. */
     fun notedDelete(id: String): String? {
@@ -760,8 +760,8 @@ private fun ComposeForm(
                     throw error
                 } catch (error: Exception) {
                     val failed = when (error.message) {
-                        "error_file_no_name" -> appContext.getString(R.string.error_file_no_name)
-                        "error_delete_failed" -> appContext.getString(R.string.error_delete_failed, key)
+                        "error_file_no_name" -> S(appContext, "This file has no name")
+                        "error_delete_failed" -> S(appContext, "Could not delete %1\$s", key)
                         else -> error.message ?: attachUnreadable
                     }
                     errors.add(failed)
@@ -845,7 +845,7 @@ private fun ComposeForm(
         if (!wantAndroid) {
             return completionSourcesInOrder(books, pine, emptyMap(), emptyMap())
         }
-        val permissionNeeded = appContext.getString(R.string.contacts_permission_needed)
+        val permissionNeeded = S(appContext, "Contacts permission is needed.")
         if (!hasReadContacts(appContext)) {
             notice = permissionNeeded
             return completionSourcesInOrder(books, pine, emptyMap(), emptyMap())
@@ -908,7 +908,7 @@ private fun ComposeForm(
                 decoder.close()
             }
             if (decoder.unknownCharset && notice.isNullOrEmpty()) {
-                notice = appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+                notice = S(appContext, "Unknown charset; shown as %1\$s.", decoder.charsetUsed)
             }
             return if (html) htmlAsText(text) else text
         }
@@ -1065,8 +1065,7 @@ private fun ComposeForm(
             val fetched = inBox(box) { s -> s.fetchStructure(uid) }
             val quote = quotedBody(fetched, quoteDisplay(settings), uid)
             val draft = forwardDraft(parsed, quote, r.quotePrefix, r.leadIn)
-            val header = appContext.getString(
-                R.string.compose_quote_header,
+            val header = S(appContext, "From: %1\$s\nDate: %2\$s\nSubject: %3\$s",
                 headerValues(parsed, "From").firstOrNull().orEmpty().trim(),
                 headerValues(parsed, "Date").firstOrNull().orEmpty().trim(),
                 headerValues(parsed, "Subject").firstOrNull().orEmpty().trim(),
@@ -1142,7 +1141,7 @@ private fun ComposeForm(
                 try {
                     Files.delete(dest.toPath())
                 } catch (_: java.io.IOException) {
-                    notice = appContext.getString(R.string.error_delete_failed, dest.name)
+                    notice = S(appContext, "Could not delete %1\$s", dest.name)
                 }
             }
         }
@@ -1302,7 +1301,7 @@ private fun ComposeForm(
             throw error
         } catch (failure: MailFailure) {
             // F116: sent, but say the source was not marked (instead of swallowing it)
-            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
+            notice = S(appContext, "Sent, but the original was not marked answered/forwarded: %1\$s", failure.text)
         }
     }
 
@@ -1319,7 +1318,7 @@ private fun ComposeForm(
         } catch (error: CancellationException) {
             throw error
         } catch (failure: MailFailure) {
-            notice = appContext.getString(R.string.compose_flags_not_stored, failure.text)
+            notice = S(appContext, "Sent, but the original was not marked answered/forwarded: %1\$s", failure.text)
         }
     }
 
@@ -1336,7 +1335,7 @@ private fun ComposeForm(
             is MailFailure -> error.text
             else -> error.message ?: notConnected
         }
-        status = if (maybe) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
+        status = if (maybe) S(appContext, "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.") else notSentNotice
     }
 
     suspend fun removePostponedSource() {
@@ -1351,33 +1350,33 @@ private fun ComposeForm(
         } catch (error: CancellationException) {
             throw error
         } catch (_: MailFailure) {
-            notice = joinedNotice(notice, appContext.getString(R.string.compose_postponed_remains, box))
+            notice = joinedNotice(notice, S(appContext, "Postponed copy is still in %1\$s", box))
         }
     }
 
     fun sentStatus(savedLeaf: String?): String? = sentStatusText(
-        savedLeaf?.takeIf { it.isNotEmpty() }?.let { appContext.getString(R.string.compose_sent_saved, it) },
-        if (dsnRefused) appContext.getString(R.string.compose_dsn_unsupported) else null,
+        savedLeaf?.takeIf { it.isNotEmpty() }?.let { S(appContext, "Sent · saved to %1\$s", it) },
+        if (dsnRefused) S(appContext, "The server doesn't offer delivery status notifications; sent without them.") else null,
     )
 
     fun noteDsn(result: Int) {
         dsnRefused = result < 0
-        if (dsnRefused) status = appContext.getString(R.string.compose_dsn_unsupported)
+        if (dsnRefused) status = S(appContext, "The server doesn't offer delivery status notifications; sent without them.")
     }
 
     /** The session that sends (and files the Fcc of) mail routed through account [via]; empty = this account. */
     suspend fun outbound(via: String): MailSession {
         if (via.isEmpty() || via == accountId) return session
         val credentials = store.accountById(via)
-            ?: throw MailFailure(appContext.getString(R.string.compose_send_account_missing))
+            ?: throw MailFailure(S(appContext, "The account this message is routed through no longer exists. Not sent."))
         val other = mailSession(via)
         when (val opened = other.open(credentials.settings)) {
             OpenResult.Connected -> Unit
             is OpenResult.Failed -> throw MailFailure(
-                appContext.getString(R.string.compose_send_account_failed, org.dlang.liveimap.accounts.accountVisibleName(credentials.settings), opened.text),
+                S(appContext, "Could not connect to %1\$s to send: %2\$s", org.dlang.liveimap.accounts.accountVisibleName(credentials.settings), opened.text),
             )
             is OpenResult.Rejected -> throw MailFailure(
-                appContext.getString(R.string.compose_send_account_failed, org.dlang.liveimap.accounts.accountVisibleName(credentials.settings), opened.capabilities),
+                S(appContext, "Could not connect to %1\$s to send: %2\$s", org.dlang.liveimap.accounts.accountVisibleName(credentials.settings), opened.capabilities),
             )
         }
         return other
@@ -1412,12 +1411,12 @@ private fun ComposeForm(
         val recipients = envelope.map(::asciiDomainAddress)
         val unsafe = recipients.filterNot(::envelopeAddressOk)
         if (unsafe.isNotEmpty()) {
-            throw MailFailure(appContext.getString(R.string.compose_bad_envelope_address, unsafe.joinToString(", ") { it.map { c -> if (c < ' ' || c == '\u007f') '?' else c }.joinToString("") }))
+            throw MailFailure(S(appContext, "Not sent: these addresses contain characters SMTP cannot carry: %1\$s", unsafe.joinToString(", ") { it.map { c -> if (c < ' ' || c == '\u007f') '?' else c }.joinToString("") }))
         }
         val sender = (if (via.isEmpty() || via == accountId) account else store.accountById(via)?.settings ?: account)
             .let { envelopeSender(headerFromAddress(headerThroughBlankLine(file)), it.email, it.altAddresses + knownFroms(accountRules(it), accountDefaultRule(it))) }
         fun utf8Refused(error: MailFailure): Nothing =
-            throw MailFailure(appContext.getString(R.string.compose_needs_smtputf8, needsSmtpUtf8(recipients).joinToString(", ")))
+            throw MailFailure(S(appContext, "Not sent: this server does not offer SMTPUTF8, which non-ASCII addresses or headers need (%1\$s). Use an ASCII address or another server.", needsSmtpUtf8(recipients).joinToString(", ")))
         try {
             // The writer already applied the 8BITMIME choice. This send does not rewrite the file.
             noteDsn(out.smtpSendFromFile(file, recipients, dsnMask(sending?.dsn ?: DsnMode.Off), sender))
@@ -1438,7 +1437,7 @@ private fun ComposeForm(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: MailFailure) {
-                    notice = appContext.getString(R.string.compose_sent_copy_failed, copy.mailbox, error.text)
+                    notice = S(appContext, "The copy could not be saved to the Sent folder \"%1\$s\": %2\$s", copy.mailbox, error.text)
                     offerNoCopy = true
                     status = acceptedNotice
                     return false
@@ -1523,19 +1522,19 @@ private fun ComposeForm(
                         sentName = copy.mailbox,
                         saveCopy = copy.mailbox.isNotEmpty(),
                         draftsName = account.postponedMailbox,
-                        onNotice = { leftOver = appContext.getString(R.string.error_jmap_staging_left, it) },
+                        onNotice = { leftOver = S(appContext, "The staging copy %1\$s could not be removed", it) },
                         policy = account.tlsPolicy(), accountKey = accountId,
                     ) }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: DeviceCopyNotSaved) {
-                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                    notice = S(appContext, "The copy on this device could not be saved; keep this screen open.")
                     status = notSentNotice
                     return false
                 } catch (error: JmapSentFolderMissing) {
                     failAttachment(true, copy.id, copy.appendOnly)
                     held = copy
-                    notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
+                    notice = S(appContext, "The copy could not be saved to the Sent folder \"%1\$s\": %2\$s", error.name, error.text)
                     offerNoCopy = true
                     noCopyRetry = true
                     return false
@@ -1583,7 +1582,7 @@ private fun ComposeForm(
         if (dsnRefused) {
             android.widget.Toast.makeText(
                 appContext,
-                appContext.getString(R.string.compose_dsn_unsupported),
+                S(appContext, "The server doesn't offer delivery status notifications; sent without them."),
                 android.widget.Toast.LENGTH_LONG,
             ).show()
         }
@@ -1701,7 +1700,7 @@ private fun ComposeForm(
                         try {
                             Files.delete(drafted.toPath())
                         } catch (_: java.io.IOException) {
-                            val failed = appContext.getString(R.string.error_delete_failed, drafted.name)
+                            val failed = S(appContext, "Could not delete %1\$s", drafted.name)
                             deleteNote = joinedNotice(deleteNote, failed)
                             notice = joinedNotice(notice, failed)
                         }
@@ -1729,7 +1728,7 @@ private fun ComposeForm(
             deleteNote = joinedNotice(deleteNote, applyAttachmentLife(life))
             notice = deleteNote
             deliveryDone = true
-            status = appContext.getString(R.string.compose_saved_to, statusLeaf(account.postponedMailbox))
+            status = S(appContext, "Saved to %1\$s", statusLeaf(account.postponedMailbox))
             removePostponedSource()
             true
         }
@@ -1918,7 +1917,7 @@ private fun ComposeForm(
                     val via = r.sendAccount.takeIf { it.isNotEmpty() && it != accountId }.orEmpty()
                     val viaSettings = if (via.isEmpty()) null else store.accountById(via)?.settings
                     if (via.isNotEmpty() && viaSettings == null) {
-                        notice = appContext.getString(R.string.compose_send_account_unavailable, r.fromRule)
+                        notice = S(appContext, "Rule “%1\$s” sends through an account that no longer exists. Not sent.", r.fromRule)
                         return@launchLocked false
                     }
                     val account = base.withSending(r).let { s ->
@@ -1934,7 +1933,7 @@ private fun ComposeForm(
                     }
                     if (mismatch != null && pinnedFrom != null && !mismatchArmed) {
                         mismatchArmed = true
-                        notice = appContext.getString(R.string.compose_from_mismatch, mismatch.expectedFrom, mismatch.rule)
+                        notice = S(appContext, "Sending rules expect From %1\$s (rule “%2\$s”). Tap Send again to send anyway.", mismatch.expectedFrom, mismatch.rule)
                         return@launchLocked false
                     }
                     val saved = held
@@ -1955,7 +1954,7 @@ private fun ComposeForm(
                         splitAddresses(bccText).isEmpty()
                     ) {
                         // Without this, SMTP got MAIL and DATA with no RCPT (found on the lab sink).
-                        notice = appContext.getString(R.string.compose_no_recipients)
+                        notice = S(appContext, "Add at least one recipient (To, Cc or Bcc).")
                         return@launchLocked false
                     }
                     // David's Sent rule (b): no Sent folder configured means send without saving a copy.
@@ -2008,14 +2007,14 @@ private fun ComposeForm(
                                 sentName = account.sentMailbox,
                                 draftsName = account.postponedMailbox,
                                 saveCopy = !withoutCopy,
-                                onNotice = { leftOver = appContext.getString(R.string.error_jmap_staging_left, it) },
+                                onNotice = { leftOver = S(appContext, "The staging copy %1\$s could not be removed", it) },
                                 policy = account.tlsPolicy(), accountKey = accountId,
                             ) }
                             deleteFailed = joinedNotice(deleteFailed, applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false)))
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: DeviceCopyNotSaved) {
-                            notice = appContext.getString(R.string.compose_copy_not_saved)
+                            notice = S(appContext, "The copy on this device could not be saved; keep this screen open.")
                             status = notSentNotice
                             return@launchLocked false
                         } catch (error: JmapSentFolderMissing) {
@@ -2023,7 +2022,7 @@ private fun ComposeForm(
                             // copy stays (kept by keepCopyUntilSubmitted) until a send is confirmed.
                             failAttachment(true, sending.id, sending.appendOnly)
                             held = sending
-                            notice = appContext.getString(R.string.compose_sent_copy_failed, error.name, error.text)
+                            notice = S(appContext, "The copy could not be saved to the Sent folder \"%1\$s\": %2\$s", error.name, error.text)
                             offerNoCopy = true
                             return@launchLocked false
                         } catch (error: Exception) {
@@ -2044,7 +2043,7 @@ private fun ComposeForm(
                     val copySaved = writeCopy(appContext, sending, accountId, account.unlabeledCharset)
                     if (!copySaved) {
                         failAttachment(false, sending.id, false)
-                        notice = appContext.getString(R.string.compose_copy_not_saved)
+                        notice = S(appContext, "The copy on this device could not be saved; keep this screen open.")
                         status = notSentNotice
                         return@launchLocked false
                     }
@@ -2060,8 +2059,8 @@ private fun ComposeForm(
                         failAttachment(saved, copy.id, false)
                         held = copy
                         notice = smtpFailureText(error.text) +
-                            if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
-                        status = if (uncertain) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
+                            if (saved) "" else "\n" + S(appContext, "The copy on this device could not be saved; keep this screen open.")
+                        status = if (uncertain) S(appContext, "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.") else notSentNotice
                         return@launchLocked false
                     }
                     storeAcceptedFlags(seed.uids.ifEmpty { listOfNotNull(sourceUid) })
@@ -2073,7 +2072,7 @@ private fun ComposeForm(
                         val copy = seededCopy(id, true, account.sentMailbox, built.recipients, accepted, via = via)
                         failAttachment(writeCopy(appContext, copy, accountId, account.unlabeledCharset), copy.id, true)
                         held = copy
-                        notice = appContext.getString(R.string.compose_sent_copy_failed, account.sentMailbox, error.text)
+                        notice = S(appContext, "The copy could not be saved to the Sent folder \"%1\$s\": %2\$s", account.sentMailbox, error.text)
                         offerNoCopy = true
                         status = acceptedNotice
                         return@launchLocked false
@@ -2099,23 +2098,23 @@ private fun ComposeForm(
                     Text(
                         composeTitle(
                             seed.kind,
-                            stringResource(R.string.compose_reply),
-                            stringResource(R.string.compose_reply_all),
-                            stringResource(R.string.compose_forward),
-                            stringResource(R.string.compose_new),
+                            S("Reply"),
+                            S("Reply all"),
+                            S("Forward"),
+                            S("Compose"),
                         ),
                     )
                 },
                 navigationIcon = {
                     HelpIconButton(
-                        label = stringResource(R.string.reader_back),
-                        help = stringResource(R.string.help_compose_back),
+                        label = S("Back"),
+                        help = S("Leaves this message."),
                         page = "writing.html#back",
                         onClick = { requestClose() },
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.reader_back),
+                            contentDescription = S("Back"),
                         )
                     }
                 },
@@ -2127,15 +2126,15 @@ private fun ComposeForm(
                                 when (action) {
                                     ComposeBarAction.Postpone -> composeIcons.add {
                                         HelpIconButton(
-                                            label = stringResource(R.string.compose_postpone),
-                                            help = stringResource(R.string.help_compose_postpone),
+                                            label = S("Postpone"),
+                                            help = S("Saves this message to send later."),
                                             page = "writing.html#postpone",
                                             onClick = { postponeDraft() },
                                             enabled = account.postponedMailbox.isNotEmpty(),
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Filled.Save,
-                                                contentDescription = stringResource(R.string.compose_postpone),
+                                                contentDescription = S("Postpone"),
                                             )
                                         }
                                     }
@@ -2150,41 +2149,41 @@ private fun ComposeForm(
                             SideEffect { iconRows = 1 }
                         }
                         val sendDescription = if (held?.appendOnly == true) {
-                            R.string.reader_retry
+                            org.dlang.liveimap.i18n.literal.S("Retry")
                         } else {
-                            R.string.compose_send
+                            org.dlang.liveimap.i18n.literal.S("Send")
                         }
-                        if (sendDescription == R.string.compose_send) {
+                        if (sendDescription == org.dlang.liveimap.i18n.literal.S("Send")) {
                             HelpIconButton(
-                                label = stringResource(R.string.compose_send),
-                                help = stringResource(R.string.help_compose_send),
+                                label = S("Send"),
+                                help = S("Sends this message."),
                                 page = "writing.html#send",
                                 onClick = { sendMessage() },
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Send,
-                                    contentDescription = stringResource(sendDescription),
+                                    contentDescription = S(sendDescription),
                                 )
                             }
                         } else {
                             IconButton(onClick = { sendMessage() }) {
                                 Icon(
                                     imageVector = Icons.Filled.Send,
-                                    contentDescription = stringResource(sendDescription),
+                                    contentDescription = S(sendDescription),
                                 )
                             }
                         }
                         if (!deliveryDone) {
                             Box {
                                 HelpIconButton(
-                                    label = stringResource(R.string.reader_more),
-                                    help = stringResource(R.string.help_compose_more),
+                                    label = S("More"),
+                                    help = S("The rest of the compose actions."),
                                     page = "writing.html#more",
                                     onClick = { overflow = true },
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = stringResource(R.string.reader_more),
+                                        contentDescription = S("More"),
                                     )
                                 }
                                 DropdownMenu(
@@ -2196,10 +2195,10 @@ private fun ComposeForm(
                                         when (entry) {
                                             is ComposeMenuEntry.Action -> when (entry.action) {
                                                 ComposeBarAction.Postpone -> {
-                                                    val title = stringResource(R.string.compose_postpone)
+                                                    val title = S("Postpone")
                                                     HelpDropdownMenuItem(
                                                         label = title,
-                                                        help = stringResource(R.string.help_menu_compose_postpone),
+                                                        help = S("Saves the message to send later."),
                                                         page = "writing.html",
                                                         text = { Text(title) },
                                                         onClick = {
@@ -2212,10 +2211,10 @@ private fun ComposeForm(
                                             }
                                             ComposeMenuEntry.Divider -> HorizontalDivider()
                                             ComposeMenuEntry.Customize -> {
-                                                val title = stringResource(R.string.toolbar_customize)
+                                                val title = S("Customize toolbar…")
                                                 HelpDropdownMenuItem(
                                                     label = title,
-                                                    help = stringResource(R.string.help_menu_toolbar_customize),
+                                                    help = S("Chooses which actions stay on the bar."),
                                                     page = "writing.html",
                                                     text = { Text(title) },
                                                     onClick = {
@@ -2272,7 +2271,7 @@ private fun ComposeForm(
                     withoutCopy = true
                     sendMessage()
                 }
-            }) { Text(stringResource(R.string.compose_send_without_copy)) }
+            }) { Text(S("Send without saving a copy")) }
         }
         if (
             failure == acceptedNotice ||
@@ -2280,30 +2279,30 @@ private fun ComposeForm(
             stateText == acceptedNotice ||
             stateText == notSentNotice
         ) {
-            TextButton(onClick = onOpenUnsent) { Text(stringResource(R.string.unsent_title)) }
+            TextButton(onClick = onOpenUnsent) { Text(S("Unsent")) }
         }
         val shownFrom = account.withSending(sending)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.reader_from, formatMailbox(shownFrom.displayName, shownFrom.email)),
+                S("From: %1\$s", formatMailbox(shownFrom.displayName, shownFrom.email)),
                 modifier = Modifier.weight(1f),
             )
             val rule = sending?.fromRule
             TextButton(onClick = { fromMenuOpen = true }) {
                 Text(
-                    if (pinnedFrom != null) stringResource(R.string.compose_from_pinned)
-                    else if (rule.isNullOrEmpty() || rule == AccountDefaultRule) stringResource(R.string.compose_from_change)
-                    else stringResource(R.string.compose_from_by_rule, rule),
+                    if (pinnedFrom != null) S("chosen by you")
+                    else if (rule.isNullOrEmpty() || rule == AccountDefaultRule) S("Change")
+                    else S("by rule “%1\$s”", rule),
                 )
             }
             DropdownMenu(expanded = fromMenuOpen, onDismissRequest = { fromMenuOpen = false }) {
                 ObscuredTouchFilter()
                 val froms = (listOf(account.email) + account.altAddresses +
                     knownFroms(accountRules(account), accountDefaultRule(account))).distinctBy { it.trim().lowercase() }
-                val byRules = stringResource(R.string.compose_from_by_rules)
+                val byRules = S("Use sending rules")
                 HelpDropdownMenuItem(
                     label = byRules,
-                    help = stringResource(R.string.help_menu_compose_from_by_rules),
+                    help = S("Chooses From from the rules."),
                     page = "writing.html",
                     text = { Text(byRules) },
                     onClick = { pinnedFrom = null; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
@@ -2311,7 +2310,7 @@ private fun ComposeForm(
                 for (from in froms) {
                     HelpDropdownMenuItem(
                         label = from,
-                        help = stringResource(R.string.help_menu_from_address),
+                        help = S("Uses this address as From."),
                         page = "writing.html",
                         text = { Text(from) },
                         onClick = { pinnedFrom = from; mismatchArmed = false; fromMenuOpen = false; resolveNow(account) },
@@ -2323,14 +2322,14 @@ private fun ComposeForm(
             OutlinedTextField(
                 value = bounceTo,
                 onValueChange = { bounceTo = it },
-                label = { Text(stringResource(R.string.compose_resent_to)) },
+                label = { Text(S("Resent-To")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             TextButton(onClick = {
                 pickerTarget = AddressTarget.Bounce
                 pickerOpen = true
-            }) { Text(stringResource(R.string.compose_address_book)) }
+            }) { Text(S("Address book")) }
             if (pickerOpen) {
                 AddressBookPicker(
                     onPicked = { picked ->
@@ -2339,7 +2338,7 @@ private fun ComposeForm(
                     },
                     onDismiss = { pickerOpen = false },
                 )
-                TextButton(onClick = { pickerOpen = false }) { Text(stringResource(R.string.compose_close)) }
+                TextButton(onClick = { pickerOpen = false }) { Text(S("Close")) }
             }
             TextButton(onClick = {
                 launchLocked {
@@ -2378,7 +2377,7 @@ private fun ComposeForm(
                                 }
                                 val sending = seededCopy(id, false, savedMailbox, recipients, file, uncertain = true)
                                 if (!writeCopy(appContext, sending, accountId, account.unlabeledCharset)) {
-                                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                                    notice = S(appContext, "The copy on this device could not be saved; keep this screen open.")
                                     status = notSentNotice
                                     return@launchLocked false
                                 }
@@ -2391,8 +2390,8 @@ private fun ComposeForm(
                                     val saved = writeCopy(appContext, copy, accountId, account.unlabeledCharset)
                                     held = copy
                                     notice = smtpFailureText(error.text) +
-                                        if (saved) "" else "\n" + appContext.getString(R.string.compose_copy_not_saved)
-                                    status = if (smtpUncertain(error.text)) appContext.getString(R.string.compose_send_uncertain) else notSentNotice
+                                        if (saved) "" else "\n" + S(appContext, "The copy on this device could not be saved; keep this screen open.")
+                                    status = if (smtpUncertain(error.text)) S(appContext, "May have been sent: the connection was lost after the message was handed over. Check Sent before you retry.") else notSentNotice
                                     return@launchLocked false
                                 }
                                 storeAcceptedFlags(listOf(uid))
@@ -2461,7 +2460,7 @@ private fun ComposeForm(
                                         sentName = savedMailbox,
                                         saveCopy = savedMailbox.isNotEmpty(),
                                         draftsName = account.postponedMailbox,
-                                        onNotice = { stagingLeft = appContext.getString(R.string.error_jmap_staging_left, it) },
+                                        onNotice = { stagingLeft = S(appContext, "The staging copy %1\$s could not be removed", it) },
                                         policy = account.tlsPolicy(), accountKey = accountId,
                                     ) }
                                     deleteFailed = joinedNotice(deleteFailed, clearShownCopy(id))
@@ -2471,7 +2470,7 @@ private fun ComposeForm(
                                 } catch (error: CancellationException) {
                                     throw error
                                 } catch (_: DeviceCopyNotSaved) {
-                                    notice = appContext.getString(R.string.compose_copy_not_saved)
+                                    notice = S(appContext, "The copy on this device could not be saved; keep this screen open.")
                                     status = notSentNotice
                                     return@launchLocked false
                                 } catch (error: Exception) {
@@ -2492,12 +2491,12 @@ private fun ComposeForm(
                     }
                     true
                 }
-            }) { Text(stringResource(R.string.compose_bounce)) }
+            }) { Text(S("Bounce")) }
         } else {
             val showCc = copiesOpen || ccText.isNotBlank() || ccBuffer.isNotBlank()
             val showBcc = copiesOpen || bccText.isNotBlank() || bccBuffer.isNotBlank()
             AddressChips(
-                label = stringResource(R.string.compose_to),
+                label = S("To"),
                 stored = toText,
                 buffer = toBuffer,
                 onStored = { toText = it },
@@ -2506,16 +2505,14 @@ private fun ComposeForm(
                 trailing = {
                     TextButton(onClick = { copiesOpen = !copiesOpen }) {
                         Text(
-                            stringResource(
-                                if (copiesOpen) R.string.compose_hide_copies else R.string.compose_show_copies,
-                            ),
+                            if (copiesOpen) S("Hide Cc/Bcc") else S("Cc/Bcc"),
                         )
                     }
                 },
             )
             if (showCc) {
                 AddressChips(
-                    label = stringResource(R.string.compose_cc),
+                    label = S("Cc"),
                     stored = ccText,
                     buffer = ccBuffer,
                     onStored = { ccText = it },
@@ -2525,7 +2522,7 @@ private fun ComposeForm(
             }
             if (showBcc) {
                 AddressChips(
-                    label = stringResource(R.string.compose_bcc),
+                    label = S("Bcc"),
                     stored = bccText,
                     buffer = bccBuffer,
                     onStored = { bccText = it },
@@ -2549,13 +2546,11 @@ private fun ComposeForm(
                     },
                     label = {
                         Text(
-                            stringResource(
-                                if (useReplyTo) {
-                                    R.string.compose_using_reply_to
+                            if (useReplyTo) {
+                                    S("Using Reply-To")
                                 } else {
-                                    R.string.compose_use_reply_to
+                                    S("Use Reply-To?")
                                 },
-                            ),
                         )
                     },
                 )
@@ -2570,13 +2565,13 @@ private fun ComposeForm(
             ) {
                 AssistChip(
                     onClick = {},
-                    label = { Text(stringResource(R.string.compose_plain_only)) },
+                    label = { Text(S("Plain text only")) },
                 )
             }
             OutlinedTextField(
                 value = subject,
                 onValueChange = { subject = it },
-                label = { Text(stringResource(R.string.compose_subject)) },
+                label = { Text(S("Subject")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -2592,18 +2587,18 @@ private fun ComposeForm(
             TextButton(onClick = {
                 pickerTarget = AddressTarget.To
                 pickerOpen = true
-            }) { Text(stringResource(R.string.compose_to_book)) }
+            }) { Text(S("To address book")) }
             if (showCc) {
                 TextButton(onClick = {
                     pickerTarget = AddressTarget.Cc
                     pickerOpen = true
-                }) { Text(stringResource(R.string.compose_cc_book)) }
+                }) { Text(S("Cc address book")) }
             }
             if (showBcc) {
                 TextButton(onClick = {
                     pickerTarget = AddressTarget.Bcc
                     pickerOpen = true
-                }) { Text(stringResource(R.string.compose_bcc_book)) }
+                }) { Text(S("Bcc address book")) }
             }
             if (pickerOpen) {
                 AddressBookPicker(
@@ -2619,10 +2614,10 @@ private fun ComposeForm(
                     },
                     onDismiss = { pickerOpen = false },
                 )
-                TextButton(onClick = { pickerOpen = false }) { Text(stringResource(R.string.compose_close)) }
+                TextButton(onClick = { pickerOpen = false }) { Text(S("Close")) }
             }
             TextButton(onClick = { pickDocuments.launch(arrayOf("*/*")) }) {
-                Text(stringResource(R.string.compose_attach))
+                Text(S("Attach file"))
             }
             for (row in forwardRows) {
                 FilterChip(
@@ -2641,7 +2636,7 @@ private fun ComposeForm(
                         }) {
                             Icon(
                                 Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.compose_remove),
+                                contentDescription = S("Remove"),
                             )
                         }
                     },
@@ -2653,12 +2648,12 @@ private fun ComposeForm(
                 html = !html
                 bodyField = TextFieldValue(converted, TextRange(converted.length))
             }) {
-                Text(stringResource(if (html) R.string.compose_body_html else R.string.compose_body_plain))
+                Text(if (html) S("HTML") else S("Plain"))
             }
             OutlinedTextField(
                 value = bodyField,
                 onValueChange = { bodyField = it },
-                label = { Text(stringResource(R.string.compose_body)) },
+                label = { Text(S("Body")) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -2671,7 +2666,7 @@ private fun ComposeForm(
     if (discardOpen) {
         AlertDialog(
             onDismissRequest = { discardOpen = false },
-            title = { Text(stringResource(R.string.compose_discard_title)) },
+            title = { Text(S("Discard draft?")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -2679,12 +2674,12 @@ private fun ComposeForm(
                         onDone()
                     },
                     modifier = Modifier.testTag("smoke-compose-discard"),
-                ) { Text(stringResource(R.string.unsent_discard)) }
+                ) { Text(S("Discard")) }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = { discardOpen = false }) {
-                        Text(stringResource(R.string.compose_keep_editing))
+                        Text(S("Keep editing"))
                     }
                     TextButton(
                         onClick = {
@@ -2692,7 +2687,7 @@ private fun ComposeForm(
                             postponeDraft()
                         },
                         enabled = account.postponedMailbox.isNotEmpty(),
-                    ) { Text(stringResource(R.string.compose_postpone)) }
+                    ) { Text(S("Postpone")) }
                 }
             },
         )

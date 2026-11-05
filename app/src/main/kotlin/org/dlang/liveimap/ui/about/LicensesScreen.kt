@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.about
+import org.dlang.liveimap.i18n.S
 
 import android.content.res.AssetManager
 import androidx.compose.foundation.horizontalScroll
@@ -17,17 +18,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 
 @Composable
 fun LicensesScreen() {
     val assets = LocalContext.current.assets
-    val unreadable = stringResource(R.string.licenses_unreadable)
+    val unreadable = S("The license text could not be read.")
     var paragraphs by remember { mutableStateOf<List<String>?>(null) }
     var missing by remember { mutableStateOf(false) }
     LaunchedEffect(assets) {

@@ -1,4 +1,6 @@
 package org.dlang.liveimap.ui
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.settings.SettingsTreeGenerated
 
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshots.SnapshotStateMap
@@ -115,7 +117,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.seedCriteria
 import org.dlang.liveimap.session.CertPrompt
 import org.dlang.liveimap.session.ComposeKind
@@ -460,15 +461,14 @@ private fun LiveImapNavHostReady() {
         layoutProblem = if (problem == null) {
             null
         } else {
-            appContext.getString(
-                R.string.pane_layout_problem,
-                appContext.getString(
-                    when (problem) {
-                        org.dlang.liveimap.settings.PaneLayoutProblem.NoMessageList -> R.string.layout_problem_no_list
-                        org.dlang.liveimap.settings.PaneLayoutProblem.Duplicate -> R.string.layout_problem_duplicate
-                        org.dlang.liveimap.settings.PaneLayoutProblem.MessageNotBesideList -> R.string.layout_problem_message
-                    },
-                ),
+            S(
+                appContext,
+                "This layout can't be shown: %1\$s",
+                when (problem) {
+                    org.dlang.liveimap.settings.PaneLayoutProblem.NoMessageList -> S(appContext, "The layout needs a message list. Not saved yet.")
+                    org.dlang.liveimap.settings.PaneLayoutProblem.Duplicate -> S(appContext, "Each panel type can appear only once. Not saved yet.")
+                    org.dlang.liveimap.settings.PaneLayoutProblem.MessageNotBesideList -> S(appContext, "The message panel must share a split with the message list. Not saved yet.")
+                },
             )
         }
         treeDp.clear()
@@ -867,35 +867,35 @@ private fun LiveImapNavHostReady() {
                 )
             }
             composable("toolbar/index") {
-                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
                         ToolbarEditorPage(ToolbarScreen.Index)
                     }
                 }
             }
             composable("toolbar/selection") {
-                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
                         ToolbarEditorPage(ToolbarScreen.Selection)
                     }
                 }
             }
             composable("toolbar/folders") {
-                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
                         ToolbarEditorPage(ToolbarScreen.Folders)
                     }
                 }
             }
             composable("toolbar/reader") {
-                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
                         ToolbarEditorPage(ToolbarScreen.Reader)
                     }
                 }
             }
             composable("toolbar/compose") {
-                UpPage(stringResource(R.string.toolbar_customize), onUp = { navController.popBackStack() }) {
+                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
                     key(ToolbarRevision.value) {
                         ToolbarEditorPage(ToolbarScreen.Compose)
                     }
@@ -974,7 +974,7 @@ private fun LiveImapNavHostReady() {
                 )
             }
             composable("unsent") {
-                UpPage(stringResource(R.string.unsent_title), onUp = { navController.popBackStack() }) {
+                UpPage(S("Unsent"), onUp = { navController.popBackStack() }) {
                     UnsentScreen(
                         onOpenCopy = { id, retry, account ->
                             composeAccount.value = account // F121: retry in the copy's own account
@@ -1031,7 +1031,7 @@ private fun LiveImapNavHostReady() {
                 )
             }
             composable("settings") {
-                UpPage(stringResource(R.string.drawer_settings), onUp = { navController.navigateUp() }) {
+                UpPage(S("Settings"), onUp = { navController.navigateUp() }) {
                     SettingsTree(
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
@@ -1042,7 +1042,7 @@ private fun LiveImapNavHostReady() {
                 }
             }
             composable("settings/accounts") {
-                UpPage(stringResource(R.string.settings_accounts), onUp = { navController.popBackStack() }) {
+                UpPage(stringResource(SettingsTreeGenerated.resource("settings_accounts")), onUp = { navController.popBackStack() }) {
                     SettingsTree(
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
@@ -1061,7 +1061,7 @@ private fun LiveImapNavHostReady() {
             ) { entry ->
                 val accountId = entry.arguments?.getString("accountId").orEmpty()
                 val editorId = entry.arguments?.getString("editorId").orEmpty()
-                UpPage(stringResource(R.string.drawer_settings), onUp = { navController.popBackStack() }) {
+                UpPage(S("Settings"), onUp = { navController.popBackStack() }) {
                     SettingsTree(
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
@@ -1078,7 +1078,7 @@ private fun LiveImapNavHostReady() {
                 arguments = listOf(navArgument("accountId") { type = NavType.StringType }),
             ) { entry ->
                 val accountId = entry.arguments?.getString("accountId").orEmpty()
-                UpPage(stringResource(R.string.settings_account), onUp = { navController.popBackStack() }) {
+                UpPage(stringResource(SettingsTreeGenerated.resource("settings_account")), onUp = { navController.popBackStack() }) {
                     SettingsTree(
                         onCopyContacts = { navController.navigate("contacts") },
                         onEditBook = { navController.navigate("addressbook") },
@@ -1090,39 +1090,39 @@ private fun LiveImapNavHostReady() {
                 }
             }
             composable("folderLists/expanded") {
-                UpPage(stringResource(R.string.settings_expanded_folders), onUp = {
+                UpPage(stringResource(SettingsTreeGenerated.resource("settings_expanded_folders")), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     ExpandedFoldersScreen()
                 }
             }
             composable("folderLists/views") {
-                UpPage(stringResource(R.string.settings_folder_views), onUp = {
+                UpPage(stringResource(SettingsTreeGenerated.resource("settings_folder_views")), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderViewsScreen()
                 }
             }
             composable("folderLists/starts") {
-                UpPage(stringResource(R.string.settings_start_per_folder), onUp = {
+                UpPage(S("Start position per folder"), onUp = {
                     navController.popBackStack("settings", inclusive = false)
                 }) {
                     FolderStartsScreen()
                 }
             }
             composable("addressbook") {
-                UpPage(stringResource(R.string.settings_edit_book), onUp = { navController.popBackStack() }) {
+                UpPage(S("Edit address book"), onUp = { navController.popBackStack() }) {
                     org.dlang.liveimap.ui.contacts.AddressBookScreen()
                 }
             }
             composable("contacts") {
-                UpPage(stringResource(R.string.settings_copy_contacts), onUp = { navController.popBackStack() }) {
+                UpPage(S("Copy contacts"), onUp = { navController.popBackStack() }) {
                     ContactCopyScreen(registerAccount = true)
                 }
             }
             composable("filters") {
                 val accountId = rememberSaveable { filterListAccount.value }
-                UpPage(stringResource(R.string.filter_edit_list), onUp = { navController.popBackStack() }) {
+                UpPage(S("Edit filters"), onUp = { navController.popBackStack() }) {
                     FilterListScreen(accountId = accountId, onOpen = { index, ruleId ->
                         openFilterEditor(index, "", "", "", "", accountId, ruleId)
                     })
@@ -1137,7 +1137,7 @@ private fun LiveImapNavHostReady() {
                 val accountId = rememberSaveable { filterAccountId.value }
                 val ruleId = rememberSaveable { filterRuleId.value }
                 UpPage(
-                    title = stringResource(if (index < 0) R.string.filter_add else R.string.filter_edit),
+                    title = if (index < 0) S("Add filter") else S("Edit filter"),
                     onUp = { navController.popBackStack() },
                 ) {
                     FilterEditorScreen(
@@ -1150,17 +1150,17 @@ private fun LiveImapNavHostReady() {
                 }
             }
             composable("help") {
-                UpPage(stringResource(R.string.help_title), onUp = { navController.navigateUp() }) {
+                UpPage(S("Help"), onUp = { navController.navigateUp() }) {
                     HelpScreen()
                 }
             }
             composable("about") {
-                UpPage(stringResource(R.string.about_title), onUp = { navController.navigateUp() }) {
+                UpPage(S("About"), onUp = { navController.navigateUp() }) {
                     AboutScreen(onOpenLicenses = { navController.navigate("about/licenses") })
                 }
             }
             composable("about/licenses") {
-                UpPage(stringResource(R.string.about_licenses), onUp = {
+                UpPage(S("Open-source licenses"), onUp = {
                     navController.popBackStack("about", inclusive = false)
                 }) {
                     LicensesScreen()
@@ -1423,8 +1423,8 @@ private fun LiveImapNavHostReady() {
     @Composable
     fun BoxScope.ComposeFab(modifier: Modifier = Modifier) {
         HelpExtendedFab(
-            label = stringResource(R.string.screen_compose),
-            help = stringResource(R.string.help_screen_compose),
+            label = S("Compose"),
+            help = S("Starts a new message."),
             page = "writing.html",
             onClick = {
                 val ids = screenAccounts.ids()
@@ -1447,7 +1447,7 @@ private fun LiveImapNavHostReady() {
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Edit,
-                    contentDescription = stringResource(R.string.screen_compose),
+                    contentDescription = S("Compose"),
                 )
             },
         )
@@ -1594,7 +1594,7 @@ private fun LiveImapNavHostReady() {
                         navController.navigate("settings/account/$id/editor/paneLayout")
                     }
                 }) {
-                    Text(stringResource(R.string.pane_layout_edit))
+                    Text(S("Edit layout"))
                 }
             }
         }
@@ -1661,17 +1661,15 @@ private fun LiveImapNavHostReady() {
                 onDismissRequest = decline,
                 title = {
                     Text(
-                        stringResource(
-                            if (changed) R.string.cert_changed_title else R.string.cert_trust_title,
-                        ),
+                        if (changed) S("This certificate changed") else S("Trust this certificate?"),
                     )
                 },
                 text = {
                     Column(Modifier.verticalScroll(rememberScrollState())) {
-                        if (changed) Text(stringResource(R.string.cert_changed_body))
+                        if (changed) Text(S("The certificate is not the one pinned for this account."))
                         // F76: the reason and the fingerprint first; sender-chosen names after, cleaned and cut.
                         Text(
-                            stringResource(R.string.cert_reason, certDisplayText(pendingCert.prompt.reason)),
+                            S("Problem: %1\$s", certDisplayText(pendingCert.prompt.reason)),
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         )
                         Text(certDisplayText(pendingCert.prompt.fingerprint, 200))
@@ -1684,8 +1682,7 @@ private fun LiveImapNavHostReady() {
                 confirmButton = {
                     TextButton(onClick = { pendingCert.resume(true) }) {
                         Text(
-                            stringResource(
-                                R.string.cert_trust_confirm,
+                            S("Trust this certificate for %1\$s",
                                 "${pendingCert.prompt.host}:${pendingCert.prompt.port}",
                             ),
                         )
@@ -1693,7 +1690,7 @@ private fun LiveImapNavHostReady() {
                 },
                 dismissButton = {
                     TextButton(onClick = decline) {
-                        Text(stringResource(R.string.cert_trust_decline))
+                        Text(S("Don't trust"))
                     }
                 },
             )
@@ -1705,16 +1702,16 @@ private fun LiveImapNavHostReady() {
             }
             AlertDialog(
                 onDismissRequest = decline,
-                title = { Text(stringResource(R.string.plaintext_auth_title)) },
-                text = { Text(stringResource(R.string.plaintext_auth_body)) },
+                title = { Text(S("Send the password in the clear?")) },
+                text = { Text(S("This connection is not encrypted. The password will be sent in the clear.")) },
                 confirmButton = {
                     TextButton(onClick = { pendingPlain(true) }) {
-                        Text(stringResource(R.string.plaintext_auth_confirm))
+                        Text(S("Send the password"))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = decline) {
-                        Text(stringResource(R.string.plaintext_auth_decline))
+                        Text(S("Don't send"))
                     }
                 },
             )
@@ -1726,10 +1723,10 @@ private fun LiveImapNavHostReady() {
         if (listed != null && composeChoice == ComposeButton.Pick) {
             AlertDialog(
                 onDismissRequest = { composeAccounts = null },
-                title = { Text(stringResource(R.string.screen_compose)) },
+                title = { Text(S("Compose")) },
                 text = {
                     if (listed.isEmpty()) {
-                        Text(stringResource(R.string.folders_no_account))
+                        Text(S("No mail account yet"))
                     } else {
                         Column(Modifier.verticalScroll(rememberScrollState())) {
                             for (account in listed) {
@@ -1756,7 +1753,7 @@ private fun LiveImapNavHostReady() {
                 },
                 confirmButton = {
                     TextButton(onClick = { composeAccounts = null }) {
-                        Text(stringResource(R.string.drawer_cancel))
+                        Text(S("Cancel"))
                     }
                 },
             )
@@ -1791,7 +1788,7 @@ private fun ColumnScope.DrawerSheetContent(
     onHelp: () -> Unit,
     onAbout: () -> Unit,
 ) {
-    val postponedDescription = stringResource(R.string.drawer_postponed)
+    val postponedDescription = S("Postponed")
     if (blocks.isEmpty()) {
         // David's drawer rule: tapping the account name opens its full folder list.
         Text(
@@ -1803,7 +1800,7 @@ private fun ColumnScope.DrawerSheetContent(
                 .testTag("drawer-account-name"),
         )
         NavigationDrawerItem(
-            label = { Text(stringResource(R.string.drawer_inbox)) },
+            label = { Text(S("INBOX")) },
             selected = false,
             onClick = { UnsavedEdits.guard(onInbox) },
         )
@@ -1818,12 +1815,12 @@ private fun ColumnScope.DrawerSheetContent(
         }
         if (showFilters) {
             NavigationDrawerItem(
-                label = { Text(stringResource(R.string.filter_add)) },
+                label = { Text(S("Add filter")) },
                 selected = false,
                 onClick = { UnsavedEdits.guard(onAddFilter) },
             )
             NavigationDrawerItem(
-                label = { Text(stringResource(R.string.filter_edit_list)) },
+                label = { Text(S("Edit filters")) },
                 selected = false,
                 onClick = { UnsavedEdits.guard(onEditFilters) },
             )
@@ -1861,14 +1858,14 @@ private fun ColumnScope.DrawerSheetContent(
             )
             if (account.corrupt) {
                 Text(
-                    text = stringResource(R.string.settings_account_corrupt),
+                    text = S("This account's settings could not be read."),
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
                         .testTag("drawer-account-corrupt"),
                 )
             }
             NavigationDrawerItem(
-                label = { Text(stringResource(R.string.drawer_inbox)) },
+                label = { Text(S("INBOX")) },
                 selected = false,
                 onClick = { UnsavedEdits.guard { onAccountInbox(account) } },
             )
@@ -1904,12 +1901,12 @@ private fun ColumnScope.DrawerSheetContent(
         }
         if (showFilters) {
             NavigationDrawerItem(
-                label = { Text(stringResource(R.string.filter_add)) },
+                label = { Text(S("Add filter")) },
                 selected = false,
                 onClick = { UnsavedEdits.guard(onAddFilter) },
             )
             NavigationDrawerItem(
-                label = { Text(stringResource(R.string.filter_edit_list)) },
+                label = { Text(S("Edit filters")) },
                 selected = false,
                 onClick = { UnsavedEdits.guard(onEditFilters) },
             )
@@ -1917,22 +1914,22 @@ private fun ColumnScope.DrawerSheetContent(
     }
     HorizontalDivider()
     NavigationDrawerItem(
-        label = { Text(stringResource(R.string.drawer_settings)) },
+        label = { Text(S("Settings")) },
         selected = false,
         onClick = { UnsavedEdits.guard(onSettings) },
     )
     NavigationDrawerItem(
-        label = { Text(stringResource(R.string.drawer_manage_addresses)) },
+        label = { Text(S("Manage addresses")) },
         selected = false,
         onClick = { UnsavedEdits.guard(onManageAddresses) },
     )
     NavigationDrawerItem(
-        label = { Text(stringResource(R.string.help_title)) },
+        label = { Text(S("Help")) },
         selected = false,
         onClick = { UnsavedEdits.guard(onHelp) },
     )
     NavigationDrawerItem(
-        label = { Text(stringResource(R.string.about_title)) },
+        label = { Text(S("About")) },
         selected = false,
         onClick = { UnsavedEdits.guard(onAbout) },
     )
@@ -1951,7 +1948,7 @@ internal fun FavoriteEditDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.drawer_favorite)) },
+        title = { Text(S("Favorite")) },
         text = {
             Column {
                 // F121: which account and server, and the folder's full path, so same-named folders are told apart
@@ -1963,21 +1960,21 @@ internal fun FavoriteEditDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = onName,
-                    label = { Text(stringResource(R.string.drawer_name)) },
+                    label = { Text(S("Name")) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
         confirmButton = {
             Column {
-                TextButton(onClick = onMoveUp) { Text(stringResource(R.string.drawer_move_up)) }
-                TextButton(onClick = onMoveDown) { Text(stringResource(R.string.drawer_move_down)) }
-                TextButton(onClick = onSave) { Text(stringResource(R.string.drawer_save)) }
-                TextButton(onClick = onDelete) { Text(stringResource(R.string.drawer_delete)) }
+                TextButton(onClick = onMoveUp) { Text(S("Move up")) }
+                TextButton(onClick = onMoveDown) { Text(S("Move down")) }
+                TextButton(onClick = onSave) { Text(S("Save")) }
+                TextButton(onClick = onDelete) { Text(S("Delete")) }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.drawer_cancel)) }
+            TextButton(onClick = onDismiss) { Text(S("Cancel")) }
         },
     )
 }
@@ -2063,9 +2060,9 @@ private fun DragSplit(
         val spanNow = rememberUpdatedState(span)
         val density = LocalDensity.current
         val densityNow = rememberUpdatedState(density)
-        val label = stringResource(R.string.pane_resize)
-        val wider = stringResource(R.string.pane_wider)
-        val narrower = stringResource(R.string.pane_narrower)
+        val label = S("Resize pane")
+        val wider = S("Wider")
+        val narrower = S("Narrower")
         Box(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxSize()) {
                 if (width > 0.dp) {
@@ -2141,9 +2138,9 @@ private fun StackSplit(
         val spanNow = rememberUpdatedState(span)
         val density = LocalDensity.current
         val densityNow = rememberUpdatedState(density)
-        val label = stringResource(R.string.pane_resize)
-        val taller = stringResource(R.string.pane_taller)
-        val shorter = stringResource(R.string.pane_shorter)
+        val label = S("Resize pane")
+        val taller = S("Taller")
+        val shorter = S("Shorter")
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 if (height > 0.dp) {
@@ -2269,7 +2266,7 @@ private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> U
                         IconButton(onClick = up) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.scaffold_up),
+                                contentDescription = S("Navigate up"),
                             )
                         }
                     },

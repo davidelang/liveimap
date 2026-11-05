@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings
+import org.dlang.liveimap.i18n.S
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
@@ -104,7 +105,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -134,7 +134,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -956,12 +955,12 @@ internal fun LoadCheckDialog() {
     if (pending != null && (pending.extras.isNotEmpty() || pending.moves.isNotEmpty())) {
         AlertDialog(
             onDismissRequest = {},
-            title = { Text(stringResource(R.string.settings_load_check_title)) },
+            title = { Text(S("Stored settings")) },
             text = {
                 Column {
                     if (pending.warning.isNotEmpty()) Text(pending.warning)
                     if (pending.extras.isNotEmpty()) {
-                        Text(stringResource(R.string.settings_extra_keys))
+                        Text(S("These stored keys are not in this version. Remove them?"))
                         Text(pending.extras.joinToString("\n") { extra -> extra.blob + " " + extra.key })
                     }
                     for (move in pending.moves) {
@@ -977,12 +976,12 @@ internal fun LoadCheckDialog() {
             },
             confirmButton = {
                 Button(onClick = { scope.launch { SettingsHub.answer(context, true, picks) } }) {
-                    Text(stringResource(R.string.settings_remove_extras))
+                    Text(S("Remove"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { scope.launch { SettingsHub.answer(context, false, picks) } }) {
-                    Text(stringResource(R.string.settings_keep_extras))
+                    Text(S("Keep"))
                 }
             },
         )
@@ -990,21 +989,21 @@ internal fun LoadCheckDialog() {
     if (notice == "default-cleared") {
         AlertDialog(
             onDismissRequest = { SettingsHub.clearNotice() },
-            title = { Text(stringResource(R.string.settings_default_cleared)) },
+            title = { Text(S("The default account was removed. Choose an account.")) },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
-                    Text(stringResource(R.string.settings_ok))
+                    Text(S("OK"))
                 }
             },
         )
     } else if (!notice.isNullOrEmpty()) {
         AlertDialog(
             onDismissRequest = { SettingsHub.clearNotice() },
-            title = { Text(stringResource(R.string.settings_load_check_title)) },
+            title = { Text(S("Stored settings")) },
             text = { Text(notice ?: "") },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
-                    Text(stringResource(R.string.settings_ok))
+                    Text(S("OK"))
                 }
             },
         )
@@ -1027,7 +1026,7 @@ internal fun rememberSettingsGate(): String? {
 internal fun accountDeleteError(editor: SettingsEditor): String? {
     val name = editor.deleteFailedName ?: return null
     val step = editor.deleteStep ?: return null
-    return stringResource(R.string.account_delete_failed, name, step)
+    return S("%1\$s could not be deleted (step %2\$d).", name, step)
 }
 
 @Composable
@@ -1165,7 +1164,7 @@ fun SettingsTree(
             PolicyDialog(editor)
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
                 TextButton(onClick = { onNavigate("settings/setup?accountId=$accountId") }) {
-                    Text(stringResource(R.string.setup_help))
+                    Text(S("Set up this account again"))
                 }
             }
             val roots = installedSettingsRoots()
@@ -1248,7 +1247,7 @@ fun SettingsTree(
                 ),
                 modifier = Modifier.padding(16.dp).testTag("settings-save"),
             ) {
-                Text(stringResource(R.string.settings_save))
+                Text(S("Save"))
             }
         }
     }
@@ -1464,7 +1463,7 @@ internal fun PolicyDialog(editor: SettingsEditor) {
     var picks by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     AlertDialog(
         onDismissRequest = { editor.policy = emptyList() },
-        title = { Text(stringResource(R.string.settings_policy_title)) },
+        title = { Text(S("Review these settings")) },
         text = {
             Column {
                 for (line in lines) {
@@ -1490,18 +1489,18 @@ internal fun PolicyDialog(editor: SettingsEditor) {
                 editor.persist(next)
                 editor.policy = emptyList()
                 saveSettingsPage(editor, null, "policy-clean", bypassPolicy = true)
-            }) { Text(stringResource(R.string.settings_policy_clean)) }
+            }) { Text(S("Clean")) }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = { editor.policy = emptyList() }) {
-                    Text(stringResource(R.string.settings_keep_editing))
+                    Text(S("Keep editing"))
                 }
                 TextButton(onClick = {
                     ScopePicks.chosen = emptyMap()
                     editor.policy = emptyList()
                     saveSettingsPage(editor, null, "policy-anyway", bypassPolicy = true)
-                }) { Text(stringResource(R.string.settings_check_save_anyway)) }
+                }) { Text(S("Save anyway")) }
             }
         },
     )
@@ -1645,13 +1644,13 @@ internal fun groupFooter(title: String, depth: Int, walk: SettingsWalk) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     androidx.compose.material3.CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(stringResource(R.string.settings_checking_server), Modifier.padding(start = 12.dp))
+                    Text(S("Checking server…"), Modifier.padding(start = 12.dp))
                 }
             }
             if (drafts != null && drafts.hasDraft) {
                 androidx.compose.foundation.layout.Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     TextButton(onClick = { drafts.discard() }) {
-                        Text(stringResource(R.string.settings_discard))
+                        Text(S("Discard changes"))
                     }
                 }
             }
@@ -1659,7 +1658,7 @@ internal fun groupFooter(title: String, depth: Int, walk: SettingsWalk) {
         "Sending" -> {
             sendingProblem(settings)?.let { res ->
                 Text(
-                    stringResource(res),
+                    S(res),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("no-way-to-send"),
                 )
@@ -1668,18 +1667,18 @@ internal fun groupFooter(title: String, depth: Int, walk: SettingsWalk) {
         "Logging" -> LoggingExtras(editor)
         "Layout" -> {
             SettingsNode(
-                title = stringResource(R.string.settings_panels),
+                title = S("Panels"),
                 depth = depth,
-                summary = stringResource(R.string.settings_panels),
+                summary = S("Panels"),
                 expanded = "panels" in walk.sections.open,
                 onToggle = { walk.sections.toggle("panels") },
             ) {
                 val accountId = editor.editingId.orEmpty()
-                OpenRow(stringResource(R.string.settings_panel_index)) { walk.onOpenPanel("index", accountId) }
-                OpenRow(stringResource(R.string.settings_panel_selection)) { walk.onOpenPanel("selection", accountId) }
-                OpenRow(stringResource(R.string.settings_panel_folders)) { walk.onOpenPanel("folders", accountId) }
-                OpenRow(stringResource(R.string.settings_panel_reader)) { walk.onOpenPanel("reader", accountId) }
-                OpenRow(stringResource(R.string.settings_panel_compose)) { walk.onOpenPanel("compose", accountId) }
+                OpenRow(S("Index toolbar")) { walk.onOpenPanel("index", accountId) }
+                OpenRow(S("Selection toolbar")) { walk.onOpenPanel("selection", accountId) }
+                OpenRow(S("Folder toolbar")) { walk.onOpenPanel("folders", accountId) }
+                OpenRow(stringResource(SettingsTreeGenerated.resource("settings_panel_reader"))) { walk.onOpenPanel("reader", accountId) }
+                OpenRow(stringResource(SettingsTreeGenerated.resource("settings_panel_compose"))) { walk.onOpenPanel("compose", accountId) }
             }
             Button(
                 onClick = {
@@ -1691,12 +1690,12 @@ internal fun groupFooter(title: String, depth: Int, walk: SettingsWalk) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.settings_change_layout))
+                Text(S("Change layout"))
             }
         }
         "Address book" -> {
-            OpenRow(stringResource(R.string.settings_copy_contacts), walk.onCopyContacts)
-            OpenRow(stringResource(R.string.settings_edit_book), walk.onEditBook)
+            OpenRow(S("Copy contacts"), walk.onCopyContacts)
+            OpenRow(S("Edit address book"), walk.onEditBook)
         }
     }
 }
@@ -1706,8 +1705,8 @@ internal fun LoggingExtras(editor: SettingsEditor) {
     var reportLines by remember { mutableStateOf<List<String>?>(null) }
     var confirmShareLog by remember { mutableStateOf(false) }
     val contextState = rememberUpdatedState(LocalContext.current)
-    Text(stringResource(R.string.settings_log_note))
-    TextButton(onClick = { confirmShareLog = true }) { Text(stringResource(R.string.settings_share_log)) }
+    Text(S("Commands and server replies are written to this account's traffic log. Login data is replaced by its length; nothing else is hidden."))
+    TextButton(onClick = { confirmShareLog = true }) { Text(S("Share log")) }
     TextButton(onClick = {
         val device = listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
         reportLines = TrafficLog.debugReport(
@@ -1718,12 +1717,12 @@ internal fun LoggingExtras(editor: SettingsEditor) {
             settings = editor.settings,
             traffic = editor.editingId?.let { trafficText(editor.appContext.cacheDir, it) } ?: "",
         ).lines()
-    }) { Text(stringResource(R.string.settings_debug_report)) }
+    }) { Text(S("Debug report")) }
     if (confirmShareLog) {
         AlertDialog(
             onDismissRequest = { confirmShareLog = false },
-            title = { Text(stringResource(R.string.settings_share_log)) },
-            text = { Text(stringResource(R.string.traffic_share_warning)) },
+            title = { Text(S("Share log")) },
+            text = { Text(S("Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail.")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmShareLog = false
@@ -1733,10 +1732,10 @@ internal fun LoggingExtras(editor: SettingsEditor) {
                     } else if (id != null) {
                         android.util.Log.w("LiveIMAP", "traffic directory refused for $id")
                     }
-                }) { Text(stringResource(R.string.traffic_share_anyway)) }
+                }) { Text(S("Share anyway")) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmShareLog = false }) { Text(stringResource(R.string.debug_dismiss)) }
+                TextButton(onClick = { confirmShareLog = false }) { Text(S("Dismiss")) }
             },
         )
     }
@@ -1753,8 +1752,8 @@ internal fun LoggingExtras(editor: SettingsEditor) {
 @Composable
 internal fun SpecialFolderLeaveWarning(editor: SettingsEditor) {
     val leaveContext = LocalContext.current
-    val sentLabel = stringResource(R.string.settings_sent_mailbox)
-    val postponedLabel = stringResource(R.string.settings_postponed_mailbox)
+    val sentLabel = stringResource(SettingsTreeGenerated.resource("settings_sent_mailbox"))
+    val postponedLabel = stringResource(SettingsTreeGenerated.resource("settings_postponed_mailbox"))
     val latest = rememberUpdatedState(editor.settings)
     DisposableEffect(Unit) {
         onDispose {
@@ -1764,7 +1763,7 @@ internal fun SpecialFolderLeaveWarning(editor: SettingsEditor) {
             if (unset.isNotEmpty()) {
                 android.widget.Toast.makeText(
                     leaveContext,
-                    leaveContext.getString(R.string.settings_special_unset_warning, unset.joinToString(", ")),
+                    S(leaveContext, "Not set: %1\$s. Mail still works; nothing is saved to these folders.", unset.joinToString(", ")),
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
             }
@@ -1775,10 +1774,10 @@ internal fun SpecialFolderLeaveWarning(editor: SettingsEditor) {
 @Composable
 internal fun PasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
     if (editor.passwordMissing && drafts.passwordDraft == null && editor.password.isEmpty()) {
-        Text(stringResource(R.string.error_password_missing))
+        Text(S("Password missing"))
     }
     LineField(
-        stringResource(R.string.settings_password),
+        S("Password"),
         drafts.passwordDraft ?: editor.password,
         KeyboardType.Password,
         password = true,
@@ -1791,11 +1790,11 @@ internal fun PasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts) {
 @Composable
 internal fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts, ready: Boolean, enabled: Boolean) {
     if (editor.smtpMissing && drafts.smtpPasswordDraft == null && editor.smtpPassword.isEmpty()) {
-        Text(stringResource(R.string.error_password_missing))
+        Text(S("Password missing"))
     }
-    Text(stringResource(R.string.settings_smtp_password_hint))
+    Text(S("Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP password\" is ticked."))
     LineField(
-        stringResource(R.string.settings_smtp_password),
+        stringResource(SettingsTreeGenerated.resource("settings_smtp_password")),
         drafts.smtpPasswordDraft ?: editor.smtpPassword,
         KeyboardType.Password,
         password = true,
@@ -1811,7 +1810,7 @@ internal fun ShowUnreadLeaf(editor: SettingsEditor) {
     var warnUnread by remember { mutableStateOf(false) }
     BackHandler(enabled = warnUnread) { warnUnread = false }
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_show_unread), settings.showUnreadCounts || warnUnread) { enabled ->
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_show_unread")), settings.showUnreadCounts || warnUnread) { enabled ->
         if (enabled) {
             warnUnread = true
         } else {
@@ -1822,15 +1821,15 @@ internal fun ShowUnreadLeaf(editor: SettingsEditor) {
     if (warnUnread) {
         AlertDialog(
             onDismissRequest = { warnUnread = false },
-            text = { Text(stringResource(R.string.settings_unread_warn)) },
+            text = { Text(S("Counting unread messages asks the server for an unseen count for every mailbox in the list, and a large mailbox can make the folder list slow.")) },
             confirmButton = {
                 TextButton(onClick = {
                     warnUnread = false
                     editor.persist(editor.settings.copy(showUnreadCounts = true))
-                }) { Text(stringResource(R.string.settings_confirm)) }
+                }) { Text(S("Confirm")) }
             },
             dismissButton = {
-                TextButton(onClick = { warnUnread = false }) { Text(stringResource(R.string.settings_dismiss)) }
+                TextButton(onClick = { warnUnread = false }) { Text(S("Dismiss")) }
             },
         )
     }
@@ -1840,7 +1839,7 @@ internal fun ShowUnreadLeaf(editor: SettingsEditor) {
 @Composable
 internal fun DsnChoices(editor: SettingsEditor) {
     val settings = editor.settings
-    Text(stringResource(R.string.settings_dsn))
+    Text(stringResource(SettingsTreeGenerated.resource("settings_dsn")))
     FlowRow {
         for (mode in org.dlang.liveimap.ui.compose.DsnMode.entries) {
             FilterChip(
@@ -1965,9 +1964,10 @@ internal fun rowFor(leaf: TreeLeaf, walk: SettingsWalk) {
 
 @Composable
 internal fun EditorEntry(node: TreeNode.Editor, walk: SettingsWalk) {
-    val title = SettingsTreeGenerated.resource(node.title).takeIf { it != 0 } ?: R.string.drawer_settings
+    val titled = SettingsTreeGenerated.resource(node.title)
+    val title = if (titled != 0) stringResource(titled) else S("Settings")
     if (node.editor == "toolbars") {
-        OpenRow(stringResource(R.string.settings_toolbars)) { walk.onOpenPanel("index", "") }
+        OpenRow(S("Toolbars")) { walk.onOpenPanel("index", "") }
         return
     }
     if (node.editor == "accountList" && walk.editor.accounts.isEmpty() && !walk.settingsScroll) {
@@ -1988,7 +1988,7 @@ internal fun EditorEntry(node: TreeNode.Editor, walk: SettingsWalk) {
         )
         return
     }
-    OpenRow(stringResource(title)) {
+    OpenRow(title) {
         if (node.editor == "accountList") {
             walk.onNavigate("settings/accounts")
         } else {
@@ -2095,7 +2095,7 @@ internal fun PasswordRow(key: String, walk: SettingsWalk) {
         "smtpPassword" -> if (drafts != null) SmtpPasswordDraftField(editor, drafts, editor.ready, true)
         "sievePassword" -> {
             if (editor.sievePassword.isEmpty() && !editor.creating && editor.editingId != null) {
-                Text(stringResource(R.string.error_password_missing))
+                Text(S("Password missing"))
             }
             LineField(
                 stringResource(SettingsTreeGenerated.regTitle(key)),
@@ -2187,14 +2187,14 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
     }
     Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     if (accountScope) {
-        BoolField(stringResource(R.string.settings_include_passwords), includePasswords) { includePasswords = it }
+        BoolField(S("Include passwords in the export"), includePasswords) { includePasswords = it }
     }
     Row {
         TextButton(onClick = { import.launch(arrayOf("application/json", "text/*", "*/*")) }) {
-            Text(stringResource(R.string.settings_import))
+            Text(S("Import"))
         }
         TextButton(onClick = { export.launch(if (accountScope) "account-settings.json" else "ui-settings.json") }) {
-            Text(stringResource(R.string.settings_export))
+            Text(S("Export"))
         }
     }
 }
@@ -2396,13 +2396,13 @@ internal fun row_settingsOpensOn(walk: SettingsWalk) {
     val editor = walk.editor
     val current = editor.settings.settingsOpensOn.ifEmpty { "drawer" }
     ChoiceField(
-        stringResource(R.string.setting_settingsOpensOn_title),
+        stringResource(SettingsTreeGenerated.resource("setting_settingsOpensOn_title")),
         listOf("drawer", "lastEdited"),
         current,
         { picked ->
             stringResource(
-                if (picked == "lastEdited") R.string.setting_settingsOpensOn_lastEdited
-                else R.string.setting_settingsOpensOn_drawer,
+                if (picked == "lastEdited") SettingsTreeGenerated.resource("setting_settingsOpensOn_lastEdited")
+                else SettingsTreeGenerated.resource("setting_settingsOpensOn_drawer"),
             )
         },
     ) { picked ->
@@ -2442,7 +2442,7 @@ internal fun row_androidContactsCacheSeconds(walk: SettingsWalk) {
 internal fun row_friendlyName(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_friendly_name), settings.friendlyName, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_friendly_name")), settings.friendlyName, ready = editor.ready) {
         editor.persist(editor.settings.copy(friendlyName = it))
     }
 }
@@ -2451,7 +2451,7 @@ internal fun row_friendlyName(walk: SettingsWalk) {
 internal fun row_email(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_email), settings.email, KeyboardType.Email, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_email")), settings.email, KeyboardType.Email, ready = editor.ready) {
         editor.persist(editor.settings.copy(email = it))
     }
 }
@@ -2460,7 +2460,7 @@ internal fun row_email(walk: SettingsWalk) {
 internal fun row_displayName(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_display_name), settings.displayName, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_display_name")), settings.displayName, ready = editor.ready) {
         editor.persist(editor.settings.copy(displayName = it))
     }
 }
@@ -2470,7 +2470,7 @@ internal fun row_altAddresses(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        stringResource(R.string.settings_alt_addresses),
+        stringResource(SettingsTreeGenerated.resource("settings_alt_addresses")),
         settings.altAddresses.joinToString(", "),
         ready = editor.ready,
     ) { text ->
@@ -2485,10 +2485,10 @@ internal fun row_jmapFolders(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_mail_access),
+        stringResource(SettingsTreeGenerated.resource("settings_mail_access")),
         listOf(false, true),
         settings.jmapFolders,
-        { stringResource(if (it) R.string.settings_access_jmap else R.string.settings_access_imap) },
+        { stringResource(if (it) SettingsTreeGenerated.resource("settings_access_jmap") else SettingsTreeGenerated.resource("settings_access_imap")) },
     ) { jmap -> editor.persist(withMailAccess(editor.settings, jmap)) }
 }
 
@@ -2500,14 +2500,14 @@ internal fun row_imapHost(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     if (settings.jmapFolders) {
-        LineField(stringResource(R.string.settings_jmap_host), server.imapHost, ready = editor.ready) {
+        LineField(stringResource(SettingsTreeGenerated.resource("settings_jmap_host")), server.imapHost, ready = editor.ready) {
             if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapHost = it))
         }
         if (server.imapHost.trim().startsWith("http://", ignoreCase = true)) {
-            Text(stringResource(R.string.settings_jmap_plain_http_warning), color = MaterialTheme.colorScheme.error)
+            Text(S("Plain http: your password and mail travel unencrypted."), color = MaterialTheme.colorScheme.error)
         }
     } else {
-        LineField(stringResource(R.string.settings_imap_host), server.imapHost, ready = editor.ready) {
+        LineField(stringResource(SettingsTreeGenerated.resource("settings_imap_host")), server.imapHost, ready = editor.ready) {
             if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapHost = it))
         }
     }
@@ -2520,7 +2520,7 @@ internal fun row_imapPort(walk: SettingsWalk) {
     val settings = editor.settings
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
-    PortField(stringResource(R.string.settings_imap_port), server.imapPort, ready = editor.ready) {
+    PortField(stringResource(SettingsTreeGenerated.resource("settings_imap_port")), server.imapPort, ready = editor.ready) {
         if (drafts != null) drafts.userServerSave(editor, (drafts.serverDraft ?: editor.settings).copy(imapPort = it))
     }
 }
@@ -2531,7 +2531,7 @@ internal fun row_username(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     val drafts = walk.drafts
-    LineField(stringResource(R.string.settings_username), settings.username, ready = editor.ready) { draft ->
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_username")), settings.username, ready = editor.ready) { draft ->
         editor.persist(
             editor.settings.copy(
                 username = draft,
@@ -2549,7 +2549,7 @@ internal fun row_tlsMode(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     ChoiceField(
-        stringResource(R.string.settings_tls),
+        stringResource(SettingsTreeGenerated.resource("settings_tls")),
         TlsMode.entries,
         server.tlsMode,
         { tlsName(it) },
@@ -2566,9 +2566,9 @@ internal fun row_allowPlaintextAuth(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     BoolField(
-        stringResource(R.string.settings_allow_plaintext),
+        S("Allow a clear-text password"),
         server.allowPlaintextAuth,
-        note = stringResource(R.string.settings_allow_plaintext_note),
+        note = S("On a connection that is not encrypted, LiveIMAP asks before sending the password. SCRAM and CRAM-MD5 do not ask."),
     ) { enabled ->
         if (drafts != null) drafts.userServerSave(editor, server.copy(allowPlaintextAuth = enabled))
     }
@@ -2582,9 +2582,9 @@ internal fun row_acceptInvalidCert(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     BoolField(
-        stringResource(R.string.settings_accept_invalid_cert),
+        stringResource(SettingsTreeGenerated.resource("settings_accept_invalid_cert")),
         server.acceptInvalidCert,
-        note = stringResource(R.string.settings_accept_invalid_cert_note),
+        note = S("Warning: connects even when the server certificate fails validation (wrong name, expired, untrusted or changed), like pine /novalidate-cert. Anyone on the network path can then read your mail and password. Off by default."),
     ) { enabled ->
         if (drafts != null) drafts.userServerSave(editor, server.copy(acceptInvalidCert = enabled))
     }
@@ -2598,9 +2598,9 @@ internal fun row_allowOldTls(walk: SettingsWalk) {
     val drafts = walk.drafts
     val server = drafts?.serverDraft ?: settings
     BoolField(
-        stringResource(R.string.settings_allow_old_tls),
+        S("Allow old TLS and weak keys"),
         server.allowOldTls,
-        note = stringResource(R.string.settings_allow_old_tls_note),
+        note = S("Warning: allows TLS 1.0 and 1.1, small Diffie-Hellman keys and legacy ciphers for this account only. These can be broken; use only for an old server you cannot upgrade. Off by default."),
     ) { enabled ->
         if (drafts != null) drafts.userServerSave(editor, server.copy(allowOldTls = enabled))
     }
@@ -2611,7 +2611,7 @@ internal fun row_authMechanism(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_auth_mechanism), settings.authMechanism, ready = editor.ready) {
+    LineField(S("Login method (blank = automatic; IMAP-LOGIN for the LOGIN command; PLAIN, LOGIN, CRAM-MD5, SCRAM-SHA-256…)"), settings.authMechanism, ready = editor.ready) {
         editor.persist(editor.settings.copy(authMechanism = it.trim().uppercase()))
     }
 }
@@ -2633,11 +2633,11 @@ internal fun row_certPin(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     if (settings.certPin.isBlank()) {
-        Text(stringResource(R.string.settings_cert_pin_none))
+        Text(S("No certificate is pinned."))
     } else {
         Text(settings.certPin)
         TextButton(onClick = { editor.persist(editor.settings.copy(certPin = "")) }) {
-            Text(stringResource(R.string.settings_cert_pin_clear))
+            Text(S("Clear pin"))
         }
     }
 }
@@ -2648,11 +2648,11 @@ internal fun row_jmapCertPin(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     if (settings.jmapCertPin.isBlank()) {
-        Text(stringResource(R.string.settings_jmap_cert_pin_none))
+        Text(S("No JMAP certificate is pinned."))
     } else {
         Text(settings.jmapCertPin)
         TextButton(onClick = { editor.persist(editor.settings.copy(jmapCertPin = "")) }) {
-            Text(stringResource(R.string.settings_jmap_cert_pin_clear))
+            Text(S("Clear JMAP pin"))
         }
     }
 }
@@ -2661,7 +2661,7 @@ internal fun row_jmapCertPin(walk: SettingsWalk) {
 internal fun row_pipelineCommands(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_pipeline), settings.pipelineCommands) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_pipeline")), settings.pipelineCommands) {
         editor.persist(editor.settings.copy(pipelineCommands = it))
     }
 }
@@ -2671,9 +2671,9 @@ internal fun row_emailSubmission(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_send_over_jmap),
+        stringResource(SettingsTreeGenerated.resource("settings_send_over_jmap")),
         settings.emailSubmission,
-        note = stringResource(R.string.settings_email_submission_note),
+        note = S("Off uses SMTP."),
     ) { enabled ->
         editor.persist(editor.settings.copy(emailSubmission = enabled))
     }
@@ -2684,7 +2684,7 @@ internal fun row_smtpHost(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_smtp_host), settings.smtpHost, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_smtp_host")), settings.smtpHost, ready = editor.ready) {
         editor.persist(editor.settings.copy(smtpHost = it))
     }
 }
@@ -2694,7 +2694,7 @@ internal fun row_smtpPort(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    PortField(stringResource(R.string.settings_smtp_port), settings.smtpPort, ready = editor.ready) {
+    PortField(stringResource(SettingsTreeGenerated.resource("settings_smtp_port")), settings.smtpPort, ready = editor.ready) {
         editor.persist(editor.settings.copy(smtpPort = it))
     }
 }
@@ -2720,9 +2720,9 @@ internal fun row_smtpUsername(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
-    Text(stringResource(R.string.settings_smtp_username_hint))
+    Text(S("Blank uses the IMAP username."))
     LineField(
-        stringResource(R.string.settings_smtp_username),
+        stringResource(SettingsTreeGenerated.resource("settings_smtp_username")),
         settings.smtpUsername,
         ready = editor.ready && !authOn,
         enabled = !authOn,
@@ -2738,7 +2738,7 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
     val settings = editor.settings
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
     BoolField(
-        stringResource(R.string.settings_smtp_same_as_imap),
+        S("Same as IMAP password"),
         settings.smtpSameAsImap,
         enabled = !authOn,
     ) {
@@ -2758,8 +2758,8 @@ internal fun row_smtpNoAuth(key: String, walk: SettingsWalk) {
         { choice ->
             stringResource(
                 when (choice) {
-                    SmtpNoAuth.On -> R.string.setting_smtpNoAuth_on
-                    SmtpNoAuth.Off -> R.string.setting_smtpNoAuth_off
+                    SmtpNoAuth.On -> SettingsTreeGenerated.resource("setting_smtpNoAuth_on")
+                    SmtpNoAuth.Off -> SettingsTreeGenerated.resource("setting_smtpNoAuth_off")
                 },
             )
         },
@@ -2772,7 +2772,7 @@ internal fun row_smtpNoAuth(key: String, walk: SettingsWalk) {
 internal fun row_sieveSameAsInbound(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_sieve_same_as_inbound), settings.sieveSameAsInbound) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_sieve_same_as_inbound")), settings.sieveSameAsInbound) {
         editor.persist(editor.settings.copy(sieveSameAsInbound = it))
     }
 }
@@ -2780,7 +2780,7 @@ internal fun row_sieveSameAsInbound(walk: SettingsWalk) {
 @Composable
 internal fun row_sieveUsername(walk: SettingsWalk) {
     val editor = walk.editor
-    LineField(stringResource(R.string.settings_sieve_username), editor.settings.sieveUsername, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_sieve_username")), editor.settings.sieveUsername, ready = editor.ready) {
         editor.persist(editor.settings.copy(sieveUsername = it))
     }
 }
@@ -2796,9 +2796,9 @@ internal fun row_passwordStorage(key: String, walk: SettingsWalk) {
         { choice ->
             stringResource(
                 when (choice) {
-                    org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore -> R.string.password_storage_google_restore
-                    org.dlang.liveimap.settings.PasswordStorageChoice.none -> R.string.password_storage_none
-                    org.dlang.liveimap.settings.PasswordStorageChoice.passwordManager -> R.string.password_storage_manager
+                    org.dlang.liveimap.settings.PasswordStorageChoice.googleRestore -> SettingsTreeGenerated.resource("password_storage_google_restore")
+                    org.dlang.liveimap.settings.PasswordStorageChoice.none -> SettingsTreeGenerated.resource("password_storage_none")
+                    org.dlang.liveimap.settings.PasswordStorageChoice.passwordManager -> SettingsTreeGenerated.resource("password_storage_manager")
                 },
             )
         },
@@ -2812,13 +2812,13 @@ internal fun row_passwordStorage(key: String, walk: SettingsWalk) {
     )
     if (status is org.dlang.liveimap.accounts.BackupAvailability.Unavailable) {
         val label = when (status.reason) {
-            org.dlang.liveimap.accounts.BackupReason.NoPlay -> R.string.backup_unavailable_no_play
-            org.dlang.liveimap.accounts.BackupReason.NoLock -> R.string.backup_unavailable_no_lock
-            org.dlang.liveimap.accounts.BackupReason.NoManager -> R.string.backup_unavailable_no_manager
-            org.dlang.liveimap.accounts.BackupReason.TooLarge -> R.string.backup_too_large
-            org.dlang.liveimap.accounts.BackupReason.TooMany -> R.string.backup_too_many
+            org.dlang.liveimap.accounts.BackupReason.NoPlay -> S("Google restore isn't available in this build; passwords are not backed up")
+            org.dlang.liveimap.accounts.BackupReason.NoLock -> S("Google restore needs a screen lock")
+            org.dlang.liveimap.accounts.BackupReason.NoManager -> S("No password manager is available")
+            org.dlang.liveimap.accounts.BackupReason.TooLarge -> S("The password backup is too large")
+            org.dlang.liveimap.accounts.BackupReason.TooMany -> S("Too many password backups")
         }
-        Text(stringResource(label))
+        Text(label)
     }
 }
 
@@ -2827,7 +2827,7 @@ internal fun row_sieveHost(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_sieve_host), settings.sieveHost, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_sieve_host")), settings.sieveHost, ready = editor.ready) {
         editor.persist(editor.settings.copy(sieveHost = it))
     }
 }
@@ -2837,7 +2837,7 @@ internal fun row_sievePort(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    PortField(stringResource(R.string.settings_sieve_port), settings.sievePort, ready = editor.ready) {
+    PortField(stringResource(SettingsTreeGenerated.resource("settings_sieve_port")), settings.sievePort, ready = editor.ready) {
         editor.persist(editor.settings.copy(sievePort = it))
     }
 }
@@ -2848,7 +2848,7 @@ internal fun row_sieveTlsMode(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_sieve_tls),
+        stringResource(SettingsTreeGenerated.resource("settings_sieve_tls")),
         TlsMode.entries,
         settings.sieveTlsMode,
         { tlsName(it) },
@@ -2864,11 +2864,11 @@ internal fun row_sieveCertPin(walk: SettingsWalk) {
     val settings = editor.settings
     val drafts = walk.drafts
     if (settings.sieveCertPin.isBlank()) {
-        Text(stringResource(R.string.settings_sieve_cert_pin_none))
+        Text(S("No Sieve certificate is pinned."))
     } else {
         Text(settings.sieveCertPin)
         TextButton(onClick = { editor.persist(editor.settings.copy(sieveCertPin = "")) }) {
-            Text(stringResource(R.string.settings_sieve_cert_pin_clear))
+            Text(S("Clear Sieve pin"))
         }
     }
     if (drafts != null) SieveCheckButton(editor, drafts)
@@ -2879,9 +2879,9 @@ internal fun row_watchedFolders(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    Text(stringResource(R.string.settings_watched_folder_note))
+    Text(S("Extra folders besides the open folder."))
     LineField(
-        label = stringResource(R.string.settings_extra_folders),
+        label = S("Extra folders"),
         value = watchedFolderText(settings.watchedFolders),
         singleLine = false,
         ready = editor.ready,
@@ -2900,7 +2900,7 @@ internal fun row_extraIdleBudget(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        label = stringResource(R.string.settings_extra_idle_budget),
+        label = stringResource(SettingsTreeGenerated.resource("settings_extra_idle_budget")),
         value = settings.extraIdleBudget.toString(),
         ready = editor.ready,
         interpret = { draft, _ -> extraIdleBudgetFromText(draft)?.toString() },
@@ -2916,7 +2916,7 @@ internal fun row_maxConnections(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        label = stringResource(R.string.settings_max_connections),
+        label = stringResource(SettingsTreeGenerated.resource("settings_max_connections")),
         value = settings.maxConnections.toString(),
         ready = editor.ready,
         interpret = { draft, _ -> org.dlang.liveimap.session.maxConnectionsFromText(draft)?.toString() },
@@ -2937,7 +2937,7 @@ internal fun row_sendingRules(walk: SettingsWalk) {
 internal fun row_signature(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_signature), settings.signature, singleLine = false, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_signature")), settings.signature, singleLine = false, ready = editor.ready) {
         editor.persist(editor.settings.copy(signature = it))
     }
 }
@@ -2946,7 +2946,7 @@ internal fun row_signature(walk: SettingsWalk) {
 internal fun row_sigDashes(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_sig_dashes), settings.sigDashes) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_sig_dashes")), settings.sigDashes) {
         editor.persist(editor.settings.copy(sigDashes = it))
     }
 }
@@ -2955,7 +2955,7 @@ internal fun row_sigDashes(walk: SettingsWalk) {
 internal fun row_sigAtBottom(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_sig_bottom), settings.sigAtBottom) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_sig_bottom")), settings.sigAtBottom) {
         editor.persist(editor.settings.copy(sigAtBottom = it))
     }
 }
@@ -2965,7 +2965,7 @@ internal fun row_quotePrefix(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     LineField(
-        stringResource(R.string.settings_quote_prefix),
+        S("Reply quote prefix"),
         settings.quotePrefix,
         ready = editor.ready,
         interpret = { draft, _ -> draft },
@@ -2978,7 +2978,7 @@ internal fun row_quotePrefix(walk: SettingsWalk) {
 internal fun row_replyLeadIn(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_lead_in), settings.replyLeadIn, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_lead_in")), settings.replyLeadIn, ready = editor.ready) {
         editor.persist(editor.settings.copy(replyLeadIn = it.ifBlank { org.dlang.liveimap.ui.compose.DefaultLeadIn }))
     }
 }
@@ -2993,7 +2993,7 @@ internal fun row_dsnMode(walk: SettingsWalk) {
 internal fun row_composerHeaders(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_composer_headers), settings.composerHeaders, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_composer_headers")), settings.composerHeaders, ready = editor.ready) {
         editor.persist(editor.settings.copy(composerHeaders = it))
     }
 }
@@ -3009,7 +3009,7 @@ internal fun row_inboundRules(key: String, walk: SettingsWalk) {
 internal fun row_sentMailbox(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_sent_mailbox), settings.sentMailbox, { walk.picking.value = MailboxPick.Sent }) {
+    MailboxLine(stringResource(SettingsTreeGenerated.resource("settings_sent_mailbox")), settings.sentMailbox, { walk.picking.value = MailboxPick.Sent }) {
         editor.persist(editor.settings.copy(sentMailbox = it))
     }
 }
@@ -3018,7 +3018,7 @@ internal fun row_sentMailbox(walk: SettingsWalk) {
 internal fun row_postponedMailbox(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_postponed_mailbox), settings.postponedMailbox, { walk.picking.value = MailboxPick.Postponed }) {
+    MailboxLine(stringResource(SettingsTreeGenerated.resource("settings_postponed_mailbox")), settings.postponedMailbox, { walk.picking.value = MailboxPick.Postponed }) {
         editor.persist(editor.settings.copy(postponedMailbox = it))
     }
 }
@@ -3030,7 +3030,7 @@ internal fun row_addressBookMailbox(walk: SettingsWalk) { AddressBooksRow(walk) 
 internal fun row_spamMailbox(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_spam_mailbox), settings.spamMailbox, { walk.picking.value = MailboxPick.Spam }) {
+    MailboxLine(stringResource(SettingsTreeGenerated.resource("settings_spam_mailbox")), settings.spamMailbox, { walk.picking.value = MailboxPick.Spam }) {
         editor.persist(editor.settings.copy(spamMailbox = it))
     }
 }
@@ -3039,7 +3039,7 @@ internal fun row_spamMailbox(walk: SettingsWalk) {
 internal fun row_trashMailbox(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_trash_mailbox), settings.trashMailbox, { walk.picking.value = MailboxPick.Trash }) {
+    MailboxLine(stringResource(SettingsTreeGenerated.resource("settings_trash_mailbox")), settings.trashMailbox, { walk.picking.value = MailboxPick.Trash }) {
         editor.persist(editor.settings.copy(trashMailbox = it))
     }
 }
@@ -3054,7 +3054,7 @@ internal fun row_showUnreadCounts(walk: SettingsWalk) {
 internal fun row_expandedFolders(walk: SettingsWalk) {
 
     val editor = walk.editor
-    Text(stringResource(R.string.settings_expanded_folders))
+    Text(stringResource(SettingsTreeGenerated.resource("settings_expanded_folders")))
     ExpandedFoldersBody(editor) { walk.drafts }
 }
 
@@ -3064,14 +3064,14 @@ internal fun row_defaultView(key: String, walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_default_view),
+        stringResource(SettingsTreeGenerated.resource("settings_default_view")),
         SortKey.entries,
         settings.defaultView.key,
         { sortKeyName(it) },
     ) { sort ->
         editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = sort)))
     }
-    BoolField(stringResource(R.string.reader_newest), settings.defaultView.newestFirst) { newest ->
+    BoolField(stringResource(SettingsTreeGenerated.resource("reader_newest")), settings.defaultView.newestFirst) { newest ->
         editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
     }
 }
@@ -3080,7 +3080,7 @@ internal fun row_defaultView(key: String, walk: SettingsWalk) {
 internal fun row_folderViews(walk: SettingsWalk) {
 
     val editor = walk.editor
-    Text(stringResource(R.string.settings_folder_views))
+    Text(stringResource(SettingsTreeGenerated.resource("settings_folder_views")))
     FolderViewsBody(editor) { walk.drafts }
 }
 
@@ -3089,7 +3089,7 @@ internal fun row_threadIndexStyle(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_thread_index),
+        stringResource(SettingsTreeGenerated.resource("settings_thread_index")),
         ThreadIndexStyle.entries,
         settings.threadIndexStyle,
         { threadIndexStyleName(it) },
@@ -3102,7 +3102,7 @@ internal fun row_threadIndexStyle(walk: SettingsWalk) {
 internal fun row_inboxStart(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    StartRuleField(stringResource(R.string.settings_inbox_opens), settings.inboxStart, settings.showRecentRules) { rule ->
+    StartRuleField(stringResource(SettingsTreeGenerated.resource("settings_inbox_opens")), settings.inboxStart, settings.showRecentRules) { rule ->
         editor.persist(editor.settings.copy(inboxStart = rule))
     }
 }
@@ -3111,7 +3111,7 @@ internal fun row_inboxStart(walk: SettingsWalk) {
 internal fun row_folderStart(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    StartRuleField(stringResource(R.string.settings_other_opens), settings.folderStart, settings.showRecentRules) { rule ->
+    StartRuleField(stringResource(SettingsTreeGenerated.resource("settings_other_opens")), settings.folderStart, settings.showRecentRules) { rule ->
         editor.persist(editor.settings.copy(folderStart = rule))
     }
 }
@@ -3120,7 +3120,7 @@ internal fun row_folderStart(walk: SettingsWalk) {
 internal fun row_folderStarts(walk: SettingsWalk) {
 
     val editor = walk.editor
-    Text(stringResource(R.string.settings_start_per_folder))
+    Text(S("Start position per folder"))
     FolderStartsBody(editor)
 }
 
@@ -3129,7 +3129,7 @@ internal fun row_startAfterChange(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_after_change),
+        stringResource(SettingsTreeGenerated.resource("settings_after_change")),
         StartAfterChange.entries,
         settings.startAfterChange,
         { startAfterChangeName(it) },
@@ -3142,7 +3142,7 @@ internal fun row_startAfterChange(walk: SettingsWalk) {
 internal fun row_showRecentRules(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_show_recent), settings.showRecentRules) { enabled ->
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_show_recent")), settings.showRecentRules) { enabled ->
         editor.persist(editor.settings.copy(showRecentRules = enabled))
     }
 }
@@ -3151,7 +3151,7 @@ internal fun row_showRecentRules(walk: SettingsWalk) {
 internal fun row_openAtInIndexMenu(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_open_at_menu), settings.openAtInIndexMenu) { enabled ->
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_open_at_menu")), settings.openAtInIndexMenu) { enabled ->
         editor.persist(editor.settings.copy(openAtInIndexMenu = enabled))
     }
 }
@@ -3161,7 +3161,7 @@ internal fun row_pinercStartDefault(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_pinerc_missing),
+        S("When a pinerc has no incoming-startup-rule"),
         PinercStartDefault.entries,
         settings.pinercStartDefault,
         { pinercStartDefaultName(it) },
@@ -3175,8 +3175,8 @@ internal fun row_askSort(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    Text(stringResource(R.string.settings_ask_note))
-    AskLimitField(stringResource(R.string.settings_ask_sort), settings.askSort, editor.ready) { limit ->
+    Text(stringResource(SettingsTreeGenerated.resource("settings_ask_note")))
+    AskLimitField(stringResource(SettingsTreeGenerated.resource("settings_ask_sort")), settings.askSort, editor.ready) { limit ->
         editor.persist(editor.settings.copy(askSort = limit))
     }
 }
@@ -3185,7 +3185,7 @@ internal fun row_askSort(walk: SettingsWalk) {
 internal fun row_askThread(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    AskLimitField(stringResource(R.string.settings_ask_thread), settings.askThread, editor.ready) { limit ->
+    AskLimitField(stringResource(SettingsTreeGenerated.resource("settings_ask_thread")), settings.askThread, editor.ready) { limit ->
         editor.persist(editor.settings.copy(askThread = limit))
     }
 }
@@ -3194,7 +3194,7 @@ internal fun row_askThread(walk: SettingsWalk) {
 internal fun row_askSearch(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    AskLimitField(stringResource(R.string.settings_ask_search), settings.askSearch, editor.ready) { limit ->
+    AskLimitField(stringResource(SettingsTreeGenerated.resource("settings_ask_search")), settings.askSearch, editor.ready) { limit ->
         editor.persist(editor.settings.copy(askSearch = limit))
     }
 }
@@ -3203,7 +3203,7 @@ internal fun row_askSearch(walk: SettingsWalk) {
 internal fun row_askFallback(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    AskLimitField(stringResource(R.string.settings_ask_fallback), settings.askFallback, editor.ready) { limit ->
+    AskLimitField(stringResource(SettingsTreeGenerated.resource("settings_ask_fallback")), settings.askFallback, editor.ready) { limit ->
         editor.persist(editor.settings.copy(askFallback = limit))
     }
 }
@@ -3262,7 +3262,7 @@ internal fun row_savedAdvanced(key: String, walk: SettingsWalk) {
 internal fun row_markSeenOnOpen(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_mark_seen), settings.markSeenOnOpen) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_mark_seen")), settings.markSeenOnOpen) {
         editor.persist(editor.settings.copy(markSeenOnOpen = it))
     }
 }
@@ -3272,7 +3272,7 @@ internal fun row_readerDisplay(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.setting_bodyView_title),
+        stringResource(SettingsTreeGenerated.resource("setting_bodyView_title")),
         org.dlang.liveimap.ui.reader.ReaderDisplay.entries,
         settings.readerDisplay,
         { org.dlang.liveimap.ui.reader.readerDisplayName(it) },
@@ -3285,7 +3285,7 @@ internal fun row_readerDisplay(walk: SettingsWalk) {
 internal fun row_appTextZoom(walk: SettingsWalk) {
     val editor = walk.editor
     NumberLeaf(
-        stringResource(R.string.setting_appTextZoom_title),
+        stringResource(SettingsTreeGenerated.resource("setting_appTextZoom_title")),
         editor.settings.appTextZoom,
         editor.ready,
         { it in 50..300 },
@@ -3298,7 +3298,7 @@ internal fun row_appTextZoom(walk: SettingsWalk) {
 internal fun row_bodyFetchChunk(walk: SettingsWalk) {
     val editor = walk.editor
     NumberLeaf(
-        stringResource(R.string.setting_bodyFetchChunk_title),
+        stringResource(SettingsTreeGenerated.resource("setting_bodyFetchChunk_title")),
         editor.settings.bodyFetchChunk,
         editor.ready,
         { it in 1024..1048576 },
@@ -3311,7 +3311,7 @@ internal fun row_bodyFetchChunk(walk: SettingsWalk) {
 internal fun row_viewerHeaders(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_viewer_headers), settings.viewerHeaders, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_viewer_headers")), settings.viewerHeaders, ready = editor.ready) {
         editor.persist(editor.settings.copy(viewerHeaders = it))
     }
 }
@@ -3321,15 +3321,15 @@ internal fun row_nonAsciiDisplay(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_non_ascii),
+        stringResource(SettingsTreeGenerated.resource("settings_non_ascii")),
         NonAsciiDisplay.entries,
         settings.nonAsciiDisplay,
         { stringResource(when (it) {
-            NonAsciiDisplay.Normal -> R.string.settings_non_ascii_normal
-            NonAsciiDisplay.HighlightSuspicious -> R.string.settings_non_ascii_suspicious
-            NonAsciiDisplay.HighlightAll -> R.string.settings_non_ascii_all
-            NonAsciiDisplay.Warn -> R.string.settings_non_ascii_warn
-            NonAsciiDisplay.Escape -> R.string.settings_non_ascii_escape
+            NonAsciiDisplay.Normal -> SettingsTreeGenerated.resource("settings_non_ascii_normal")
+            NonAsciiDisplay.HighlightSuspicious -> SettingsTreeGenerated.resource("settings_non_ascii_suspicious")
+            NonAsciiDisplay.HighlightAll -> SettingsTreeGenerated.resource("settings_non_ascii_all")
+            NonAsciiDisplay.Warn -> SettingsTreeGenerated.resource("settings_non_ascii_warn")
+            NonAsciiDisplay.Escape -> SettingsTreeGenerated.resource("settings_non_ascii_escape")
         }) },
     ) {
         editor.persist(editor.settings.copy(nonAsciiDisplay = it))
@@ -3340,7 +3340,7 @@ internal fun row_nonAsciiDisplay(walk: SettingsWalk) {
 internal fun row_showDeleted(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_show_deleted), settings.showDeleted) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_show_deleted")), settings.showDeleted) {
         editor.persist(editor.settings.copy(showDeleted = it))
     }
 }
@@ -3350,9 +3350,9 @@ internal fun row_autoExpunge(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_auto_expunge),
+        stringResource(SettingsTreeGenerated.resource("settings_auto_expunge")),
         settings.autoExpunge,
-        note = stringResource(R.string.settings_auto_expunge_note),
+        note = S("Leaving a folder expunges deleted messages. Off sends no CLOSE."),
     ) {
         editor.persist(editor.settings.copy(autoExpunge = it))
     }
@@ -3362,7 +3362,7 @@ internal fun row_autoExpunge(walk: SettingsWalk) {
 internal fun row_askBeforeExpunge(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_ask_expunge), settings.askBeforeExpunge) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_ask_expunge")), settings.askBeforeExpunge) {
         editor.persist(editor.settings.copy(askBeforeExpunge = it))
     }
 }
@@ -3389,9 +3389,9 @@ internal fun row_moveAllIncludesDeleted(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_move_all_deleted),
+        S("Move entire folder includes deleted messages"),
         settings.moveAllIncludesDeleted,
-        note = stringResource(R.string.settings_move_all_deleted_note),
+        note = S("Off: messages already marked deleted stay behind (UID SEARCH UNDELETED)."),
     ) {
         editor.persist(editor.settings.copy(moveAllIncludesDeleted = it))
     }
@@ -3406,7 +3406,7 @@ internal fun row_swipeTrailing(walk: SettingsWalk) {
     val settings = editor.settings
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     SwipeEditor(
-        stringResource(if (leftToRight) R.string.settings_swipe_left else R.string.settings_swipe_right),
+        if (leftToRight) S("Swipe left") else S("Swipe right"),
         settings.swipeTrailing,
         { walk.picking.value = MailboxPick.TrailingMove },
         SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous },
@@ -3419,7 +3419,7 @@ internal fun row_swipeLeading(walk: SettingsWalk) {
     val settings = editor.settings
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     SwipeEditor(
-        stringResource(if (leftToRight) R.string.settings_swipe_right else R.string.settings_swipe_left),
+        if (leftToRight) S("Swipe right") else S("Swipe left"),
         settings.swipeLeading,
         { walk.picking.value = MailboxPick.LeadingMove },
         SwipeAction.entries.filter { it != SwipeAction.Next && it != SwipeAction.Previous },
@@ -3432,7 +3432,7 @@ internal fun row_readerSwipeTrailing(walk: SettingsWalk) {
     val settings = editor.settings
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     SwipeEditor(
-        stringResource(if (leftToRight) R.string.settings_message_swipe_left else R.string.settings_message_swipe_right),
+        if (leftToRight) S("Message swipe left") else S("Message swipe right"),
         settings.readerSwipeTrailing,
         { walk.picking.value = MailboxPick.ReaderTrailingMove },
         SwipeAction.entries,
@@ -3445,7 +3445,7 @@ internal fun row_readerSwipeLeading(walk: SettingsWalk) {
     val settings = editor.settings
     val leftToRight = LocalLayoutDirection.current == LayoutDirection.Ltr
     SwipeEditor(
-        stringResource(if (leftToRight) R.string.settings_message_swipe_right else R.string.settings_message_swipe_left),
+        if (leftToRight) S("Message swipe right") else S("Message swipe left"),
         settings.readerSwipeLeading,
         { walk.picking.value = MailboxPick.ReaderLeadingMove },
         SwipeAction.entries,
@@ -3456,7 +3456,7 @@ internal fun row_readerSwipeLeading(walk: SettingsWalk) {
 internal fun row_bounceFcc(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_bounce_fcc), settings.bounceFcc) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_bounce_fcc")), settings.bounceFcc) {
         editor.persist(editor.settings.copy(bounceFcc = it))
     }
 }
@@ -3466,7 +3466,7 @@ internal fun row_composerWrapColumn(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     NumberLeaf(
-        stringResource(R.string.settings_wrap_column),
+        stringResource(SettingsTreeGenerated.resource("settings_wrap_column")),
         settings.composerWrapColumn,
         editor.ready,
         { it in 0..998 },
@@ -3480,9 +3480,9 @@ internal fun row_quellFlowed(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_flowed_text),
+        stringResource(SettingsTreeGenerated.resource("settings_flowed_text")),
         !settings.quellFlowed,
-        note = stringResource(R.string.settings_flowed_text_note),
+        note = S("Off sends fixed lines."),
     ) { enabled ->
         editor.persist(editor.settings.copy(quellFlowed = !enabled))
     }
@@ -3492,7 +3492,7 @@ internal fun row_quellFlowed(walk: SettingsWalk) {
 internal fun row_replyAboveQuote(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_reply_above), settings.replyAboveQuote) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_reply_above")), settings.replyAboveQuote) {
         editor.persist(editor.settings.copy(replyAboveQuote = it))
     }
 }
@@ -3501,7 +3501,7 @@ internal fun row_replyAboveQuote(walk: SettingsWalk) {
 internal fun row_includeForwardAttachments(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_include_attachments), settings.includeForwardAttachments) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_include_attachments")), settings.includeForwardAttachments) {
         editor.persist(editor.settings.copy(includeForwardAttachments = it))
     }
 }
@@ -3510,7 +3510,7 @@ internal fun row_includeForwardAttachments(walk: SettingsWalk) {
 internal fun row_forwardAsAttachment(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_forward_attachment), settings.forwardAsAttachment) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_forward_attachment")), settings.forwardAsAttachment) {
         editor.persist(editor.settings.copy(forwardAsAttachment = it))
     }
 }
@@ -3519,7 +3519,7 @@ internal fun row_forwardAsAttachment(walk: SettingsWalk) {
 internal fun row_savedMailbox(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    MailboxLine(stringResource(R.string.settings_saved_mailbox), settings.savedMailbox, { walk.picking.value = MailboxPick.Saved }) {
+    MailboxLine(stringResource(SettingsTreeGenerated.resource("settings_saved_mailbox")), settings.savedMailbox, { walk.picking.value = MailboxPick.Saved }) {
         editor.persist(editor.settings.copy(savedMailbox = it))
     }
 }
@@ -3529,7 +3529,7 @@ internal fun row_saveNameRule(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_save_rule),
+        stringResource(SettingsTreeGenerated.resource("settings_save_rule")),
         SaveNameRule.entries,
         settings.saveNameRule,
         { saveNameRuleName(it) },
@@ -3555,7 +3555,7 @@ internal fun row_addressBookHistory(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     NumberLeaf(
-        stringResource(R.string.settings_history_label),
+        stringResource(SettingsTreeGenerated.resource("settings_history_label")),
         settings.addressBookHistory,
         editor.ready,
         { true },
@@ -3568,7 +3568,7 @@ internal fun row_addressBookHistory(walk: SettingsWalk) {
 internal fun row_addressBookNeverTrim(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_never_trim), settings.addressBookNeverTrim) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_never_trim")), settings.addressBookNeverTrim) {
         editor.persist(editor.settings.copy(addressBookNeverTrim = it))
     }
 }
@@ -3583,7 +3583,7 @@ internal fun row_globalAddressBooks(walk: SettingsWalk) { AddressBooksRow(walk) 
 internal fun row_theme(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    ChoiceField(stringResource(R.string.settings_theme), ThemeMode.entries, settings.theme, { themeName(it) }) {
+    ChoiceField(stringResource(SettingsTreeGenerated.resource("settings_theme")), ThemeMode.entries, settings.theme, { themeName(it) }) {
         editor.persist(editor.settings.copy(theme = it))
     }
 }
@@ -3593,7 +3593,7 @@ internal fun row_dynamicColor(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_dynamic_color), settings.dynamicColor) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_dynamic_color")), settings.dynamicColor) {
         editor.persist(editor.settings.copy(dynamicColor = it))
     }
 }
@@ -3602,7 +3602,7 @@ internal fun row_dynamicColor(walk: SettingsWalk) {
 internal fun row_density(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    ChoiceField(stringResource(R.string.settings_density), Density.entries, settings.density, { densityName(it) }) {
+    ChoiceField(stringResource(SettingsTreeGenerated.resource("settings_density")), Density.entries, settings.density, { densityName(it) }) {
         editor.persist(editor.settings.copy(density = it))
     }
 }
@@ -3612,7 +3612,7 @@ internal fun row_dateFormat(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_date_format),
+        stringResource(SettingsTreeGenerated.resource("settings_date_format")),
         DateFormat.entries,
         settings.dateFormat,
         { dateFormatName(it) },
@@ -3626,7 +3626,7 @@ internal fun row_datePattern(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    LineField(stringResource(R.string.settings_date_pattern), settings.datePattern, ready = editor.ready) {
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_date_pattern")), settings.datePattern, ready = editor.ready) {
         editor.persist(editor.settings.copy(datePattern = it))
     }
 }
@@ -3646,7 +3646,7 @@ internal fun row_multiPane(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_multi_pane),
+        stringResource(SettingsTreeGenerated.resource("settings_multi_pane")),
         MultiPane.entries,
         settings.multiPane,
         { multiPaneName(it) },
@@ -3661,15 +3661,15 @@ internal fun row_folderPlace(walk: SettingsWalk) {
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
     ChoiceField(
-        stringResource(R.string.settings_folder_pane),
+        stringResource(SettingsTreeGenerated.resource("settings_folder_pane")),
         FolderPlace.entries,
         settings.folderPlace,
         { place ->
             stringResource(when (place) {
-                FolderPlace.Off -> R.string.settings_multi_pane_off
-                FolderPlace.Auto -> R.string.settings_pane_auto
-                FolderPlace.Beside -> R.string.settings_folder_beside
-                FolderPlace.AboveList -> R.string.settings_folder_above
+                FolderPlace.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
+                FolderPlace.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
+                FolderPlace.Beside -> SettingsTreeGenerated.resource("settings_folder_beside")
+                FolderPlace.AboveList -> SettingsTreeGenerated.resource("settings_folder_above")
             })
         },
         enabled = panesOn,
@@ -3684,7 +3684,7 @@ internal fun row_foldPosture(walk: SettingsWalk) {
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
     ChoiceField(
-        stringResource(R.string.settings_fold_posture),
+        stringResource(SettingsTreeGenerated.resource("settings_fold_posture")),
         listOf(LayoutChoice.Off, LayoutChoice.On),
         settings.foldPosture,
         { layoutChoiceName(it) },
@@ -3698,7 +3698,7 @@ internal fun row_foldPosture(walk: SettingsWalk) {
 internal fun row_fullScreen(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_full_screen), settings.fullScreen) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_full_screen")), settings.fullScreen) {
         editor.persist(editor.settings.copy(fullScreen = it))
     }
 }
@@ -3709,13 +3709,13 @@ internal fun row_paneArrangement(walk: SettingsWalk) {
     val settings = editor.settings
     val panesOn = paneControlsEnabled(settings.multiPane)
     ChoiceField(
-        stringResource(R.string.settings_pane_arrangement),
+        stringResource(SettingsTreeGenerated.resource("settings_pane_arrangement")),
         ArrangementChoice.entries,
         settings.paneArrangement,
         { stringResource(when (it) {
-            ArrangementChoice.Auto -> R.string.settings_pane_auto
-            ArrangementChoice.SideBySide -> R.string.settings_pane_side_by_side
-            ArrangementChoice.Stacked -> R.string.settings_pane_stacked
+            ArrangementChoice.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
+            ArrangementChoice.SideBySide -> SettingsTreeGenerated.resource("settings_pane_side_by_side")
+            ArrangementChoice.Stacked -> SettingsTreeGenerated.resource("settings_pane_stacked")
         }) },
         enabled = panesOn,
     ) {
@@ -3728,15 +3728,15 @@ internal fun row_previewSize(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_preview_size),
+        stringResource(SettingsTreeGenerated.resource("settings_preview_size")),
         PreviewChoice.entries,
         settings.previewSize,
         { stringResource(when (it) {
-            PreviewChoice.Auto -> R.string.settings_pane_auto
-            PreviewChoice.Density -> R.string.settings_preview_density
-            PreviewChoice.None -> R.string.settings_preview_none
-            PreviewChoice.Small -> R.string.settings_preview_small
-            PreviewChoice.Large -> R.string.settings_preview_large
+            PreviewChoice.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
+            PreviewChoice.Density -> SettingsTreeGenerated.resource("settings_preview_density")
+            PreviewChoice.None -> SettingsTreeGenerated.resource("settings_preview_none")
+            PreviewChoice.Small -> SettingsTreeGenerated.resource("settings_preview_small")
+            PreviewChoice.Large -> SettingsTreeGenerated.resource("settings_preview_large")
         }) },
     ) {
         editor.persist(editor.settings.copy(previewSize = it))
@@ -3748,14 +3748,14 @@ internal fun row_trafficLogMaxMb(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     NumberLeaf(
-        stringResource(R.string.setting_trafficLogMaxMb_title),
+        stringResource(SettingsTreeGenerated.resource("setting_trafficLogMaxMb_title")),
         settings.trafficLogMaxMb,
         editor.ready,
         { it in 0..64 },
     ) { number ->
         editor.persist(editor.settings.copy(trafficLogMaxMb = number))
     }
-    if (settings.trafficLogMaxMb == 0) Text(stringResource(R.string.settings_no_limit))
+    if (settings.trafficLogMaxMb == 0) Text(S("No limit"))
 }
 
 @Composable
@@ -3763,9 +3763,9 @@ internal fun row_clientSort(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_client_sort),
+        stringResource(SettingsTreeGenerated.resource("settings_client_sort")),
         settings.clientSort,
-        note = stringResource(R.string.settings_client_sort_note),
+        note = S("Downloads one field for every message."),
     ) {
         editor.persist(editor.settings.copy(clientSort = it))
     }
@@ -3806,9 +3806,9 @@ internal fun row_clientThread(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_client_thread),
+        stringResource(SettingsTreeGenerated.resource("settings_client_thread")),
         settings.clientThread,
-        note = stringResource(R.string.settings_client_thread_note),
+        note = S("Downloads threading headers for every message."),
     ) {
         editor.persist(editor.settings.copy(clientThread = it))
     }
@@ -3819,9 +3819,9 @@ internal fun row_pollForNewMail(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_poll_mail),
+        stringResource(SettingsTreeGenerated.resource("settings_poll_mail")),
         settings.pollForNewMail,
-        note = stringResource(R.string.settings_poll_note),
+        note = S("Asks the server on a timer when it has no IDLE."),
     ) {
         editor.persist(editor.settings.copy(pollForNewMail = it))
     }
@@ -3930,9 +3930,9 @@ internal fun row_statusVisibleCounts(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_status_counts),
+        S("Folder message counts"),
         settings.statusVisibleCounts,
-        note = stringResource(R.string.settings_status_note),
+        note = S("Sends STATUS for each visible folder when the server has no LIST-STATUS."),
     ) {
         editor.persist(editor.settings.copy(statusVisibleCounts = it))
     }
@@ -3943,9 +3943,9 @@ internal fun row_forceSlowerFallbacks(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(R.string.settings_force_slower),
+        stringResource(SettingsTreeGenerated.resource("settings_force_slower")),
         settings.forceSlowerFallbacks,
-        note = stringResource(R.string.settings_force_slower_note),
+        note = S("Debug only. Uses the slower fallbacks."),
     ) {
         editor.persist(editor.settings.copy(forceSlowerFallbacks = it))
     }
@@ -3955,7 +3955,7 @@ internal fun row_forceSlowerFallbacks(walk: SettingsWalk) {
 internal fun row_logImapTraffic(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_log_traffic), settings.logImapTraffic) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_log_traffic")), settings.logImapTraffic) {
         editor.persist(editor.settings.copy(logImapTraffic = it))
     }
 }
@@ -3964,7 +3964,7 @@ internal fun row_logImapTraffic(walk: SettingsWalk) {
 internal fun row_showUserInDebugReport(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
-    BoolField(stringResource(R.string.settings_show_user), settings.showUserInDebugReport) {
+    BoolField(stringResource(SettingsTreeGenerated.resource("settings_show_user")), settings.showUserInDebugReport) {
         editor.persist(editor.settings.copy(showUserInDebugReport = it))
     }
 }
@@ -3974,7 +3974,7 @@ internal fun row_idleWakeSeconds(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     ChoiceField(
-        stringResource(R.string.settings_idle_wake),
+        S("IDLE wake interval"),
         IdleWakeSeconds,
         settings.idleWakeSeconds.takeIf { it in IdleWakeSeconds } ?: 5,
         { "$it s" },
@@ -4229,9 +4229,7 @@ internal fun SettingsNode(
     header: String = "label",
     children: @Composable () -> Unit,
 ) {
-    val description = stringResource(
-        if (expanded) R.string.settings_expanded_state else R.string.settings_collapsed_state,
-    )
+    val description = if (expanded) S("Expanded") else S("Collapsed")
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -4248,10 +4246,7 @@ internal fun SettingsNode(
         ) {
             Icon(
                 imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
-                contentDescription = stringResource(
-                    if (expanded) R.string.folders_collapse else R.string.folders_expand,
-                    title,
-                ),
+                contentDescription = if (expanded) S("Collapse %1\$s", title) else S("Expand %1\$s", title),
             )
         }
         val showLabel = !expanded || header != "arrow"
@@ -4618,7 +4613,7 @@ internal fun StartRuleField(
                     text = {
                         Column {
                             Text(startRuleName(option))
-                            if (startRuleIsRecent(option)) Text(stringResource(R.string.label_recent_note))
+                            if (startRuleIsRecent(option)) Text(S("\\Recent belongs to whichever app opens the folder first"))
                         }
                     },
                     onClick = {
@@ -4629,149 +4624,145 @@ internal fun StartRuleField(
             }
         }
     }
-    if (startRuleIsRecent(selected)) Text(stringResource(R.string.label_recent_note))
+    if (startRuleIsRecent(selected)) Text(S("\\Recent belongs to whichever app opens the folder first"))
 }
 
 @Composable
 internal fun saveNameRuleName(rule: SaveNameRule): String = stringResource(
     when (rule) {
-        SaveNameRule.DefaultFolder -> R.string.settings_save_default
-        SaveNameRule.ByFrom -> R.string.settings_save_from
-        SaveNameRule.BySender -> R.string.settings_save_sender
-        SaveNameRule.ByRecipient -> R.string.settings_save_recipient
-        SaveNameRule.LastFolderUsed -> R.string.settings_save_last
+        SaveNameRule.DefaultFolder -> SettingsTreeGenerated.resource("settings_save_default")
+        SaveNameRule.ByFrom -> SettingsTreeGenerated.resource("settings_save_from")
+        SaveNameRule.BySender -> SettingsTreeGenerated.resource("settings_save_sender")
+        SaveNameRule.ByRecipient -> SettingsTreeGenerated.resource("settings_save_recipient")
+        SaveNameRule.LastFolderUsed -> SettingsTreeGenerated.resource("settings_save_last")
     },
 )
 
 @Composable
 internal fun threadIndexStyleName(style: ThreadIndexStyle): String = stringResource(
     when (style) {
-        ThreadIndexStyle.Expanded -> R.string.settings_thread_expanded
-        ThreadIndexStyle.Collapsed -> R.string.settings_thread_collapsed
+        ThreadIndexStyle.Expanded -> SettingsTreeGenerated.resource("settings_thread_expanded")
+        ThreadIndexStyle.Collapsed -> SettingsTreeGenerated.resource("settings_thread_collapsed")
     },
 )
 
 @Composable
-internal fun sortKeyName(key: SortKey): String = stringResource(
-    when (key) {
-        SortKey.Arrival -> R.string.label_arrival
-        SortKey.Date -> R.string.label_date
-        SortKey.From -> R.string.label_from
-        SortKey.Subject -> R.string.compose_subject
-        SortKey.To -> R.string.compose_to
-        SortKey.Cc -> R.string.compose_cc
-        SortKey.Size -> R.string.label_size
-        SortKey.ThreadReferences -> R.string.label_thread
-        SortKey.ThreadOrderedSubject -> R.string.label_ordered_subject
-    },
-)
+internal fun sortKeyName(key: SortKey): String = when (key) {
+        SortKey.Arrival -> S("Arrival")
+        SortKey.Date -> S("Date")
+        SortKey.From -> S("From")
+        SortKey.Subject -> S("Subject")
+        SortKey.To -> S("To")
+        SortKey.Cc -> S("Cc")
+        SortKey.Size -> S("Size")
+        SortKey.ThreadReferences -> S("Thread")
+        SortKey.ThreadOrderedSubject -> S("Ordered subject")
+    }
 
 @Composable
 internal fun startRuleName(rule: StartRule): String = stringResource(
     when (rule) {
-        StartRule.FirstUnseen -> R.string.label_first_unread
-        StartRule.FirstRecent -> R.string.label_first_recent
-        StartRule.FirstImportant -> R.string.label_first_important
-        StartRule.FirstImportantOrUnseen -> R.string.label_first_important_unread
-        StartRule.FirstImportantOrRecent -> R.string.label_first_important_recent
-        StartRule.First -> R.string.label_top
-        StartRule.Last -> R.string.label_bottom
-        StartRule.Newest -> R.string.label_newest_message
+        StartRule.FirstUnseen -> SettingsTreeGenerated.resource("label_first_unread")
+        StartRule.FirstRecent -> SettingsTreeGenerated.resource("label_first_recent")
+        StartRule.FirstImportant -> SettingsTreeGenerated.resource("label_first_important")
+        StartRule.FirstImportantOrUnseen -> SettingsTreeGenerated.resource("label_first_important_unread")
+        StartRule.FirstImportantOrRecent -> SettingsTreeGenerated.resource("label_first_important_recent")
+        StartRule.First -> SettingsTreeGenerated.resource("label_top")
+        StartRule.Last -> SettingsTreeGenerated.resource("label_bottom")
+        StartRule.Newest -> SettingsTreeGenerated.resource("label_newest_message")
     },
 )
 
 @Composable
 internal fun startAfterChangeName(value: StartAfterChange): String = stringResource(
     when (value) {
-        StartAfterChange.RerunRule -> R.string.label_rerun_rule
-        StartAfterChange.KeepTopVisible -> R.string.label_keep_top
+        StartAfterChange.RerunRule -> SettingsTreeGenerated.resource("label_rerun_rule")
+        StartAfterChange.KeepTopVisible -> SettingsTreeGenerated.resource("label_keep_top")
     },
 )
 
 @Composable
 internal fun pinercStartDefaultName(value: PinercStartDefault): String = stringResource(
     when (value) {
-        PinercStartDefault.LeaveUnchanged -> R.string.label_leave_unchanged
-        PinercStartDefault.AlpineDefault -> R.string.label_alpine_default
+        PinercStartDefault.LeaveUnchanged -> SettingsTreeGenerated.resource("label_leave_unchanged")
+        PinercStartDefault.AlpineDefault -> SettingsTreeGenerated.resource("label_alpine_default")
     },
 )
 
 @Composable
-internal fun swipeActionName(action: SwipeAction): String = stringResource(
-    when (action) {
-        SwipeAction.Delete -> R.string.drawer_delete
-        SwipeAction.Move -> R.string.label_move
-        SwipeAction.Reply -> R.string.compose_reply
-        SwipeAction.ReplyAll -> R.string.compose_reply_all
-        SwipeAction.SetFlag -> R.string.label_set_flag
-        SwipeAction.ClearFlag -> R.string.label_clear_flag
-        SwipeAction.FlagScreen -> R.string.label_flag_screen
-        SwipeAction.Next -> R.string.reader_next
-        SwipeAction.Previous -> R.string.reader_previous
-    },
-)
+internal fun swipeActionName(action: SwipeAction): String = when (action) {
+        SwipeAction.Delete -> S("Delete")
+        SwipeAction.Move -> S("Move")
+        SwipeAction.Reply -> S("Reply")
+        SwipeAction.ReplyAll -> S("Reply all")
+        SwipeAction.SetFlag -> S("Set flag")
+        SwipeAction.ClearFlag -> S("Clear flag")
+        SwipeAction.FlagScreen -> S("Flag screen")
+        SwipeAction.Next -> S("Next")
+        SwipeAction.Previous -> S("Previous")
+    }
 
 @Composable
 internal fun tlsName(mode: TlsMode): String = stringResource(
     when (mode) {
-        TlsMode.None -> R.string.settings_tls_none
-        TlsMode.StartTls -> R.string.settings_tls_starttls
-        TlsMode.Implicit -> R.string.settings_tls_implicit
+        TlsMode.None -> SettingsTreeGenerated.resource("settings_tls_none")
+        TlsMode.StartTls -> SettingsTreeGenerated.resource("settings_tls_starttls")
+        TlsMode.Implicit -> SettingsTreeGenerated.resource("settings_tls_implicit")
     },
 )
 
 @Composable
 internal fun themeName(mode: ThemeMode): String = stringResource(
     when (mode) {
-        ThemeMode.Dark -> R.string.label_dark
-        ThemeMode.Light -> R.string.label_light
-        ThemeMode.FollowSystem -> R.string.label_system
+        ThemeMode.Dark -> SettingsTreeGenerated.resource("label_dark")
+        ThemeMode.Light -> SettingsTreeGenerated.resource("label_light")
+        ThemeMode.FollowSystem -> SettingsTreeGenerated.resource("label_system")
     },
 )
 
 @Composable
 internal fun dateFormatName(format: DateFormat): String = stringResource(
     when (format) {
-        DateFormat.Local -> R.string.label_local
-        DateFormat.Short -> R.string.label_short
-        DateFormat.Relative -> R.string.label_relative
-        DateFormat.Custom -> R.string.label_custom
+        DateFormat.Local -> SettingsTreeGenerated.resource("label_local")
+        DateFormat.Short -> SettingsTreeGenerated.resource("label_short")
+        DateFormat.Relative -> SettingsTreeGenerated.resource("label_relative")
+        DateFormat.Custom -> SettingsTreeGenerated.resource("label_custom")
     },
 )
 
 @Composable
 internal fun multiPaneName(mode: MultiPane): String = stringResource(
     when (mode) {
-        MultiPane.Off -> R.string.settings_multi_pane_off
-        MultiPane.Wide -> R.string.settings_multi_pane_wide
-        MultiPane.Auto -> R.string.settings_pane_auto
+        MultiPane.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
+        MultiPane.Wide -> SettingsTreeGenerated.resource("settings_multi_pane_wide")
+        MultiPane.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
     },
 )
 
 @Composable
 internal fun layoutChoiceName(choice: LayoutChoice): String = stringResource(
     when (choice) {
-        LayoutChoice.Off -> R.string.settings_multi_pane_off
-        LayoutChoice.On -> R.string.settings_multi_pane_wide
-        LayoutChoice.Auto -> R.string.settings_pane_auto
+        LayoutChoice.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
+        LayoutChoice.On -> SettingsTreeGenerated.resource("settings_multi_pane_wide")
+        LayoutChoice.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
     },
 )
 
 @Composable
 internal fun densityName(density: Density): String = stringResource(
     when (density) {
-        Density.Compact -> R.string.label_compact
-        Density.Medium -> R.string.label_comfortable
-        Density.Large -> R.string.label_large
+        Density.Compact -> SettingsTreeGenerated.resource("label_compact")
+        Density.Medium -> SettingsTreeGenerated.resource("label_comfortable")
+        Density.Large -> SettingsTreeGenerated.resource("label_large")
     },
 )
 
 @Composable
 internal fun deletePolicyName(policy: DeletePolicy): String = stringResource(
     when (policy) {
-        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
-        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
-        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+        DeletePolicy.MarkDeleted -> SettingsTreeGenerated.resource("settings_mark_deleted")
+        DeletePolicy.MoveToTrash -> SettingsTreeGenerated.resource("settings_move_to_trash")
+        DeletePolicy.DeletePermanently -> SettingsTreeGenerated.resource("settings_delete_permanently")
     },
 )
 internal fun compressionName(mode: String): String = mode
@@ -4914,7 +4905,7 @@ internal fun MailboxLine(
         Box(modifier = Modifier.weight(1f)) {
             LineField(label, value, onCommit = onValue)
         }
-        TextButton(onClick = onChoose) { Text(stringResource(R.string.settings_choose)) }
+        TextButton(onClick = onChoose) { Text(S("Choose")) }
     }
 }
 

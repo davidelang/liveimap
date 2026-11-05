@@ -5,7 +5,7 @@ import org.dlang.liveimap.engine.ServerCheck
 
 /** What Save shows before storing a server draft. The draft itself is never modified here (no revert path). */
 data class ServerSaveReview(
-    val tlsWarning: Int?,
+    val tlsWarning: String?,
     val unreachable: Boolean,
     val lines: List<String>,
 ) {

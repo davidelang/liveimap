@@ -1143,8 +1143,21 @@ def display_sentences(doc, catalog):
 
 
 def emit(doc, kt_root, tree_bytes, tree_path):
-    align_display_english(tree_path)
-    catalog = load_string_catalog(tree_path)
+    # English is build output. When the hand-written file is gone, use the same file the build writes.
+    strings_path = _default_strings_path(tree_path)
+    holder = None
+    try:
+        if not Path(strings_path).is_file():
+            import tempfile
+            holder = tempfile.TemporaryDirectory()
+            strings_path = _synthesized_english(holder.name)
+            align_display_english(tree_path, strings_path, write=False)
+        else:
+            align_display_english(tree_path)
+        catalog = load_string_catalog(tree_path, strings_path)
+    finally:
+        if holder is not None:
+            holder.cleanup()
     sentences = display_sentences(doc, catalog)
     binding_path = Path(__file__).resolve().parent / _BINDINGS_NAME
     bound = json.loads(binding_path.read_text(encoding="utf-8"))
@@ -1857,14 +1870,42 @@ def _default_strings_path(tree_path):
     return Path(tree_path).resolve().parents[1] / "res" / "values" / "strings.xml"
 
 
+def _synthesized_english(folder):
+    # Default --check has no hand-written strings.xml. Build the same file the build writes, in a temp dir.
+    import importlib.util
+    import tempfile
+
+    spec = importlib.util.spec_from_file_location(
+        "gen_english_for_check",
+        Path(__file__).resolve().parent / "gen-english.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    res = Path(folder) / "res"
+    kt = Path(folder) / "kt"
+    mod.write_outputs(res, kt)
+    return res / "values" / "strings.xml"
+
+
 def run_check(argv):
     # Same display and structure checks as the build. Writes nothing. Does not read locale files.
     if len(argv) > 3:
         raise SystemExit("usage: gen-settings-tree.py --check [tree.json [strings.xml [bindings.json]]]")
     tree = _default_tree_path() if not argv else Path(argv[0])
-    strings = _default_strings_path(tree) if len(argv) < 2 else Path(argv[1])
+    explicit = len(argv) >= 2
+    strings = Path(argv[1]) if explicit else _default_strings_path(tree)
     bindings = Path(__file__).resolve().parent / _BINDINGS_NAME if len(argv) < 3 else Path(argv[2])
-    align_display_english(tree, strings, bindings, write=False, report_new=True)
+    import tempfile
+
+    holder = None
+    try:
+        if not explicit and not strings.is_file():
+            holder = tempfile.TemporaryDirectory()
+            strings = _synthesized_english(holder.name)
+        align_display_english(tree, strings, bindings, write=False, report_new=True)
+    finally:
+        if holder is not None:
+            holder.cleanup()
 
 
 def main():
@@ -2288,7 +2329,8 @@ def _self_check_errors():
         raise SystemExit("write retargeted")
 
     script = str(Path(__file__).resolve())
-    repo_strings = (_default_strings_path(_default_tree_path())).read_bytes()
+    default_strings = _default_strings_path(_default_tree_path())
+    repo_strings = default_strings.read_bytes() if default_strings.is_file() else None
     repo_bindings = (Path(__file__).resolve().parent / _BINDINGS_NAME).read_bytes()
 
     def run_cli(folder, text, pairs, bindings):
@@ -2309,7 +2351,8 @@ def _self_check_errors():
         after = sorted((path.name, path.read_bytes()) for path in root.iterdir())
         if before != after:
             raise SystemExit("--check wrote " + folder)
-        if repo_strings != _default_strings_path(_default_tree_path()).read_bytes():
+        now_strings = default_strings.read_bytes() if default_strings.is_file() else None
+        if repo_strings != now_strings:
             raise SystemExit("--check wrote strings.xml")
         if repo_bindings != (Path(__file__).resolve().parent / _BINDINGS_NAME).read_bytes():
             raise SystemExit("--check wrote bindings")

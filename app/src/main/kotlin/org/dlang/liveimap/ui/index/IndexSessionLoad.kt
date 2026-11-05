@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.index
+import org.dlang.liveimap.i18n.S
 
 import android.content.Context
 import androidx.compose.foundation.lazy.LazyListState
@@ -8,7 +9,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.snapshotFlow
-import com.davidlang.liveimap.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -518,8 +518,8 @@ internal class IndexLoadHost {
                                 // The user moved on: offer the results as their own view.
                                 scope.launch {
                                     val shown = snackbarHostState.showSnackbar(
-                                        message = appContext.getString(R.string.index_long_search_done, hits.size),
-                                        actionLabel = appContext.getString(R.string.index_long_search_show),
+                                        message = S(appContext, "Search finished: %1\$d messages", hits.size),
+                                        actionLabel = S(appContext, "Show"),
                                         duration = SnackbarDuration.Long,
                                     )
                                     if (shown == SnackbarResult.ActionPerformed) showLongSearchHits(text, hits)
@@ -541,8 +541,7 @@ internal class IndexLoadHost {
                             pendingScope,
                             cancelled = { cancelSearch.value },
                         ) { current, total ->
-                            searchProgress = appContext.getString(
-                                R.string.index_search_folder_progress,
+                            searchProgress = S(appContext, "Folder %1\$d of %2\$d",
                                 current,
                                 total,
                             )
@@ -694,7 +693,7 @@ internal class IndexLoadHost {
                             } catch (error: MailFailure) {
                                 if (!idleDroppedByServer(error.text)) throw error
                                 // The server closed the connection on IDLE (a server bug): say so, then poll instead.
-                                postSnack(appContext.getString(R.string.index_idle_dropped, pollSeconds))
+                                postSnack(S(appContext, "The server closed the connection when asked to push new mail (IDLE), which is a server problem. Checking for new mail every %1\$d s instead.", pollSeconds))
                                 pollLoop(pollSeconds)
                             }
                             // Keep-alive NOOP on the main connection while the watch IDLEs.

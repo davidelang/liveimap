@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.contacts
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,11 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.mailSession
@@ -82,7 +81,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
         } catch (error: MailFailure) {
             notice = error.text
         } catch (error: Exception) {
-            notice = error.message ?: context.getString(R.string.reader_not_connected)
+            notice = error.message ?: S(context, "not connected")
         }
     }
 
@@ -97,13 +96,13 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
         val mailbox = book?.first ?: return
         val s = store.load()
         when (val result = writePineBook(session, mailbox, on.lastUid, entries, s.addressBookHistory.toInt(), s.addressBookNeverTrim)) {
-            is PineWriteResult.Wrote -> { notice = context.getString(R.string.book_saved); read(mailbox) }
+            is PineWriteResult.Wrote -> { notice = S(context, "Address book saved."); read(mailbox) }
             is PineWriteResult.NotBook -> notice = result.notice
             is PineWriteResult.Stale -> when (val rb = rebaseEdit(on.entries, result.state.entries, edit)) {
                 is Rebase.Clean -> when (val o = rb.outcome) {
                     is EditOutcome.Refused -> { notice = o.reason; state = result.state }
                     is EditOutcome.Done -> {
-                        notice = context.getString(R.string.book_reapplied)
+                        notice = S(context, "The book was changed elsewhere; your change was re-applied to the latest copy.")
                         write(edit, o.entries, result.state)
                     }
                 }
@@ -126,7 +125,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        notice = error.message ?: context.getString(R.string.copy_book_failed)
+                        notice = error.message ?: S(context, "Could not write the address book.")
                     } finally {
                         busy = false
                     }
@@ -137,11 +136,11 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
 
     conflict?.let { (edit, c, latest) ->
         fun show(e: AlpineEntry?) = e?.let { "${it.nickname}: ${it.fullname} ${it.address} ${it.comments}".trim() }
-            ?: context.getString(R.string.book_entry_gone)
+            ?: S(context, "(removed)")
         AlertDialog(
             onDismissRequest = { conflict = null; state = latest },
-            title = { Text(stringResource(R.string.book_conflict_title)) },
-            text = { Text(stringResource(R.string.book_conflict_text, show(c.theirs), show(c.mine))) },
+            title = { Text(S("Changed by another client")) },
+            text = { Text(S("This entry was changed elsewhere.\n\nNow in the book: %1\$s\n\nYour version: %2\$s", show(c.theirs), show(c.mine))) },
             confirmButton = {
                 TextButton(onClick = {
                     conflict = null
@@ -149,35 +148,35 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                     // keep mine on the latest book (an Update of an entry removed meanwhile becomes an Add)
                     val again = if (edit is BookEdit.Update && c.theirs == null) BookEdit.Add(edit.entry) else edit
                     save(again)
-                }) { Text(stringResource(R.string.book_keep_mine)) }
+                }) { Text(S("Keep mine")) }
             },
             dismissButton = {
-                TextButton(onClick = { conflict = null; state = latest; draft = null }) { Text(stringResource(R.string.book_use_theirs)) }
+                TextButton(onClick = { conflict = null; state = latest; draft = null }) { Text(S("Use theirs")) }
             },
         )
     }
     deleting?.let { nick ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text(stringResource(R.string.book_delete_title, nick)) },
-            text = { Text(stringResource(R.string.book_delete_text)) },
-            confirmButton = { TextButton(onClick = { deleting = null; save(BookEdit.Delete(nick)) }) { Text(stringResource(R.string.book_delete)) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text(stringResource(R.string.book_cancel)) } },
+            title = { Text(S("Delete %1\$s?", nick)) },
+            text = { Text(S("The entry is removed in a new copy of the book; earlier copies stay until the history trim.")) },
+            confirmButton = { TextButton(onClick = { deleting = null; save(BookEdit.Delete(nick)) }) { Text(S("Delete")) } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text(S("Cancel")) } },
         )
     }
 
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp)) {
         notice?.let { Text(it) }
-        if (busy) Text(stringResource(R.string.copy_reading))
+        if (busy) Text(S("Reading…"))
         val current = settings ?: return@Column
         val chosen = book
         val d = draft
         when {
             chosen == null -> {
                 val books = current.alpineBooks()
-                if (books.isEmpty()) Text(stringResource(R.string.book_none))
+                if (books.isEmpty()) Text(S("No address book is set for this account."))
                 for (b in books) {
-                    val label = if (b.second) context.getString(R.string.copy_read_only, b.first) else b.first
+                    val label = if (b.second) S(context, "%1\$s, read only", b.first) else b.first
                     TextButton(onClick = {
                         book = b
                         notice = null
@@ -188,7 +187,7 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                notice = e.message ?: context.getString(R.string.copy_read_failed)
+                                notice = e.message ?: S(context, "Could not read contacts.")
                             } finally {
                                 busy = false
                             }
@@ -202,36 +201,36 @@ private fun AddressBookLoaded(accountId: String, store: DataStoreSettingsStore) 
                 var addr by remember(d) { mutableStateOf(d.entry.address) }
                 var fcc by remember(d) { mutableStateOf(d.entry.fcc) }
                 var comments by remember(d) { mutableStateOf(d.entry.comments) }
-                OutlinedTextField(nick, { nick = it }, label = { Text(stringResource(R.string.book_nickname)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(full, { full = it }, label = { Text(stringResource(R.string.book_fullname)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(addr, { addr = it }, label = { Text(stringResource(R.string.book_address)) }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(fcc, { fcc = it }, label = { Text(stringResource(R.string.book_fcc)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(comments, { comments = it }, label = { Text(stringResource(R.string.book_comments)) }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(nick, { nick = it }, label = { Text(S("Nickname")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(full, { full = it }, label = { Text(S("Full name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(addr, { addr = it }, label = { Text(S("Address, or a list as (a@x, b@y, nickname)")) }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(fcc, { fcc = it }, label = { Text(S("Fcc")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(comments, { comments = it }, label = { Text(S("Comments")) }, modifier = Modifier.fillMaxWidth())
                 Row {
-                    TextButton(onClick = { draft = null }, enabled = !busy) { Text(stringResource(R.string.book_cancel)) }
+                    TextButton(onClick = { draft = null }, enabled = !busy) { Text(S("Cancel")) }
                     TextButton(onClick = {
                         val e = AlpineEntry(nick, full, addr, fcc, comments)
                         save(if (d.original == null) BookEdit.Add(e) else BookEdit.Update(d.original, e))
-                    }, enabled = !busy) { Text(stringResource(R.string.book_save)) }
+                    }, enabled = !busy) { Text(S("Save")) }
                 }
             }
             else -> {
                 val st = state
                 Text(chosen.first)
                 Row {
-                    TextButton(onClick = { book = null; state = null; notice = null }, enabled = !busy) { Text(stringResource(R.string.reader_back)) }
+                    TextButton(onClick = { book = null; state = null; notice = null }, enabled = !busy) { Text(S("Back")) }
                     if (!chosen.second && st != null) {
                         TextButton(onClick = { draft = Draft(null, AlpineEntry("", "", "", "", "")) }, enabled = !busy) {
-                            Text(stringResource(R.string.book_add))
+                            Text(S("Add entry"))
                         }
                     }
                 }
                 for (e in st?.entries.orEmpty()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.address_book_row, e.nickname, e.fullname, e.address), Modifier.weight(1f))
+                        Text(S("%1\$s  %2\$s  %3\$s", e.nickname, e.fullname, e.address), Modifier.weight(1f))
                         if (!chosen.second) {
-                            TextButton(onClick = { draft = Draft(e.nickname, e) }, enabled = !busy) { Text(stringResource(R.string.book_edit)) }
-                            TextButton(onClick = { deleting = e.nickname }, enabled = !busy) { Text(stringResource(R.string.book_delete)) }
+                            TextButton(onClick = { draft = Draft(e.nickname, e) }, enabled = !busy) { Text(S("Edit")) }
+                            TextButton(onClick = { deleting = e.nickname }, enabled = !busy) { Text(S("Delete")) }
                         }
                     }
                 }

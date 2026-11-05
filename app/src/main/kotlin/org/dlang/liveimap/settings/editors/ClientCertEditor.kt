@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,8 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -126,7 +125,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -170,11 +168,11 @@ internal fun ClientCertField(editor: SettingsEditor) {
         message = null
     }
     val alias = editor.settings.clientCertAlias
-    Text(stringResource(R.string.settings_client_cert))
+    Text(S("Client certificate (IMAP and SMTP; SASL EXTERNAL when the server offers it)"))
     if (alias.isBlank()) {
-        Text(stringResource(R.string.settings_client_cert_none))
+        Text(S("None"))
     } else {
-        Text(stringResource(R.string.settings_client_cert_keychain_current, alias))
+        Text(S("Android certificate: %1\$s", alias))
         TextButton(onClick = {
             val failed = runCatching { org.dlang.liveimap.engine.KeyChainCerts.removeImported(alias) }
             if (failed.isFailure) {
@@ -183,11 +181,11 @@ internal fun ClientCertField(editor: SettingsEditor) {
                 editor.persist(editor.settings.copy(clientCertAlias = ""))
             }
         }) {
-            Text(stringResource(R.string.settings_client_cert_remove))
+            Text(S("Remove certificate"))
         }
     }
     TextButton(onClick = { pick.launch(arrayOf("application/x-pkcs12", "application/octet-stream", "*/*")) }) {
-        Text(stringResource(R.string.settings_client_cert_import))
+        Text(S("Import .p12…"))
     }
     TextButton(onClick = {
         var c = context
@@ -216,14 +214,14 @@ internal fun ClientCertField(editor: SettingsEditor) {
             editor.settings.imapPort,
             alias.ifBlank { null },
         )
-    }) { Text(stringResource(R.string.settings_client_cert_keychain)) }
+    }) { Text(S("Choose Android certificate…")) }
     val uri = pending
     if (uri != null) {
         var revealed by remember(uri) { mutableStateOf(false) }
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text(stringResource(R.string.settings_client_cert_password)) },
+            label = { Text(S("Certificate password")) },
             singleLine = true,
             visualTransformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
@@ -257,7 +255,7 @@ internal fun ClientCertField(editor: SettingsEditor) {
                     if (message == null) message = null
                 }.onFailure { message = it.message ?: it.toString() }
             }
-        }) { Text(stringResource(R.string.settings_client_cert_save)) }
+        }) { Text(S("Use this certificate")) }
     }
     message?.let { Text(it) }
 }

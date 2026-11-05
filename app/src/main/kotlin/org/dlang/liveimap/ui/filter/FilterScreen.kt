@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.filter
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -27,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -36,7 +36,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.sieve.InboundRule
 import org.dlang.liveimap.engine.sieve.assignInboundIds
 import org.dlang.liveimap.engine.sieve.deleteInboundRule
@@ -91,24 +90,24 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
     }
     val loaded = rules ?: return
     val script = emitSieve(loaded)
-    val uploaded = stringResource(R.string.filter_uploaded)
-    val notActive = stringResource(R.string.filter_uploaded_not_active)
+    val uploaded = S("Uploaded")
+    val notActive = S("Not active: the server will not run these rules until the liveimap script is included or made active.")
     asking?.let { (plan, answer) ->
         fun reply(yes: Boolean) { asking = null; answer.complete(yes) }
         AlertDialog(
             onDismissRequest = { reply(false) },
-            title = { Text(stringResource(R.string.filter_activate_title)) },
+            title = { Text(S("Turn on these rules?")) },
             text = {
                 Text(
                     if (plan.action == LiveimapActivateAction.Include) {
-                        stringResource(R.string.filter_activate_include, plan.activeName)
+                        S("Add the line include :personal \"liveimap\"; to your active script \"%1\$s\"? Nothing else in it changes.", plan.activeName)
                     } else {
-                        stringResource(R.string.filter_activate_setactive)
+                        S("Make the liveimap script the active one? The server runs only one active script; any other script stops running.")
                     },
                 )
             },
-            confirmButton = { TextButton(onClick = { reply(true) }) { Text(stringResource(R.string.filter_activate_yes)) } },
-            dismissButton = { TextButton(onClick = { reply(false) }) { Text(stringResource(R.string.filter_activate_no)) } },
+            confirmButton = { TextButton(onClick = { reply(true) }) { Text(S("Turn on")) } },
+            dismissButton = { TextButton(onClick = { reply(false) }) { Text(S("Not now")) } },
         )
     }
     Column(
@@ -118,7 +117,7 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
     ) {
         if (loaded.isEmpty()) {
             Text(
-                text = stringResource(R.string.filter_none),
+                text = S("There are no filters."),
                 modifier = Modifier.padding(16.dp),
             )
         }
@@ -131,7 +130,7 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
         }
         HorizontalDivider()
         Text(
-            text = stringResource(R.string.filter_script),
+            text = S("Sieve"),
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
         )
         Surface(modifier = Modifier.padding(16.dp).fillMaxWidth(), tonalElevation = 1.dp) {
@@ -159,9 +158,9 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
                             sieveTarget(account, store.password(), AccountStore.shared(appContext).sievePassword(accountId))
                         } catch (error: SieveTargetException) {
                             uploadReport = if (error.kind == "password") {
-                                appContext.getString(R.string.error_password_missing)
+                                S(appContext, "Password missing")
                             } else {
-                                appContext.getString(R.string.settings_sieve_no_host)
+                                S(appContext, "Set a Sieve host, or turn on Same as inbound.")
                             }
                             return@launch
                         }
@@ -203,7 +202,7 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
             },
             enabled = !uploading,
         ) {
-            Text(stringResource(R.string.filter_upload))
+            Text(S("Upload"))
         }
         if (uploadReport.isNotEmpty()) {
             Text(
@@ -295,22 +294,22 @@ fun FilterEditorScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        FilterField(stringResource(R.string.filter_from), from, ready) { from = it }
-        FilterField(stringResource(R.string.filter_to), to, ready) { to = it }
-        FilterField(stringResource(R.string.filter_list_id), listId, ready) { listId = it }
-        FilterField(stringResource(R.string.filter_subject), subject, ready) { subject = it }
-        FilterField(stringResource(R.string.filter_file_into), fileInto, ready) { fileInto = it }
-        FilterCheck(stringResource(R.string.filter_mark_read), markRead, ready) { markRead = it }
-        FilterCheck(stringResource(R.string.filter_flag), flagged, ready) { flagged = it }
-        FilterField(stringResource(R.string.filter_redirect), redirectTo, ready) { redirectTo = it }
-        FilterCheck(stringResource(R.string.filter_discard), discard, ready) { discard = it }
+        FilterField(S("From"), from, ready) { from = it }
+        FilterField(S("To"), to, ready) { to = it }
+        FilterField(S("List-Id"), listId, ready) { listId = it }
+        FilterField(S("Subject"), subject, ready) { subject = it }
+        FilterField(S("File into"), fileInto, ready) { fileInto = it }
+        FilterCheck(S("Mark read"), markRead, ready) { markRead = it }
+        FilterCheck(S("Flag"), flagged, ready) { flagged = it }
+        FilterField(S("Redirect"), redirectTo, ready) { redirectTo = it }
+        FilterCheck(S("Discard"), discard, ready) { discard = it }
         Row {
             TextButton(onClick = { persist(remove = false) }, enabled = ready && canSave) {
-                Text(stringResource(R.string.filter_save))
+                Text(S("Save"))
             }
             if (index >= 0) {
                 TextButton(onClick = { persist(remove = true) }, enabled = ready) {
-                    Text(stringResource(R.string.filter_delete))
+                    Text(S("Delete"))
                 }
             }
         }
@@ -352,10 +351,10 @@ private fun FilterCheck(label: String, checked: Boolean, enabled: Boolean, onChe
 private fun criterionLabel(rule: InboundRule): String {
     val first = rule.criteria.firstOrNull() ?: return ""
     val name = when (first.field) {
-        RuleField.From -> stringResource(R.string.filter_from)
-        RuleField.To -> stringResource(R.string.filter_to)
-        RuleField.ListId -> stringResource(R.string.filter_list_id)
-        RuleField.Subject -> stringResource(R.string.filter_subject)
+        RuleField.From -> S("From")
+        RuleField.To -> S("To")
+        RuleField.ListId -> S("List-Id")
+        RuleField.Subject -> S("Subject")
     }
     return "$name ${first.value}"
 }
@@ -363,11 +362,11 @@ private fun criterionLabel(rule: InboundRule): String {
 @Composable
 private fun actionLabel(rule: InboundRule): String {
     val parts = ArrayList<String>(5)
-    if (rule.fileInto.isNotBlank()) parts.add(stringResource(R.string.filter_file_into_value, rule.fileInto))
-    if (SystemFlag.Seen in rule.flags) parts.add(stringResource(R.string.filter_mark_read))
-    if (SystemFlag.Flagged in rule.flags) parts.add(stringResource(R.string.filter_flag))
-    if (rule.redirectTo.isNotBlank()) parts.add(stringResource(R.string.filter_redirect_value, rule.redirectTo))
-    if (rule.discard) parts.add(stringResource(R.string.filter_discard))
+    if (rule.fileInto.isNotBlank()) parts.add(S("File into %1\$s", rule.fileInto))
+    if (SystemFlag.Seen in rule.flags) parts.add(S("Mark read"))
+    if (SystemFlag.Flagged in rule.flags) parts.add(S("Flag"))
+    if (rule.redirectTo.isNotBlank()) parts.add(S("Redirect %1\$s", rule.redirectTo))
+    if (rule.discard) parts.add(S("Discard"))
     return parts.joinToString(", ")
 }
 

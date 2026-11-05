@@ -1,4 +1,6 @@
 package org.dlang.liveimap.ui.folder
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.i18n.P
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -80,7 +82,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -108,7 +109,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.accounts.AccountRestoreGate
@@ -217,11 +217,11 @@ private fun Context.hostActivity(): Activity? {
     }
 }
 
-private fun folderBarLabel(action: FolderBarAction): Int = when (action) {
-    FolderBarAction.Refresh -> R.string.folders_refresh
-    FolderBarAction.CollapseAll -> R.string.folders_collapse_all
-    FolderBarAction.SaveDefault -> R.string.folders_save_default
-    FolderBarAction.ResetDefault -> R.string.folders_reset_default
+private fun folderBarLabel(action: FolderBarAction): String = when (action) {
+    FolderBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
+    FolderBarAction.CollapseAll -> org.dlang.liveimap.i18n.literal.S("Collapse all")
+    FolderBarAction.SaveDefault -> org.dlang.liveimap.i18n.literal.S("Save as default view")
+    FolderBarAction.ResetDefault -> org.dlang.liveimap.i18n.literal.S("Reset to default view")
 }
 
 /** Create-account only after restore has finished and the list is still empty. */
@@ -370,8 +370,8 @@ private fun FolderListLoaded(
     var folderBar by remember { mutableStateOf(defaultFolderBar()) }
     var toolbarRows by remember { mutableIntStateOf(2) }
     var iconRows by remember { mutableIntStateOf(1) }
-    val emptyPrefixLabel = stringResource(R.string.folders_empty_prefix)
-    val retryLabel = stringResource(R.string.folders_retry)
+    val emptyPrefixLabel = S("(empty prefix)")
+    val retryLabel = S("Retry")
 
     LifecycleStartEffect(store) {
         val job = scope.launch {
@@ -695,18 +695,18 @@ private fun FolderListLoaded(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.folders_title)) },
+                    title = { Text(S("Folders")) },
                     navigationIcon = {
                         if (onOpenDrawer != null) {
                             HelpIconButton(
-                                label = stringResource(R.string.folders_menu),
-                                help = stringResource(R.string.help_folders_menu),
+                                label = S("Menu"),
+                                help = S("Opens the account list."),
                                 page = "folders.html#menu",
                                 onClick = onOpenDrawer,
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Menu,
-                                    contentDescription = stringResource(R.string.folders_menu),
+                                    contentDescription = S("Menu"),
                                 )
                             }
                         }
@@ -724,14 +724,14 @@ private fun FolderListLoaded(
                             when (action) {
                                 FolderBarAction.Refresh -> folderIcons.add {
                                     HelpIconButton(
-                                        label = stringResource(R.string.folders_refresh),
-                                        help = stringResource(R.string.help_folders_refresh),
+                                        label = S("Refresh"),
+                                        help = S("Loads the folder list again."),
                                         page = "folders.html#refresh",
                                         onClick = refreshFolderList,
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
-                                            contentDescription = stringResource(R.string.folders_refresh),
+                                            contentDescription = S("Refresh"),
                                         )
                                     }
                                 }
@@ -739,7 +739,7 @@ private fun FolderListLoaded(
                                     IconButton(onClick = { collapseAll() }) {
                                         Icon(
                                             imageVector = Icons.Filled.UnfoldLess,
-                                            contentDescription = stringResource(R.string.folders_collapse_all),
+                                            contentDescription = S("Collapse all"),
                                         )
                                     }
                                 }
@@ -747,7 +747,7 @@ private fun FolderListLoaded(
                                     IconButton(onClick = { saveDefaultView() }) {
                                         Icon(
                                             imageVector = Icons.Filled.Save,
-                                            contentDescription = stringResource(R.string.folders_save_default),
+                                            contentDescription = S("Save as default view"),
                                         )
                                     }
                                 }
@@ -755,7 +755,7 @@ private fun FolderListLoaded(
                                     IconButton(onClick = { resetToDefaultView() }) {
                                         Icon(
                                             imageVector = Icons.Filled.RestartAlt,
-                                            contentDescription = stringResource(R.string.folders_reset_default),
+                                            contentDescription = S("Reset to default view"),
                                         )
                                     }
                                 }
@@ -768,14 +768,14 @@ private fun FolderListLoaded(
                         )
                         Box {
                             HelpIconButton(
-                                label = stringResource(R.string.folders_more),
-                                help = stringResource(R.string.help_folders_more),
+                                label = S("More"),
+                                help = S("Collapse all, the default view, and the toolbar editor."),
                                 page = "folders.html#more",
                                 onClick = { moreMenu = true },
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(R.string.folders_more),
+                                    contentDescription = S("More"),
                                 )
                             }
                             DropdownMenu(
@@ -786,17 +786,15 @@ private fun FolderListLoaded(
                                 for (entry in folderMenu(folderBar, unsentCount > 0)) {
                                     when (entry) {
                                         is FolderMenuEntry.Action -> {
-                                            val title = stringResource(folderBarLabel(entry.action))
+                                            val title = S(folderBarLabel(entry.action))
                                             HelpDropdownMenuItem(
                                                 label = title,
-                                                help = stringResource(
-                                                    when (entry.action) {
-                                                        FolderBarAction.Refresh -> R.string.help_menu_folders_refresh
-                                                        FolderBarAction.CollapseAll -> R.string.help_menu_folders_collapse_all
-                                                        FolderBarAction.SaveDefault -> R.string.help_menu_folders_save_default
-                                                        FolderBarAction.ResetDefault -> R.string.help_menu_folders_reset_default
+                                                help = when (entry.action) {
+                                                        FolderBarAction.Refresh -> S("Reloads the folder list.")
+                                                        FolderBarAction.CollapseAll -> S("Collapses every expanded folder.")
+                                                        FolderBarAction.SaveDefault -> S("Saves the current expansion as the default.")
+                                                        FolderBarAction.ResetDefault -> S("Restores the saved default expansion.")
                                                     },
-                                                ),
                                                 page = "folders.html",
                                                 text = { Text(title) },
                                                 onClick = {
@@ -811,10 +809,10 @@ private fun FolderListLoaded(
                                             )
                                         }
                                         FolderMenuEntry.Unsent -> {
-                                            val title = stringResource(R.string.folders_unsent)
+                                            val title = S("Unsent")
                                             HelpDropdownMenuItem(
                                                 label = title,
-                                                help = stringResource(R.string.help_menu_folders_unsent),
+                                                help = S("Opens messages kept on this device."),
                                                 page = "folders.html",
                                                 text = { Text(title) },
                                                 onClick = {
@@ -825,10 +823,10 @@ private fun FolderListLoaded(
                                         }
                                         FolderMenuEntry.Divider -> HorizontalDivider()
                                         FolderMenuEntry.Customize -> {
-                                            val title = stringResource(R.string.toolbar_customize)
+                                            val title = S("Customize toolbar…")
                                             HelpDropdownMenuItem(
                                                 label = title,
-                                                help = stringResource(R.string.help_menu_toolbar_customize),
+                                                help = S("Chooses which actions stay on the bar."),
                                                 page = "folders.html",
                                                 text = { Text(title) },
                                                 onClick = {
@@ -853,7 +851,7 @@ private fun FolderListLoaded(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         singleLine = true,
-                        placeholder = { Text(stringResource(R.string.folders_search)) },
+                        placeholder = { Text(S("Search folders")) },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Filled.Search,
@@ -865,7 +863,7 @@ private fun FolderListLoaded(
                                 IconButton(onClick = { folderQuery = "" }) {
                                     Icon(
                                         imageVector = Icons.Filled.Close,
-                                        contentDescription = stringResource(R.string.folders_clear_search),
+                                        contentDescription = S("Clear search"),
                                     )
                                 }
                             }
@@ -890,7 +888,7 @@ private fun FolderListLoaded(
             }
         }
         if (hostKnown && imapHost.isBlank()) {
-            TextButton(onClick = onOpenHelp) { Text(stringResource(R.string.help_title)) }
+            TextButton(onClick = onOpenHelp) { Text(S("Help")) }
         }
         if (loading && banner == null) {
             LinearProgressIndicator(
@@ -910,7 +908,7 @@ private fun FolderListLoaded(
         }
         if (unsentCount > 0) {
             Text(
-                text = stringResource(R.string.folders_unsent_count, unsentCount),
+                text = S("Unsent %1\$d", unsentCount),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpenUnsent)
@@ -964,7 +962,7 @@ private fun FolderListLoaded(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = stringResource(R.string.folders_none),
+                        text = S("No folders"),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -975,7 +973,7 @@ private fun FolderListLoaded(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = stringResource(R.string.folders_none_match),
+                        text = S("No matching folders"),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -1063,7 +1061,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(stringResource(R.string.folders_retry)) }
+            TextButton(onClick = onRetry) { Text(S("Retry")) }
         }
     }
 }
@@ -1171,35 +1169,33 @@ private fun FolderListRow(
 ) {
     val emptyPrefix = row.namespaceRoot && row.mailbox.isEmpty()
     var rowMenu by remember { mutableStateOf(false) }
-    val shownLeaf = folderDisplayName(row, stringResource(R.string.folders_empty_prefix))
+    val shownLeaf = folderDisplayName(row, S("(empty prefix)"))
     val unreadLabel = folderUnreadLabel(showUnread, row.unseen)
     val messageCount = row.messages
     val messagesPhrase = if (messageCount == null) {
         null
     } else {
-        pluralStringResource(R.plurals.folders_messages, messageCount, messageCount)
+        P(messageCount, messageCount, one = "%d message", other = "%d messages")
     }
     val unseenCount = if (unreadLabel == null) null else row.unseen
     val unreadPhrase = if (unseenCount == null) {
         null
     } else {
-        pluralStringResource(R.plurals.folders_unread, unseenCount, unseenCount)
+        P(unseenCount, unseenCount, one = "%d unread", other = "%d unread")
     }
     val expansionPhrase = if (!row.hasChildren) {
         null
     } else if (row.expanded) {
-        stringResource(R.string.folders_expanded)
+        S("expanded")
     } else {
-        stringResource(R.string.folders_collapsed)
+        S("collapsed")
     }
     val description = if (emptyPrefix) {
-        stringResource(R.string.folders_namespace_empty)
+        S("Namespace, empty prefix")
     } else {
         folderRowDescription(shownLeaf, messagesPhrase, unreadPhrase, expansionPhrase)
     }
-    val favoriteText = stringResource(
-        if (favorite) R.string.folders_remove_favorite else R.string.folders_add_favorite,
-    )
+    val favoriteText = if (favorite) S("Remove favorite") else S("Add favorite")
     val icon = if (emptyPrefix) {
         Icons.Filled.FolderSpecial
     } else {
@@ -1241,9 +1237,9 @@ private fun FolderListRow(
                 Icon(
                     imageVector = if (row.expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
                     contentDescription = if (row.expanded) {
-                        stringResource(R.string.folders_collapse, shownLeaf)
+                        S("Collapse %1\$s", shownLeaf)
                     } else {
-                        stringResource(R.string.folders_expand, shownLeaf)
+                        S("Expand %1\$s", shownLeaf)
                     },
                 )
             }
@@ -1326,7 +1322,7 @@ private fun FolderRowMenu(
         ObscuredTouchFilter()
         HelpDropdownMenuItem(
             label = favoriteText,
-            help = stringResource(R.string.help_menu_favorite),
+            help = S("Adds or removes this folder as a favorite."),
             page = "folders.html",
             text = { Text(favoriteText) },
             onClick = {
@@ -1334,10 +1330,10 @@ private fun FolderRowMenu(
                 onStar()
             },
         )
-        val alwaysExpand = stringResource(R.string.folders_always_expand)
+        val alwaysExpand = S("Always expand")
         HelpDropdownMenuItem(
             label = alwaysExpand,
-            help = stringResource(R.string.help_menu_folders_always_expand),
+            help = S("This folder starts expanded."),
             page = "folders.html",
             text = { Text(alwaysExpand) },
             onClick = {
@@ -1345,10 +1341,10 @@ private fun FolderRowMenu(
                 onAlwaysExpand()
             },
         )
-        val dontAlwaysExpand = stringResource(R.string.folders_dont_always_expand)
+        val dontAlwaysExpand = S("Don't always expand")
         HelpDropdownMenuItem(
             label = dontAlwaysExpand,
-            help = stringResource(R.string.help_menu_folders_dont_always_expand),
+            help = S("This folder starts collapsed."),
             page = "folders.html",
             text = { Text(dontAlwaysExpand) },
             onClick = {
@@ -1383,33 +1379,33 @@ private fun NoAccountYet(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.folders_title)) },
+                title = { Text(S("Folders")) },
                 navigationIcon = {
                     if (onOpenDrawer != null) {
                         IconButton(onClick = onOpenDrawer) {
-                            Icon(Icons.Filled.Menu, contentDescription = stringResource(R.string.folders_menu))
+                            Icon(Icons.Filled.Menu, contentDescription = S("Menu"))
                         }
                     }
                 },
                 actions = {
                     Box {
                         IconButton(onClick = { more = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.folders_more))
+                            Icon(Icons.Filled.MoreVert, contentDescription = S("More"))
                         }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                             ObscuredTouchFilter()
                             val items = listOf(
-                                Triple(R.string.drawer_settings, R.string.help_menu_drawer_settings, onOpenSettings),
-                                Triple(R.string.folders_unsent, R.string.help_menu_folders_unsent, onOpenUnsent),
-                                Triple(R.string.toolbar_customize, R.string.help_menu_toolbar_customize, onCustomize),
-                                Triple(R.string.help_title, R.string.help_menu_help_title, onOpenHelp),
-                                Triple(R.string.about_title, R.string.help_menu_about_title, onOpenAbout),
+                                Triple(org.dlang.liveimap.i18n.literal.S("Settings"), org.dlang.liveimap.i18n.literal.S("Opens settings."), onOpenSettings),
+                                Triple(org.dlang.liveimap.i18n.literal.S("Unsent"), org.dlang.liveimap.i18n.literal.S("Opens messages kept on this device."), onOpenUnsent),
+                                Triple(org.dlang.liveimap.i18n.literal.S("Customize toolbar…"), org.dlang.liveimap.i18n.literal.S("Chooses which actions stay on the bar."), onCustomize),
+                                Triple(org.dlang.liveimap.i18n.literal.S("Help"), org.dlang.liveimap.i18n.literal.S("Opens help."), onOpenHelp),
+                                Triple(org.dlang.liveimap.i18n.literal.S("About"), org.dlang.liveimap.i18n.literal.S("Opens About."), onOpenAbout),
                             )
                             for ((label, help, action) in items) {
-                                val title = stringResource(label)
+                                val title = S(label)
                                 HelpDropdownMenuItem(
                                     label = title,
-                                    help = stringResource(help),
+                                    help = S(help),
                                     page = "folders.html",
                                     text = { Text(title) },
                                     onClick = { more = false; action() },
@@ -1428,12 +1424,12 @@ private fun NoAccountYet(
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         ) {
             Text(
-                stringResource(R.string.folders_no_account),
+                S("No mail account yet"),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             androidx.compose.material3.Button(onClick = onAddAccount, modifier = Modifier.padding(top = 16.dp)) {
-                Text(stringResource(R.string.settings_add_account))
+                Text(S("Add account"))
             }
         }
     }

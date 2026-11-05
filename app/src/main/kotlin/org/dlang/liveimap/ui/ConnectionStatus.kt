@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,9 +16,7 @@ import org.dlang.liveimap.ui.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.ConnectionState
 
 @Composable
@@ -34,7 +33,7 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
                         .height(4.dp),
                 )
                 Text(
-                    text = stringResource(R.string.status_reconnecting),
+                    text = S("Reconnecting…"),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
@@ -51,7 +50,7 @@ fun ConnectionStatusStrip(state: ConnectionState, onRetry: () -> Unit) {
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                 )
                 TextButton(onClick = onRetry) {
-                    Text(stringResource(R.string.reader_retry))
+                    Text(S("Retry"))
                 }
             }
         }

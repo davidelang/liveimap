@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// en stays res/values/strings.xml. These 106 locales are the committed i18n set.
+// en-US strings.xml is generated from S, the plural helper, and settings-tree.json. These 106 locales are the committed i18n set.
 val i18nLocales = listOf(
     "af",
     "am",
@@ -924,9 +924,63 @@ abstract class GenerateI18nTask : DefaultTask() {
     }
 }
 
+abstract class GenerateEnglishTask : DefaultTask() {
+    @get:InputFile
+    abstract val scriptFile: RegularFileProperty
+
+    @get:InputDirectory
+    abstract val sourceDir: DirectoryProperty
+
+    @get:InputFile
+    abstract val catalogFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val treeFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val bindingFile: RegularFileProperty
+
+    @get:InputFile
+    abstract val settingsScript: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val resOut: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val ktOut: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val command = listOf(
+            "python3",
+            scriptFile.get().asFile.absolutePath,
+            resOut.get().asFile.absolutePath,
+            ktOut.get().asFile.absolutePath,
+        )
+        val proc = ProcessBuilder(command).redirectErrorStream(true).start()
+        val output = proc.inputStream.bufferedReader().readText()
+        val code = proc.waitFor()
+        if (code != 0) throw GradleException(output.ifBlank { "generateEnglish failed" })
+        if (output.isNotBlank()) println(output.trim())
+    }
+}
+
+// Writes en-US strings.xml and StringCatalog from S, the plural helper, and the settings tree.
+val generateEnglish = tasks.register<GenerateEnglishTask>("generateEnglish") {
+    scriptFile.set(file("gen-english.py"))
+    sourceDir.set(file("src"))
+    catalogFile.set(file("src/main/i18n/af.json"))
+    treeFile.set(file("src/main/assets/settings-tree.json"))
+    bindingFile.set(file("settings-display-bindings.json"))
+    settingsScript.set(file("gen-settings-tree.py"))
+    resOut.set(layout.buildDirectory.dir("generated/english/res"))
+    ktOut.set(layout.buildDirectory.dir("generated/english/kotlin"))
+}
+
 // Packages the committed catalog into values-<locale>/strings.xml. No translator. A miss stays English.
 val generateAppI18n = tasks.register<GenerateI18nTask>("generateAppI18n") {
-    stringsFile.set(file("src/main/res/values/strings.xml"))
+    dependsOn(generateEnglish)
+    stringsFile.set(layout.buildDirectory.file("generated/english/res/values/strings.xml"))
     i18nDir.set(file("src/main/i18n"))
     python.set(i18nPython)
     localeFilters.set(listOf("en") + i18nLocales)
@@ -942,6 +996,8 @@ tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(generateAppI1
 
 androidComponents {
     onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(generateEnglish) { it.resOut }
+        variant.sources.kotlin?.addGeneratedSourceDirectory(generateEnglish) { it.ktOut }
         variant.sources.res?.addGeneratedSourceDirectory(generateAppI18n) { it.resOut }
     }
 }

@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.dlang.liveimap.engine.ImapServerAuthenticationRejected
 import org.dlang.liveimap.engine.SmtpProbeMaterial
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.accounts.AccountCredentials
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.jmap.JmapOffer
@@ -29,8 +28,8 @@ import org.dlang.liveimap.session.confirmMailCertificate
 import org.dlang.liveimap.session.confirmMailPlaintext
 
 /** David, 2026-10-12: every account must be able to send: over JMAP, or through an SMTP server. */
-fun sendingProblem(settings: Settings): Int? =
-    if (!settings.emailSubmission && settings.smtpHost.isBlank()) R.string.settings_no_way_to_send else null
+fun sendingProblem(settings: Settings): String? =
+    if (!settings.emailSubmission && settings.smtpHost.isBlank()) org.dlang.liveimap.i18n.literal.S("This account cannot send: set an SMTP server or turn on Send over JMAP.") else null
 
 /** Choose IMAP or JMAP access. Choosing JMAP with no SMTP server turns on sending over JMAP, so mail can go out. */
 fun withMailAccess(settings: Settings, jmap: Boolean): Settings {

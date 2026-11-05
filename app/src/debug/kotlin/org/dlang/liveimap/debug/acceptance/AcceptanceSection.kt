@@ -1,4 +1,5 @@
 package org.dlang.liveimap.debug.acceptance
+import org.dlang.liveimap.i18n.S
 
 import android.os.Build
 import androidx.compose.foundation.layout.Column
@@ -12,14 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.confirmMailCertificate
@@ -98,11 +97,11 @@ fun AcceptanceSection() {
         }
     }
     Column {
-        Text(stringResource(if (running) R.string.acceptance_running else R.string.acceptance_test_this_server))
+        Text(if (running) S("Testing this server…") else S("Test this server"))
         Row {
-            TextButton(onClick = { start(AcceptanceSuite.Full) }, enabled = !running) { Text(stringResource(R.string.acceptance_full)) }
-            TextButton(onClick = { start(AcceptanceSuite.ThisTurn) }, enabled = !running) { Text(stringResource(R.string.acceptance_this_turn)) }
-            TextButton(onClick = { start(AcceptanceSuite.LastN) }, enabled = !running) { Text(stringResource(R.string.acceptance_last_n)) }
+            TextButton(onClick = { start(AcceptanceSuite.Full) }, enabled = !running) { Text(S("Full regression")) }
+            TextButton(onClick = { start(AcceptanceSuite.ThisTurn) }, enabled = !running) { Text(S("This turn")) }
+            TextButton(onClick = { start(AcceptanceSuite.LastN) }, enabled = !running) { Text(S("Last 3 plans")) }
         }
         if (line.isNotEmpty()) Text(line, fontFamily = FontFamily.Monospace)
         if (lastFile.isNotEmpty()) Text(lastFile, fontFamily = FontFamily.Monospace)

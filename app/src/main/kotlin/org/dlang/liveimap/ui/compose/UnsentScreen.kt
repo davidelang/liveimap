@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.compose
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,11 +22,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.ui.LocalScreenAccounts
 
@@ -67,15 +66,15 @@ fun UnsentScreen(
             .padding(8.dp),
     ) {
         for (copy in copies) {
-            Text(unsentRowLabel(copy, stringResource(R.string.unsent_no_subject), charset))
+            Text(unsentRowLabel(copy, S("No subject"), charset))
             Text(copy.recipients.joinToString(", "))
             Text(
                 if (copy.appendOnly) {
-                    stringResource(R.string.unsent_sent_copy)
+                    S("Sent, copy not saved")
                 } else if (copy.uncertain) {
-                    stringResource(R.string.unsent_uncertain)
+                    S("May have been sent (check Sent before retrying)")
                 } else {
-                    stringResource(R.string.unsent_not_sent)
+                    S("Not sent")
                 },
             )
             if (copy.modifiedMillis > 0L) {
@@ -83,13 +82,13 @@ fun UnsentScreen(
             }
             Row(Modifier.fillMaxWidth()) {
                 TextButton(onClick = { onOpenCopy(copy.id, false, id) }) {
-                    Text(stringResource(R.string.unsent_open))
+                    Text(S("Open"))
                 }
                 TextButton(onClick = { onOpenCopy(copy.id, true, id) }) {
-                    Text(stringResource(R.string.unsent_retry))
+                    Text(S("Retry"))
                 }
                 TextButton(onClick = { discardId = copy.id }) {
-                    Text(stringResource(R.string.unsent_discard))
+                    Text(S("Discard"))
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
@@ -99,17 +98,17 @@ fun UnsentScreen(
     if (pending != null) {
         AlertDialog(
             onDismissRequest = { discardId = null },
-            title = { Text(stringResource(R.string.unsent_discard_title)) },
+            title = { Text(S("Discard this unsent message?")) },
             confirmButton = {
                 TextButton(onClick = {
                     discardId = null
                     deleteCopy(appContext, pending, id)
                     copies = readCopies(appContext, id)
-                }) { Text(stringResource(R.string.unsent_discard)) }
+                }) { Text(S("Discard")) }
             },
             dismissButton = {
                 TextButton(onClick = { discardId = null }) {
-                    Text(stringResource(R.string.unsent_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )

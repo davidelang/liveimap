@@ -7,9 +7,10 @@ import org.junit.Test
 class SettingsStringsTest {
     @Test
     fun everyGeneratedNameIsInStringsXml() {
-        val xml = listOf(File("src/main/res/values/strings.xml"), File("app/src/main/res/values/strings.xml"))
-            .first { it.isFile }
-            .readText()
+        val xml = listOf(
+            File("build/generated/english/res/values/strings.xml"),
+            File("app/build/generated/english/res/values/strings.xml"),
+        ).first { it.isFile }.readText()
         val summaryNames = listOf(
             "label_arrival", "label_date", "label_from", "compose_subject", "compose_to", "compose_cc",
             "label_size", "label_thread", "label_ordered_subject", "drawer_delete", "label_move",

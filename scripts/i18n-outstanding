@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """List sentences the catalog does not already match.
 
-Scans res/values/strings.xml and settings-tree.json. No flags: added, changed,
-and removed sentences. Unchanged sentences are not printed. --all lists every
+Definitions come from S, the plural helper, and settings-tree.json. The generated
+strings.xml is build output, not a place where wording is edited. No flags: added,
+changed, and removed sentences. Unchanged sentences are not printed. A removed
+catalog key whose sentence is still defined is not printed. --all lists every
 machine sentence. --manuals adds docs/user-manual/manual.md when that file
 exists. --check rejects a catalog text whose format tokens differ from its
 source, restores the previous text, and marks that entry pending. Overrides are
@@ -19,7 +21,6 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
-STRINGS = ROOT / "app/src/main/res/values/strings.xml"
 TREE = ROOT / "app/src/main/assets/settings-tree.json"
 BINDINGS = ROOT / "app/settings-display-bindings.json"
 CATALOG = ROOT / "app/src/main/i18n"
@@ -116,22 +117,10 @@ def flatten(value):
 
 
 def load_english():
-    import xml.etree.ElementTree as ET
-
-    root = ET.parse(STRINGS).getroot()
-    items = []
-    for el in root:
-        name = el.attrib.get("name")
-        if not isinstance(name, str):
-            continue
-        if el.tag == "string":
-            items.append((name, android_unescape(el.text)))
-        elif el.tag == "plurals":
-            quant = {}
-            for item in el:
-                quant[item.attrib.get("quantity")] = android_unescape(item.text)
-            items.append((name, quant))
-    return items
+    spec = importlib.util.spec_from_file_location("gen_english", ROOT / "app" / "gen-english.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.defined_items()
 
 
 def _settings_module():
@@ -463,6 +452,10 @@ def main(argv):
             sys.stdout.write(sentence + "\n\n")
         return
     added, changed, removed = classify(items, catalogs, terms, override_maps)
+    live = set()
+    for _key, value in items:
+        live.update(flatten(value))
+    removed = [sentence for sentence in removed if sentence not in live]
     _emit_blocks("added", added)
     _emit_blocks("changed", changed)
     _emit_blocks("removed", removed)

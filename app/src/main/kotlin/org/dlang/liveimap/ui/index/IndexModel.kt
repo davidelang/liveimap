@@ -515,10 +515,10 @@ fun policyForListedDelete(
     return effectiveDeletePolicy(policy, inTrash, uidPlus, trash.isNotEmpty(), trashNamedByUser)
 }
 
-fun deleteCapabilityWarn(policy: DeletePolicy, uidPlus: Boolean, trashKnown: Boolean): Int = when {
-    policy == DeletePolicy.DeletePermanently && !uidPlus -> com.davidlang.liveimap.R.string.index_delete_needs_uidplus
-    policy == DeletePolicy.MoveToTrash && !trashKnown -> com.davidlang.liveimap.R.string.index_delete_needs_trash
-    else -> 0
+fun deleteCapabilityWarn(policy: DeletePolicy, uidPlus: Boolean, trashKnown: Boolean): String = when {
+    policy == DeletePolicy.DeletePermanently && !uidPlus -> org.dlang.liveimap.i18n.literal.S("This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.")
+    policy == DeletePolicy.MoveToTrash && !trashKnown -> org.dlang.liveimap.i18n.literal.S("This server has no trash mailbox. The alternate is to mark deleted.")
+    else -> ""
 }
 
 fun alternateDeletePolicies(

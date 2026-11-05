@@ -1,4 +1,6 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.i18n.P
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,7 +99,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -126,7 +127,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -183,7 +183,7 @@ internal fun sieveCheckText(caps: SieveCapabilities): String {
 }
 @Composable
 internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
-    val noSieveHost = stringResource(R.string.settings_sieve_no_host)
+    val noSieveHost = S("Set a Sieve host, or turn on Same as inbound.")
     val cacheDir = LocalContext.current.applicationContext.cacheDir
     TextButton(
         onClick = {
@@ -239,7 +239,7 @@ internal fun SieveCheckButton(editor: SettingsEditor, drafts: ServerDrafts) {
         },
         enabled = !drafts.checkingSieve,
     ) {
-        Text(stringResource(R.string.settings_sieve_check))
+        Text(S("Check ManageSieve"))
     }
     if (drafts.sieveReport.isNotEmpty()) Text(drafts.sieveReport)
 }
@@ -267,10 +267,10 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
         AlertDialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
-            title = { Text(stringResource(R.string.settings_save_server_title)) },
+            title = { Text(S("Save server settings?")) },
             text = {
-                val lines = listOfNotNull(review.tlsWarning?.let { stringResource(it) }) +
-                    (if (review.unreachable) listOf(stringResource(R.string.settings_check_unreachable)) else emptyList()) +
+                val lines = listOfNotNull(review.tlsWarning?.let { S(it) }) +
+                    (if (review.unreachable) listOf(S("Server not reachable")) else emptyList()) +
                     review.lines
                 val shown = if (saveFailure.isNullOrEmpty()) lines else lines + saveFailure
                 Text(shown.joinToString("\n"))
@@ -278,10 +278,10 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     confirmSettingsSave(editor, drafts, "save-anyway")
-                }) { Text(stringResource(R.string.settings_check_save_anyway)) }
+                }) { Text(S("Save anyway")) }
             },
             dismissButton = {
-                TextButton(onClick = { drafts.serverReview = null; drafts.leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                TextButton(onClick = { drafts.serverReview = null; drafts.leaveAfter = null }) { Text(S("Keep editing")) }
             },
         )
     }
@@ -289,24 +289,24 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
         AlertDialog(
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
-            title = { Text(stringResource(R.string.settings_unsaved_title)) },
+            title = { Text(S("Unsaved server changes")) },
             text = saveFailure?.takeIf { it.isNotEmpty() }?.let { failure -> { Text(failure) } },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     confirmSettingsSave(editor, drafts, "unsaved")
                 }) {
-                    Text(stringResource(R.string.settings_save))
+                    Text(S("Save"))
                 }
             },
             dismissButton = {
                 androidx.compose.foundation.layout.Row {
-                    TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(stringResource(R.string.settings_keep_editing)) }
+                    TextButton(onClick = { drafts.discardAsk = false; drafts.leaveAfter = null }) { Text(S("Keep editing")) }
                     TextButton(onClick = {
                         drafts.discardAsk = false
                         drafts.discard()
                         editor.abandonPage()
                     }) {
-                        Text(stringResource(R.string.settings_discard))
+                        Text(S("Discard changes"))
                     }
                 }
             },
@@ -347,7 +347,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                     serverChecking = drafts.serverChecking,
                 ),
                 modifier = Modifier.testTag("account-save"),
-            ) { Text(stringResource(R.string.settings_save)) }
+            ) { Text(S("Save")) }
             TextButton(
                 onClick = {
                     if (!drafts.probing) {
@@ -384,7 +384,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                 enabled = !drafts.probing,
                 modifier = Modifier.testTag("account-test"),
             ) {
-                Text(stringResource(if (drafts.probing) R.string.settings_testing else R.string.settings_test_account))
+                Text(if (drafts.probing) S("Testing…") else S("Test account"))
             }
         }
         for (line in drafts.serverReport) {
@@ -400,62 +400,62 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
 internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null, depth: Int = 0) {
     var importPreview by remember { mutableStateOf<PinercPreview?>(null) }
     var importGeneration by remember { mutableStateOf(0) }
-    var importError by remember { mutableStateOf<Int?>(null) }
+    var importError by remember { mutableStateOf<String?>(null) }
     val settingsState = editor.settingsState
     val contextState = rememberUpdatedState(LocalContext.current)
     val pinercPhrases = PinercPhrases(
-        tls = stringResource(R.string.pinerc_tls),
-        tlsMode = stringResource(R.string.settings_tls),
-        tlsNone = stringResource(R.string.settings_tls_none),
-        tlsStart = stringResource(R.string.settings_tls_starttls),
-        tlsImplicit = stringResource(R.string.settings_tls_implicit),
-        smtpUsername = stringResource(R.string.settings_smtp_username),
-        local = stringResource(R.string.pinerc_local),
-        history = stringResource(R.string.pinerc_history),
-        sort = stringResource(R.string.pinerc_sort),
-        rule = stringResource(R.string.pinerc_rule),
-        expunge = stringResource(R.string.pinerc_expunge),
-        passwords = stringResource(R.string.pinerc_passwords),
-        folders = stringResource(R.string.pinerc_folders),
-        signature = stringResource(R.string.pinerc_signature),
-        perFolder = stringResource(R.string.pinerc_per_folder),
-        inboxDefault = stringResource(R.string.pinerc_inbox_default),
-        change = stringResource(R.string.pinerc_change),
-        imapHost = stringResource(R.string.settings_imap_host),
-        imapPort = stringResource(R.string.settings_imap_port),
-        smtpHost = stringResource(R.string.settings_smtp_host),
-        smtpPort = stringResource(R.string.settings_smtp_port),
-        username = stringResource(R.string.settings_username),
-        displayName = stringResource(R.string.settings_display_name),
-        altAddresses = stringResource(R.string.settings_alt_addresses),
-        email = stringResource(R.string.settings_email),
-        sentMailbox = stringResource(R.string.settings_sent_mailbox),
-        postponedMailbox = stringResource(R.string.settings_postponed_mailbox),
-        addressBookMailbox = stringResource(R.string.settings_address_book_mailbox),
-        historyLabel = stringResource(R.string.settings_history_label),
-        extraAddressBooks = stringResource(R.string.settings_extra_books),
-        globalAddressBooks = stringResource(R.string.settings_global_books),
-        defaultView = stringResource(R.string.settings_default_view),
-        newest = stringResource(R.string.reader_newest),
-        askExpunge = stringResource(R.string.settings_ask_expunge),
-        inboxOpens = stringResource(R.string.settings_inbox_opens),
-        otherHost = stringResource(R.string.pinerc_other_host),
-        inboxBraces = stringResource(R.string.pinerc_inbox_braces),
-        missingFolder = stringResource(R.string.pinerc_folder_missing),
-        folderCheck = stringResource(R.string.pinerc_folder_check),
-        favorite = stringResource(R.string.pinerc_favorite),
-        signatureFile = stringResource(R.string.pinerc_signature_file),
-        signatureLabel = stringResource(R.string.pinerc_signature_label),
-        quotePrefixLabel = stringResource(R.string.pinerc_quote_prefix),
-        leadInLabel = stringResource(R.string.pinerc_lead_in),
-        sigDashesLabel = stringResource(R.string.pinerc_sig_dashes),
-        sigBottomLabel = stringResource(R.string.pinerc_sig_bottom),
-        dsnLabel = stringResource(R.string.pinerc_dsn),
-        composerHeadersLabel = stringResource(R.string.pinerc_composer_headers),
-        viewerHeadersLabel = stringResource(R.string.pinerc_viewer_headers),
-        rolesLabel = stringResource(R.string.pinerc_role_rule),
-        roleSkipped = stringResource(R.string.pinerc_role_skipped),
-        roleNoConditions = stringResource(R.string.pinerc_role_no_conditions),
+        tls = S("IMAP and SMTP ask for different TLS"),
+        tlsMode = stringResource(SettingsTreeGenerated.resource("settings_tls")),
+        tlsNone = stringResource(SettingsTreeGenerated.resource("settings_tls_none")),
+        tlsStart = stringResource(SettingsTreeGenerated.resource("settings_tls_starttls")),
+        tlsImplicit = stringResource(SettingsTreeGenerated.resource("settings_tls_implicit")),
+        smtpUsername = stringResource(SettingsTreeGenerated.resource("settings_smtp_username")),
+        local = S("Local path is not a mailbox"),
+        history = S("Address book history is not a number."),
+        sort = S("Sort key is not supported"),
+        rule = S("Startup rule not recognized"),
+        expunge = S("Expunge already happens only when asked"),
+        passwords = S("Passwords are not imported"),
+        folders = S("Folder lists are not imported"),
+        signature = S("Signature is not a setting"),
+        perFolder = S("Per-folder startup rules are not imported"),
+        inboxDefault = S("INBOX opens at: First unread (alpine's default)"),
+        change = S("%1\$s: %2\$s → %3\$s"),
+        imapHost = stringResource(SettingsTreeGenerated.resource("settings_imap_host")),
+        imapPort = stringResource(SettingsTreeGenerated.resource("settings_imap_port")),
+        smtpHost = stringResource(SettingsTreeGenerated.resource("settings_smtp_host")),
+        smtpPort = stringResource(SettingsTreeGenerated.resource("settings_smtp_port")),
+        username = stringResource(SettingsTreeGenerated.resource("settings_username")),
+        displayName = stringResource(SettingsTreeGenerated.resource("settings_display_name")),
+        altAddresses = stringResource(SettingsTreeGenerated.resource("settings_alt_addresses")),
+        email = stringResource(SettingsTreeGenerated.resource("settings_email")),
+        sentMailbox = stringResource(SettingsTreeGenerated.resource("settings_sent_mailbox")),
+        postponedMailbox = stringResource(SettingsTreeGenerated.resource("settings_postponed_mailbox")),
+        addressBookMailbox = S("Save contacts to"),
+        historyLabel = stringResource(SettingsTreeGenerated.resource("settings_history_label")),
+        extraAddressBooks = S("Extra address books"),
+        globalAddressBooks = S("Global address books (read only)"),
+        defaultView = stringResource(SettingsTreeGenerated.resource("settings_default_view")),
+        newest = stringResource(SettingsTreeGenerated.resource("reader_newest")),
+        askExpunge = stringResource(SettingsTreeGenerated.resource("settings_ask_expunge")),
+        inboxOpens = stringResource(SettingsTreeGenerated.resource("settings_inbox_opens")),
+        otherHost = S("%1\$s is a different server"),
+        inboxBraces = S("inbox-path needs a server in braces"),
+        missingFolder = S("%1\$s was not found"),
+        folderCheck = S("Could not check folders"),
+        favorite = S("Favorite"),
+        signatureFile = S("signature-file is not read; paste the text into the account's signature"),
+        signatureLabel = S("Signature"),
+        quotePrefixLabel = stringResource(SettingsTreeGenerated.resource("pinerc_quote_prefix")),
+        leadInLabel = S("Reply lead-in"),
+        sigDashesLabel = S("Signature dashes"),
+        sigBottomLabel = S("Signature at bottom"),
+        dsnLabel = S("Delivery status notifications"),
+        composerHeadersLabel = S("Composer headers"),
+        viewerHeadersLabel = S("Viewer headers"),
+        rolesLabel = S("Sending rule from role"),
+        roleSkipped = S("Role %1\$s not imported (unsupported pattern)"),
+        roleNoConditions = S("Role %1\$s not imported: it has no conditions, so it would apply to every message"),
     )
     val openPinerc = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -533,11 +533,11 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
             }
             PinercRead.TooLarge -> {
                 importPreview = null
-                importError = R.string.settings_file_large
+                importError = org.dlang.liveimap.i18n.literal.S("That file is too large.")
             }
             PinercRead.Bad -> {
                 importPreview = null
-                importError = R.string.settings_file_unreadable
+                importError = org.dlang.liveimap.i18n.literal.S("Could not read that file.")
             }
         }
     }
@@ -545,21 +545,21 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
     fun PinercButtons() {
 
             TextButton(onClick = { openPinerc.launch(arrayOf("text/plain", "*/*")) }) {
-                Text(stringResource(R.string.settings_import_pinerc))
+                Text(S("Import from .pinerc…"))
             }
             TextButton(onClick = {
                 sharePinerc(contextState.value, encodePinerc(editor.settings))
             }) {
-                Text(stringResource(R.string.settings_export_pinerc))
+                Text(S("Export .pinerc…"))
             }
     }
     if (sections == null) {
         PinercButtons()
     } else {
         SettingsNode(
-            title = stringResource(R.string.settings_import),
+            title = S("Import"),
             depth = depth,
-            summary = stringResource(R.string.settings_import_pinerc),
+            summary = S("Import from .pinerc…"),
             expanded = "import" in sections.open,
             onToggle = { sections.toggle("import") },
         ) {            PinercButtons()
@@ -569,9 +569,9 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
     if (error != null) {
         AlertDialog(
             onDismissRequest = { importError = null },
-            text = { Text(stringResource(error)) },
+            text = { Text(S(error)) },
             confirmButton = {
-                TextButton(onClick = { importError = null }) { Text(stringResource(R.string.compose_close)) }
+                TextButton(onClick = { importError = null }) { Text(S("Close")) }
             },
         )
     }
@@ -595,7 +595,7 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
                         )
                         .padding(16.dp),
                 ) {
-                    Text(stringResource(R.string.settings_import_title), style = MaterialTheme.typography.titleLarge)
+                    Text(S("Import from .pinerc"), style = MaterialTheme.typography.titleLarge)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -603,7 +603,7 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(stringResource(R.string.settings_will_change))
+                        Text(S("Will change"))
                         preview.rows.forEach { line -> Text(line) }
                         if (preview.offerAutoExpunge) {
                             Row(
@@ -616,31 +616,28 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
                                     checked = turnOnAutoExpunge,
                                     onCheckedChange = { turnOnAutoExpunge = it },
                                 )
-                                Text(stringResource(R.string.settings_import_auto_expunge))
+                                Text(S("Also turn on Auto-expunge?"))
                             }
                         }
-                        Text(stringResource(R.string.settings_not_applied))
+                        Text(S("Not applied"))
                         preview.skipped.forEach { line -> Text(line) }
-                        Text(stringResource(R.string.settings_ignored))
+                        Text(S("Ignored"))
                         if (preview.omittedCount != 0) {
                             Text(
-                                pluralStringResource(
-                                    R.plurals.settings_omitted,
-                                    preview.omittedCount,
-                                    preview.omittedCount,
-                                ),
+                                P(preview.omittedCount,
+                                    preview.omittedCount, one = "%1\$d other line was left out", other = "%1\$d other lines were left out"),
                             )
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { importPreview = null }) { Text(stringResource(R.string.unsent_cancel)) }
+                        TextButton(onClick = { importPreview = null }) { Text(S("Cancel")) }
                         TextButton(
                             onClick = {
                                 editor.persist(applied)
                                 importPreview = null
                             },
                             enabled = applied != editor.settings,
-                        ) { Text(stringResource(R.string.settings_apply)) }
+                        ) { Text(S("Apply")) }
                     }
                 }
             }

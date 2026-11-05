@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,8 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -126,7 +125,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -165,15 +163,15 @@ internal fun SwipeEditor(
     onChange: (SwipeBinding) -> Unit,
 ) {
     Text(label)
-    ChoiceField(stringResource(R.string.settings_action), actions, binding.action, { swipeActionName(it) }) { action ->
+    ChoiceField(S("Action"), actions, binding.action, { swipeActionName(it) }) { action ->
         onChange(binding.copy(action = action))
     }
     if (binding.action == SwipeAction.Move) {
-        MailboxLine(stringResource(R.string.settings_move_mailbox), binding.moveMailbox, onChooseMove) {
+        MailboxLine(S("Move mailbox"), binding.moveMailbox, onChooseMove) {
             onChange(binding.copy(moveMailbox = it))
         }
     }
     if (binding.action == SwipeAction.SetFlag || binding.action == SwipeAction.ClearFlag) {
-        LineField(stringResource(R.string.settings_flag), binding.flag) { onChange(binding.copy(flag = it)) }
+        LineField(S("Flag"), binding.flag) { onChange(binding.copy(flag = it)) }
     }
 }

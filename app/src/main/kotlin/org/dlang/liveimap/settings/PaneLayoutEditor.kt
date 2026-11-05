@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,17 +33,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.davidlang.liveimap.R
 
 @Composable
-fun paneContentLabel(content: PaneContent): String = stringResource(
-    when (content) {
-        PaneContent.Folders -> R.string.layout_panel_folders
-        PaneContent.MessageList -> R.string.layout_panel_list
-        PaneContent.Message -> R.string.layout_panel_message
-        PaneContent.AccountDrawer -> R.string.layout_panel_drawer
-    },
-)
+fun paneContentLabel(content: PaneContent): String = when (content) {
+        PaneContent.Folders -> S("Folders")
+        PaneContent.MessageList -> S("Message list")
+        PaneContent.Message -> S("Message")
+        PaneContent.AccountDrawer -> S("Accounts drawer")
+    }
 
 /** Settings editor for the custom panel layout. [onSave] gets "" for Auto. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -62,7 +60,7 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.layout_custom), Modifier.weight(1f))
+            Text(stringResource(SettingsTreeGenerated.resource("layout_custom")), Modifier.weight(1f))
             Switch(
                 checked = custom,
                 onCheckedChange = { on -> selected = null; commit(if (on) auto else null) },
@@ -71,7 +69,7 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
         }
         val shown = tree ?: auto
         Text(
-            if (custom) stringResource(R.string.layout_custom_hint) else stringResource(R.string.layout_auto_hint),
+            if (custom) S("Tap a panel, then split it side by side or top and bottom, remove it, or choose what it shows.") else S("Off: panels follow the screen size (Auto). This is the Auto arrangement for this screen."),
             style = MaterialTheme.typography.bodySmall,
         )
         Box(
@@ -85,13 +83,11 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
         if (current != null) {
             paneLayoutProblem(current)?.let { problem ->
                 Text(
-                    stringResource(
-                        when (problem) {
-                            PaneLayoutProblem.NoMessageList -> R.string.layout_problem_no_list
-                            PaneLayoutProblem.Duplicate -> R.string.layout_problem_duplicate
-                            PaneLayoutProblem.MessageNotBesideList -> R.string.layout_problem_message
+                    when (problem) {
+                            PaneLayoutProblem.NoMessageList -> S("The layout needs a message list. Not saved yet.")
+                            PaneLayoutProblem.Duplicate -> S("Each panel type can appear only once. Not saved yet.")
+                            PaneLayoutProblem.MessageNotBesideList -> S("The message panel must share a split with the message list. Not saved yet.")
                         },
-                    ),
                     color = MaterialTheme.colorScheme.error,
                 )
             }
@@ -100,14 +96,14 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
                 val unused = PaneContent.entries.firstOrNull { it !in used } ?: PaneContent.Folders
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { commit(current.splitAt(sel, SplitAxis.Horizontal, unused)) }) {
-                        Text(stringResource(R.string.layout_split_side))
+                        Text(S("Split side by side"))
                     }
                     OutlinedButton(onClick = { commit(current.splitAt(sel, SplitAxis.Vertical, unused)) }) {
-                        Text(stringResource(R.string.layout_split_stack))
+                        Text(S("Split top and bottom"))
                     }
                     if (sel.isNotEmpty()) {
                         OutlinedButton(onClick = { selected = null; commit(current.removeAt(sel)) }) {
-                            Text(stringResource(R.string.layout_remove))
+                            Text(S("Remove panel"))
                         }
                     }
                 }
@@ -122,7 +118,7 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
                     }
                 }
             }
-            OutlinedButton(onClick = { selected = null; commit(auto) }) { Text(stringResource(R.string.layout_reset_auto)) }
+            OutlinedButton(onClick = { selected = null; commit(auto) }) { Text(S("Start from Auto")) }
         }
     }
 }

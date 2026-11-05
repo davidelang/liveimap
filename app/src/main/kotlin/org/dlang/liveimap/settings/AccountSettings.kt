@@ -1057,9 +1057,9 @@ fun effectiveTextZoom(setting: Int, pinch: Float): Int {
 
 
 /** Warning text for an account without TLS (null when TLS is on); stronger when the password goes in clear. */
-fun noTlsWarning(settings: Settings): Int? = when {
+fun noTlsWarning(settings: Settings): String? = when {
     settings.tlsMode != TlsMode.None -> null
-    settings.allowPlaintextAuth -> com.davidlang.liveimap.R.string.settings_no_tls_password_warning
-    else -> com.davidlang.liveimap.R.string.settings_no_tls_warning
+    settings.allowPlaintextAuth -> org.dlang.liveimap.i18n.literal.S("No TLS and plaintext login allowed: your password, mail and folder names travel unencrypted. Use STARTTLS or implicit TLS if the server offers it.")
+    else -> org.dlang.liveimap.i18n.literal.S("No TLS: mail and folder names travel unencrypted, and anyone on the network can read or change them.")
 }
 

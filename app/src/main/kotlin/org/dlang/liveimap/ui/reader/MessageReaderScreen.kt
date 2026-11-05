@@ -1,4 +1,6 @@
 package org.dlang.liveimap.ui.reader
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.settings.SettingsTreeGenerated
 
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.usableTrashName
@@ -144,7 +146,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.session.ComposeKind
@@ -476,26 +477,26 @@ private class ReaderLabels(
 
 @Composable
 private fun readerLabels(): ReaderLabels = ReaderLabels(
-    noAppFound = stringResource(R.string.reader_no_app),
-    notConnected = stringResource(R.string.reader_not_connected),
-    savedText = stringResource(R.string.reader_saved),
-    noAddressBookText = stringResource(R.string.settings_no_writable_book),
-    noAddressesText = stringResource(R.string.reader_no_addresses),
-    addressAddedText = stringResource(R.string.reader_address_added),
-    addressExistsText = stringResource(R.string.reader_address_exists),
-    copyChangedText = stringResource(R.string.copy_changed),
-    retryLabel = stringResource(R.string.reader_retry),
-    noTextPartText = stringResource(R.string.reader_no_text),
-    shareTitle = stringResource(R.string.reader_share),
-    indexNow = stringResource(R.string.index_now),
-    indexMin = stringResource(R.string.index_min),
-    indexHour = stringResource(R.string.index_hour),
-    indexHours = stringResource(R.string.index_hours),
-    indexDay = stringResource(R.string.index_day),
-    indexDays = stringResource(R.string.index_days),
-    indexAgo = stringResource(R.string.index_ago),
-    indexAhead = stringResource(R.string.index_ahead),
-    indexBadPattern = stringResource(R.string.index_bad_pattern),
+    noAppFound = S("No app found"),
+    notConnected = S("not connected"),
+    savedText = S("Saved"),
+    noAddressBookText = S("No writable address book. Nothing was saved."),
+    noAddressesText = S("No addresses"),
+    addressAddedText = S("Added to the address book"),
+    addressExistsText = S("Already in the address book"),
+    copyChangedText = S("The address book changed. Nothing was written."),
+    retryLabel = S("Retry"),
+    noTextPartText = S("There is no text part"),
+    shareTitle = S("Share"),
+    indexNow = S("now"),
+    indexMin = S("min"),
+    indexHour = S("hour"),
+    indexHours = S("hours"),
+    indexDay = S("day"),
+    indexDays = S("days"),
+    indexAgo = S("%1\$d %2\$s ago"),
+    indexAhead = S("in %1\$d %2\$s"),
+    indexBadPattern = S("bad date pattern"),
 )
 
 private fun Context.hostActivity(): Activity? {
@@ -623,7 +624,7 @@ private fun ReaderScreen(
     var advanceTarget by remember { mutableStateOf<Pair<Long, Int>?>(null) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var confirmPermanent by remember { mutableStateOf(false) }
-    var deleteWarn by remember { mutableIntStateOf(0) }
+    var deleteWarn by remember { mutableStateOf("") }
     var pendingReaderPolicy by remember { mutableStateOf(DeletePolicy.DeletePermanently) }
     var expungeUids by remember { mutableStateOf<List<Long>>(emptyList()) }
     val laterRetry = remember { LaterRetry() }
@@ -792,12 +793,12 @@ private fun ReaderScreen(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            postSnack(error.message ?: context.getString(R.string.copy_write_failed))
+            postSnack(error.message ?: S(context, "Could not write contacts."))
         }
     }
 
     LaunchedEffect(trustLoadFailed) {
-        if (trustLoadFailed) postSnack(context.getString(R.string.image_trust_load_failed))
+        if (trustLoadFailed) postSnack(S(context, "Could not load image trust"))
     }
 
     // Per-open cache token: the same UID and section in another folder or account never shares a file (F06).
@@ -896,7 +897,7 @@ private fun ReaderScreen(
         if (htmlBody != null) bodyText = if (bodyText.isEmpty()) htmlBody else bodyText + htmlBody
         val decoder = carry.decoder
         charsetNote = if (decoder != null && decoder.unknownCharset) {
-            appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+            S(appContext, "Unknown charset; shown as %1\$s.", decoder.charsetUsed)
         } else {
             null
         }
@@ -918,7 +919,7 @@ private fun ReaderScreen(
             carry.clearText()
             val decoder = WireTextDecoder(part.charset, transfer, account.unlabeledCharset)
             carry.decoder = decoder
-            charsetNote = if (decoder.unknownCharset) appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed) else null
+            charsetNote = if (decoder.unknownCharset) S(appContext, "Unknown charset; shown as %1\$s.", decoder.charsetUsed) else null
         }
         if (bodySection != part.section) return
         if (part.size > 0 && bodyOffset >= part.size) return
@@ -1149,7 +1150,7 @@ private fun ReaderScreen(
                 built.append(decoder.finish())
                 val text = finishedHtmlBody(built.toString(), truncated) ?: return null
                 val note = if (decoder.unknownCharset) {
-                    appContext.getString(R.string.reader_unknown_charset, decoder.charsetUsed)
+                    S(appContext, "Unknown charset; shown as %1\$s.", decoder.charsetUsed)
                 } else {
                     null
                 }
@@ -1305,7 +1306,7 @@ private fun ReaderScreen(
         try {
             java.nio.file.Files.delete(file.toPath())
         } catch (_: java.io.IOException) {
-            postSnack(appContext.getString(R.string.error_delete_failed, file.name))
+            postSnack(S(appContext, "Could not delete %1\$s", file.name))
         }
     }
 
@@ -1839,19 +1840,19 @@ private fun ReaderScreen(
     fun runChosenPolicy(policy: DeletePolicy) {
         scope.launch {
             if (policy == DeletePolicy.DeletePermanently && !session.featureCaps.uidPlus) {
-                deleteWarn = R.string.index_delete_needs_uidplus
+                deleteWarn = org.dlang.liveimap.i18n.literal.S("This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.")
                 pendingReaderPolicy = DeletePolicy.DeletePermanently
                 confirmPermanent = true
                 return@launch
             }
             if (policy == DeletePolicy.MoveToTrash && knownTrashName.isEmpty()) {
-                deleteWarn = R.string.index_delete_needs_trash
+                deleteWarn = org.dlang.liveimap.i18n.literal.S("This server has no trash mailbox. The alternate is to mark deleted.")
                 pendingReaderPolicy = DeletePolicy.MarkDeleted
                 confirmPermanent = true
                 return@launch
             }
             if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                deleteWarn = 0
+                deleteWarn = ""
                 pendingReaderPolicy = DeletePolicy.DeletePermanently
                 confirmPermanent = true
                 return@launch
@@ -1896,9 +1897,9 @@ private fun ReaderScreen(
                 trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
             )
             val warn = deleteCapabilityWarn(account.deletePolicy, session.featureCaps.uidPlus, trash.isNotEmpty())
-            if (warn != 0) {
+            if (warn.isNotEmpty()) {
                 deleteWarn = warn
-                pendingReaderPolicy = if (warn == R.string.index_delete_needs_trash) {
+                pendingReaderPolicy = if (warn == org.dlang.liveimap.i18n.literal.S("This server has no trash mailbox. The alternate is to mark deleted.")) {
                     DeletePolicy.MarkDeleted
                 } else {
                     DeletePolicy.DeletePermanently
@@ -1907,7 +1908,7 @@ private fun ReaderScreen(
                 return@launch
             }
             if (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge) {
-                deleteWarn = 0
+                deleteWarn = ""
                 pendingReaderPolicy = DeletePolicy.DeletePermanently
                 confirmPermanent = true
                 return@launch
@@ -2114,14 +2115,14 @@ private fun ReaderScreen(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },
                 navigationIcon = {
                     HelpIconButton(
-                        label = stringResource(R.string.reader_back),
-                        help = stringResource(R.string.help_reader_back),
+                        label = S("Back"),
+                        help = S("Returns to the message list."),
                         page = "reading.html#back",
                         onClick = onBack,
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.reader_back),
+                            contentDescription = S("Back"),
                         )
                     }
                 },
@@ -2136,24 +2137,18 @@ private fun ReaderScreen(
                     DebugStatusIcon(debugStatus)
                     if (renderedHtml) {
                         HelpIconButton(
-                            label = stringResource(
-                                if (allowImages) R.string.reader_hide_images
-                                else R.string.reader_show_images,
-                            ),
-                            help = stringResource(
-                                if (allowImages) R.string.help_reader_hide_images
-                                else R.string.help_reader_show_images,
-                            ),
+                            label = if (allowImages) S("Hide images")
+                                else S("Show images"),
+                            help = if (allowImages) S("Hides remote images in this HTML message.")
+                                else S("Shows remote images in this HTML message."),
                             page = "reading.html#images",
                             onClick = { allowImages = !allowImages },
                         ) {
                             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Filled.Image,
-                                    contentDescription = stringResource(
-                                        if (allowImages) R.string.reader_hide_images
-                                        else R.string.reader_show_images,
-                                    ),
+                                    contentDescription = if (allowImages) S("Hide images")
+                                        else S("Show images"),
                                     modifier = Modifier.size(24.dp),
                                 )
                                 if (allowImages) {
@@ -2183,7 +2178,7 @@ private fun ReaderScreen(
                                 IconButton(onClick = { runReaderAction(action) }) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
-                                        contentDescription = stringResource(R.string.reader_refresh),
+                                        contentDescription = S("Refresh"),
                                     )
                                 }
                             }
@@ -2195,10 +2190,10 @@ private fun ReaderScreen(
                                     readerActionName(action)
                                 }
                                 val helpRes = when (action) {
-                                    ReaderToolbarAction.Reply -> R.string.help_reader_reply
-                                    ReaderToolbarAction.ReplyAll -> R.string.help_reader_reply_all
-                                    ReaderToolbarAction.Forward -> R.string.help_reader_forward
-                                    ReaderToolbarAction.Delete -> R.string.help_reader_delete
+                                    ReaderToolbarAction.Reply -> org.dlang.liveimap.i18n.literal.S("Answers the sender.")
+                                    ReaderToolbarAction.ReplyAll -> org.dlang.liveimap.i18n.literal.S("Answers the sender and the other recipients.")
+                                    ReaderToolbarAction.Forward -> org.dlang.liveimap.i18n.literal.S("Forwards this message.")
+                                    ReaderToolbarAction.Delete -> org.dlang.liveimap.i18n.literal.S("Deletes this message, using the account delete setting.")
                                     else -> null
                                 }
                                 val helpPage = when (action) {
@@ -2212,7 +2207,7 @@ private fun ReaderScreen(
                                 if (helpRes != null && helpPage != null) {
                                     HelpIconButton(
                                         label = label,
-                                        help = stringResource(helpRes),
+                                        help = S(helpRes),
                                         page = helpPage,
                                         onClick = { runReaderAction(action) },
                                     ) {
@@ -2239,8 +2234,8 @@ private fun ReaderScreen(
                     )
                     Box {
                 HelpIconButton(
-                    label = stringResource(R.string.reader_more),
-                    help = stringResource(R.string.help_reader_more),
+                    label = S("More"),
+                    help = S("Refresh, save, and the other message actions."),
                     page = "reading.html#more",
                     onClick = {
                         moreMenu = true
@@ -2249,7 +2244,7 @@ private fun ReaderScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(R.string.reader_more),
+                        contentDescription = S("More"),
                     )
                 }
             DropdownMenu(
@@ -2265,7 +2260,7 @@ private fun ReaderScreen(
                         val label = readerDisplayName(display)
                         HelpDropdownMenuItem(
                             label = label,
-                            help = stringResource(R.string.help_menu_body_view),
+                            help = S("Shows the message in this view."),
                             page = "reading.html",
                             modifier = Modifier.testTag("reader-display-${display.name}"),
                             text = { Text(label) },
@@ -2280,7 +2275,7 @@ private fun ReaderScreen(
                     val policyLabel = deletePolicyLabel(policy)
                     HelpDropdownMenuItem(
                         label = policyLabel,
-                        help = stringResource(R.string.help_menu_delete_policy),
+                        help = S("Deletes with this policy."),
                         page = "reading.html",
                         text = { Text(policyLabel) },
                         onClick = {
@@ -2291,10 +2286,10 @@ private fun ReaderScreen(
                 }
                 for (action in menuActions) {
                     if (action == ReaderToolbarAction.Refresh) {
-                        val title = stringResource(R.string.reader_refresh)
+                        val title = S("Refresh")
                         HelpDropdownMenuItem(
                             label = title,
-                            help = stringResource(R.string.help_menu_reader_refresh),
+                            help = S("Loads the message again."),
                             page = "reading.html",
                             text = { Text(title) },
                             onClick = {
@@ -2320,10 +2315,10 @@ private fun ReaderScreen(
                         )
                     }
                 }
-                val saveLabel = stringResource(R.string.reader_save)
+                val saveLabel = S("Save")
                 HelpDropdownMenuItem(
                     label = saveLabel,
-                    help = stringResource(R.string.help_menu_reader_save),
+                    help = S("Saves the message without deleting it."),
                     page = "reading.html",
                     text = { Text(saveLabel) },
                     onClick = {
@@ -2356,10 +2351,10 @@ private fun ReaderScreen(
                         }
                     },
                 )
-                val takeAddress = stringResource(R.string.reader_take_address)
+                val takeAddress = S("Take address")
                 HelpDropdownMenuItem(
                     label = takeAddress,
-                    help = stringResource(R.string.help_menu_reader_take_address),
+                    help = S("Copies an address from the message."),
                     page = "reading.html",
                     text = { Text(takeAddress) },
                     onClick = {
@@ -2383,10 +2378,10 @@ private fun ReaderScreen(
                         }
                     },
                 )
-                val filterLike = stringResource(R.string.reader_filter_like)
+                val filterLike = S("Filter messages like this…")
                 HelpDropdownMenuItem(
                     label = filterLike,
-                    help = stringResource(R.string.help_menu_reader_filter_like),
+                    help = S("Starts a filter from this message."),
                     page = "reading.html",
                     text = { Text(filterLike) },
                     onClick = {
@@ -2395,15 +2390,11 @@ private fun ReaderScreen(
                     },
                 )
                 if (renderedHtml && dark) {
-                    val colorLabel = stringResource(
-                        if (originalColors) R.string.reader_dark_colors else R.string.reader_original_colors,
-                    )
+                    val colorLabel = if (originalColors) S("Dark theme colors") else S("Original colors")
                     HelpDropdownMenuItem(
                         label = colorLabel,
-                        help = stringResource(
-                            if (originalColors) R.string.help_menu_reader_dark_colors
-                            else R.string.help_menu_reader_original_colors,
-                        ),
+                        help = if (originalColors) S("Shows the message with dark colors.")
+                            else S("Shows the message with its own colors."),
                         page = "reading.html",
                         text = { Text(colorLabel) },
                         onClick = {
@@ -2415,16 +2406,12 @@ private fun ReaderScreen(
                 }
                 if (renderedHtml && trustSenderKey(headerFrom).isNotEmpty()) {
                     val on = trustSenderKey(headerFrom) in imageTrust.senders
-                    val senderLabel = stringResource(
-                        if (on) R.string.reader_images_sender_off else R.string.reader_images_sender_on,
-                        trustSenderKey(headerFrom),
-                    )
+                    val senderKey = trustSenderKey(headerFrom)
+                    val senderLabel = if (on) S("Stop always showing images from %1\$s", senderKey) else S("Always show images from %1\$s", senderKey)
                     HelpDropdownMenuItem(
                         label = senderLabel,
-                        help = stringResource(
-                            if (on) R.string.help_menu_reader_images_sender_off
-                            else R.string.help_menu_reader_images_sender_on,
-                        ),
+                        help = if (on) S("Blocks images from this sender.")
+                            else S("Allows images from this sender."),
                         page = "reading.html",
                         text = { Text(senderLabel) },
                         onClick = {
@@ -2435,7 +2422,7 @@ private fun ReaderScreen(
                                 val saved = store.onAccount {
                                     saveImageTrust(context.filesDir, accountId, nextTrust, SettingsHub.uiNow().maxImageTrustBytes.toInt().toLong())
                                 }
-                                if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
+                                if (saved.error != null) postSnack(S(context, "Could not save image trust"))
                             }
                             if (!on) allowImages = true
                         },
@@ -2444,16 +2431,12 @@ private fun ReaderScreen(
                 }
                 if (renderedHtml && listIdKey(headerListId).isNotEmpty()) {
                     val on = listIdKey(headerListId) in imageTrust.lists
-                    val listLabel = stringResource(
-                        if (on) R.string.reader_images_list_off else R.string.reader_images_list_on,
-                        listIdKey(headerListId),
-                    )
+                    val listKey = listIdKey(headerListId)
+                    val listLabel = if (on) S("Stop always showing images from this list (%1\$s)", listKey) else S("Always show images from this list (%1\$s)", listKey)
                     HelpDropdownMenuItem(
                         label = listLabel,
-                        help = stringResource(
-                            if (on) R.string.help_menu_reader_images_list_off
-                            else R.string.help_menu_reader_images_list_on,
-                        ),
+                        help = if (on) S("Blocks images from this list.")
+                            else S("Allows images from this list."),
                         page = "reading.html",
                         text = { Text(listLabel) },
                         onClick = {
@@ -2464,7 +2447,7 @@ private fun ReaderScreen(
                                 val saved = store.onAccount {
                                     saveImageTrust(context.filesDir, accountId, nextTrust, SettingsHub.uiNow().maxImageTrustBytes.toInt().toLong())
                                 }
-                                if (saved.error != null) postSnack(context.getString(R.string.image_trust_save_failed))
+                                if (saved.error != null) postSnack(S(context, "Could not save image trust"))
                             }
                             if (!on) allowImages = true
                         },
@@ -2474,7 +2457,7 @@ private fun ReaderScreen(
                 val forwardLabel = forwardStyleName(account.forwardAsAttachment)
                 HelpDropdownMenuItem(
                     label = forwardLabel,
-                    help = stringResource(R.string.help_menu_forward_style),
+                    help = S("Forwards in this style."),
                     page = "reading.html",
                     text = { Text(forwardLabel) },
                     onClick = {
@@ -2496,7 +2479,7 @@ private fun ReaderScreen(
                     val viewLabel = bodyViewName(view)
                     HelpDropdownMenuItem(
                         label = viewLabel,
-                        help = stringResource(R.string.help_menu_body_view),
+                        help = S("Shows the message in this view."),
                         page = "reading.html",
                         text = { Text(viewLabel) },
                         onClick = {
@@ -2506,10 +2489,10 @@ private fun ReaderScreen(
                     )
                 }
                 HorizontalDivider()
-                val customize = stringResource(R.string.toolbar_customize)
+                val customize = S("Customize toolbar…")
                 HelpDropdownMenuItem(
                     label = customize,
-                    help = stringResource(R.string.help_menu_toolbar_customize),
+                    help = S("Chooses which actions stay on the bar."),
                     page = "reading.html",
                     text = { Text(customize) },
                     onClick = {
@@ -2686,7 +2669,7 @@ private fun ReaderScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.ExpandMore,
-                            contentDescription = stringResource(R.string.reader_expand_header),
+                            contentDescription = S("Expand header"),
                         )
                     }
                 }
@@ -2726,10 +2709,10 @@ private fun ReaderScreen(
                                 .padding(8.dp),
                         ) {
                             Column(Modifier.padding(12.dp)) {
-                                Text(stringResource(R.string.reader_no_text))
+                                Text(S("There is no text part"))
                                 if (showHtmlButton) {
                                     TextButton(onClick = { requestView(BodyView.PlainOrHtml) }) {
-                                        Text(stringResource(R.string.reader_show_html))
+                                        Text(S("Show HTML"))
                                     }
                                 }
                             }
@@ -2739,7 +2722,7 @@ private fun ReaderScreen(
                         Column(Modifier.weight(1f).fillMaxWidth()) {
                         val note = charsetNote
                         if (note != null) Text(note, modifier = Modifier.padding(horizontal = 8.dp))
-                        if (bodyTruncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024), modifier = Modifier.padding(horizontal = 8.dp))
+                        if (bodyTruncated) Text(S("Showing the first %1\$d KB only.", RawViewCapBytes / 1024), modifier = Modifier.padding(horizontal = 8.dp))
                         AndroidView(
                             factory = { webContext ->
                                 object : WebView(webContext) {
@@ -2869,7 +2852,7 @@ private fun ReaderScreen(
                                     .padding(8.dp),
                             ) {
                                 TextButton(onClick = { requestView(BodyView.PlainOrHtml) }) {
-                                    Text(stringResource(R.string.reader_show_html))
+                                    Text(S("Show HTML"))
                                 }
                             }
                         }
@@ -2890,7 +2873,7 @@ private fun ReaderScreen(
                             val note = charsetNote
                             if (note != null) Text(note)
                             if (bodyTruncated && selectedView == BodyView.PlainOrText) {
-                                Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+                                Text(S("Showing the first %1\$d KB only.", RawViewCapBytes / 1024))
                             }
                             // Monospaced: original breaks, no wrapping; the whole body scrolls sideways together.
                             val hscroll = rememberScrollState()
@@ -2933,9 +2916,9 @@ private fun ReaderScreen(
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {
-                        TextButton(onClick = { runReaderUndo(offer) }) { Text(stringResource(R.string.reader_undo)) }
+                        TextButton(onClick = { runReaderUndo(offer) }) { Text(S("Undo")) }
                         if (showExpunge) {
-                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text(stringResource(R.string.reader_expunge)) }
+                            TextButton(onClick = { askOrExpunge(offer.uids) }) { Text(S("Expunge")) }
                         }
                     },
                 ) { Text(data.visuals.message) }
@@ -2989,7 +2972,7 @@ private fun ReaderScreen(
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     if (check.claimedHost.isNotEmpty()) {
                         Text(
-                            stringResource(R.string.reader_link_mismatch, check.claimedHost, check.host),
+                            S("The link text shows %1\$s, but the link goes to %2\$s.", check.claimedHost, check.host),
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.testTag("link-mismatch"),
                         )
@@ -2997,7 +2980,7 @@ private fun ReaderScreen(
                     }
                     if (check.asciiHost.isNotEmpty()) {
                         Text(
-                            stringResource(R.string.reader_link_idn, check.asciiHost),
+                            S("This address uses non-Latin look-alike letters. Its real form is %1\$s.", check.asciiHost),
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.testTag("link-idn"),
                         )
@@ -3006,8 +2989,8 @@ private fun ReaderScreen(
                     SelectionContainer { Text(confirmedLink.take(2000), style = MaterialTheme.typography.bodySmall) }
                     when (safety) {
                         LinkSafety.Safe -> {}
-                        LinkSafety.Warn -> Text("\n" + stringResource(R.string.reader_link_warn))
-                        LinkSafety.Blocked -> Text("\n" + stringResource(R.string.reader_link_blocked))
+                        LinkSafety.Warn -> Text("\n" + S("This is not a web or mail link. It opens another app, which may call, send a message or act for you. Open it only if you trust the sender."))
+                        LinkSafety.Blocked -> Text("\n" + S("Links of this type are blocked: they can reach files, other apps' data or run code."))
                     }
                 }
             },
@@ -3018,42 +3001,42 @@ private fun ReaderScreen(
                         openConfirmedLink(confirmedLink)
                     }) {
                         Text(
-                            stringResource(R.string.reader_open),
+                            S("Open"),
                             color = if (safety == LinkSafety.Warn || check.claimedHost.isNotEmpty() || check.asciiHost.isNotEmpty()) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
                         )
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingLink = null }) { Text(stringResource(R.string.reader_cancel)) }
+                TextButton(onClick = { pendingLink = null }) { Text(S("Cancel")) }
             },
         )
     }
     if (confirmExpunge) {
         val uidPlus = session.featureCaps.uidPlus
-        val expungeBody = stringResource(R.string.reader_expunge_body)
-        val expungeOthers = stringResource(R.string.reader_expunge_others)
+        val expungeBody = S("Permanently removes messages marked deleted in this folder. This cannot be undone.")
+        val expungeOthers = S("This includes messages marked deleted by other clients.")
         val body = if (uidPlus) expungeBody else "$expungeBody $expungeOthers"
         AlertDialog(
             onDismissRequest = { confirmExpunge = false },
-            title = { Text(stringResource(R.string.reader_expunge_title)) },
+            title = { Text(S("Expunge?")) },
             text = { Text(body) },
             confirmButton = {
                 TextButton(onClick = {
                     val uids = expungeUids
                     confirmExpunge = false
                     runReaderExpunge(uids)
-                }) { Text(stringResource(R.string.reader_expunge), color = MaterialTheme.colorScheme.error) }
+                }) { Text(S("Expunge"), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmExpunge = false }) { Text(stringResource(R.string.reader_cancel)) }
+                TextButton(onClick = { confirmExpunge = false }) { Text(S("Cancel")) }
             },
         )
     }
     if (confirmPermanent) {
         AlertDialog(
             onDismissRequest = { confirmPermanent = false },
-            text = { Text(stringResource(if (deleteWarn != 0) deleteWarn else R.string.index_permanent_body)) },
+            text = { Text(if (deleteWarn.isNotEmpty()) S(deleteWarn) else S("The messages will be removed permanently.")) },
             confirmButton = {
                 TextButton(onClick = {
                     val chosen = pendingReaderPolicy
@@ -3063,14 +3046,14 @@ private fun ReaderScreen(
                     }
                 }) {
                     Text(
-                        stringResource(R.string.settings_delete_permanently),
+                        stringResource(SettingsTreeGenerated.resource("settings_delete_permanently")),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmPermanent = false }) {
-                    Text(stringResource(R.string.reader_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -3078,23 +3061,23 @@ private fun ReaderScreen(
     if (showFlags) {
         AlertDialog(
             onDismissRequest = { showFlags = false },
-            title = { Text(stringResource(R.string.index_flags)) },
+            title = { Text(S("Flags")) },
             text = {
                 Column {
                     for (flag in listOf("\\Seen", "\\Answered", "\\Flagged", "\\Deleted")) {
                         Row {
                             TextButton(onClick = { storeReaderFlag(flag, set = true) }) {
-                                Text(stringResource(R.string.index_set_flag, flag))
+                                Text(S("Set %1\$s", flag))
                             }
                             TextButton(onClick = { storeReaderFlag(flag, set = false) }) {
-                                Text(stringResource(R.string.index_clear_flag, flag))
+                                Text(S("Clear %1\$s", flag))
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showFlags = false }) { Text(stringResource(R.string.index_close)) }
+                TextButton(onClick = { showFlags = false }) { Text(S("Close")) }
             },
         )
     }
@@ -3168,21 +3151,21 @@ private fun ReaderScreen(
         val mailbox = saveOffer
         AlertDialog(
             onDismissRequest = { confirmSave = false },
-            text = { Text(stringResource(R.string.reader_save_to, mailbox)) },
+            text = { Text(S("Save to %1\$s?", mailbox)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSave = false
                     copySavedMessage(mailbox)
-                }) { Text(stringResource(R.string.reader_save)) }
+                }) { Text(S("Save")) }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = {
                         confirmSave = false
                         choosingSave = true
-                    }) { Text(stringResource(R.string.reader_save_choose)) }
+                    }) { Text(S("Choose")) }
                     TextButton(onClick = { confirmSave = false }) {
-                        Text(stringResource(R.string.reader_cancel))
+                        Text(S("Cancel"))
                     }
                 }
             },
@@ -3253,7 +3236,7 @@ private fun ReaderScreen(
                 val launch = launchWriteContacts
                 if (launch == null) {
                     pendingAndroidTake = null
-                    postSnack(context.getString(R.string.contacts_permission_needed))
+                    postSnack(S(context, "Contacts permission is needed."))
                     return
                 }
                 launch()
@@ -3269,7 +3252,7 @@ private fun ReaderScreen(
         if (!confirmTake) return
         AlertDialog(
             onDismissRequest = { confirmTake = false },
-            text = { Text(stringResource(R.string.reader_take_prompt)) },
+            text = { Text(S("Add to the address book?")) },
             confirmButton = {
                 Column(horizontalAlignment = Alignment.End) {
                     for (choice in takeChoices) {
@@ -3291,7 +3274,7 @@ private fun ReaderScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmTake = false }) {
-                    Text(stringResource(R.string.reader_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -3299,11 +3282,11 @@ private fun ReaderScreen(
     @Composable
     fun PickSaveBookDialog() {
         val choice = pendingTake ?: return
-        val androidFallback = stringResource(R.string.settings_add_android_book)
+        val androidFallback = S("Add Android contacts")
         val books = saveBookChoices(account.addressBooks)
         AlertDialog(
             onDismissRequest = { pendingTake = null },
-            title = { Text(stringResource(R.string.settings_pick_book)) },
+            title = { Text(S("Choose an address book")) },
             text = {
                 Column {
                     for (book in books) {
@@ -3318,7 +3301,7 @@ private fun ReaderScreen(
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { pendingTake = null }) {
-                    Text(stringResource(R.string.reader_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -3332,7 +3315,7 @@ private fun ReaderScreen(
         val pending = pendingAndroidTake
         pendingAndroidTake = null
         if (!granted || pending == null) {
-            if (pending != null) postSnack(context.getString(R.string.settings_contacts_denied))
+            if (pending != null) postSnack(S(context, "Contacts permission was denied."))
             return@rememberLauncherForActivityResult
         }
         scope.launch { writeAndroidContact(pending.first, pending.second) }
@@ -3360,7 +3343,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(stringResource(R.string.reader_retry)) }
+            TextButton(onClick = onRetry) { Text(S("Retry")) }
         }
     }
 }
@@ -3377,57 +3360,51 @@ private fun applyHtmlDark(settings: WebSettings) {
 @Composable
 private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
     when (policy) {
-        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
-        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
-        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+        DeletePolicy.MarkDeleted -> SettingsTreeGenerated.resource("settings_mark_deleted")
+        DeletePolicy.MoveToTrash -> SettingsTreeGenerated.resource("settings_move_to_trash")
+        DeletePolicy.DeletePermanently -> SettingsTreeGenerated.resource("settings_delete_permanently")
     },
 )
 
 @Composable
-private fun readerMenuHelp(action: ReaderToolbarAction): String = stringResource(
-    when (action) {
-        ReaderToolbarAction.Refresh -> R.string.help_menu_reader_refresh
-        ReaderToolbarAction.Reply -> R.string.help_menu_compose_reply
-        ReaderToolbarAction.ReplyAll -> R.string.help_menu_compose_reply_all
-        ReaderToolbarAction.Forward -> R.string.help_menu_compose_forward
-        ReaderToolbarAction.Delete -> R.string.help_menu_delete_policy
-        ReaderToolbarAction.Move -> R.string.help_menu_label_move
-        ReaderToolbarAction.Spam -> R.string.help_menu_label_spam
-        ReaderToolbarAction.Bounce -> R.string.help_menu_compose_bounce
-        ReaderToolbarAction.Headers -> R.string.help_menu_reader_all_headers
-    },
-)
+private fun readerMenuHelp(action: ReaderToolbarAction): String = when (action) {
+        ReaderToolbarAction.Refresh -> S("Loads the message again.")
+        ReaderToolbarAction.Reply -> S("Replies to the sender.")
+        ReaderToolbarAction.ReplyAll -> S("Replies to every recipient.")
+        ReaderToolbarAction.Forward -> S("Forwards the message.")
+        ReaderToolbarAction.Delete -> S("Deletes with this policy.")
+        ReaderToolbarAction.Move -> S("Moves the message.")
+        ReaderToolbarAction.Spam -> S("Marks the message as spam.")
+        ReaderToolbarAction.Bounce -> S("Bounces the message.")
+        ReaderToolbarAction.Headers -> S("Shows every header.")
+    }
 
 @Composable
-private fun readerActionName(action: ReaderToolbarAction): String = stringResource(
-    when (action) {
-        ReaderToolbarAction.Refresh -> R.string.reader_refresh
-        ReaderToolbarAction.Reply -> R.string.compose_reply
-        ReaderToolbarAction.ReplyAll -> R.string.compose_reply_all
-        ReaderToolbarAction.Forward -> R.string.compose_forward
-        ReaderToolbarAction.Delete -> R.string.drawer_delete
-        ReaderToolbarAction.Move -> R.string.label_move
-        ReaderToolbarAction.Spam -> R.string.label_spam
-        ReaderToolbarAction.Bounce -> R.string.compose_bounce
-        ReaderToolbarAction.Headers -> R.string.reader_all_headers
-    },
-)
+private fun readerActionName(action: ReaderToolbarAction): String = when (action) {
+        ReaderToolbarAction.Refresh -> S("Refresh")
+        ReaderToolbarAction.Reply -> S("Reply")
+        ReaderToolbarAction.ReplyAll -> S("Reply all")
+        ReaderToolbarAction.Forward -> S("Forward")
+        ReaderToolbarAction.Delete -> S("Delete")
+        ReaderToolbarAction.Move -> S("Move")
+        ReaderToolbarAction.Spam -> S("Spam")
+        ReaderToolbarAction.Bounce -> S("Bounce")
+        ReaderToolbarAction.Headers -> S("All headers")
+    }
 
 @Composable
-private fun bodyViewName(view: BodyView): String = stringResource(
-    when (view) {
-        BodyView.PlainOrError -> R.string.label_plain
-        BodyView.PlainOrHtml -> R.string.label_html
-        BodyView.PlainOrText -> R.string.label_html_text
-        BodyView.Headers -> R.string.label_headers
-        BodyView.Raw -> R.string.label_raw
-    },
-)
+private fun bodyViewName(view: BodyView): String = when (view) {
+        BodyView.PlainOrError -> S("Plain text")
+        BodyView.PlainOrHtml -> stringResource(SettingsTreeGenerated.resource("label_html"))
+        BodyView.PlainOrText -> stringResource(SettingsTreeGenerated.resource("label_html_text"))
+        BodyView.Headers -> S("Headers")
+        BodyView.Raw -> S("Raw source")
+    }
 
 @Composable
 private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
-    stringResource(R.string.label_forward_inline),
-    stringResource(R.string.label_forward_attachment),
+    S("Forward inline"),
+    S("Forward as attachment"),
     asAttachment,
 )
 
@@ -3470,14 +3447,12 @@ private fun ReaderHeaderCard(
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(org.dlang.liveimap.ui.nonAscii(stringResource(R.string.reader_from, from)), modifier = Modifier.weight(1f))
+                Text(org.dlang.liveimap.ui.nonAscii(S("From: %1\$s", from)), modifier = Modifier.weight(1f))
                 // Short header <-> all headers, in place (Pine's H).
                 IconButton(onClick = onToggleAllHeaders, modifier = Modifier.testTag("reader-all-headers")) {
                     Icon(
                         if (allHeaders) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = stringResource(
-                            if (allHeaders) R.string.reader_short_headers else R.string.reader_all_headers,
-                        ),
+                        contentDescription = if (allHeaders) S("Short header") else S("All headers"),
                     )
                 }
             }
@@ -3488,9 +3463,9 @@ private fun ReaderHeaderCard(
                         onCheckedChange = onDecode,
                         modifier = Modifier.testTag("reader-decode-headers"),
                     )
-                    Text(stringResource(R.string.reader_decode_headers), modifier = Modifier.padding(start = 8.dp))
+                    Text(S("Decode encoded words (RFC 2047)"), modifier = Modifier.padding(start = 8.dp))
                 }
-                if (allHeadersTruncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+                if (allHeadersTruncated) Text(S("Showing the first %1\$d KB only.", RawViewCapBytes / 1024))
                 Box(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
                     androidx.compose.foundation.text.selection.SelectionContainer {
                         Text(
@@ -3537,14 +3512,14 @@ private fun ReaderHeaderCard(
                 IconButton(onClick = onCollapse, modifier = Modifier.testTag("reader-header-toggle")) {
                     Icon(
                         Icons.Filled.ExpandLess,
-                        contentDescription = stringResource(R.string.reader_collapse_header),
+                        contentDescription = S("Collapse header"),
                     )
                 }
             }
             if (deleted) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AssistChip(onClick = {}, label = { Text(stringResource(R.string.reader_deleted)) })
-                    TextButton(onClick = onUndelete) { Text(stringResource(R.string.reader_undelete)) }
+                    AssistChip(onClick = {}, label = { Text(S("Deleted")) })
+                    TextButton(onClick = onUndelete) { Text(S("Undelete")) }
                 }
             }
         }
@@ -3630,9 +3605,9 @@ private fun AttachmentChip(
             if (detail != null) Text(detail)
         }
         if (row.done) {
-            TextButton(onClick = onOpen) { Text(stringResource(R.string.reader_open)) }
-            TextButton(onClick = onShare) { Text(stringResource(R.string.reader_share)) }
-            TextButton(onClick = onSave) { Text(stringResource(R.string.reader_save)) }
+            TextButton(onClick = onOpen) { Text(S("Open")) }
+            TextButton(onClick = onShare) { Text(S("Share")) }
+            TextButton(onClick = onSave) { Text(S("Save")) }
         }
     }
 }
@@ -3732,9 +3707,9 @@ private fun deleteReaderAttachmentCache(dir: File, accountId: String, token: Str
 private fun recipientLine(to: String, cc: String): String? {
     val toText = to.trim()
     val ccText = cc.trim()
-    val toLine = stringResource(R.string.reader_to, toText)
-    val ccLine = stringResource(R.string.reader_cc, ccText)
-    val bothLine = stringResource(R.string.reader_to_cc, toText, ccText)
+    val toLine = S("To: %1\$s", toText)
+    val ccLine = S("Cc: %1\$s", ccText)
+    val bothLine = S("To: %1\$s  Cc: %2\$s", toText, ccText)
     if (toText.isEmpty() && ccText.isEmpty()) return null
     if (ccText.isEmpty()) return toLine
     if (toText.isEmpty()) return ccLine
@@ -3900,10 +3875,10 @@ private fun RawTextView(
                     onCheckedChange = onDecode,
                     modifier = Modifier.testTag("reader-decode-headers"),
                 )
-                Text(stringResource(R.string.reader_decode_headers), modifier = Modifier.padding(start = 8.dp))
+                Text(S("Decode encoded words (RFC 2047)"), modifier = Modifier.padding(start = 8.dp))
             }
         }
-        if (truncated) Text(stringResource(R.string.reader_raw_truncated, RawViewCapBytes / 1024))
+        if (truncated) Text(S("Showing the first %1\$d KB only.", RawViewCapBytes / 1024))
         androidx.compose.foundation.text.selection.SelectionContainer {
             Text(
                 text = if (headers) headerViewText(text, decode, unlabeledCharset) else text,
@@ -3944,32 +3919,28 @@ internal fun TypeMismatchDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.reader_type_mismatch_title)) },
+        title = { Text(S("Attachment type does not match")) },
         text = {
             Text(
-                stringResource(
-                    R.string.reader_type_mismatch_body,
+                S("%1\$s\n\nClaimed type: %2\$s\nFile extension type: %3\$s\nContent looks like: %4\$s",
                     name,
                     mismatch.claimed,
                     mismatch.extension ?: "-",
                     "${mismatch.detected.label} (${mismatch.detected.mime})",
-                ) + if (mismatch.detected.dangerous) "\n\n" + stringResource(R.string.reader_type_mismatch_danger) else "",
+                ) + if (mismatch.detected.dangerous) "\n\n" + S("This kind of file can run code or install an app. Open it only if you trust the sender.") else "",
             )
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onSave) { Text(stringResource(R.string.reader_type_mismatch_save)) }
+                TextButton(onClick = onSave) { Text(S("Save")) }
                 TextButton(onClick = onOpenAs) {
                     Text(
-                        stringResource(
-                            if (share) R.string.reader_type_mismatch_share else R.string.reader_type_mismatch_open,
-                            openAs,
-                        ),
+                        if (share) S("Share as %1\$s", openAs) else S("Open as %1\$s", openAs),
                     )
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.reader_cancel)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S("Cancel")) } },
     )
 }
 
@@ -3982,19 +3953,17 @@ private fun ReaderDisplayMenu(selected: ReaderDisplay, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun readerSwipeActionName(action: SwipeAction): String = stringResource(
-    when (action) {
-        SwipeAction.Delete -> R.string.drawer_delete
-        SwipeAction.Move -> R.string.label_move
-        SwipeAction.Reply -> R.string.compose_reply
-        SwipeAction.ReplyAll -> R.string.compose_reply_all
-        SwipeAction.SetFlag -> R.string.label_set_flag
-        SwipeAction.ClearFlag -> R.string.label_clear_flag
-        SwipeAction.FlagScreen -> R.string.label_flag_screen
-        SwipeAction.Next -> R.string.reader_next
-        SwipeAction.Previous -> R.string.reader_previous
-    },
-)
+private fun readerSwipeActionName(action: SwipeAction): String = when (action) {
+        SwipeAction.Delete -> S("Delete")
+        SwipeAction.Move -> S("Move")
+        SwipeAction.Reply -> S("Reply")
+        SwipeAction.ReplyAll -> S("Reply all")
+        SwipeAction.SetFlag -> S("Set flag")
+        SwipeAction.ClearFlag -> S("Clear flag")
+        SwipeAction.FlagScreen -> S("Flag screen")
+        SwipeAction.Next -> S("Next")
+        SwipeAction.Previous -> S("Previous")
+    }
 
 @Composable
 private fun readerSwipeContainerColor(name: String): Color = when (name) {
@@ -4041,12 +4010,10 @@ internal fun readerDisplayName(display: ReaderDisplay): String {
     val title = org.dlang.liveimap.settings.installedLeaf("readerDisplay")?.choiceTitles?.get(display.name)
     val id = if (title.isNullOrEmpty()) 0 else org.dlang.liveimap.settings.SettingsTreeGenerated.resource(title)
     if (id != 0) return stringResource(id)
-    return stringResource(
-        when (display) {
-            ReaderDisplay.Html -> R.string.label_html
-            ReaderDisplay.HtmlAsText -> R.string.label_html_text
-            ReaderDisplay.Flowed -> R.string.settings_flowed_text
-            ReaderDisplay.Monospaced -> R.string.display_monospaced
-        },
-    )
+    return when (display) {
+        ReaderDisplay.Html -> stringResource(SettingsTreeGenerated.resource("label_html"))
+        ReaderDisplay.HtmlAsText -> stringResource(SettingsTreeGenerated.resource("label_html_text"))
+        ReaderDisplay.Flowed -> stringResource(SettingsTreeGenerated.resource("settings_flowed_text"))
+        ReaderDisplay.Monospaced -> S("Mono")
+    }
 }

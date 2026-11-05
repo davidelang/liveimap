@@ -1,4 +1,6 @@
 package org.dlang.liveimap.ui.search
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.i18n.P
 
 import org.dlang.liveimap.session.folderInfo
 import androidx.compose.foundation.clickable
@@ -39,13 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.mailSession
@@ -68,30 +68,30 @@ import org.dlang.liveimap.ui.mailScreenInsets
 
 private data class AdvancedField(
     val kind: String,
-    val labelRes: Int,
+    val labelRes: String,
 )
 
 private val advancedFields = listOf(
-    AdvancedField("New", R.string.index_filter_new),
-    AdvancedField("Deleted", R.string.index_filter_deleted),
-    AdvancedField("Answered", R.string.index_filter_answered),
-    AdvancedField("Important", R.string.index_filter_important),
-    AdvancedField("Forwarded", R.string.index_filter_forwarded),
-    AdvancedField("From", R.string.index_filter_from),
-    AdvancedField("To", R.string.index_filter_to),
-    AdvancedField("Cc", R.string.index_filter_cc),
-    AdvancedField("Subject", R.string.index_filter_subject),
-    AdvancedField("Recipient", R.string.index_filter_recipient),
-    AdvancedField("Participant", R.string.index_search_participating),
-    AdvancedField("Since", R.string.index_filter_since),
-    AdvancedField("Before", R.string.index_filter_before),
-    AdvancedField("On", R.string.index_filter_on),
-    AdvancedField("Age", R.string.index_filter_age),
-    AdvancedField("Larger", R.string.index_filter_larger),
-    AdvancedField("Smaller", R.string.index_filter_smaller),
-    AdvancedField("Keyword", R.string.index_filter_keyword),
-    AdvancedField("Body", R.string.index_search_body),
-    AdvancedField("Text", R.string.index_search_full_text),
+    AdvancedField("New", org.dlang.liveimap.i18n.literal.S("New")),
+    AdvancedField("Deleted", org.dlang.liveimap.i18n.literal.S("Deleted")),
+    AdvancedField("Answered", org.dlang.liveimap.i18n.literal.S("Answered")),
+    AdvancedField("Important", org.dlang.liveimap.i18n.literal.S("Important")),
+    AdvancedField("Forwarded", org.dlang.liveimap.i18n.literal.S("Forwarded")),
+    AdvancedField("From", org.dlang.liveimap.i18n.literal.S("From")),
+    AdvancedField("To", org.dlang.liveimap.i18n.literal.S("To")),
+    AdvancedField("Cc", org.dlang.liveimap.i18n.literal.S("Cc")),
+    AdvancedField("Subject", org.dlang.liveimap.i18n.literal.S("Subject")),
+    AdvancedField("Recipient", org.dlang.liveimap.i18n.literal.S("Recipient")),
+    AdvancedField("Participant", org.dlang.liveimap.i18n.literal.S("Participating")),
+    AdvancedField("Since", org.dlang.liveimap.i18n.literal.S("Since")),
+    AdvancedField("Before", org.dlang.liveimap.i18n.literal.S("Before")),
+    AdvancedField("On", org.dlang.liveimap.i18n.literal.S("On")),
+    AdvancedField("Age", org.dlang.liveimap.i18n.literal.S("Age")),
+    AdvancedField("Larger", org.dlang.liveimap.i18n.literal.S("Larger")),
+    AdvancedField("Smaller", org.dlang.liveimap.i18n.literal.S("Smaller")),
+    AdvancedField("Keyword", org.dlang.liveimap.i18n.literal.S("Keyword")),
+    AdvancedField("Body", org.dlang.liveimap.i18n.literal.S("Body")),
+    AdvancedField("Text", org.dlang.liveimap.i18n.literal.S("Full text")),
 )
 
 private val valuedAdvancedKinds = setOf(
@@ -186,7 +186,7 @@ internal fun bodyPromptSkipped(scope: SearchScope, mailbox: String, skip: Collec
 @Composable
 private fun advancedFieldLabel(kind: String): String {
     val field = advancedFields.first { it.kind == positiveAdvancedKind(kind) }
-    return stringResource(field.labelRes)
+    return S(field.labelRes)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -261,7 +261,7 @@ private fun AdvancedSearchLoaded(
         if (kept.isEmpty()) return null
         return encodeAdvancedQuery(combiner, kept, fuzzyAdvertised && fuzzyOn)
     }
-    Scaffold(topBar = { UpTopAppBar(stringResource(R.string.index_search_advanced), onBack) }) { innerPadding ->
+    Scaffold(topBar = { UpTopAppBar(S("Advanced"), onBack) }) { innerPadding ->
         Column(
             Modifier
                 .padding(innerPadding)
@@ -277,19 +277,19 @@ private fun AdvancedSearchLoaded(
                 FilterChip(
                     selected = combiner == AdvancedCombiner.And,
                     onClick = { combiner = AdvancedCombiner.And },
-                    label = { Text(stringResource(R.string.index_search_and)) },
+                    label = { Text(S("And")) },
                 )
                 FilterChip(
                     selected = combiner == AdvancedCombiner.Or,
                     onClick = { combiner = AdvancedCombiner.Or },
-                    label = { Text(stringResource(R.string.index_search_or)) },
+                    label = { Text(S("Or")) },
                 )
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.index_search_fuzzy))
+                Text(S("Fuzzy"))
                 Switch(
                     checked = fuzzyAdvertised && fuzzyOn,
                     onCheckedChange = { checked ->
@@ -299,32 +299,32 @@ private fun AdvancedSearchLoaded(
                 )
             }
             if (!fuzzyAdvertised) {
-                Text(stringResource(R.string.index_search_fuzzy_absent))
+                Text(S("SEARCH=FUZZY is not advertised."))
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = scope == SearchScope.Current,
                     onClick = { scope = SearchScope.Current },
                     enabled = !counting,
-                    label = { Text(stringResource(R.string.index_search_scope_folder)) },
+                    label = { Text(S("This folder")) },
                 )
                 FilterChip(
                     selected = scope == SearchScope.Subtree,
                     onClick = { scope = SearchScope.Subtree },
                     enabled = !counting,
-                    label = { Text(stringResource(R.string.index_search_scope_below)) },
+                    label = { Text(S("This folder and below")) },
                 )
                 FilterChip(
                     selected = scope == SearchScope.Subscribed,
                     onClick = { scope = SearchScope.Subscribed },
                     enabled = !counting,
-                    label = { Text(stringResource(R.string.index_search_scope_subscribed)) },
+                    label = { Text(S("Subscribed")) },
                 )
                 FilterChip(
                     selected = scope == SearchScope.All,
                     onClick = { scope = SearchScope.All },
                     enabled = !counting,
-                    label = { Text(stringResource(R.string.index_search_scope_all)) },
+                    label = { Text(S("All folders")) },
                 )
             }
             rows.forEachIndexed { index, row ->
@@ -345,10 +345,10 @@ private fun AdvancedSearchLoaded(
                         ) {
                             ObscuredTouchFilter()
                             for (field in advancedFields) {
-                                val fieldLabel = stringResource(field.labelRes)
+                                val fieldLabel = S(field.labelRes)
                                 HelpDropdownMenuItem(
                                     label = fieldLabel,
-                                    help = stringResource(R.string.help_menu_search_field),
+                                    help = S("Uses this field in the query."),
                                     page = "messages.html",
                                     text = { Text(fieldLabel) },
                                     onClick = {
@@ -373,7 +373,7 @@ private fun AdvancedSearchLoaded(
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(stringResource(R.string.index_search_not))
+                    Text(S("Not"))
                     Switch(
                         checked = row.negated,
                         onCheckedChange = { checked ->
@@ -388,18 +388,18 @@ private fun AdvancedSearchLoaded(
                                 openRow = -1
                                 rows = rows.filterIndexed { rowIndex, _ -> rowIndex != index }
                             },
-                        ) { Text(stringResource(R.string.index_search_remove_term)) }
+                        ) { Text(S("Remove")) }
                     }
                 }
                 if (row.kind == "Body" || row.kind == "Text") {
-                    Text(stringResource(R.string.index_search_body_cost))
+                    Text(S("Searches every message body; slow on large folders."))
                 }
             }
             TextButton(
                 onClick = {
                     rows = rows + AdvancedDraft("Subject", "", false)
                 },
-            ) { Text(stringResource(R.string.index_search_add_term)) }
+            ) { Text(S("Add term")) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
                     enabled = !counting,
@@ -407,7 +407,7 @@ private fun AdvancedSearchLoaded(
                         val text = encodedQuery() ?: return@TextButton
                         onSearch(text, scope)
                     },
-                ) { Text(stringResource(R.string.index_search)) }
+                ) { Text(S("Search")) }
                 TextButton(
                     enabled = !counting,
                     onClick = {
@@ -485,15 +485,14 @@ private fun AdvancedSearchLoaded(
                                     chosen,
                                     cancelled = { cancelCount.value },
                                 ) { current, total ->
-                                    countProgress = context.getString(
-                                        R.string.index_search_folder_progress,
+                                    countProgress = S(context, "Folder %1\$d of %2\$d",
                                         current,
                                         total,
                                     )
                                 }
                                 countNumber = result.count
                                 skippedLines = result.skipped.map { name ->
-                                    context.getString(R.string.index_search_skipped, name)
+                                    S(context, "Skipped %1\$s.", name)
                                 }
                             } catch (error: CancellationException) {
                                 throw error
@@ -506,7 +505,7 @@ private fun AdvancedSearchLoaded(
                             }
                         }
                     },
-                ) { Text(stringResource(R.string.index_search_count)) }
+                ) { Text(S("Count")) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
@@ -515,7 +514,7 @@ private fun AdvancedSearchLoaded(
                         saveName = ""
                         saveNameOpen = true
                     },
-                ) { Text(stringResource(R.string.index_search_save)) }
+                ) { Text(S("Save")) }
                 Box {
                     TextButton(
                         onClick = {
@@ -531,17 +530,17 @@ private fun AdvancedSearchLoaded(
                                 savedOpen = true
                             }
                         },
-                    ) { Text(stringResource(R.string.index_search_saved)) }
+                    ) { Text(S("Saved")) }
                     DropdownMenu(
                         expanded = savedOpen,
                         onDismissRequest = { savedOpen = false },
                     ) {
                         ObscuredTouchFilter()
                         if (savedItems.isEmpty()) {
-                            val none = stringResource(R.string.index_search_none)
+                            val none = S("None")
                             HelpDropdownMenuItem(
                                 label = none,
-                                help = stringResource(R.string.help_menu_index_search_none),
+                                help = S("Clears the saved search."),
                                 page = "messages.html",
                                 text = { Text(none) },
                                 onClick = {},
@@ -552,7 +551,7 @@ private fun AdvancedSearchLoaded(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     HelpDropdownMenuItem(
                                         label = item.name,
-                                        help = stringResource(R.string.help_menu_saved_search),
+                                        help = S("Runs this saved search."),
                                         page = "messages.html",
                                         text = { Text(item.name) },
                                         onClick = {
@@ -583,7 +582,7 @@ private fun AdvancedSearchLoaded(
                                                 }
                                             }
                                         },
-                                    ) { Text(stringResource(R.string.index_search_remove)) }
+                                    ) { Text(S("Remove")) }
                                 }
                             }
                         }
@@ -595,7 +594,7 @@ private fun AdvancedSearchLoaded(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = progress, modifier = Modifier.weight(1f))
                     TextButton(onClick = { cancelCount.value = true }) {
-                        Text(stringResource(R.string.index_search_cancel))
+                        Text(S("Cancel"))
                     }
                 }
             }
@@ -619,7 +618,7 @@ private fun AdvancedSearchLoaded(
                 OutlinedTextField(
                     value = saveName,
                     onValueChange = { saveName = it },
-                    label = { Text(stringResource(R.string.index_search_name)) },
+                    label = { Text(S("Name")) },
                     singleLine = true,
                 )
             },
@@ -652,11 +651,11 @@ private fun AdvancedSearchLoaded(
                             }
                         }
                     },
-                ) { Text(stringResource(R.string.index_ok)) }
+                ) { Text(S("OK")) }
             },
             dismissButton = {
                 TextButton(onClick = { saveNameOpen = false }) {
-                    Text(stringResource(R.string.index_search_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -667,26 +666,26 @@ private fun AdvancedSearchLoaded(
                 countAsk = false
                 countChoice.trySend(BodyAsk.Cancel)
             },
-            title = { Text(stringResource(R.string.index_search_ask_title)) },
+            title = { Text(S("Search message text?")) },
             text = {
-                Text(pluralStringResource(R.plurals.index_search_ask_body, countExists, countExists))
+                Text(P(countExists, countExists, one = "This folder has %d message. A body or full-text search reads every message.", other = "This folder has %d messages. A body or full-text search reads every message."))
             },
             confirmButton = {
                 TextButton(onClick = {
                     countAsk = false
                     countChoice.trySend(BodyAsk.Once)
-                }) { Text(stringResource(R.string.index_just_once)) }
+                }) { Text(S("Just this once")) }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = {
                         countAsk = false
                         countChoice.trySend(BodyAsk.Always)
-                    }) { Text(stringResource(R.string.index_always_folder)) }
+                    }) { Text(S("Always for this folder")) }
                     TextButton(onClick = {
                         countAsk = false
                         countChoice.trySend(BodyAsk.Cancel)
-                    }) { Text(stringResource(R.string.index_cancel)) }
+                    }) { Text(S("Cancel")) }
                 }
             },
         )

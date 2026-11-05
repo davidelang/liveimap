@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import android.util.Log
 import androidx.compose.foundation.clickable
@@ -14,7 +15,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.accounts.parseAccountId
 import org.dlang.liveimap.settings.AccountChoice
 import org.dlang.liveimap.ui.AlertDialog
@@ -38,7 +38,7 @@ fun AccountListEditor(
                 supportingContent = {
                     Text(
                         if (account.editing) {
-                            stringResource(R.string.settings_account)
+                            stringResource(SettingsTreeGenerated.resource("settings_account"))
                         } else {
                             ""
                         },
@@ -49,36 +49,36 @@ fun AccountListEditor(
                 },
                 trailingContent = {
                     TextButton(onClick = { removing = account.id }) {
-                        Text(stringResource(R.string.settings_remove_account))
+                        Text(S("Remove account"))
                     }
                 },
                 modifier = Modifier.fillMaxWidth().clickable { onPick(account.id) },
             )
         }
         TextButton(onClick = onAdd) {
-            Text(stringResource(R.string.settings_add_account))
+            Text(S("Add account"))
         }
-        if (deletingName != null) Text(stringResource(R.string.account_delete_progress, deletingName))
+        if (deletingName != null) Text(S("Deleting %1\$s…", deletingName))
         if (deleteError != null) {
             Text(deleteError)
-            TextButton(onClick = onRetryDelete) { Text(stringResource(R.string.account_delete_retry)) }
+            TextButton(onClick = onRetryDelete) { Text(S("Retry")) }
         }
     }
     val pending = removing
     if (pending != null) {
         AlertDialog(
             onDismissRequest = { removing = null },
-            title = { Text(stringResource(R.string.settings_remove_account)) },
-            text = { Text(stringResource(R.string.settings_remove_account_body)) },
+            title = { Text(S("Remove account")) },
+            text = { Text(S("Remove this account from this phone. Mail on the server stays.")) },
             confirmButton = {
                 TextButton(onClick = {
                     removing = null
                     onRemove(pending)
-                }) { Text(stringResource(R.string.settings_remove_account)) }
+                }) { Text(S("Remove account")) }
             },
             dismissButton = {
                 TextButton(onClick = { removing = null }) {
-                    Text(stringResource(R.string.settings_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )

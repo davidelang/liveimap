@@ -1,4 +1,5 @@
 package org.dlang.liveimap.accounts
+import org.dlang.liveimap.i18n.S
 
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.ContinuationInterceptor
@@ -1115,13 +1116,13 @@ internal fun writeOrphanSweep(context: Context) {
 }
 
 internal fun notifyAccountDeleteFailed(context: Context, accountName: String, step: Int, error: Exception) {
-    val text = context.getString(com.davidlang.liveimap.R.string.account_delete_failed, accountName, step)
+    val text = S(context, "%1\$s could not be deleted (step %2\$d).", accountName, step)
     Log.w(logTag, text, error)
     postAccountNotice(context, accountName, text)
 }
 
 internal fun notifyAccountRecordUnreadable(context: Context, accountName: String, error: Throwable) {
-    val text = context.getString(com.davidlang.liveimap.R.string.account_record_unreadable, accountName)
+    val text = S(context, "The settings for %1\$s could not be read. Delete will continue.", accountName)
     Log.w(logTag, text, error)
     postAccountNotice(context, accountName, text)
 }

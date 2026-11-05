@@ -1,4 +1,7 @@
 package org.dlang.liveimap.ui.index
+import org.dlang.liveimap.i18n.S
+import org.dlang.liveimap.i18n.P
+import org.dlang.liveimap.settings.SettingsTreeGenerated
 
 import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.FolderAt
@@ -106,7 +109,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -146,7 +148,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.ui.LocalScreenAccounts
@@ -224,7 +225,7 @@ private enum class FilterRole {
 }
 
 private data class FilterChoice(
-    val labelRes: Int,
+    val labelRes: String,
     val kind: String = "",
     val needsValue: Boolean = false,
     val role: FilterRole = FilterRole.Criterion,
@@ -242,40 +243,40 @@ private data class PendingDelete(
     val policy: DeletePolicy = DeletePolicy.DeletePermanently,
     /** Confirm of a Trash hit: permanent only for Trash, [policy] for the home folder. */
     val permanentOnlyInTrash: Boolean = false,
-    /** Non-zero when the saved policy cannot run on this server. */
-    val warn: Int = 0,
+    /** Set when the saved policy cannot run on this server. */
+    val warn: String = "",
 )
 
 private val filterChoices = listOf(
-    FilterChoice(R.string.index_filter_all, role = FilterRole.All),
-    FilterChoice(R.string.index_filter_new, "New"),
-    FilterChoice(R.string.index_filter_not_new, "NotNew"),
-    FilterChoice(R.string.index_filter_deleted, "Deleted"),
-    FilterChoice(R.string.index_filter_not_deleted, "NotDeleted"),
-    FilterChoice(R.string.index_filter_answered, "Answered"),
-    FilterChoice(R.string.index_filter_not_answered, "NotAnswered"),
-    FilterChoice(R.string.index_filter_important, "Important"),
-    FilterChoice(R.string.index_filter_not_important, "NotImportant"),
-    FilterChoice(R.string.index_filter_forwarded, "Forwarded"),
-    FilterChoice(R.string.index_filter_not_forwarded, "NotForwarded"),
-    FilterChoice(R.string.index_status_to_me, ToMeFilter),
-    FilterChoice(R.string.index_filter_from, "From", needsValue = true),
-    FilterChoice(R.string.index_filter_to, "To", needsValue = true),
-    FilterChoice(R.string.index_filter_cc, "Cc", needsValue = true),
-    FilterChoice(R.string.index_filter_subject, "Subject", needsValue = true),
-    FilterChoice(R.string.index_filter_text, "Text", needsValue = true),
-    FilterChoice(R.string.index_filter_recipient, "Recipient", needsValue = true),
-    FilterChoice(R.string.index_filter_participant, "Participant", needsValue = true),
-    FilterChoice(R.string.index_filter_since, "Since", needsValue = true),
-    FilterChoice(R.string.index_filter_before, "Before", needsValue = true),
-    FilterChoice(R.string.index_filter_on, "On", needsValue = true),
-    FilterChoice(R.string.index_filter_age, "Age", needsValue = true),
-    FilterChoice(R.string.index_filter_larger, "Larger", needsValue = true),
-    FilterChoice(R.string.index_filter_smaller, "Smaller", needsValue = true),
-    FilterChoice(R.string.index_filter_keyword, "Keyword", needsValue = true),
-    FilterChoice(R.string.index_filter_not_keyword, "NotKeyword", needsValue = true),
-    FilterChoice(R.string.index_filter_narrow, role = FilterRole.Narrow),
-    FilterChoice(R.string.index_filter_widen, role = FilterRole.Widen),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("All"), role = FilterRole.All),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("New"), "New"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not new"), "NotNew"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Deleted"), "Deleted"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not deleted"), "NotDeleted"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Answered"), "Answered"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not answered"), "NotAnswered"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Important"), "Important"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not important"), "NotImportant"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Forwarded"), "Forwarded"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not forwarded"), "NotForwarded"),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("to me"), ToMeFilter),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("From"), "From", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("To"), "To", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Cc"), "Cc", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Subject"), "Subject", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("All text"), "Text", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Recipient"), "Recipient", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Participant"), "Participant", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Since"), "Since", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Before"), "Before", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("On"), "On", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Age"), "Age", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Larger"), "Larger", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Smaller"), "Smaller", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Keyword"), "Keyword", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Not keyword"), "NotKeyword", needsValue = true),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Narrow"), role = FilterRole.Narrow),
+    FilterChoice(org.dlang.liveimap.i18n.literal.S("Widen"), role = FilterRole.Widen),
 )
 
 @Composable
@@ -296,7 +297,7 @@ private fun IndexFilterMenu(
     ) {
         ObscuredTouchFilter()
         for (choice in filterChoices) {
-            val label = stringResource(choice.labelRes)
+            val label = S(choice.labelRes)
             val enabled = when (choice.role) {
                 FilterRole.Narrow -> filterActive
                 FilterRole.Widen -> canWiden
@@ -304,7 +305,7 @@ private fun IndexFilterMenu(
             }
             HelpDropdownMenuItem(
                 label = label,
-                help = stringResource(R.string.help_menu_filter),
+                help = S("Limits the list to this criterion."),
                 page = "messages.html",
                 text = { Text(label) },
                 enabled = enabled,
@@ -325,10 +326,10 @@ private fun IndexFilterMenu(
     }
 }
 
-private fun indexBarActionRes(action: IndexBarAction): Int = when (action) {
-    IndexBarAction.Refresh -> R.string.index_refresh
-    IndexBarAction.Search -> R.string.index_search
-    IndexBarAction.Filter -> R.string.index_filter
+private fun indexBarActionRes(action: IndexBarAction): String = when (action) {
+    IndexBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
+    IndexBarAction.Search -> org.dlang.liveimap.i18n.literal.S("Search")
+    IndexBarAction.Filter -> org.dlang.liveimap.i18n.literal.S("Filter")
 }
 
 data class IndexAppearance(
@@ -735,11 +736,11 @@ internal class IndexScreenHeld : ViewModel() {
 
 @Composable
 private fun simpleSearchLabel(field: SimpleSearchField): String = when (field) {
-    SimpleSearchField.Subject -> stringResource(R.string.index_filter_subject)
-    SimpleSearchField.From -> stringResource(R.string.index_filter_from)
-    SimpleSearchField.To -> stringResource(R.string.index_filter_to)
-    SimpleSearchField.Cc -> stringResource(R.string.index_filter_cc)
-    SimpleSearchField.Participant -> stringResource(R.string.index_search_participating)
+    SimpleSearchField.Subject -> S("Subject")
+    SimpleSearchField.From -> S("From")
+    SimpleSearchField.To -> S("To")
+    SimpleSearchField.Cc -> S("Cc")
+    SimpleSearchField.Participant -> S("Participating")
 }
 
 private fun Context.hostActivity(): Activity? {
@@ -900,18 +901,18 @@ private fun MessageIndexLoaded(
 ) {
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
-    val emptyIndexSentence = stringResource(R.string.index_empty)
-    val emptyIndexQueryFormat = LocalContext.current.resources.getText(R.string.index_empty_query).toString()
-    val indexNow = stringResource(R.string.index_now)
-    val indexMin = stringResource(R.string.index_min)
-    val indexHour = stringResource(R.string.index_hour)
-    val indexHours = stringResource(R.string.index_hours)
-    val indexDay = stringResource(R.string.index_day)
-    val indexDays = stringResource(R.string.index_days)
-    val indexAgo = stringResource(R.string.index_ago)
-    val indexAhead = stringResource(R.string.index_ahead)
-    val notConnected = stringResource(R.string.reader_not_connected)
-    val indexBadPattern = stringResource(R.string.index_bad_pattern)
+    val emptyIndexSentence = S("No messages")
+    val emptyIndexQueryFormat = S(LocalContext.current, "No messages match “%1\$s” in %2\$s")
+    val indexNow = S("now")
+    val indexMin = S("min")
+    val indexHour = S("hour")
+    val indexHours = S("hours")
+    val indexDay = S("day")
+    val indexDays = S("days")
+    val indexAgo = S("%1\$d %2\$s ago")
+    val indexAhead = S("in %1\$d %2\$s")
+    val notConnected = S("not connected")
+    val indexBadPattern = S("bad date pattern")
     val session = remember(accountId) { mailSession(accountId) }
     val folderList = remember { FolderListModel(session, store) }
     val connectionState by session.connectionState.collectAsState()
@@ -2035,7 +2036,7 @@ private fun MessageIndexLoaded(
                                 val fieldLabel = simpleSearchLabel(field)
                                 HelpDropdownMenuItem(
                                     label = fieldLabel,
-                                    help = stringResource(R.string.help_menu_simple_search),
+                                    help = S("Searches this header."),
                                     page = "messages.html",
                                     text = { Text(fieldLabel) },
                                     onClick = {
@@ -2066,7 +2067,7 @@ private fun MessageIndexLoaded(
                                 }
                             }
                         },
-                        label = { Text(stringResource(R.string.index_search)) },
+                        label = { Text(S("Search")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(
@@ -2089,7 +2090,7 @@ private fun MessageIndexLoaded(
                             .testTag("index-search-field"),
                     )
                     TextButton(onClick = onAdvanced) {
-                        Text(stringResource(R.string.index_search_advanced))
+                        Text(S("Advanced"))
                     }
                 }
                 Row(
@@ -2104,7 +2105,7 @@ private fun MessageIndexLoaded(
                         saveName = ""
                         saveNameOpen = true
                     }) {
-                        Text(stringResource(R.string.index_search_save))
+                        Text(S("Save"))
                     }
                     Box {
                         TextButton(onClick = {
@@ -2120,7 +2121,7 @@ private fun MessageIndexLoaded(
                                 if (searchVisible) savedOpen = true
                             }
                         }) {
-                            Text(stringResource(R.string.index_search_saved))
+                            Text(S("Saved"))
                         }
                         DropdownMenu(
                             expanded = savedOpen,
@@ -2128,10 +2129,10 @@ private fun MessageIndexLoaded(
                         ) {
                             ObscuredTouchFilter()
                             if (savedItems.isEmpty()) {
-                                val none = stringResource(R.string.index_search_none)
+                                val none = S("None")
                                 HelpDropdownMenuItem(
                                     label = none,
-                                    help = stringResource(R.string.help_menu_index_search_none),
+                                    help = S("Clears the saved search."),
                                     page = "messages.html",
                                     text = { Text(none) },
                                     onClick = {},
@@ -2144,7 +2145,7 @@ private fun MessageIndexLoaded(
                                     ) {
                                         HelpDropdownMenuItem(
                                             label = item.name,
-                                            help = stringResource(R.string.help_menu_saved_search),
+                                            help = S("Runs this saved search."),
                                             page = "messages.html",
                                             text = { Text(item.name) },
                                             onClick = {
@@ -2177,7 +2178,7 @@ private fun MessageIndexLoaded(
                                                 savedItems = updated.savedSearches
                                             }
                                         }) {
-                                            Text(stringResource(R.string.index_search_remove))
+                                            Text(S("Remove"))
                                         }
                                     }
                                 }
@@ -2356,18 +2357,18 @@ private fun MessageIndexLoaded(
                                             session.featureCaps.uidPlus,
                                             trash.isNotEmpty(),
                                         )
-                                        if (warn != 0 || (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge)) {
+                                        if (warn.isNotEmpty() || (policy == DeletePolicy.DeletePermanently && account.askBeforeExpunge)) {
                                             pendingPermanent = PendingDelete(
                                                 listOf(row.uid) + also,
                                                 allMailbox = false,
                                                 fromSwipe = true,
                                                 rowMailbox = row.mailbox,
                                                 policy = when (warn) {
-                                                    R.string.index_delete_needs_trash -> DeletePolicy.MarkDeleted
-                                                    R.string.index_delete_needs_uidplus -> DeletePolicy.DeletePermanently
+                                                    org.dlang.liveimap.i18n.literal.S("This server has no trash mailbox. The alternate is to mark deleted.") -> DeletePolicy.MarkDeleted
+                                                    org.dlang.liveimap.i18n.literal.S("This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.") -> DeletePolicy.DeletePermanently
                                                     else -> policy
                                                 },
-                                                permanentOnlyInTrash = warn == 0,
+                                                permanentOnlyInTrash = warn.isEmpty(),
                                                 warn = warn,
                                             )
                                             askedPermanent = true
@@ -2400,7 +2401,7 @@ private fun MessageIndexLoaded(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         TextButton(onClick = { cancelSearch.value = true }) {
-                            Text(stringResource(R.string.index_search_cancel))
+                            Text(S("Cancel"))
                         }
                     }
                 }
@@ -2429,9 +2430,9 @@ private fun MessageIndexLoaded(
             if (snackMode == "undo" && offer != null) {
                 Snackbar(
                     action = {
-                        TextButton(onClick = { runUndo(offer) }) { Text(stringResource(R.string.index_undo)) }
+                        TextButton(onClick = { runUndo(offer) }) { Text(S("Undo")) }
                         if (showExpunge) {
-                            TextButton(onClick = { runExpunge(offer) }) { Text(stringResource(R.string.index_expunge)) }
+                            TextButton(onClick = { runExpunge(offer) }) { Text(S("Expunge")) }
                         }
                     },
                 ) { Text(data.visuals.message) }
@@ -2449,9 +2450,7 @@ private fun MessageIndexLoaded(
             onDismissRequest = { pendingPermanent = null },
             text = {
                 Text(
-                    stringResource(
-                        if (askedPermanent.warn != 0) askedPermanent.warn else R.string.index_permanent_body,
-                    ),
+                    if (askedPermanent.warn.isNotEmpty()) S(askedPermanent.warn) else S("The messages will be removed permanently."),
                 )
             },
             confirmButton = {
@@ -2459,7 +2458,7 @@ private fun MessageIndexLoaded(
                     val request = askedPermanent
                     pendingPermanent = null
                     enqueueModel {
-                        if (request.fromSwipe && request.warn != 0) {
+                        if (request.fromSwipe && request.warn.isNotEmpty()) {
                             val foreign = request.rowMailbox.isNotEmpty() && request.rowMailbox != mailbox
                             if (foreign) {
                                 applyDeletePolicy(
@@ -2501,14 +2500,14 @@ private fun MessageIndexLoaded(
                     }
                 }) {
                     Text(
-                        stringResource(R.string.settings_delete_permanently),
+                        stringResource(SettingsTreeGenerated.resource("settings_delete_permanently")),
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingPermanent = null }) {
-                    Text(stringResource(R.string.index_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -2517,11 +2516,10 @@ private fun MessageIndexLoaded(
     if (shownFolder != null) {
         AlertDialog(
             onDismissRequest = { folderInfo = null },
-            title = { Text(stringResource(R.string.index_folder_info)) },
+            title = { Text(S("Folder info")) },
             text = {
                 Text(
-                    stringResource(
-                        R.string.index_folder_info_body,
+                    S("%1\$s\n%2\$d messages\nUID validity %3\$d",
                         mailbox,
                         shownFolder.exists,
                         shownFolder.uidValidity,
@@ -2530,7 +2528,7 @@ private fun MessageIndexLoaded(
             },
             confirmButton = {
                 TextButton(onClick = { folderInfo = null }) {
-                    Text(stringResource(R.string.index_close))
+                    Text(S("Close"))
                 }
             },
         )
@@ -2542,7 +2540,7 @@ private fun MessageIndexLoaded(
                 OutlinedTextField(
                     value = jumpText,
                     onValueChange = { jumpText = it },
-                    label = { Text(stringResource(R.string.index_jump)) },
+                    label = { Text(S("Jump to number…")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
@@ -2556,13 +2554,13 @@ private fun MessageIndexLoaded(
                         pull()
                         val found = landed
                         if (found) scrollToStart()
-                        else postSnack(appContext.getString(R.string.index_jump_missing, sequence))
+                        else postSnack(S(appContext, "No message %1\$d", sequence))
                     }
-                }) { Text(stringResource(R.string.index_jump_go)) }
+                }) { Text(S("Jump")) }
             },
             dismissButton = {
                 TextButton(onClick = { jumpOpen = false }) {
-                    Text(stringResource(R.string.index_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -2574,7 +2572,7 @@ private fun MessageIndexLoaded(
                 OutlinedTextField(
                     value = saveName,
                     onValueChange = { saveName = it },
-                    label = { Text(stringResource(R.string.index_search_name)) },
+                    label = { Text(S("Name")) },
                     singleLine = true,
                 )
             },
@@ -2593,11 +2591,11 @@ private fun MessageIndexLoaded(
                             return@launch
                         }
                     }
-                }) { Text(stringResource(R.string.index_ok)) }
+                }) { Text(S("OK")) }
             },
             dismissButton = {
                 TextButton(onClick = { saveNameOpen = false }) {
-                    Text(stringResource(R.string.index_search_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -2606,16 +2604,16 @@ private fun MessageIndexLoaded(
     if (askedFolder != null) {
         AlertDialog(
             onDismissRequest = { nextFolderTarget = null },
-            text = { Text(stringResource(R.string.index_next_folder, askedFolder)) },
+            text = { Text(S("Go to %1\$s? It has unread mail.", askedFolder)) },
             confirmButton = {
                 TextButton(onClick = {
                     onOpenFolder(askedFolder)
                     nextFolderTarget = null
-                }) { Text(stringResource(R.string.index_next_folder_go)) }
+                }) { Text(S("Go")) }
             },
             dismissButton = {
                 TextButton(onClick = { nextFolderTarget = null }) {
-                    Text(stringResource(R.string.index_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
@@ -2623,7 +2621,7 @@ private fun MessageIndexLoaded(
     if (confirmMarkAllRead) {
         AlertDialog(
             onDismissRequest = { confirmMarkAllRead = false },
-            text = { Text(stringResource(R.string.index_mark_all_read_body)) },
+            text = { Text(S("Mark every message in this folder read?")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmMarkAllRead = false
@@ -2633,18 +2631,18 @@ private fun MessageIndexLoaded(
                         pull()
                     
                     }
-                }) { Text(stringResource(R.string.index_mark_all_read_go)) }
+                }) { Text(S("Mark")) }
             },
             dismissButton = {
                 TextButton(onClick = { confirmMarkAllRead = false }) {
-                    Text(stringResource(R.string.index_cancel))
+                    Text(S("Cancel"))
                 }
             },
         )
     }
     val pendingPrompt = prompt
     if (pendingPrompt != null) {
-        val promptLabel = stringResource(pendingPrompt.labelRes)
+        val promptLabel = S(pendingPrompt.labelRes)
         AlertDialog(
             onDismissRequest = { prompt = null },
             text = {
@@ -2661,10 +2659,10 @@ private fun MessageIndexLoaded(
                     val value = promptText
                     prompt = null
                     runCriterion(kind, value, promptLabel)
-                }) { Text(stringResource(R.string.index_ok)) }
+                }) { Text(S("OK")) }
             },
             dismissButton = {
-                TextButton(onClick = { prompt = null }) { Text(stringResource(R.string.index_dismiss)) }
+                TextButton(onClick = { prompt = null }) { Text(S("Dismiss")) }
             },
         )
     }
@@ -2673,7 +2671,7 @@ private fun MessageIndexLoaded(
         val choices = startRuleChoices(account.showRecentRules, selected)
         AlertDialog(
             onDismissRequest = { openAt = false },
-            title = { Text(stringResource(R.string.label_open_at)) },
+            title = { Text(S("Open this folder at…")) },
             text = {
                 Column {
                     choices.forEach { rule ->
@@ -2688,7 +2686,7 @@ private fun MessageIndexLoaded(
                         }) {
                             Column {
                                 Text(startRuleName(rule))
-                                if (startRuleIsRecent(rule)) Text(stringResource(R.string.label_recent_note))
+                                if (startRuleIsRecent(rule)) Text(S("\\Recent belongs to whichever app opens the folder first"))
                             }
                         }
                     }
@@ -2700,19 +2698,19 @@ private fun MessageIndexLoaded(
                             pull()
                         
                         }
-                    }) { Text(stringResource(R.string.index_default)) }
+                    }) { Text(S("Default")) }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { openAt = false }) { Text(stringResource(R.string.index_close)) }
+                TextButton(onClick = { openAt = false }) { Text(S("Close")) }
             },
         )
     }
     val asking = threadAsk
     if (asking != null) {
         LargeFolderAskDialog(
-            title = stringResource(R.string.index_thread_title),
-            body = pluralStringResource(R.plurals.index_thread_body, threadExists, threadExists),
+            title = S("Thread this folder?"),
+            body = P(threadExists, threadExists, one = "This folder has %d message. Threading reads the whole folder.", other = "This folder has %d messages. Threading reads the whole folder."),
             onOnce = { resolveThreadAsk(AskAnswer.Once) },
             onAlways = { resolveThreadAsk(AskAnswer.Always) },
             onCancel = { resolveThreadAsk(AskAnswer.Cancel) },
@@ -2721,8 +2719,8 @@ private fun MessageIndexLoaded(
     val askingFallback = fallbackAsk
     if (askingFallback != null) {
         LargeFolderAskDialog(
-            title = stringResource(R.string.index_fallback_title),
-            body = pluralStringResource(R.plurals.index_fallback_body, fallbackExists, fallbackExists),
+            title = S("Download for every message?"),
+            body = P(fallbackExists, fallbackExists, one = "This folder has %d message. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message.", other = "This folder has %d messages. A large folder asks before LiveIMAP downloads a sort field or threading headers for every message."),
             onOnce = { resolveFallbackAsk(AskAnswer.Once) },
             onAlways = { resolveFallbackAsk(AskAnswer.Always) },
             onCancel = { resolveFallbackAsk(AskAnswer.Cancel) },
@@ -2731,8 +2729,8 @@ private fun MessageIndexLoaded(
     val askingSort = sortAsk
     if (askingSort != null) {
         LargeFolderAskDialog(
-            title = stringResource(R.string.index_sort_ask_title),
-            body = pluralStringResource(R.plurals.index_sort_ask_body, sortExists, sortExists),
+            title = S("Sort this folder?"),
+            body = P(sortExists, sortExists, one = "This folder has %d message. Sorting reads the whole folder.", other = "This folder has %d messages. Sorting reads the whole folder."),
             onOnce = { resolveSortAsk(AskAnswer.Once) },
             onAlways = { resolveSortAsk(AskAnswer.Always) },
             onCancel = { resolveSortAsk(AskAnswer.Cancel) },
@@ -2740,8 +2738,8 @@ private fun MessageIndexLoaded(
     }
     if (searchAsk != null) {
         LargeFolderAskDialog(
-            title = stringResource(R.string.index_search_ask_title),
-            body = pluralStringResource(R.plurals.index_search_ask_body, searchExists, searchExists),
+            title = S("Search message text?"),
+            body = P(searchExists, searchExists, one = "This folder has %d message. A body or full-text search reads every message.", other = "This folder has %d messages. A body or full-text search reads every message."),
             onOnce = { resolveSearchAsk(AskAnswer.Once) },
             onAlways = { resolveSearchAsk(AskAnswer.Always) },
             onCancel = { resolveSearchAsk(AskAnswer.Cancel) },
@@ -2797,13 +2795,9 @@ private fun MessageIndexLoaded(
     fun RowScope.IndexBulkBar() {
                         DebugStatusIcon(debugStatus)
                         val selectionLayout = org.dlang.liveimap.ui.toolbar.ToolbarStore.selectionBar()
-                        val seenText = stringResource(
-                            if (markUnread) R.string.toolbar_mark_unread else R.string.toolbar_mark_read,
-                        )
-                        val flagText = stringResource(
-                            if (clearFlag) R.string.toolbar_unflag else R.string.toolbar_flag,
-                        )
-                        val moveText = stringResource(R.string.index_move)
+                        val seenText = if (markUnread) S("Mark unread") else S("Mark read")
+                        val flagText = if (clearFlag) S("Unflag") else S("Flag")
+                        val moveText = S("Move")
                         val toggleSeen = {
                             if (allMailbox || !markUnread) applySelectionFlags(setOf("\\Seen"), emptySet())
                             else applySelectionFlags(emptySet(), setOf("\\Seen"))
@@ -2849,18 +2843,18 @@ private fun MessageIndexLoaded(
                                     hits.any { sameMailbox(it.first, trash) } &&
                                     session.featureCaps.uidPlus
                                 val warn = deleteCapabilityWarn(account.deletePolicy, session.featureCaps.uidPlus, trash.isNotEmpty())
-                                if (warn != 0 || ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge)) {
+                                if (warn.isNotEmpty() || ((policy == DeletePolicy.DeletePermanently || hitInTrash) && account.askBeforeExpunge)) {
                                     pendingPermanent = PendingDelete(
                                         uids,
                                         entire,
                                         fromSwipe = false,
                                         hits = hits,
                                         policy = when (warn) {
-                                            R.string.index_delete_needs_trash -> DeletePolicy.MarkDeleted
-                                            R.string.index_delete_needs_uidplus -> DeletePolicy.DeletePermanently
+                                            org.dlang.liveimap.i18n.literal.S("This server has no trash mailbox. The alternate is to mark deleted.") -> DeletePolicy.MarkDeleted
+                                            org.dlang.liveimap.i18n.literal.S("This server cannot delete permanently. The alternate is to mark deleted. Continuing expunges every deleted message in this folder.") -> DeletePolicy.DeletePermanently
                                             else -> policy
                                         },
-                                        permanentOnlyInTrash = warn == 0,
+                                        permanentOnlyInTrash = warn.isEmpty(),
                                         warn = warn,
                                     )
                                 } else {
@@ -2872,10 +2866,10 @@ private fun MessageIndexLoaded(
     @Composable
     fun IndexSelectionMenu() {
                                 ObscuredTouchFilter()
-                                val selectAll = stringResource(R.string.index_select_all)
+                                val selectAll = S("Select all")
                                 HelpDropdownMenuItem(
                                     label = selectAll,
-                                    help = stringResource(R.string.help_menu_index_select_all),
+                                    help = S("Selects every message in the list."),
                                     page = "messages.html",
                                     text = { Text(selectAll) },
                                     onClick = {
@@ -2887,7 +2881,7 @@ private fun MessageIndexLoaded(
                                     val policyLabel = deletePolicyLabel(policy)
                                     HelpDropdownMenuItem(
                                         label = policyLabel,
-                                        help = stringResource(R.string.help_menu_delete_policy),
+                                        help = S("Deletes with this policy."),
                                         page = "messages.html",
                                         text = { Text(policyLabel) },
                                         onClick = {
@@ -2912,36 +2906,36 @@ private fun MessageIndexLoaded(
                                         },
                                     )
                                 }
-                                val markAnswered = stringResource(R.string.index_mark_answered)
+                                val markAnswered = S("Mark answered")
                                 HelpDropdownMenuItem(
                                     label = markAnswered,
-                                    help = stringResource(R.string.help_menu_index_mark_answered),
+                                    help = S("Marks the selection answered."),
                                     page = "messages.html",
                                     text = { Text(markAnswered) },
                                     onClick = { applySelectionFlags(setOf("\\Answered"), emptySet()) },
                                 )
-                                val markUnanswered = stringResource(R.string.index_mark_unanswered)
+                                val markUnanswered = S("Mark unanswered")
                                 HelpDropdownMenuItem(
                                     label = markUnanswered,
-                                    help = stringResource(R.string.help_menu_index_mark_unanswered),
+                                    help = S("Clears answered on the selection."),
                                     page = "messages.html",
                                     text = { Text(markUnanswered) },
                                     onClick = { applySelectionFlags(emptySet(), setOf("\\Answered")) },
                                 )
                                 if (showUndelete) {
-                                    val undelete = stringResource(R.string.index_undelete)
+                                    val undelete = S("Undelete")
                                     HelpDropdownMenuItem(
                                         label = undelete,
-                                        help = stringResource(R.string.help_menu_index_undelete),
+                                        help = S("Clears deleted on the selection."),
                                         page = "messages.html",
                                         text = { Text(undelete) },
                                         onClick = { applySelectionFlags(emptySet(), setOf("\\Deleted")) },
                                     )
                                 }
-                                val bounce = stringResource(R.string.index_bounce)
+                                val bounce = S("Bounce")
                                 HelpDropdownMenuItem(
                                     label = bounce,
-                                    help = stringResource(R.string.help_menu_index_bounce),
+                                    help = S("Bounces the selected message."),
                                     page = "messages.html",
                                     text = { Text(bounce) },
                                     enabled = !allMailbox && selectedHits.isEmpty(), // a bounce seed names one folder
@@ -2955,7 +2949,7 @@ private fun MessageIndexLoaded(
                                     val forwardLabel = forwardStyleName(account.forwardAsAttachment)
                                     HelpDropdownMenuItem(
                                         label = forwardLabel,
-                                        help = stringResource(R.string.help_menu_forward_style),
+                                        help = S("Forwards in this style."),
                                         page = "messages.html",
                                         text = { Text(forwardLabel) },
                                         onClick = {
@@ -2972,10 +2966,10 @@ private fun MessageIndexLoaded(
                                         },
                                     )
                                 }
-                                val clearSelectionLabel = stringResource(R.string.index_clear_selection)
+                                val clearSelectionLabel = S("Clear selection")
                                 HelpDropdownMenuItem(
                                     label = clearSelectionLabel,
-                                    help = stringResource(R.string.help_menu_index_clear_selection),
+                                    help = S("Clears the selection."),
                                     page = "messages.html",
                                     text = { Text(clearSelectionLabel) },
                                     onClick = { clearSelection() },
@@ -2992,10 +2986,10 @@ private fun MessageIndexLoaded(
                                                 SelectionBarAction.Delete -> deletePolicyLabel(effectivePolicy)
                                             }
                                             val help = when (action) {
-                                                SelectionBarAction.Seen -> stringResource(R.string.help_menu_seen)
-                                                SelectionBarAction.Flag -> stringResource(R.string.help_menu_flag)
-                                                SelectionBarAction.Move -> stringResource(R.string.help_menu_move)
-                                                SelectionBarAction.Delete -> stringResource(R.string.help_menu_delete_policy)
+                                                SelectionBarAction.Seen -> S("Marks the selection seen or unseen.")
+                                                SelectionBarAction.Flag -> S("Flags or unflags the selection.")
+                                                SelectionBarAction.Move -> S("Moves the selection.")
+                                                SelectionBarAction.Delete -> S("Deletes with this policy.")
                                             }
                                             HelpDropdownMenuItem(
                                                 label = label,
@@ -3014,10 +3008,10 @@ private fun MessageIndexLoaded(
                                             )
                                         }
                                         SelectionMenuEntry.Customize -> {
-                                            val title = stringResource(R.string.toolbar_customize)
+                                            val title = S("Customize toolbar…")
                                             HelpDropdownMenuItem(
                                                 label = title,
-                                                help = stringResource(R.string.help_menu_toolbar_customize),
+                                                help = S("Chooses which actions stay on the bar."),
                                                 page = "messages.html",
                                                 text = { Text(title) },
                                                 onClick = {
@@ -3074,14 +3068,14 @@ private fun MessageIndexLoaded(
                         )
                         Box {
                             HelpIconButton(
-                                label = stringResource(R.string.index_more),
-                                help = stringResource(R.string.help_index_more),
+                                label = S("More"),
+                                help = S("The rest of the index actions."),
                                 page = "messages.html#more",
                                 onClick = { selectionMore = true },
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.MoreVert,
-                                    contentDescription = stringResource(R.string.index_more),
+                                    contentDescription = S("More"),
                                 )
                             }
                             DropdownMenu(
@@ -3145,12 +3139,12 @@ private fun MessageIndexLoaded(
                             }
                         }
                         DirectionMenuChoice(
-                            label = stringResource(R.string.index_newest),
+                            label = S("Newest"),
                             selected = view.newestFirst,
                             onClick = { chooseDirection(true) },
                         )
                         DirectionMenuChoice(
-                            label = stringResource(R.string.index_oldest),
+                            label = S("Oldest"),
                             selected = !view.newestFirst,
                             onClick = { chooseDirection(false) },
                         )
@@ -3182,10 +3176,10 @@ private fun MessageIndexLoaded(
                             )
                         }
                         if (account.openAtInIndexMenu) {
-                            val openAtLabel = stringResource(R.string.label_open_at)
+                            val openAtLabel = S("Open this folder at…")
                             HelpDropdownMenuItem(
                                 label = openAtLabel,
-                                help = stringResource(R.string.help_menu_label_open_at),
+                                help = S("Chooses where the index opens."),
                                 page = "messages.html",
                                 text = { Text(openAtLabel) },
                                 onClick = {
@@ -3195,17 +3189,17 @@ private fun MessageIndexLoaded(
                             )
                         }
                         HorizontalDivider()
-                        val expungeLabel = stringResource(R.string.index_expunge_menu)
+                        val expungeLabel = S("Expunge…")
                         HelpDropdownMenuItem(
                             label = expungeLabel,
-                            help = stringResource(R.string.help_menu_index_expunge_menu),
+                            help = S("Removes messages marked deleted."),
                             page = "messages.html",
                             text = {
                                 Column {
                                     Text(expungeLabel)
                                     if (!uidPlusNow) {
                                         Text(
-                                            text = stringResource(R.string.settings_reason_uidplus),
+                                            text = S("UIDPLUS is not advertised."),
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -3229,10 +3223,10 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         )
-                        val selectAllLabel = stringResource(R.string.index_select_all)
+                        val selectAllLabel = S("Select all")
                         HelpDropdownMenuItem(
                             label = selectAllLabel,
-                            help = stringResource(R.string.help_menu_index_select_all),
+                            help = S("Selects every message in the list."),
                             page = "messages.html",
                             text = { Text(selectAllLabel) },
                             onClick = {
@@ -3240,10 +3234,10 @@ private fun MessageIndexLoaded(
                                 selectAllMessages()
                             },
                         )
-                        val folderInfoLabel = stringResource(R.string.index_folder_info)
+                        val folderInfoLabel = S("Folder info")
                         HelpDropdownMenuItem(
                             label = folderInfoLabel,
-                            help = stringResource(R.string.help_menu_index_folder_info),
+                            help = S("Shows this folder's counts."),
                             page = "messages.html",
                             text = { Text(folderInfoLabel) },
                             onClick = {
@@ -3261,10 +3255,10 @@ private fun MessageIndexLoaded(
                                 }
                             },
                         )
-                        val jumpLabel = stringResource(R.string.index_jump)
+                        val jumpLabel = S("Jump to number…")
                         HelpDropdownMenuItem(
                             label = jumpLabel,
-                            help = stringResource(R.string.help_menu_index_jump),
+                            help = S("Jumps to a message number."),
                             page = "messages.html",
                             text = { Text(jumpLabel) },
                             onClick = {
@@ -3273,10 +3267,10 @@ private fun MessageIndexLoaded(
                                 jumpOpen = true
                             },
                         )
-                        val nextUnread = stringResource(R.string.index_next_unread)
+                        val nextUnread = S("Next unread")
                         HelpDropdownMenuItem(
                             label = nextUnread,
-                            help = stringResource(R.string.help_menu_index_next_unread),
+                            help = S("Opens the next unread message."),
                             page = "messages.html",
                             text = { Text(nextUnread) },
                             onClick = {
@@ -3307,17 +3301,17 @@ private fun MessageIndexLoaded(
                                     }
                                     if (moved) scrollToStart()
                                     else if (snackNone) {
-                                        postSnack(appContext.getString(R.string.index_no_unread))
+                                        postSnack(S(appContext, "No unread messages"))
                                     } else if (askName != null) {
                                         nextFolderTarget = askName
                                     }
                                 }
                             },
                         )
-                        val markAllRead = stringResource(R.string.index_mark_all_read)
+                        val markAllRead = S("Mark all read")
                         HelpDropdownMenuItem(
                             label = markAllRead,
-                            help = stringResource(R.string.help_menu_index_mark_all_read),
+                            help = S("Marks the messages in this folder read."),
                             page = "messages.html",
                             text = { Text(markAllRead) },
                             onClick = {
@@ -3329,16 +3323,14 @@ private fun MessageIndexLoaded(
                             when (entry) {
                                 IndexMenuEntry.Divider -> HorizontalDivider()
                                 is IndexMenuEntry.Action -> {
-                                    val title = stringResource(indexBarActionRes(entry.action))
+                                    val title = S(indexBarActionRes(entry.action))
                                     HelpDropdownMenuItem(
                                         label = title,
-                                        help = stringResource(
-                                            when (entry.action) {
-                                                IndexBarAction.Refresh -> R.string.help_menu_index_refresh
-                                                IndexBarAction.Search -> R.string.help_menu_index_search
-                                                IndexBarAction.Filter -> R.string.help_menu_index_filter
+                                        help = when (entry.action) {
+                                                IndexBarAction.Refresh -> S("Reloads this folder.")
+                                                IndexBarAction.Search -> S("Opens search.")
+                                                IndexBarAction.Filter -> S("Opens the filter choices.")
                                             },
-                                        ),
                                         page = "messages.html",
                                         text = { Text(title) },
                                         onClick = {
@@ -3355,10 +3347,10 @@ private fun MessageIndexLoaded(
                                     )
                                 }
                                 IndexMenuEntry.Customize -> {
-                                    val title = stringResource(R.string.toolbar_customize)
+                                    val title = S("Customize toolbar…")
                                     HelpDropdownMenuItem(
                                         label = title,
-                                        help = stringResource(R.string.help_menu_toolbar_customize),
+                                        help = S("Chooses which actions stay on the bar."),
                                         page = "messages.html",
                                         text = { Text(title) },
                                         onClick = {
@@ -3374,14 +3366,14 @@ private fun MessageIndexLoaded(
                         if (!connected) {
                             if (IndexBarAction.Refresh in barLayout.toolbar) {
                                 HelpIconButton(
-                                    label = stringResource(R.string.index_refresh),
-                                    help = stringResource(R.string.help_index_refresh),
+                                    label = S("Refresh"),
+                                    help = S("Loads this folder again."),
                                     page = "messages.html#refresh",
                                     onClick = { refreshIndex() },
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Refresh,
-                                        contentDescription = stringResource(R.string.index_refresh),
+                                        contentDescription = S("Refresh"),
                                     )
                                 }
                             }
@@ -3393,21 +3385,21 @@ private fun MessageIndexLoaded(
                             when (action) {
                                 IndexBarAction.Refresh -> indexIcons.add {
                                     HelpIconButton(
-                                        label = stringResource(R.string.index_refresh),
-                                        help = stringResource(R.string.help_index_refresh),
+                                        label = S("Refresh"),
+                                        help = S("Loads this folder again."),
                                         page = "messages.html#refresh",
                                         onClick = { refreshIndex() },
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Refresh,
-                                            contentDescription = stringResource(R.string.index_refresh),
+                                            contentDescription = S("Refresh"),
                                         )
                                     }
                                 }
                                 IndexBarAction.Search -> indexIcons.add {
                                     HelpIconButton(
-                                        label = stringResource(R.string.index_search),
-                                        help = stringResource(R.string.help_index_search),
+                                        label = S("Search"),
+                                        help = S("Searches this folder. Subject is the usual field."),
                                         page = "messages.html#search",
                                         onClick = {
                                             searchFieldOpen = false
@@ -3416,21 +3408,21 @@ private fun MessageIndexLoaded(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Search,
-                                            contentDescription = stringResource(R.string.index_search),
+                                            contentDescription = S("Search"),
                                         )
                                     }
                                 }
                                 IndexBarAction.Filter -> indexIcons.add {
                                     Box {
                                         HelpIconButton(
-                                            label = stringResource(R.string.index_filter),
-                                            help = stringResource(R.string.help_index_filter),
+                                            label = S("Filter"),
+                                            help = S("Shows one kind of message."),
                                             page = "messages.html#filter",
                                             onClick = { filterOpen = true },
                                         ) {
                                             Icon(
                                                 imageVector = filterImage,
-                                                contentDescription = stringResource(R.string.index_filter),
+                                                contentDescription = S("Filter"),
                                             )
                                         }
                                         IndexFilterMenu(
@@ -3458,14 +3450,14 @@ private fun MessageIndexLoaded(
                         )
                 Box {
                     HelpIconButton(
-                        label = stringResource(R.string.index_sort),
-                        help = stringResource(R.string.help_index_sort),
+                        label = S("Sort"),
+                        help = S("Changes the order of this folder."),
                         page = "messages.html#sort",
                         onClick = { menuOpen = true },
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Sort,
-                            contentDescription = stringResource(R.string.index_sort),
+                            contentDescription = S("Sort"),
                         )
                     }
                     DropdownMenu(
@@ -3506,11 +3498,9 @@ private fun MessageIndexLoaded(
                         Column {
                             MailboxTitleLines(heading.leaf, heading.parent)
                             val sortLine = stringResource(
-                                R.string.settings_sort_line,
+                                SettingsTreeGenerated.resource("settings_sort_line"),
                                 sortShortLabel(view.key),
-                                stringResource(
-                                    if (view.newestFirst) R.string.index_newest else R.string.index_oldest,
-                                ),
+                                if (view.newestFirst) S("Newest") else S("Oldest"),
                             )
                             val criteria = if (filterActive) {
                                 filters.joinToString(", ") { filterChipText(it) }
@@ -3532,19 +3522,19 @@ private fun MessageIndexLoaded(
                         IconButton(onClick = { clearSelection() }) {
                             Icon(
                                 imageVector = Icons.Filled.Close,
-                                contentDescription = stringResource(R.string.index_close),
+                                contentDescription = S("Close"),
                             )
                         }
                     } else {
                         HelpIconButton(
-                            label = stringResource(R.string.index_back),
-                            help = stringResource(R.string.help_index_back),
+                            label = S("Back"),
+                            help = S("Returns to the folder list."),
                             page = "messages.html#back",
                             onClick = { leaveIndex() },
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.index_back),
+                                contentDescription = S("Back"),
                             )
                         }
                     }
@@ -3578,14 +3568,14 @@ private fun MessageIndexLoaded(
                 if (fraction != null) {
                     LinearProgressIndicator(progress = { fraction }, modifier = Modifier.weight(1f).height(4.dp))
                     Text(
-                        stringResource(R.string.index_search_progress, progress.done, progress.total),
+                        S("%1\$d of %2\$d", progress.done, progress.total),
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 } else {
                     LinearProgressIndicator(modifier = Modifier.weight(1f).height(4.dp))
                 }
-                TextButton(onClick = { model.cancelSearch() }) { Text(stringResource(R.string.index_search_cancel)) }
+                TextButton(onClick = { model.cancelSearch() }) { Text(S("Cancel")) }
             }
         } else if (loading && banner == null) {
             LinearProgressIndicator(
@@ -3605,9 +3595,9 @@ private fun MessageIndexLoaded(
         if (connected) {
                 if (confirmExpunge) {
                     val uidPlus = session.featureCaps.uidPlus
-                    val trashLine = stringResource(R.string.index_expunge_trash, knownTrashName)
-                    val bodyLine = stringResource(R.string.index_expunge_body)
-                    val othersLine = stringResource(R.string.index_expunge_others)
+                    val trashLine = S("This folder is your Trash (%1\$s).", knownTrashName)
+                    val bodyLine = S("Permanently removes messages marked deleted in this folder. This cannot be undone.")
+                    val othersLine = S("This includes messages marked deleted by other clients.")
                     val body = buildString {
                         // F90: say plainly when this folder is the (detected or configured) Trash.
                         if (knownTrashName.isNotEmpty() && sameMailbox(mailbox, knownTrashName)) {
@@ -3625,7 +3615,7 @@ private fun MessageIndexLoaded(
                             confirmExpunge = false
                             pendingExpungeUids = null
                         },
-                        title = { Text(stringResource(R.string.index_expunge_title)) },
+                        title = { Text(S("Expunge?")) },
                         text = { Text(body) },
                         confirmButton = {
                             TextButton(onClick = {
@@ -3641,13 +3631,13 @@ private fun MessageIndexLoaded(
                                 
                                     if (specific != null) finishUndoExpunge(ok)
                                 }
-                            }) { Text(stringResource(R.string.index_expunge), color = MaterialTheme.colorScheme.error) }
+                            }) { Text(S("Expunge"), color = MaterialTheme.colorScheme.error) }
                         },
                         dismissButton = {
                             TextButton(onClick = {
                                 confirmExpunge = false
                                 pendingExpungeUids = null
-                            }) { Text(stringResource(R.string.index_cancel)) }
+                            }) { Text(S("Cancel")) }
                         },
                     )
                 }
@@ -3695,7 +3685,7 @@ private fun MessageIndexLoaded(
             }
             val flagsFor = flagUid
             if (flagsFor != null) {
-                Text(stringResource(R.string.index_flags), modifier = Modifier.padding(horizontal = 8.dp))
+                Text(S("Flags"), modifier = Modifier.padding(horizontal = 8.dp))
                 indexFlags.forEach { flag ->
                     Row {
                         TextButton(
@@ -3707,7 +3697,7 @@ private fun MessageIndexLoaded(
                                 
                                 }
                             },
-                        ) { Text(stringResource(R.string.index_set_flag, flag)) }
+                        ) { Text(S("Set %1\$s", flag)) }
                         TextButton(
                             onClick = {
                                 enqueueModel {
@@ -3717,10 +3707,10 @@ private fun MessageIndexLoaded(
                                 
                                 }
                             },
-                        ) { Text(stringResource(R.string.index_clear_flag, flag)) }
+                        ) { Text(S("Clear %1\$s", flag)) }
                     }
                 }
-                TextButton(onClick = { flagUid = null }) { Text(stringResource(R.string.index_close)) }
+                TextButton(onClick = { flagUid = null }) { Text(S("Close")) }
             }
             IndexMessageList()
         }
@@ -3744,12 +3734,12 @@ private fun LargeFolderAskDialog(
         title = { Text(title) },
         text = { Text(body) },
         confirmButton = {
-            TextButton(onClick = onOnce) { Text(stringResource(R.string.index_just_once)) }
+            TextButton(onClick = onOnce) { Text(S("Just this once")) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onAlways) { Text(stringResource(R.string.index_always_folder)) }
-                TextButton(onClick = onCancel) { Text(stringResource(R.string.index_cancel)) }
+                TextButton(onClick = onAlways) { Text(S("Always for this folder")) }
+                TextButton(onClick = onCancel) { Text(S("Cancel")) }
             }
         },
     )
@@ -3914,11 +3904,11 @@ private fun IndexMessageRow(
                 row.flags,
                 row.toMe,
                 row.hasAttachment,
-                stringResource(R.string.index_status_forwarded),
-                stringResource(R.string.index_status_replied),
-                stringResource(R.string.index_status_flagged),
-                stringResource(R.string.index_status_to_me),
-                stringResource(R.string.index_status_attachment),
+                S("forwarded"),
+                S("replied"),
+                S("flagged"),
+                S("to me"),
+                S("has attachment"),
             )
             val rowSelected = selected
             Column(
@@ -4022,13 +4012,11 @@ private fun IndexMessageRow(
                             if (mark != null) {
                                 Icon(
                                     imageVector = if (threadExpanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
-                                    contentDescription = stringResource(
-                                        if (threadExpanded) {
-                                            R.string.index_thread_expanded
+                                    contentDescription = if (threadExpanded) {
+                                            S("Thread expanded")
                                         } else {
-                                            R.string.index_thread_collapsed
+                                            S("Thread collapsed")
                                         },
-                                    ),
                                     modifier = Modifier
                                         .size(24.dp)
                                         .clickable(role = Role.Button, onClick = onToggleThread),
@@ -4117,7 +4105,7 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
                     .weight(1f)
                     .padding(horizontal = 8.dp),
             )
-            TextButton(onClick = onRetry) { Text(stringResource(R.string.index_retry)) }
+            TextButton(onClick = onRetry) { Text(S("Retry")) }
         }
     }
 }
@@ -4125,62 +4113,58 @@ private fun FailureBanner(message: String, onRetry: () -> Unit) {
 @Composable
 private fun deletePolicyLabel(policy: DeletePolicy): String = stringResource(
     when (policy) {
-        DeletePolicy.MarkDeleted -> R.string.settings_mark_deleted
-        DeletePolicy.MoveToTrash -> R.string.settings_move_to_trash
-        DeletePolicy.DeletePermanently -> R.string.settings_delete_permanently
+        DeletePolicy.MarkDeleted -> SettingsTreeGenerated.resource("settings_mark_deleted")
+        DeletePolicy.MoveToTrash -> SettingsTreeGenerated.resource("settings_move_to_trash")
+        DeletePolicy.DeletePermanently -> SettingsTreeGenerated.resource("settings_delete_permanently")
     },
 )
 
 @Composable
 private fun startRuleName(rule: StartRule): String = stringResource(
     when (rule) {
-        StartRule.FirstUnseen -> R.string.label_first_unread
-        StartRule.FirstRecent -> R.string.label_first_recent
-        StartRule.FirstImportant -> R.string.label_first_important
-        StartRule.FirstImportantOrUnseen -> R.string.label_first_important_unread
-        StartRule.FirstImportantOrRecent -> R.string.label_first_important_recent
-        StartRule.First -> R.string.label_top
-        StartRule.Last -> R.string.label_bottom
-        StartRule.Newest -> R.string.label_newest_message
+        StartRule.FirstUnseen -> SettingsTreeGenerated.resource("label_first_unread")
+        StartRule.FirstRecent -> SettingsTreeGenerated.resource("label_first_recent")
+        StartRule.FirstImportant -> SettingsTreeGenerated.resource("label_first_important")
+        StartRule.FirstImportantOrUnseen -> SettingsTreeGenerated.resource("label_first_important_unread")
+        StartRule.FirstImportantOrRecent -> SettingsTreeGenerated.resource("label_first_important_recent")
+        StartRule.First -> SettingsTreeGenerated.resource("label_top")
+        StartRule.Last -> SettingsTreeGenerated.resource("label_bottom")
+        StartRule.Newest -> SettingsTreeGenerated.resource("label_newest_message")
     },
 )
 
 @Composable
-private fun swipeActionName(action: SwipeAction): String = stringResource(
-    when (action) {
-        SwipeAction.Delete -> R.string.drawer_delete
-        SwipeAction.Move -> R.string.label_move
-        SwipeAction.Reply -> R.string.compose_reply
-        SwipeAction.ReplyAll -> R.string.compose_reply_all
-        SwipeAction.SetFlag -> R.string.label_set_flag
-        SwipeAction.ClearFlag -> R.string.label_clear_flag
-        SwipeAction.FlagScreen -> R.string.label_flag_screen
-        SwipeAction.Next -> R.string.reader_next
-        SwipeAction.Previous -> R.string.reader_previous
-    },
-)
+private fun swipeActionName(action: SwipeAction): String = when (action) {
+        SwipeAction.Delete -> S("Delete")
+        SwipeAction.Move -> S("Move")
+        SwipeAction.Reply -> S("Reply")
+        SwipeAction.ReplyAll -> S("Reply all")
+        SwipeAction.SetFlag -> S("Set flag")
+        SwipeAction.ClearFlag -> S("Clear flag")
+        SwipeAction.FlagScreen -> S("Flag screen")
+        SwipeAction.Next -> S("Next")
+        SwipeAction.Previous -> S("Previous")
+    }
 
 @Composable
 private fun forwardStyleName(asAttachment: Boolean): String = oppositeForwardLabel(
-    stringResource(R.string.label_forward_inline),
-    stringResource(R.string.label_forward_attachment),
+    S("Forward inline"),
+    S("Forward as attachment"),
     asAttachment,
 )
 
 @Composable
-private fun sortShortLabel(key: SortKey): String = stringResource(
-    when (key) {
-        SortKey.Arrival -> R.string.index_sort_arrival
-        SortKey.Date -> R.string.index_sort_date
-        SortKey.From -> R.string.index_sort_from
-        SortKey.Subject -> R.string.index_sort_subject
-        SortKey.To -> R.string.index_sort_to
-        SortKey.Cc -> R.string.index_sort_cc
-        SortKey.Size -> R.string.index_sort_size
-        SortKey.ThreadReferences -> R.string.index_sort_thread
-        SortKey.ThreadOrderedSubject -> R.string.index_sort_ordered
-    },
-)
+private fun sortShortLabel(key: SortKey): String = when (key) {
+        SortKey.Arrival -> S("Arrival")
+        SortKey.Date -> S("Date")
+        SortKey.From -> S("From")
+        SortKey.Subject -> S("Subject")
+        SortKey.To -> S("To")
+        SortKey.Cc -> S("Cc")
+        SortKey.Size -> S("Size")
+        SortKey.ThreadReferences -> S("Thread")
+        SortKey.ThreadOrderedSubject -> S("Ordered")
+    }
 
 internal fun sortKeyAdvertised(
     capabilities: Capabilities,
@@ -4220,7 +4204,7 @@ private fun DirectionMenuChoice(
 ) {
     HelpDropdownMenuItem(
         label = label,
-        help = stringResource(R.string.help_menu_direction),
+        help = S("Sorts in this direction."),
         page = "messages.html",
         text = { Text(label) },
         onClick = onClick,
@@ -4240,11 +4224,11 @@ private fun SortMenuChoice(
     onClick: () -> Unit,
 ) {
     val label = sortShortLabel(key)
-    val disabledLabel = stringResource(R.string.index_not_advertised, label)
+    val disabledLabel = S("%1\$s Not advertised", label)
     val shown = if (enabled) label else disabledLabel
     HelpDropdownMenuItem(
         label = shown,
-        help = stringResource(R.string.help_menu_sort),
+        help = S("Sorts by this field."),
         page = "messages.html",
         text = { Text(shown) },
         onClick = onClick,
@@ -4341,12 +4325,12 @@ private fun BoxScope.NewMailPill(
     newestFirst: Boolean,
     onClick: () -> Unit,
 ) {
-    val plain = stringResource(R.string.index_new_plain)
-    val counted = pluralStringResource(R.plurals.index_new, count, count)
+    val plain = S("New messages")
+    val counted = P(count, count, one = "%d new message", other = "%d new messages")
     val base = if (unnumbered) plain else counted
-    val up = stringResource(R.string.index_pill_up, base)
-    val down = stringResource(R.string.index_pill_down, base)
-    val spoken = stringResource(R.string.index_pill_spoken, base)
+    val up = S("%1\$s ↑", base)
+    val down = S("%1\$s ↓", base)
+    val spoken = S("%1\$s, jump to newest", base)
     val label = if (newestFirst) up else down
     Surface(
         onClick = onClick,

@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import android.app.Activity
 import android.content.Context
@@ -18,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.davidlang.liveimap.R
 import kotlinx.coroutines.launch
 import org.dlang.liveimap.accounts.AccountStore
 import org.dlang.liveimap.accounts.NoAccountSelected
@@ -111,22 +111,22 @@ fun SetupGuide(
         loadedAccount = loaded
     }
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
-        Text(stringResource(R.string.setup_title))
+        Text(S("Set up mail"))
         if (step == 0) {
-            Text(stringResource(R.string.setup_email))
+            Text(S("Email address"))
             androidx.compose.material3.OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), singleLine = true)
             if (missingBlob && username.isNotEmpty()) {
-                Text(stringResource(R.string.settings_username))
+                Text(stringResource(SettingsTreeGenerated.resource("settings_username")))
                 Text(username)
             }
-            Text(stringResource(R.string.setup_password))
+            Text(S("Password"))
             androidx.compose.material3.OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), singleLine = true)
             if (missingBlob && smtpPasswordText.isNotEmpty()) {
-                Text(stringResource(R.string.settings_smtp_password))
+                Text(stringResource(SettingsTreeGenerated.resource("settings_smtp_password")))
                 Text(smtpPasswordText)
             }
             if (missingBlob && sievePasswordText.isNotEmpty()) {
-                Text(stringResource(R.string.settings_sieve_password))
+                Text(stringResource(SettingsTreeGenerated.resource("settings_sieve_password")))
                 Text(sievePasswordText)
             }
             TextButton(onClick = {
@@ -138,27 +138,27 @@ fun SetupGuide(
                         password = found.password
                     }
                 }
-            }) { Text(stringResource(R.string.password_storage_manager)) }
+            }) { Text(stringResource(SettingsTreeGenerated.resource("password_storage_manager"))) }
         }
         if (step == 1) {
-            Text(stringResource(R.string.setup_inbound_step))
+            Text(S("Incoming server"))
             androidx.compose.material3.OutlinedTextField(host, { host = it }, Modifier.fillMaxWidth(), singleLine = true)
             androidx.compose.material3.OutlinedTextField(port, { port = it }, Modifier.fillMaxWidth(), singleLine = true)
             TextButton(onClick = { inboundJmap = !inboundJmap }) {
-                Text(if (inboundJmap) stringResource(R.string.settings_mail_access) else stringResource(R.string.settings_imap_host))
+                Text(if (inboundJmap) stringResource(SettingsTreeGenerated.resource("settings_mail_access")) else stringResource(SettingsTreeGenerated.resource("settings_imap_host")))
             }
         }
         if (step == 2) {
-            Text(stringResource(R.string.setup_sending_step))
+            Text(S("Sending server"))
             androidx.compose.material3.OutlinedTextField(smtpHost, { smtpHost = it }, Modifier.fillMaxWidth(), singleLine = true)
             androidx.compose.material3.OutlinedTextField(smtpPort, { smtpPort = it }, Modifier.fillMaxWidth(), singleLine = true)
-            TextButton(onClick = { smtpSame = !smtpSame }) { Text(stringResource(R.string.settings_smtp_same_as_imap)) }
+            TextButton(onClick = { smtpSame = !smtpSame }) { Text(S("Same as IMAP password")) }
         }
         if (report.isNotEmpty()) Text(report)
-        if (busy) Text(stringResource(R.string.setup_testing))
+        if (busy) Text(S("Testing…"))
         androidx.compose.foundation.layout.Row {
             if (step > 0) {
-                TextButton(onClick = { step -= 1 }) { Text(stringResource(R.string.setup_back)) }
+                TextButton(onClick = { step -= 1 }) { Text(S("Back")) }
             }
             TextButton(onClick = {
                 if (step == 0 && host.isBlank()) host = email.substringAfter('@', "")
@@ -176,7 +176,7 @@ fun SetupGuide(
                         busy = false
                     }
                 }
-            }) { Text(if (step < 2) stringResource(R.string.setup_next) else stringResource(R.string.setup_test)) }
+            }) { Text(if (step < 2) S("Next") else S("Test")) }
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
                 val loaded = loadedAccount
@@ -191,13 +191,13 @@ fun SetupGuide(
                         loaded,
                         blobMissing,
                     )
-                    if (saved) onDone() else report = context.getString(R.string.setup_failed)
+                    if (saved) onDone() else report = S(context, "Setup could not be saved")
                 }
-            }) { Text(stringResource(R.string.setup_finish)) }
+            }) { Text(S("Finish")) }
             TextButton(onClick = {
                 val settings = draftSettings(email, inboundJmap, host, port, smtpHost, smtpPort, smtpSame)
                 onAdvanced(settings, password, if (smtpSame) password else "")
-            }) { Text(stringResource(R.string.setup_advanced)) }
+            }) { Text(S("Advanced")) }
         }
     }
 }

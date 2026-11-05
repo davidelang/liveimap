@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,10 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.davidlang.liveimap.R
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -307,7 +306,7 @@ internal fun SettingsFolderChooser(
     onDismiss: () -> Unit,
     suggestUse: String = "",
 ) {
-    val notConnected = stringResource(R.string.reader_not_connected)
+    val notConnected = S("not connected")
     val cacheDir = LocalContext.current.applicationContext.cacheDir
     var rows by remember { mutableStateOf<List<ProbeRow>>(emptyList()) }
     var notice by remember { mutableStateOf<String?>(null) }
@@ -360,14 +359,14 @@ internal fun SettingsFolderChooser(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.chooser_title))
+                Text(S("Choose mailbox"))
                 val message = notice
                 if (message != null) Text(text = message)
                 if (!stopped) {
                     val suggested = markedMailbox(rows, suggestUse, { it.mailbox }, { it.specialUse })
                     if (suggested != null) {
                         TextButton(onClick = { onPick(suggested) }) {
-                            Text(stringResource(R.string.chooser_server_marked, suggested))
+                            Text(S("Use %1\$s (marked by the server)", suggested))
                         }
                     }
                     LazyColumn(
@@ -405,7 +404,7 @@ internal fun SettingsFolderChooser(
                         }
                     }
                 }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
+                TextButton(onClick = onDismiss) { Text(S("Close")) }
             }
         }
     }

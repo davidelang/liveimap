@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.toolbar
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -59,7 +60,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.WeakHashMap
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 
@@ -166,7 +166,7 @@ fun ToolbarEditorScreen(screen: ToolbarScreen, scrollState: ScrollState) {
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         androidx.compose.material3.Button(onClick = { holder.save() }) {
-            Text(stringResource(com.davidlang.liveimap.R.string.settings_save))
+            Text(S("Save"))
         }
         val loaded = ToolbarStore.record
         when (screen) {
@@ -342,7 +342,7 @@ private sealed interface EditorLine<out A> {
 @Composable
 private fun <A : Enum<A>> SectionEditor(
     rowsIn: (BarSection) -> List<A>,
-    labelRes: (A) -> Int,
+    labelRes: (A) -> String,
     onMoveBy: (A, Int) -> Unit,
     onMoveTo: (A, BarSection) -> Unit,
     onDrag: (Int, Int) -> Unit,
@@ -422,11 +422,11 @@ private fun <A : Enum<A>> SectionEditor(
             }
         }
         TextButton(onClick = onReset) {
-            Text(stringResource(R.string.toolbar_reset))
+            Text(S("Reset to default"))
         }
         val toolbarCount = rowsIn(BarSection.Toolbar).size
         Column(modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.toolbar_rows))
+            Text(S("Toolbar rows"))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(toolbarRows.toString())
                 TextButton(
@@ -434,19 +434,19 @@ private fun <A : Enum<A>> SectionEditor(
                     enabled = toolbarRows > 1,
                     modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                 ) {
-                    Text(stringResource(R.string.toolbar_rows_fewer))
+                    Text(S("−"))
                 }
                 TextButton(
                     onClick = { onToolbarRows(toolbarRows + 1) },
                     enabled = toolbarRows < 4,
                     modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                 ) {
-                    Text(stringResource(R.string.toolbar_rows_more))
+                    Text(S("+"))
                 }
             }
             // Editor budget is 3 slots. Each bar measures its own width.
             if (packToolbar(toolbarCount, 3, toolbarRows).overflowsCap) {
-                Text(stringResource(R.string.toolbar_rows_warning, toolbarRows))
+                Text(S("These actions need more than %1\$d rows. The last row scrolls.", toolbarRows))
             }
         }
     }
@@ -454,17 +454,17 @@ private fun <A : Enum<A>> SectionEditor(
 
 @Composable
 private fun ReorderableListItemScope.ToolbarEditorRow(
-    labelRes: Int,
+    labelRes: String,
     section: BarSection,
     index: Int,
     count: Int,
     onMoveBy: (Int) -> Unit,
     onMoveTo: (BarSection) -> Unit,
 ) {
-    val moveUp = stringResource(R.string.toolbar_move_up)
-    val moveDown = stringResource(R.string.toolbar_move_down)
+    val moveUp = S("Move up")
+    val moveDown = S("Move down")
     val moveTo = BarSection.entries.filter { it != section }.map { target ->
-        target to stringResource(R.string.toolbar_move_to, sectionTitle(target))
+        target to S("Move to %1\$s", sectionTitle(target))
     }
     Column(
         modifier = Modifier
@@ -498,7 +498,7 @@ private fun ReorderableListItemScope.ToolbarEditorRow(
                 }
             },
     ) {
-        Text(stringResource(labelRes))
+        Text(S(labelRes))
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
@@ -509,7 +509,7 @@ private fun ReorderableListItemScope.ToolbarEditorRow(
             ) {
                 Icon(
                     imageVector = Icons.Filled.DragHandle,
-                    contentDescription = stringResource(R.string.toolbar_drag),
+                    contentDescription = S("Drag to reorder"),
                 )
             }
             if (index > 0) {
@@ -540,74 +540,73 @@ private fun ReorderableListItemScope.ToolbarEditorRow(
     }
 }
 
-private fun sectionTitleRes(section: BarSection): Int = when (section) {
-    BarSection.Toolbar -> R.string.toolbar_section_toolbar
-    BarSection.Overflow -> R.string.toolbar_section_overflow
-    BarSection.Hidden -> R.string.toolbar_section_hidden
+private fun sectionTitleRes(section: BarSection): String = when (section) {
+    BarSection.Toolbar -> org.dlang.liveimap.i18n.literal.S("Toolbar")
+    BarSection.Overflow -> org.dlang.liveimap.i18n.literal.S("Overflow")
+    BarSection.Hidden -> org.dlang.liveimap.i18n.literal.S("Hidden")
 }
 
 @Composable
-private fun sectionTitle(section: BarSection): String = stringResource(sectionTitleRes(section))
+private fun sectionTitle(section: BarSection): String = S(sectionTitleRes(section))
 
 private fun <A> movedBySentence(
     context: Context,
     action: A,
     delta: Int,
-    labelOf: (A) -> Int,
+    labelOf: (A) -> String,
 ): String? {
-    val res = when (delta) {
-        -1 -> R.string.toolbar_moved_up
-        1 -> R.string.toolbar_moved_down
-        else -> return null
+    val label = S(context, labelOf(action))
+    return when (delta) {
+        -1 -> S(context, "Moved %1\$s up", label)
+        1 -> S(context, "Moved %1\$s down", label)
+        else -> null
     }
-    return context.getString(res, context.getString(labelOf(action)))
 }
 
 private fun <A> movedToSentence(
     context: Context,
     action: A,
     section: BarSection,
-    labelOf: (A) -> Int,
-): String = context.getString(
-    R.string.toolbar_moved_to,
-    context.getString(labelOf(action)),
-    context.getString(sectionTitleRes(section)),
+    labelOf: (A) -> String,
+): String = S(context, "Moved %1\$s to %2\$s",
+    S(context, labelOf(action)),
+    S(context, sectionTitleRes(section)),
 )
 
-private fun indexBarActionRes(action: IndexBarAction): Int = when (action) {
-    IndexBarAction.Refresh -> R.string.index_refresh
-    IndexBarAction.Search -> R.string.index_search
-    IndexBarAction.Filter -> R.string.index_filter
+private fun indexBarActionRes(action: IndexBarAction): String = when (action) {
+    IndexBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
+    IndexBarAction.Search -> org.dlang.liveimap.i18n.literal.S("Search")
+    IndexBarAction.Filter -> org.dlang.liveimap.i18n.literal.S("Filter")
 }
 
-private fun selectionBarActionRes(action: SelectionBarAction): Int = when (action) {
-    SelectionBarAction.Seen -> R.string.toolbar_mark_read
-    SelectionBarAction.Flag -> R.string.toolbar_flag
-    SelectionBarAction.Move -> R.string.index_move
-    SelectionBarAction.Delete -> R.string.drawer_delete
+private fun selectionBarActionRes(action: SelectionBarAction): String = when (action) {
+    SelectionBarAction.Seen -> org.dlang.liveimap.i18n.literal.S("Mark read")
+    SelectionBarAction.Flag -> org.dlang.liveimap.i18n.literal.S("Flag")
+    SelectionBarAction.Move -> org.dlang.liveimap.i18n.literal.S("Move")
+    SelectionBarAction.Delete -> org.dlang.liveimap.i18n.literal.S("Delete")
 }
 
-private fun folderBarActionRes(action: FolderBarAction): Int = when (action) {
-    FolderBarAction.Refresh -> R.string.folders_refresh
-    FolderBarAction.CollapseAll -> R.string.folders_collapse_all
-    FolderBarAction.SaveDefault -> R.string.folders_save_default
-    FolderBarAction.ResetDefault -> R.string.folders_reset_default
+private fun folderBarActionRes(action: FolderBarAction): String = when (action) {
+    FolderBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
+    FolderBarAction.CollapseAll -> org.dlang.liveimap.i18n.literal.S("Collapse all")
+    FolderBarAction.SaveDefault -> org.dlang.liveimap.i18n.literal.S("Save as default view")
+    FolderBarAction.ResetDefault -> org.dlang.liveimap.i18n.literal.S("Reset to default view")
 }
 
-private fun readerToolbarActionRes(action: ReaderToolbarAction): Int = when (action) {
-    ReaderToolbarAction.Refresh -> R.string.reader_refresh
-    ReaderToolbarAction.Reply -> R.string.compose_reply
-    ReaderToolbarAction.ReplyAll -> R.string.compose_reply_all
-    ReaderToolbarAction.Forward -> R.string.compose_forward
-    ReaderToolbarAction.Delete -> R.string.drawer_delete
-    ReaderToolbarAction.Move -> R.string.label_move
-    ReaderToolbarAction.Spam -> R.string.label_spam
-    ReaderToolbarAction.Bounce -> R.string.compose_bounce
-    ReaderToolbarAction.Headers -> R.string.reader_all_headers
+private fun readerToolbarActionRes(action: ReaderToolbarAction): String = when (action) {
+    ReaderToolbarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
+    ReaderToolbarAction.Reply -> org.dlang.liveimap.i18n.literal.S("Reply")
+    ReaderToolbarAction.ReplyAll -> org.dlang.liveimap.i18n.literal.S("Reply all")
+    ReaderToolbarAction.Forward -> org.dlang.liveimap.i18n.literal.S("Forward")
+    ReaderToolbarAction.Delete -> org.dlang.liveimap.i18n.literal.S("Delete")
+    ReaderToolbarAction.Move -> org.dlang.liveimap.i18n.literal.S("Move")
+    ReaderToolbarAction.Spam -> org.dlang.liveimap.i18n.literal.S("Spam")
+    ReaderToolbarAction.Bounce -> org.dlang.liveimap.i18n.literal.S("Bounce")
+    ReaderToolbarAction.Headers -> org.dlang.liveimap.i18n.literal.S("All headers")
 }
 
-private fun composeBarActionRes(action: ComposeBarAction): Int = when (action) {
-    ComposeBarAction.Postpone -> R.string.compose_postpone
+private fun composeBarActionRes(action: ComposeBarAction): String = when (action) {
+    ComposeBarAction.Postpone -> org.dlang.liveimap.i18n.literal.S("Postpone")
 }
 
 private fun IndexBarLayout.actionsIn(section: BarSection): List<IndexBarAction> = when (section) {

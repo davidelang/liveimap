@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.contacts
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -17,10 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.SelectedAddress
@@ -54,8 +53,8 @@ private fun AddressBookPickerLoaded(
     onPicked: (SelectedAddress) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val notConnected = stringResource(R.string.reader_not_connected)
-    val missingMailbox = stringResource(R.string.picker_missing)
+    val notConnected = S("not connected")
+    val missingMailbox = S("Address book mailbox is not set")
     val session = remember(accountId) { mailSession(accountId) }
     var notice by remember { mutableStateOf<String?>(null) }
     var entries by remember { mutableStateOf<List<AlpineEntry>>(emptyList()) }
@@ -128,7 +127,7 @@ private fun AddressBookPickerLoaded(
         if (message != null) {
             Text(text = message, modifier = Modifier.padding(8.dp))
         }
-        TextButton(onClick = onDismiss) { Text(stringResource(R.string.compose_close)) }
+        TextButton(onClick = onDismiss) { Text(S("Close")) }
         for (entry in entries) {
             Text(
                 text = entryLabel(entry),

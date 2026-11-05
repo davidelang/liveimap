@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui
+import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -26,9 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.davidlang.liveimap.R
 
 object UiDims {
     val expanderWidth = 30.dp
@@ -61,7 +60,7 @@ internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
             IconButton(onClick = up) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.scaffold_up),
+                    contentDescription = S("Navigate up"),
                 )
             }
         },

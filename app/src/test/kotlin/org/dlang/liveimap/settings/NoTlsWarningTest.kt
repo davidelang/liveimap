@@ -1,6 +1,5 @@
 package org.dlang.liveimap.settings
 
-import com.davidlang.liveimap.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -11,9 +10,15 @@ class NoTlsWarningTest {
         assertNull(noTlsWarning(implicit))
         assertNull(noTlsWarning(implicit.copy(tlsMode = TlsMode.StartTls)))
         val none = implicit.copy(tlsMode = TlsMode.None)
-        assertEquals(R.string.settings_no_tls_warning, noTlsWarning(none))
+        assertEquals(
+            "No TLS: mail and folder names travel unencrypted, and anyone on the network can read or change them.",
+            noTlsWarning(none),
+        )
         val clear = none.copy(allowPlaintextAuth = true)
-        assertEquals(R.string.settings_no_tls_password_warning, noTlsWarning(clear))
+        assertEquals(
+            "No TLS and plaintext login allowed: your password, mail and folder names travel unencrypted. Use STARTTLS or implicit TLS if the server offers it.",
+            noTlsWarning(clear),
+        )
         assertEquals(TlsMode.None, clear.tlsMode)
         assertEquals(true, clear.allowPlaintextAuth)
     }

@@ -1,4 +1,5 @@
 package org.dlang.liveimap.jmap
+import org.dlang.liveimap.i18n.S
 
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -17,7 +18,6 @@ import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.LiveImapApplication
 import org.dlang.liveimap.engine.PeerTrust
 import org.dlang.liveimap.engine.TlsPolicy
@@ -613,7 +613,7 @@ class JmapMailSession(
                 onNotice = { copyId ->
                     val app = LiveImapApplication.context
                     if (app != null) {
-                        val text = app.getString(R.string.error_jmap_staging_left, copyId)
+                        val text = S(app, "The staging copy %1\$s could not be removed", copyId)
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             android.widget.Toast.makeText(app, text, android.widget.Toast.LENGTH_LONG).show()
                         }

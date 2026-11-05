@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,8 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -126,7 +125,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -210,42 +208,42 @@ internal fun ManageAddresses(
         if (loaded is AndroidContacts.Ready) sets = loaded.value
     }
     val books = editor.settings.addressBooks
-    Text(stringResource(R.string.settings_address_book))
+    Text(S("Address book"))
     books.forEachIndexed { index, book ->
         val label = if (book.kind == "android") {
-            book.accountName.ifEmpty { stringResource(R.string.settings_add_android_book) }
+            book.accountName.ifEmpty { S("Add Android contacts") }
         } else {
-            book.mailbox.ifEmpty { stringResource(R.string.settings_add_pine_book) }
+            book.mailbox.ifEmpty { S("Add Pine book") }
         }
         Text(label)
         Row {
             TextButton(onClick = {
                 editor.persist(editor.settings.copy(addressBooks = moveBook(editor.settings.addressBooks, index, -1)))
-            }) { Text(stringResource(R.string.drawer_move_up)) }
+            }) { Text(S("Move up")) }
             TextButton(onClick = {
                 editor.persist(editor.settings.copy(addressBooks = moveBook(editor.settings.addressBooks, index, 1)))
-            }) { Text(stringResource(R.string.drawer_move_down)) }
+            }) { Text(S("Move down")) }
             TextButton(onClick = {
                 val next = editor.settings.addressBooks.filterIndexed { i, _ -> i != index }
                 editor.persist(editor.settings.copy(addressBooks = next))
-            }) { Text(stringResource(R.string.settings_book_remove)) }
+            }) { Text(S("Remove")) }
             if (book.kind == "pine") {
                 TextButton(onClick = {
                     val next = editor.settings.addressBooks.mapIndexed { i, item ->
                         if (i != index) item else item.copy(readOnly = !item.readOnly, saveTarget = if (!item.readOnly) false else item.saveTarget)
                     }
                     editor.persist(editor.settings.copy(addressBooks = next))
-                }) { Text(stringResource(R.string.settings_read_only)) }
+                }) { Text(S("Read only")) }
             }
             if (book.isWritableBook()) {
                 TextButton(onClick = {
                     editor.persist(editor.settings.copy(addressBooks = markAddressSaveTarget(editor.settings.addressBooks, index)))
-                }) { Text(stringResource(R.string.settings_save_target)) }
+                }) { Text(S("Save target")) }
             }
         }
     }
     var mailbox by remember { mutableStateOf("") }
-    LineField(stringResource(R.string.settings_add_pine_book), mailbox, ready = editor.ready) { text ->
+    LineField(S("Add Pine book"), mailbox, ready = editor.ready) { text ->
         mailbox = ""
         val name = text.trim()
         if (name.isEmpty()) return@LineField
@@ -253,9 +251,9 @@ internal fun ManageAddresses(
     }
     if (!granted) {
         TextButton(onClick = { requestContacts.launch(android.Manifest.permission.READ_CONTACTS) }) {
-            Text(stringResource(R.string.settings_add_android_book))
+            Text(S("Add Android contacts"))
         }
-        if (denied) Text(stringResource(R.string.settings_contacts_denied))
+        if (denied) Text(S("Contacts permission was denied."))
     } else {
         for (set in sets) {
             val id = androidAccountOf(set.id)
@@ -268,8 +266,8 @@ internal fun ManageAddresses(
             }) { Text(set.label) }
         }
     }
-    OpenRow(stringResource(R.string.settings_edit_book), onEditBook)
-    OpenRow(stringResource(R.string.settings_copy_contacts), onCopyContacts)
+    OpenRow(S("Edit address book"), onEditBook)
+    OpenRow(S("Copy contacts"), onCopyContacts)
 }
 /** Extra or global Alpine address books: one row per book with Remove, and Add (mailbox picker). */
 @Composable
@@ -278,8 +276,8 @@ internal fun BookList(label: String, books: List<String>, onAdd: () -> Unit, onR
     for (book in books) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(book, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onRemove(book) }) { Text(stringResource(R.string.settings_book_remove)) }
+            TextButton(onClick = { onRemove(book) }) { Text(S("Remove")) }
         }
     }
-    TextButton(onClick = onAdd) { Text(stringResource(R.string.settings_book_add)) }
+    TextButton(onClick = onAdd) { Text(S("Add address book…")) }
 }

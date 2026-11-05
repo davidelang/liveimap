@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.help
+import org.dlang.liveimap.i18n.S
 
 import android.content.Intent
 import android.net.Uri
@@ -19,13 +20,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import com.davidlang.liveimap.R
 
 const val MANUAL_URL = "https://davidelang.github.io/liveimap/manual/"
 const val PRIVACY_URL = "https://liveimap.lang.hm/privacy/"
@@ -48,10 +47,10 @@ fun IconHelpDialog(
             TextButton(onClick = {
                 org.dlang.liveimap.ui.openWebPage(context, manualPage(page))
                 onDismiss()
-            }) { Text(stringResource(R.string.help_open_manual)) }
+            }) { Text(S("Online manual")) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.help_close)) }
+            TextButton(onClick = onDismiss) { Text(S("Close")) }
         },
     )
 }

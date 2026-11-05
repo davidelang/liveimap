@@ -2,7 +2,6 @@ package org.dlang.liveimap.settings
 
 import java.io.File
 import kotlinx.coroutines.runBlocking
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.session.SmtpLoginCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,7 +26,10 @@ class SetupRedesignTest {
 
     @Test fun everyAccountCanSend() {
         val bare = newAccountSettings().copy(smtpHost = "", emailSubmission = false)
-        assertEquals(R.string.settings_no_way_to_send, sendingProblem(bare))
+        assertEquals(
+            "This account cannot send: set an SMTP server or turn on Send over JMAP.",
+            sendingProblem(bare),
+        )
         assertNull(sendingProblem(bare.copy(emailSubmission = true)))
         assertNull(sendingProblem(bare.copy(smtpHost = "smtp.x")))
         assertTrue(withMailAccess(bare, jmap = true).emailSubmission)

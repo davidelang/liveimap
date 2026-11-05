@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.about
+import org.dlang.liveimap.i18n.S
 
 import android.content.Context
 import android.content.Intent
@@ -21,32 +22,31 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.ui.help.PRIVACY_URL
 
 private const val SUPPORT_ADDRESS = "david+liveimap@lang.hm"
 
-internal fun aboutLibraryLines(): List<Int> = listOf(
-    R.string.about_lib_etpan,
-    R.string.about_libfastjson,
-    R.string.about_openssl,
-    R.string.about_cyrus_sasl,
+internal fun aboutLibraryLines(): List<String> = listOf(
+    org.dlang.liveimap.i18n.literal.S("libEtPan!, BSD 3-Clause"),
+    org.dlang.liveimap.i18n.literal.S("libfastjson, MIT"),
+    org.dlang.liveimap.i18n.literal.S("OpenSSL, Apache License 2.0"),
+    org.dlang.liveimap.i18n.literal.S("Cyrus SASL, Carnegie Mellon University license"),
 )
 
 @Composable
 fun AboutScreen(onOpenLicenses: () -> Unit) {
     val context = LocalContext.current
-    val appName = stringResource(R.string.app_name)
-    val versionLine = stringResource(R.string.about_version, BuildConfig.VERSION_NAME)
-    val support = stringResource(R.string.about_support)
-    val libraries = stringResource(R.string.about_libraries)
-    val privacy = stringResource(R.string.about_privacy)
-    val supportDeveloper = stringResource(R.string.support_developer)
-    val tip = stringResource(R.string.support_tip)
-    val tipPending = stringResource(R.string.support_tip_pending)
-    val licenses = stringResource(R.string.about_licenses)
-    val licenseNotice = stringResource(R.string.about_license_notice)
-    val noEmail = stringResource(R.string.about_no_email)
+    val appName = S("LiveIMAP")
+    val versionLine = S("Version %1\$s", BuildConfig.VERSION_NAME)
+    val support = S("Ask for help")
+    val libraries = S("Libraries")
+    val privacy = S("Privacy policy")
+    val supportDeveloper = S("How to support the developer")
+    val tip = S("Tip with Google Play")
+    val tipPending = S("This build cannot take a tip yet.")
+    val licenses = S("Open-source licenses")
+    val licenseNotice = S("LiveIMAP is licensed under the Apache License 2.0")
+    val noEmail = S("No email app found")
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -60,7 +60,7 @@ fun AboutScreen(onOpenLicenses: () -> Unit) {
             modifier = Modifier.semantics { heading() },
         )
         aboutLibraryLines().forEach { line ->
-            Text(stringResource(line))
+            Text(S(line))
         }
         ListItem(
             headlineContent = { Text(licenses) },

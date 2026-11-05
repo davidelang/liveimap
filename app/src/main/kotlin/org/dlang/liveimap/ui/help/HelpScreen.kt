@@ -1,4 +1,5 @@
 package org.dlang.liveimap.ui.help
+import org.dlang.liveimap.i18n.S
 
 import android.content.Intent
 import android.content.res.AssetManager
@@ -24,7 +25,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -34,7 +34,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import android.widget.Toast
 import org.dlang.liveimap.engine.TrafficLog
 import org.dlang.liveimap.engine.trafficText
@@ -46,11 +45,11 @@ const val HELP_ISSUES_URL = "https://github.com/davidelang/liveimap/issues"
 @Composable
 fun HelpScreen() {
     val context = LocalContext.current
-    val unreadable = stringResource(R.string.help_unreadable)
-    val gettingStartedTitle = stringResource(R.string.help_getting_started)
-    val reportingTitle = stringResource(R.string.help_reporting)
-    val reportBug = stringResource(R.string.help_report_bug)
-    val copyReport = stringResource(R.string.help_copy_report)
+    val unreadable = S("The help text could not be read.")
+    val gettingStartedTitle = S("Getting started")
+    val reportingTitle = S("Reporting a bug")
+    val reportBug = S("Report a bug")
+    val copyReport = S("Copy debug report")
     val appContext = context.applicationContext
     val assets = context.assets
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -100,14 +99,14 @@ fun HelpScreen() {
             Row {
                 TextButton(onClick = {
                     org.dlang.liveimap.ui.openWebPage(context, MANUAL_URL)
-                }) { Text(stringResource(R.string.help_open_manual)) }
+                }) { Text(S("Online manual")) }
                 TextButton(onClick = {
                     org.dlang.liveimap.ui.openWebPage(context, HELP_ISSUES_URL)
                 }) { Text(reportBug) }
             }
             TextButton(onClick = {
                 org.dlang.liveimap.ui.openWebPage(context, PRIVACY_URL)
-            }) { Text(stringResource(R.string.about_privacy)) }
+            }) { Text(S("Privacy policy")) }
             TextButton(onClick = {
                 scope.launch {
                     try {
@@ -131,22 +130,22 @@ fun HelpScreen() {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, report)
                         }
-                        val chooser = Intent.createChooser(send, context.getString(R.string.debug_share_title))
+                        val chooser = Intent.createChooser(send, S(context, "Share debug report"))
                         if (!org.dlang.liveimap.ui.startExternal(context, chooser)) {
-                            Toast.makeText(context, context.getString(R.string.about_no_email), Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, S(context, "No email app found"), Toast.LENGTH_SHORT).show()
                         }
                     } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
                     }
                 }
             }) { Text(copyReport) }
             Text(
-                text = stringResource(R.string.support_developer),
+                text = S("How to support the developer"),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { heading() },
             )
-            Text(stringResource(R.string.support_tip_pending))
+            Text(S("This build cannot take a tip yet."))
             TextButton(onClick = {}, enabled = false) {
-                Text(stringResource(R.string.support_tip))
+                Text(S("Tip with Google Play"))
             }
         }
     }

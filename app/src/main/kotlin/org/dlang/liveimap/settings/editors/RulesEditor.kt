@@ -1,4 +1,5 @@
 package org.dlang.liveimap.settings.editors
+import org.dlang.liveimap.i18n.S
 
 import org.dlang.liveimap.settings.*
 import android.app.Activity
@@ -97,7 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -126,7 +126,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.davidlang.liveimap.BuildConfig
-import com.davidlang.liveimap.R
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.engine.ServerCheck
 import org.dlang.liveimap.engine.TrafficLog
@@ -177,10 +176,10 @@ internal fun SendingRulesRows(editor: SettingsEditor) {
         accounts = DataStoreSettingsStore(context.applicationContext).listAccounts()
     }
 
-    Text(stringResource(R.string.settings_rules_list))
+    Text(S("Rules (first match wins for each field)"))
     rules.forEachIndexed { index, rule ->
         ListItem(
-            headlineContent = { Text(stringResource(R.string.sending_rule_numbered, index + 1, rule.name)) },
+            headlineContent = { Text(S("%1\$d. %2\$s", index + 1, rule.name)) },
             supportingContent = { Text(ruleSummary(rule)) },
             modifier = Modifier.clickable { editing = if (editing == index) null else index },
         )
@@ -189,18 +188,18 @@ internal fun SendingRulesRows(editor: SettingsEditor) {
                 val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
                 if (index in list.indices) save(list.toMutableList().also { it.add(index - 1, it.removeAt(index)) })
                 editing = null
-            }) { Text(stringResource(R.string.settings_rule_up)) }
+            }) { Text(S("Up")) }
             TextButton(enabled = index < rules.size - 1, onClick = {
                 val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
                 if (index in list.indices) save(list.toMutableList().also { it.add(index + 1, it.removeAt(index)) })
                 editing = null
-            }) { Text(stringResource(R.string.settings_rule_down)) }
+            }) { Text(S("Down")) }
             TextButton(onClick = {
                 val list = org.dlang.liveimap.ui.compose.decodeRules(editor.settings.sendingRules)
                 if (index in list.indices) save(list.filterIndexed { i, _ -> i != index })
                 editing = null
             }) {
-                Text(stringResource(R.string.settings_rule_delete))
+                Text(S("Delete"))
             }
         }
         if (editing == index) RuleEditor(rule, editor.ready, accounts) { edit ->
@@ -208,7 +207,7 @@ internal fun SendingRulesRows(editor: SettingsEditor) {
             save(org.dlang.liveimap.ui.compose.patchSendingRule(current, rule.id, edit))
         }
     }
-    Text(stringResource(R.string.settings_rules_presets))
+    Text(S("Add a rule"))
     val me = settings.email
     FlowRow {
         fun add(new: List<org.dlang.liveimap.ui.compose.SendingRule>) {
@@ -219,27 +218,27 @@ internal fun SendingRulesRows(editor: SettingsEditor) {
         }
         val p = org.dlang.liveimap.ui.compose.RulePresets
         AssistChip(onClick = { add(p.replyFromSentTo(settings.altAddresses.ifEmpty { listOf(me) })) },
-            label = { Text(stringResource(R.string.settings_preset_sent_to)) })
+            label = { Text(S("Reply from the address it was sent to")) })
         AssistChip(onClick = { add(listOf(p.perRecipient("@example.com", me))) },
-            label = { Text(stringResource(R.string.settings_preset_recipient)) })
+            label = { Text(S("By recipient or domain")) })
         AssistChip(onClick = { add(listOf(p.perFolder("Work*", me, null, null))) },
-            label = { Text(stringResource(R.string.settings_preset_folder)) })
+            label = { Text(S("By folder")) })
         AssistChip(onClick = { add(listOf(p.mailingList("list.example.org", me))) },
-            label = { Text(stringResource(R.string.settings_preset_list)) })
+            label = { Text(S("Mailing list")) })
         AssistChip(onClick = { add(listOf(p.plusFolder(me, "tag"))) },
-            label = { Text(stringResource(R.string.settings_preset_plus)) })
+            label = { Text(S("Plus-address folder")) })
         AssistChip(onClick = { add(listOf(org.dlang.liveimap.ui.compose.SendingRule(
             "Rule ${rules.size + 1}")) ) },
-            label = { Text(stringResource(R.string.settings_preset_blank)) })
+            label = { Text(S("Blank rule")) })
     }
 }
 @Composable
 internal fun dsnLabel(mode: org.dlang.liveimap.ui.compose.DsnMode): String = stringResource(
     when (mode) {
-        org.dlang.liveimap.ui.compose.DsnMode.Off -> R.string.settings_dsn_off
-        org.dlang.liveimap.ui.compose.DsnMode.Failure -> R.string.settings_dsn_failure
-        org.dlang.liveimap.ui.compose.DsnMode.FailureDelay -> R.string.settings_dsn_delay
-        org.dlang.liveimap.ui.compose.DsnMode.All -> R.string.settings_dsn_all
+        org.dlang.liveimap.ui.compose.DsnMode.Off -> SettingsTreeGenerated.resource("settings_dsn_off")
+        org.dlang.liveimap.ui.compose.DsnMode.Failure -> SettingsTreeGenerated.resource("settings_dsn_failure")
+        org.dlang.liveimap.ui.compose.DsnMode.FailureDelay -> SettingsTreeGenerated.resource("settings_dsn_delay")
+        org.dlang.liveimap.ui.compose.DsnMode.All -> SettingsTreeGenerated.resource("settings_dsn_all")
     },
 )
 
@@ -274,48 +273,48 @@ internal fun RuleEditor(
     fun opt(t: String) = t.ifBlank { null }
     val c = rule.conditions
     val a = rule.actions
-    LineField(stringResource(R.string.settings_rule_name), rule.name, ready = ready) { text ->
+    LineField(S("Rule name"), rule.name, ready = ready) { text ->
         onPatch { latest -> latest.copy(name = text.ifBlank { latest.name }) }
     }
-    LineField(stringResource(R.string.settings_rule_recipient), c.recipient.joinToString(", "), ready = ready) { text ->
+    LineField(S("When sending to (addresses, @domain, globs)"), c.recipient.joinToString(", "), ready = ready) { text ->
         onPatch { latest -> latest.copy(conditions = latest.conditions.copy(recipient = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_sent_to), c.sentTo.joinToString(", "), ready = ready) { text ->
+    LineField(S("When the original was sent to"), c.sentTo.joinToString(", "), ready = ready) { text ->
         onPatch { latest -> latest.copy(conditions = latest.conditions.copy(sentTo = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_list_id), c.listId, ready = ready) { text ->
+    LineField(S("When List-Id is"), c.listId, ready = ready) { text ->
         onPatch { latest -> latest.copy(conditions = latest.conditions.copy(listId = text.trim())) }
     }
-    LineField(stringResource(R.string.settings_rule_folder), c.folder, ready = ready) { text ->
+    LineField(S("When in folder (glob)"), c.folder, ready = ready) { text ->
         onPatch { latest -> latest.copy(conditions = latest.conditions.copy(folder = text.trim())) }
     }
-    LineField(stringResource(R.string.settings_rule_orig_from), c.originalFrom.joinToString(", "), ready = ready) { text ->
+    LineField(S("When the original is from"), c.originalFrom.joinToString(", "), ready = ready) { text ->
         onPatch { latest -> latest.copy(conditions = latest.conditions.copy(originalFrom = list(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_from_name), a.fromName.orEmpty(), ready = ready) { text ->
+    LineField(S("From name"), a.fromName.orEmpty(), ready = ready) { text ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(fromName = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_from), a.fromAddress.orEmpty(), KeyboardType.Email, ready = ready) { text ->
+    LineField(S("From address"), a.fromAddress.orEmpty(), KeyboardType.Email, ready = ready) { text ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(fromAddress = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_reply_to), a.replyTo.orEmpty(), KeyboardType.Email, ready = ready) { text ->
+    LineField(S("Reply-To"), a.replyTo.orEmpty(), KeyboardType.Email, ready = ready) { text ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(replyTo = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_signature), a.signature.orEmpty(), singleLine = false, ready = ready) { text ->
+    LineField(stringResource(SettingsTreeGenerated.resource("settings_signature")), a.signature.orEmpty(), singleLine = false, ready = ready) { text ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(signature = opt(text))) }
     }
-    LineField(stringResource(R.string.settings_rule_fcc), a.fcc.orEmpty(), ready = ready) { text ->
+    LineField(S("Fcc folder"), a.fcc.orEmpty(), ready = ready) { text ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(fcc = opt(text))) }
     }
-    BoolField(stringResource(R.string.settings_rule_reply_list), a.replyToList == true) { enabled ->
+    BoolField(S("Reply to the list (List-Post)"), a.replyToList == true) { enabled ->
         onPatch { latest -> latest.copy(actions = latest.actions.copy(replyToList = if (enabled) true else null)) }
     }
-    Text(stringResource(R.string.settings_rule_send_account))
+    Text(S("Send through (SMTP and Fcc)"))
     FlowRow {
         FilterChip(
             selected = a.sendAccount == null,
             onClick = { onPatch { latest -> latest.copy(actions = latest.actions.copy(sendAccount = null)) } },
-            label = { Text(stringResource(R.string.settings_rule_send_this)) },
+            label = { Text(S("This account")) },
         )
         for (choice in accounts) {
             FilterChip(

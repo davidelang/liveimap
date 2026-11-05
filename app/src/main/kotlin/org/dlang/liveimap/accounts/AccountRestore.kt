@@ -1,4 +1,5 @@
 package org.dlang.liveimap.accounts
+import org.dlang.liveimap.i18n.P
 
 import android.content.Context
 import android.util.Log
@@ -6,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.davidlang.liveimap.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import org.dlang.liveimap.settings.decodeSettings
@@ -107,7 +107,7 @@ private suspend fun restoreSavedAccounts(context: Context) {
         }
     }
     if (restored > 0) {
-        AccountRestoreReport.report(context.resources.getQuantityString(R.plurals.backup_restored, restored, restored))
+        AccountRestoreReport.report(P(context, restored, restored, one = "%1\$d account", other = "%1\$d accounts"))
     }
 }
 
