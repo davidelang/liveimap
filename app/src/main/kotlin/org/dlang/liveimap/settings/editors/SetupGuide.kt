@@ -25,6 +25,7 @@ import org.dlang.liveimap.accounts.NoAccountSelected
 import org.dlang.liveimap.accounts.PasswordStorage
 import org.dlang.liveimap.accounts.overlayAccountFields
 import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.SettingsTreeGenerated
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.newAccountSettings

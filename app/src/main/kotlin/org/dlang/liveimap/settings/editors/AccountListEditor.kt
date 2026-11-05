@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import org.dlang.liveimap.accounts.parseAccountId
 import org.dlang.liveimap.settings.AccountChoice
+import org.dlang.liveimap.settings.SettingsTreeGenerated
 import org.dlang.liveimap.ui.AlertDialog
 import org.dlang.liveimap.ui.TextButton
 
