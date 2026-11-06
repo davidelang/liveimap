@@ -1195,6 +1195,15 @@
                   "pinercFormat": "feature"
                 },
                 {
+                  "setting": "deleteMovesToNext",
+                  "type": "bool",
+                  "default": true,
+                  "title": "Delete moves to next",
+                  "hidden": true,
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
                   "setting": "deletePolicy",
                   "type": "choice",
                   "default": "MarkDeleted",

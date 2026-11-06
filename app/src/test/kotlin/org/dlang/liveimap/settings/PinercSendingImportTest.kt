@@ -135,6 +135,38 @@ class PinercSendingImportTest {
     }
 
     @Test
+    fun deleteMovesToNextRoundTripsBothWays() {
+        val on = previewPinerc(
+            "feature-list=delete-moves-to-next,enable-foo\n",
+            Settings(deleteMovesToNext = false),
+        )
+        assertTrue(on.next.deleteMovesToNext)
+        assertEquals(1, on.omittedCount)
+
+        val off = previewPinerc("feature-list=no-delete-moves-to-next\n", Settings())
+        assertFalse(off.next.deleteMovesToNext)
+        assertEquals(0, off.omittedCount)
+
+        val exportedOn = encodePinerc(Settings(deleteMovesToNext = true))
+        val onTokens = featureTokens(exportedOn)
+        assertEquals(1, onTokens.count { it == "delete-moves-to-next" || it == "no-delete-moves-to-next" })
+        assertTrue(onTokens.contains("delete-moves-to-next"))
+        assertFalse(onTokens.contains("no-delete-moves-to-next"))
+
+        val exportedOff = encodePinerc(Settings(deleteMovesToNext = false))
+        val offTokens = featureTokens(exportedOff)
+        assertEquals(1, offTokens.count { it == "delete-moves-to-next" || it == "no-delete-moves-to-next" })
+        assertTrue(offTokens.contains("no-delete-moves-to-next"))
+        assertFalse(offTokens.contains("delete-moves-to-next"))
+
+        assertTrue(previewPinerc(exportedOn, Settings(deleteMovesToNext = false)).next.deleteMovesToNext)
+        assertFalse(previewPinerc(exportedOff, Settings()).next.deleteMovesToNext)
+    }
+
+    private fun featureTokens(text: String): List<String> =
+        text.lines().first { it.startsWith("feature-list=") }.substringAfter("=").split(",")
+
+    @Test
     fun toolbarCommentFollowsReaderToolbar() {
         val custom = ReaderToolbarLayout(
             toolbar = listOf(ReaderToolbarAction.Refresh, ReaderToolbarAction.Reply),

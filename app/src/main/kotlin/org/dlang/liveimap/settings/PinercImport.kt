@@ -406,6 +406,8 @@ private class PinercRun(
                     "expunge-only-manually" -> skipped.add(phrases.expunge)
                     "enable-sigdashes" -> next = next.copy(sigDashes = true)
                     "no-enable-sigdashes" -> next = next.copy(sigDashes = false)
+                    "delete-moves-to-next" -> next = next.copy(deleteMovesToNext = true)
+                    "no-delete-moves-to-next" -> next = next.copy(deleteMovesToNext = false)
                     "signature-at-bottom" -> next = next.copy(sigAtBottom = true)
                     "no-signature-at-bottom" -> next = next.copy(sigAtBottom = false)
                     "enable-delivery-status-notification" ->
@@ -1421,6 +1423,7 @@ private fun pinercThreadStyle(style: ThreadIndexStyle): String = when (style) {
 private fun pinercFeatures(settings: Settings): String {
     val tokens = ArrayList<String>(6)
     tokens.add(if (settings.askBeforeExpunge) "no-expunge-without-confirm" else "expunge-without-confirm")
+    tokens.add(if (settings.deleteMovesToNext) "delete-moves-to-next" else "no-delete-moves-to-next")
     tokens.add(if (settings.sigDashes) "enable-sigdashes" else "no-enable-sigdashes")
     tokens.add(if (settings.sigAtBottom) "signature-at-bottom" else "no-signature-at-bottom")
     tokens.add(

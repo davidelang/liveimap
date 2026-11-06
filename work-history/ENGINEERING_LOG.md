@@ -4183,3 +4183,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-05 - forward as attachment keeps the original message as the attachment
 
 - forward as attachment keeps the original message as the attachment.
+
+## 2026-11-06 - Window rules
+
+- deleteMovesToNext is a hidden Deleting setting, default on. Pinerc feature-list emits delete-moves-to-next or no-delete-moves-to-next. The stack, layout fill, zoom and back, index cursor, and settings-marker look are pure rules with unit tests. No screen behavior changes. First action per standard-plan-compliance-block.md; commits stay on master.
