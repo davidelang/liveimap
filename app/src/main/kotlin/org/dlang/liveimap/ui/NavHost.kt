@@ -7,8 +7,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Configuration
+import android.hardware.display.DisplayManager
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
+import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -283,6 +287,60 @@ internal val LocalScreenAccounts = staticCompositionLocalOf<ScreenAccounts> {
     error("ScreenAccounts is not provided")
 }
 
+/**
+ * Rotation and display id are not configuration. A 180 degree turn keeps the same orientation
+ * and size, and a move can keep the same configuration. Both still change the live Display.
+ */
+@Composable
+private fun windowSituation(): LayoutSituation {
+    val configuration = LocalConfiguration.current
+    val view = LocalView.current
+    val rotationState = remember {
+        mutableIntStateOf(view.display?.rotation ?: LayoutRotationUpright)
+    }
+    val builtInState = remember {
+        val display = view.display
+        mutableStateOf(display == null || display.displayId == Display.DEFAULT_DISPLAY)
+    }
+    DisposableEffect(view) {
+        fun publish() {
+            val display = view.display
+            val nextRotation = display?.rotation ?: LayoutRotationUpright
+            val nextBuiltIn = display == null || display.displayId == Display.DEFAULT_DISPLAY
+            if (rotationState.intValue != nextRotation) rotationState.intValue = nextRotation
+            if (builtInState.value != nextBuiltIn) builtInState.value = nextBuiltIn
+        }
+        val manager = view.context.getSystemService(DisplayManager::class.java)
+        val displays = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = publish()
+            override fun onDisplayRemoved(displayId: Int) = publish()
+            override fun onDisplayChanged(displayId: Int) = publish()
+        }
+        manager?.registerDisplayListener(displays, Handler(Looper.getMainLooper()))
+        val beforeDraw = ViewTreeObserver.OnPreDrawListener {
+            val display = view.display
+            val nextRotation = display?.rotation ?: LayoutRotationUpright
+            val nextBuiltIn = display == null || display.displayId == Display.DEFAULT_DISPLAY
+            if (rotationState.intValue != nextRotation || builtInState.value != nextBuiltIn) {
+                view.post { publish() }
+            }
+            true
+        }
+        view.viewTreeObserver.addOnPreDrawListener(beforeDraw)
+        onDispose {
+            manager?.unregisterDisplayListener(displays)
+            val observer = view.viewTreeObserver
+            if (observer.isAlive) observer.removeOnPreDrawListener(beforeDraw)
+        }
+    }
+    val portrait = when (configuration.orientation) {
+        Configuration.ORIENTATION_PORTRAIT -> true
+        Configuration.ORIENTATION_LANDSCAPE -> false
+        else -> null
+    }
+    return LayoutSituation(rotationState.intValue, portrait, builtInState.value)
+}
+
 @Composable
 fun LiveImapNavHost() {
     val gate = rememberSettingsGate()
@@ -353,17 +411,7 @@ private fun LiveImapNavHostReady() {
     val navController = rememberNavController()
     var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
     val scope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
-    val display = LocalView.current.display
-    val situation = LayoutSituation(
-        rotation = display?.rotation ?: LayoutRotationUpright,
-        portrait = when (configuration.orientation) {
-            Configuration.ORIENTATION_PORTRAIT -> true
-            Configuration.ORIENTATION_LANDSCAPE -> false
-            else -> null
-        },
-        builtIn = display == null || display.displayId == Display.DEFAULT_DISPLAY,
-    )
+    val situation = windowSituation()
     fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
     fun currentFill(): FillResult {
         val base = fill(currentRecord(), mailStack)

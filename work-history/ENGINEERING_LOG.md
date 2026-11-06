@@ -4227,3 +4227,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Layout choice rules
 
 - The default layout applies to every rotation and display. A rule names one criterion and one layout. The most specific match wins, and an earlier rule wins ties. An unknown criterion is kept and does not match. Turning the device or moving to another display does not recreate the eight window activities. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-06 - Layout choice rules fixup
+
+- A 180 degree turn and a same-size display move do not change Configuration, so the window reads the live Display rotation and display id. Density is handled with the other configuration changes so a different-dpi display does not recreate the activity.
