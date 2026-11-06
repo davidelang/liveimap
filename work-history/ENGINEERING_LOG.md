@@ -4236,3 +4236,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - A pinch outside the open message writes appTextZoom once, including when a list consumed the pointers. The message pinch claims the gesture and still magnifies only that message. Settings uses that same write, and the font-size row updates without staying dirty.
 - First action per standard-plan-compliance-block.md; commits stay on master
+
+## 2026-11-06 - Open-message pinch fixup
+
+- A pinch on the message header, raw view, or HTML claims the gesture, so the window does not write appTextZoom.

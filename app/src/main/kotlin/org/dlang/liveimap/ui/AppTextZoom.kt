@@ -28,8 +28,8 @@ fun scaledFontScale(systemScale: Float, appTextZoom: Int): Float =
     systemScale * appTextZoom / 100f
 
 /**
- * Set by [org.dlang.liveimap.ui.reader.pinchToZoom] on the main pass when the message magnifies.
- * A scrolling child consuming the pointers is not this claim. The window reads it on the final pass.
+ * Set on the main pass by a pinch on the open message (plain text, header, raw, or HTML).
+ * A scrolling list outside the message does not set it. The window reads it on the final pass.
  */
 internal object MessagePinchClaim {
     private var claimed = false

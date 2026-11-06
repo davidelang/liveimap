@@ -2661,7 +2661,8 @@ private fun ReaderScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .claimOpenMessagePinch(),
         ) {
             if (headerReady && headerExpanded) {
                 ReaderHeaderCard(
@@ -3928,6 +3929,22 @@ private fun RawTextView(
                 modifier = Modifier.fillMaxWidth().testTag("reader-raw-text"),
             )
         }
+    }
+}
+
+/**
+ * Two-finger pinch on the open message, including header, raw, and HTML.
+ * Claims on the main pass so the window does not write appTextZoom. Does not consume; one finger still scrolls.
+ */
+internal fun Modifier.claimOpenMessagePinch(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        do {
+            val event = awaitPointerEvent()
+            if (event.changes.count { it.pressed } >= 2) {
+                org.dlang.liveimap.ui.MessagePinchClaim.claim()
+            }
+        } while (event.changes.any { it.pressed })
     }
 }
 
