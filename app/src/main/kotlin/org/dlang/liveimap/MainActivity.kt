@@ -1,5 +1,6 @@
 package org.dlang.liveimap
 
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
@@ -122,6 +123,11 @@ open class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // configChanges keeps this instance. Compose still has to see the new configuration.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
     }
 
     override fun onDestroy() {

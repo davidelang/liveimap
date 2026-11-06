@@ -4223,3 +4223,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Settings marker covers setup
 
 - Setup and the folder-list editors take the same marker. Another live marker closes that screen.
+
+## 2026-11-06 - Layout choice rules
+
+- The default layout applies to every rotation and display. A rule names one criterion and one layout. The most specific match wins, and an earlier rule wins ties. An unknown criterion is kept and does not match. Turning the device or moving to another display does not recreate the eight window activities. First action per standard-plan-compliance-block.md; commits stay on master.

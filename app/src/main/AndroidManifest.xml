@@ -55,50 +55,59 @@
             </intent-filter>
         </activity>
 
+        <!-- A turn or a move to another display does not recreate the window. -->
         <activity
             android:name="org.dlang.liveimap.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w0"
             android:taskAffinity="com.davidlang.liveimap.w0" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity1"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w1"
             android:taskAffinity="com.davidlang.liveimap.w1" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity2"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w2"
             android:taskAffinity="com.davidlang.liveimap.w2" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity3"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w3"
             android:taskAffinity="com.davidlang.liveimap.w3" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity4"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w4"
             android:taskAffinity="com.davidlang.liveimap.w4" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity5"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w5"
             android:taskAffinity="com.davidlang.liveimap.w5" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity6"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w6"
             android:taskAffinity="com.davidlang.liveimap.w6" />
         <activity
             android:name="org.dlang.liveimap.window.WindowActivity7"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
             android:process=":w7"

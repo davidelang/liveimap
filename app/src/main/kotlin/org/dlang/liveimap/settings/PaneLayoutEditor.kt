@@ -29,10 +29,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import org.dlang.liveimap.window.addRule
 import org.dlang.liveimap.window.delete
 import org.dlang.liveimap.window.editFactory
 import org.dlang.liveimap.window.LayoutAutomatic
 import org.dlang.liveimap.window.LayoutCatalog
+import org.dlang.liveimap.window.LayoutCriterionExternal
+import org.dlang.liveimap.window.LayoutCriterionLandscape
+import org.dlang.liveimap.window.LayoutCriterionLeft
+import org.dlang.liveimap.window.LayoutCriterionPortrait
+import org.dlang.liveimap.window.LayoutCriterionRight
+import org.dlang.liveimap.window.LayoutCriterionUpright
+import org.dlang.liveimap.window.LayoutCriterionUpside
 import org.dlang.liveimap.window.LayoutDrawerPinned
 import org.dlang.liveimap.window.LayoutFolderTreePinned
 import org.dlang.liveimap.window.LayoutIndexBesideMessage
@@ -46,7 +54,9 @@ import org.dlang.liveimap.window.WindowLayerKind
 import org.dlang.liveimap.window.decodeLayoutCatalog
 import org.dlang.liveimap.window.encodeLayoutCatalog
 import org.dlang.liveimap.window.factoryRecord
+import org.dlang.liveimap.window.moveRuleEarlier
 import org.dlang.liveimap.window.offeredIds
+import org.dlang.liveimap.window.removeRule
 import org.dlang.liveimap.window.replaceCustom
 import org.dlang.liveimap.window.resolve
 import org.dlang.liveimap.window.restoreDefaults
@@ -63,6 +73,8 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
     var catalog by remember(saved) { mutableStateOf(decodeLayoutCatalog(saved)) }
     var picked by remember(saved) { mutableStateOf<String?>(null) }
     var rejected by remember(saved) { mutableStateOf(false) }
+    var addingRule by remember(saved) { mutableStateOf(false) }
+    var ruleCriterion by remember(saved) { mutableStateOf<String?>(null) }
     fun commit(next: LayoutCatalog) {
         catalog = next
         onSave(encodeLayoutCatalog(next))
@@ -103,6 +115,58 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
                     },
                     label = { Text(layoutTitle(id)) },
                 )
+            }
+        }
+        for ((index, rule) in catalog.rules.withIndex()) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(criterionLabel(rule.criterion), Modifier.weight(1f))
+                Text(layoutTitle(rule.layoutId), Modifier.weight(1f))
+                if (index > 0) {
+                    OutlinedButton(onClick = { commit(catalog.moveRuleEarlier(index)) }) {
+                        Text(S("Move earlier"))
+                    }
+                }
+                OutlinedButton(onClick = { commit(catalog.removeRule(index)) }) {
+                    Text(S("Remove rule"))
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                addingRule = !addingRule
+                ruleCriterion = null
+            },
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("+") }
+        val pendingCriterion = ruleCriterion
+        if (addingRule && pendingCriterion == null) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (token in layoutCriteria) {
+                    FilterChip(
+                        selected = false,
+                        onClick = { ruleCriterion = token },
+                        label = { Text(criterionLabel(token)) },
+                    )
+                }
+            }
+        }
+        if (addingRule && pendingCriterion != null) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (id in catalog.offeredIds()) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            commit(catalog.addRule(pendingCriterion, id))
+                            addingRule = false
+                            ruleCriterion = null
+                        },
+                        label = { Text(layoutTitle(id)) },
+                    )
+                }
             }
         }
         Box(
@@ -230,6 +294,28 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
             }) { Text(S("Restore defaults")) }
         }
     }
+}
+
+private val layoutCriteria = listOf(
+    LayoutCriterionPortrait,
+    LayoutCriterionLandscape,
+    LayoutCriterionUpright,
+    LayoutCriterionLeft,
+    LayoutCriterionUpside,
+    LayoutCriterionRight,
+    LayoutCriterionExternal,
+)
+
+@Composable
+private fun criterionLabel(token: String): String = when (token) {
+    LayoutCriterionPortrait -> S("Portrait")
+    LayoutCriterionLandscape -> S("Landscape")
+    LayoutCriterionUpright -> S("Upright")
+    LayoutCriterionLeft -> S("Turned left")
+    LayoutCriterionUpside -> S("Upside down")
+    LayoutCriterionRight -> S("Turned right")
+    LayoutCriterionExternal -> S("External display")
+    else -> token
 }
 
 @Composable

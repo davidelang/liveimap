@@ -1702,7 +1702,7 @@
                     "setting": "layoutCatalog",
                     "empty": true
                   },
-                  "text": "Automatic (by screen size)"
+                  "text": "Automatic"
                 },
                 {
                   "text": "Custom panel layout"

@@ -14,7 +14,7 @@
   "group:compose:summary/0:value:titles:true": "settings_reply_above",
   "group:compose:title": "settings_group_compose_title",
   "group:composing:title": "settings_group_composing_title",
-  "group:custom_panel_layout:summary/0:text": "settings_pane_auto",
+  "group:custom_panel_layout:summary/0:text": "group_custom_panel_layout_summary_0_text",
   "group:custom_panel_layout:summary/1:text": "layout_custom",
   "group:custom_panel_layout:title": "settings_group_custom_panel_layout_title",
   "group:deleting:summary/0:value:titles:false": "settings_expunge_without",

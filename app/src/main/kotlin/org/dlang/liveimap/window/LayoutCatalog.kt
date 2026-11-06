@@ -64,24 +64,111 @@ fun factoryRecord(id: String): LayoutRecord? = when (id) {
 
 data class CustomLayout(val id: String, val record: LayoutRecord)
 
+/** One criterion token and the layout it selects. An unknown token is stored and does not match. */
+data class LayoutRule(val criterion: String, val layoutId: String)
+
+const val LayoutCriterionPortrait = "portrait"
+const val LayoutCriterionLandscape = "landscape"
+const val LayoutCriterionUpright = "upright"
+const val LayoutCriterionLeft = "left"
+const val LayoutCriterionUpside = "upside"
+const val LayoutCriterionRight = "right"
+const val LayoutCriterionExternal = "external"
+
+/** Display rotation values: upright, turned left, upside down, turned right. */
+const val LayoutRotationUpright = 0
+const val LayoutRotationLeft = 1
+const val LayoutRotationUpside = 2
+const val LayoutRotationRight = 3
+
 /**
- * Custom records, factory ids the user removed, and the selected id.
- * An empty selection, a missing id, and a removed id are the single-panel factory.
+ * This window's rotation and whether its display is the built-in one.
+ * [portrait] comes from Configuration.orientation. Null is neither portrait nor landscape.
+ */
+data class LayoutSituation(
+    val rotation: Int,
+    val portrait: Boolean?,
+    val builtIn: Boolean,
+)
+
+/**
+ * Custom records, factory ids the user removed, the selected id, and choice rules.
+ * The selected id is the default layout. An empty selection, a missing id, and a removed id are the single-panel factory.
+ * Rules are ordered. The most specific match wins, and the earlier rule wins a tie.
  */
 data class LayoutCatalog(
     val selectedId: String = "",
     val removedFactories: Set<String> = emptySet(),
     val custom: List<CustomLayout> = emptyList(),
+    val rules: List<LayoutRule> = emptyList(),
 )
 
-fun LayoutCatalog.resolve(): LayoutRecord {
-    if (selectedId.isNotEmpty()) {
-        custom.firstOrNull { it.id == selectedId }?.let { return it.record }
-        if (selectedId !in removedFactories) {
-            factoryRecord(selectedId)?.let { return it }
+private fun LayoutCatalog.layoutRecord(id: String): LayoutRecord? {
+    if (id.isEmpty()) return null
+    custom.firstOrNull { it.id == id }?.let { return it.record }
+    if (id in removedFactories) return null
+    return factoryRecord(id)
+}
+
+fun LayoutCatalog.resolve(situation: LayoutSituation? = null): LayoutRecord {
+    if (situation != null) {
+        winningRule(situation)?.let { return it }
+    }
+    return layoutRecord(selectedId) ?: factoryRecord(LayoutAutomatic)!!
+}
+
+private const val RankOrientation = 1
+private const val RankRotation = 2
+private const val RankExternal = 3
+
+private fun criterionRank(token: String): Int? = when (token) {
+    LayoutCriterionPortrait, LayoutCriterionLandscape -> RankOrientation
+    LayoutCriterionUpright, LayoutCriterionLeft, LayoutCriterionUpside, LayoutCriterionRight -> RankRotation
+    LayoutCriterionExternal -> RankExternal
+    else -> null
+}
+
+private fun criterionMatches(token: String, situation: LayoutSituation): Boolean = when (token) {
+    LayoutCriterionPortrait -> situation.portrait == true
+    LayoutCriterionLandscape -> situation.portrait == false
+    LayoutCriterionUpright -> situation.rotation == LayoutRotationUpright
+    LayoutCriterionLeft -> situation.rotation == LayoutRotationLeft
+    LayoutCriterionUpside -> situation.rotation == LayoutRotationUpside
+    LayoutCriterionRight -> situation.rotation == LayoutRotationRight
+    LayoutCriterionExternal -> !situation.builtIn
+    else -> false
+}
+
+/** The earlier rule at the highest matching rank. A missing layout and an unknown token are skipped. */
+private fun LayoutCatalog.winningRule(situation: LayoutSituation): LayoutRecord? {
+    var bestRank = 0
+    var best: LayoutRecord? = null
+    for (rule in rules) {
+        val rank = criterionRank(rule.criterion) ?: continue
+        if (!criterionMatches(rule.criterion, situation)) continue
+        val record = layoutRecord(rule.layoutId) ?: continue
+        if (rank > bestRank) {
+            bestRank = rank
+            best = record
         }
     }
-    return factoryRecord(LayoutAutomatic)!!
+    return best
+}
+
+fun LayoutCatalog.addRule(criterion: String, layoutId: String): LayoutCatalog =
+    copy(rules = rules + LayoutRule(criterion, layoutId))
+
+fun LayoutCatalog.removeRule(index: Int): LayoutCatalog {
+    if (index !in rules.indices) return this
+    return copy(rules = rules.filterIndexed { at, _ -> at != index })
+}
+
+fun LayoutCatalog.moveRuleEarlier(index: Int): LayoutCatalog {
+    if (index !in 1..rules.lastIndex) return this
+    val next = rules.toMutableList()
+    val rule = next.removeAt(index)
+    next.add(index - 1, rule)
+    return copy(rules = next)
 }
 
 fun LayoutCatalog.offeredIds(): List<String> {
@@ -123,6 +210,7 @@ fun encodeLayoutCatalog(catalog: LayoutCatalog): String {
     if (catalog.selectedId.isNotEmpty()) lines.add("s ${catalog.selectedId}")
     for (id in catalog.removedFactories.sorted()) lines.add("x $id")
     for (item in catalog.custom) lines.add("u ${item.id} ${encodeLayoutRecord(item.record)}")
+    for (rule in catalog.rules) lines.add("r ${rule.criterion} ${rule.layoutId}")
     return lines.joinToString("\n")
 }
 
@@ -131,6 +219,7 @@ fun decodeLayoutCatalog(text: String): LayoutCatalog {
     var selected = ""
     val removed = LinkedHashSet<String>()
     val custom = ArrayList<CustomLayout>()
+    val rules = ArrayList<LayoutRule>()
     for (line in text.lineSequence()) {
         if (line.isBlank()) continue
         val kind = line.substringBefore(' ')
@@ -144,9 +233,14 @@ fun decodeLayoutCatalog(text: String): LayoutCatalog {
                 val record = decodeLayoutRecord(body)
                 if (id.isNotEmpty() && record != null) custom.add(CustomLayout(id, record))
             }
+            "r" -> {
+                val token = rest.substringBefore(' ').trim()
+                val layoutId = rest.substringAfter(' ', "").trim()
+                if (token.isNotEmpty() && layoutId.isNotEmpty()) rules.add(LayoutRule(token, layoutId))
+            }
         }
     }
-    return LayoutCatalog(selected, removed, custom)
+    return LayoutCatalog(selected, removed, custom, rules)
 }
 
 fun encodeLayoutRecord(record: LayoutRecord): String {

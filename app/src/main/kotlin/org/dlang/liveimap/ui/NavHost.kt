@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
 import android.net.Uri
+import android.view.Display
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -81,8 +83,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -144,6 +148,8 @@ import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.SearchScope
 import org.dlang.liveimap.window.FillResult
 import org.dlang.liveimap.window.LayoutRecord
+import org.dlang.liveimap.window.LayoutRotationUpright
+import org.dlang.liveimap.window.LayoutSituation
 import org.dlang.liveimap.window.WindowLayer
 import org.dlang.liveimap.window.WindowLayerKind
 import org.dlang.liveimap.window.WindowStack
@@ -347,7 +353,18 @@ private fun LiveImapNavHostReady() {
     val navController = rememberNavController()
     var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
     val scope = rememberCoroutineScope()
-    fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve()
+    val configuration = LocalConfiguration.current
+    val display = LocalView.current.display
+    val situation = LayoutSituation(
+        rotation = display?.rotation ?: LayoutRotationUpright,
+        portrait = when (configuration.orientation) {
+            Configuration.ORIENTATION_PORTRAIT -> true
+            Configuration.ORIENTATION_LANDSCAPE -> false
+            else -> null
+        },
+        builtIn = display == null || display.displayId == Display.DEFAULT_DISPLAY,
+    )
+    fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
     fun currentFill(): FillResult {
         val base = fill(currentRecord(), mailStack)
         val active = zoom
