@@ -6,6 +6,7 @@
 #include <libetpan/mmapstring.h>
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -508,6 +509,207 @@ static void remember_damaged(char * damaged, size_t cap, const char * name) {
     set_text(damaged, cap, name);
 }
 
+// The media type before ';', compared without case.
+static bool media_is_message_rfc822(const char * type) {
+    if (type == nullptr) return false;
+    while (*type == ' ' || *type == '\t') ++type;
+    const char * end = type;
+    while (*end != 0 && *end != ';') ++end;
+    while (end > type && (end[-1] == ' ' || end[-1] == '\t')) --end;
+    static const char name[] = "message/rfc822";
+    const size_t n = sizeof(name) - 1;
+    if (static_cast<size_t>(end - type) != n) return false;
+    return strncasecmp(type, name, n) == 0;
+}
+
+// CR and LF end a line and are not part of its length. A line of 998 octets stays 7bit or 8bit.
+static int classify_rfc822_file(const char * path, bool * long_line, bool * high) {
+    *long_line = false;
+    *high = false;
+    FILE * file = fopen(path, "rb");
+    if (file == nullptr) return -1;
+    unsigned char buf[8192];
+    size_t n = 0;
+    int count = 0;
+    bool skip_lf = false;
+    while ((n = fread(buf, 1, sizeof(buf), file)) > 0) {
+        for (size_t i = 0; i < n; ++i) {
+            unsigned char b = buf[i];
+            if (b > 127) *high = true;
+            if (skip_lf) {
+                skip_lf = false;
+                if (b == '\n') continue;
+            }
+            if (b == '\n') {
+                count = 0;
+            } else if (b == '\r') {
+                count = 0;
+                skip_lf = true;
+            } else {
+                count++;
+                if (count > 998) *long_line = true;
+            }
+        }
+    }
+    int bad = ferror(file) != 0;
+    fclose(file);
+    return bad ? -1 : 0;
+}
+
+struct Rfc822Copy {
+    std::string marker;
+    std::string source;
+    std::string temp_path;
+};
+
+struct Rfc822Copies {
+    std::vector<Rfc822Copy> items;
+    ~Rfc822Copies() {
+        for (const Rfc822Copy & item : items) {
+            if (!item.temp_path.empty()) remove(item.temp_path.c_str());
+        }
+    }
+};
+
+static char hex_digit(unsigned v) {
+    return static_cast<char>(v < 10 ? '0' + v : 'a' + (v - 10));
+}
+
+// libetpan inserts a CRLF at 998 octets, so the part body is a marker that is replaced with the file.
+static int prepare_rfc822_copy(const char * out_path, int index, Rfc822Copy * copy) {
+    unsigned char raw[16];
+    FILE * random = fopen("/dev/urandom", "rb");
+    size_t got = random != nullptr ? fread(raw, 1, sizeof(raw), random) : 0;
+    if (random != nullptr) fclose(random);
+    if (got != sizeof(raw)) {
+        uintptr_t salt = reinterpret_cast<uintptr_t>(copy) ^ static_cast<uintptr_t>(index * 0x9E3779B9u);
+        for (size_t i = 0; i < sizeof(raw); ++i) {
+            salt = salt * 131u + 17u + i;
+            raw[i] = static_cast<unsigned char>(salt >> 8);
+        }
+    }
+    copy->marker = "liveimap-rfc822-copy-";
+    copy->marker.append(std::to_string(index));
+    copy->marker.push_back('-');
+    for (unsigned char b : raw) {
+        copy->marker.push_back(hex_digit(b >> 4));
+        copy->marker.push_back(hex_digit(b & 0x0f));
+    }
+    std::string tmpl = std::string(out_path) + ".rfc822XXXXXX";
+    std::vector<char> name(tmpl.begin(), tmpl.end());
+    name.push_back('\0');
+    int fd = mkstemp(name.data());
+    if (fd < 0) return -1;
+    copy->temp_path.assign(name.data());
+    const char * data = copy->marker.data();
+    size_t left = copy->marker.size();
+    while (left > 0) {
+        ssize_t n = write(fd, data, left);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            close(fd);
+            remove(copy->temp_path.c_str());
+            copy->temp_path.clear();
+            return -1;
+        }
+        data += n;
+        left -= static_cast<size_t>(n);
+    }
+    if (close(fd) != 0) {
+        remove(copy->temp_path.c_str());
+        copy->temp_path.clear();
+        return -1;
+    }
+    return 0;
+}
+
+static int copy_file_to(FILE * out, const char * path) {
+    FILE * in = fopen(path, "rb");
+    if (in == nullptr) return -1;
+    char buf[8192];
+    size_t n = 0;
+    int bad = 0;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) {
+            bad = 1;
+            break;
+        }
+    }
+    if (ferror(in) != 0) bad = 1;
+    if (fclose(in) != 0) bad = 1;
+    return bad ? -1 : 0;
+}
+
+static int splice_rfc822_copies(const char * path, const std::vector<Rfc822Copy> & copies) {
+    if (copies.empty()) return 0;
+    std::string tmpl = std::string(path) + ".XXXXXX";
+    std::vector<char> name(tmpl.begin(), tmpl.end());
+    name.push_back('\0');
+    int fd = mkstemp(name.data());
+    if (fd < 0) return -1;
+    FILE * out = fdopen(fd, "wb");
+    if (out == nullptr) {
+        close(fd);
+        remove(name.data());
+        return -1;
+    }
+    FILE * in = fopen(path, "rb");
+    if (in == nullptr) {
+        fclose(out);
+        remove(name.data());
+        return -1;
+    }
+    size_t index = 0;
+    std::string hold;
+    char buf[8192];
+    int failed = 0;
+    while (!failed && index < copies.size()) {
+        size_t n = fread(buf, 1, sizeof(buf), in);
+        if (n == 0) break;
+        hold.append(buf, n);
+        while (!failed && index < copies.size()) {
+            const std::string & marker = copies[index].marker;
+            size_t at = hold.find(marker);
+            if (at == std::string::npos) {
+                size_t keep = marker.empty() ? 0 : marker.size() - 1;
+                if (hold.size() > keep) {
+                    size_t write_n = hold.size() - keep;
+                    if (fwrite(hold.data(), 1, write_n, out) != write_n) failed = 1;
+                    hold.erase(0, write_n);
+                }
+                break;
+            }
+            if (at > 0 && fwrite(hold.data(), 1, at, out) != at) failed = 1;
+            if (!failed && copy_file_to(out, copies[index].source.c_str()) != 0) failed = 1;
+            if (!failed) {
+                hold.erase(0, at + marker.size());
+                ++index;
+            }
+        }
+    }
+    if (ferror(in) != 0) failed = 1;
+    if (!failed && index != copies.size()) failed = 1;
+    if (!failed && !hold.empty() && fwrite(hold.data(), 1, hold.size(), out) != hold.size()) failed = 1;
+    if (!failed && index == copies.size()) {
+        size_t n = 0;
+        while (!failed && (n = fread(buf, 1, sizeof(buf), in)) > 0) {
+            if (fwrite(buf, 1, n, out) != n) failed = 1;
+        }
+        if (ferror(in) != 0) failed = 1;
+    }
+    if (fclose(in) != 0) failed = 1;
+    if (fclose(out) != 0) failed = 1;
+    if (failed) {
+        remove(name.data());
+        return -1;
+    }
+    if (rename(name.data(), path) != 0) {
+        remove(name.data());
+        return -1;
+    }
+    return 0;
+}
+
 static struct mailimf_fields * header_fields(const char ** names, const char ** values, int count, char * error, size_t error_cap) {
     struct mailimf_fields * fields = mailimf_fields_new_empty();
     if (fields == nullptr) {
@@ -545,6 +747,7 @@ extern "C" int mime_build_file(const char * path,
     const char ** part_paths, const char ** part_types, const char ** part_dispositions,
     const char ** part_names, const char ** part_encodings, int part_count,
     char * damaged, size_t damaged_cap, char * error, size_t error_cap) {
+    Rfc822Copies rfc822_copies;
     if (damaged != nullptr && damaged_cap > 0) damaged[0] = 0;
     if (error != nullptr && error_cap > 0) error[0] = 0;
     if (path == nullptr || path[0] == 0) {
@@ -610,7 +813,31 @@ extern "C" int mime_build_file(const char * path,
             int mech = MAILMIME_MECHANISM_BASE64;
             const char * literal = nullptr;
             const std::string * decoded_text = nullptr;
-            if (token.empty() || token == "raw") {
+            bool copy_rfc822 = media_is_message_rfc822(part_types != nullptr ? part_types[i] : nullptr);
+            std::string marker_path;
+            if (copy_rfc822) {
+                bool long_line = false;
+                bool high = false;
+                if (classify_rfc822_file(part_path, &long_line, &high) != 0) {
+                    mailmime_free(root);
+                    set_error(error, error_cap, "could not write the message");
+                    return 2;
+                }
+                if (long_line) mech = MAILMIME_MECHANISM_BINARY;
+                else if (high) mech = MAILMIME_MECHANISM_8BIT;
+                else mech = MAILMIME_MECHANISM_7BIT;
+                encoded = 1;
+                literal = nullptr;
+                Rfc822Copy copy;
+                if (prepare_rfc822_copy(path, i, &copy) != 0) {
+                    mailmime_free(root);
+                    set_error(error, error_cap, "could not write the message");
+                    return 2;
+                }
+                copy.source = part_path;
+                marker_path = copy.temp_path;
+                rfc822_copies.items.push_back(std::move(copy));
+            } else if (token.empty() || token == "raw") {
                 encoded = 0;
                 mech = MAILMIME_MECHANISM_BASE64;
             } else if (token == "base64" || token == "quoted-printable") {
@@ -644,7 +871,7 @@ extern "C" int mime_build_file(const char * path,
                 mech = mechanism_of(token, &literal);
                 encoded = 1;
             }
-            if (encoded == 1) {
+            if (!copy_rfc822 && encoded == 1) {
                 int readable = 0;
                 bool cut = file_would_cut(part_path, &readable);
                 if (!readable) {
@@ -671,7 +898,7 @@ extern "C" int mime_build_file(const char * path,
             }
             int attached = decoded_text != nullptr
                 ? attach_text(part, *decoded_text, mech)
-                : attach_file(part, part_path, mech, encoded);
+                : attach_file(part, copy_rfc822 ? marker_path.c_str() : part_path, mech, encoded);
             if (attached != 0 || mailmime_add_part(root, part) != MAILIMF_NO_ERROR) {
                 mailmime_free(part);
                 mailmime_free(root);
@@ -700,6 +927,11 @@ extern "C" int mime_build_file(const char * path,
     if (fclose(out) != 0) wrote = MAILIMF_ERROR_FILE;
     mailmime_free(message);
     if (wrote != MAILIMF_NO_ERROR) {
+        remove(path);
+        set_error(error, error_cap, "could not write the message");
+        return 2;
+    }
+    if (splice_rfc822_copies(path, rfc822_copies.items) != 0) {
         remove(path);
         set_error(error, error_cap, "could not write the message");
         return 2;

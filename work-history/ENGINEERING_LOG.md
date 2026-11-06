@@ -4179,3 +4179,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-05 - A tappable control shows that it is tappable
 
 - A tappable control shows that it is tappable, and search has a button.
+
+## 2026-11-05 - forward as attachment keeps the original message as the attachment
+
+- forward as attachment keeps the original message as the attachment.
