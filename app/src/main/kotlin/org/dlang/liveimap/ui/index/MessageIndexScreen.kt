@@ -1383,13 +1383,21 @@ private fun MessageIndexLoaded(
         return trash
     }
 
-    fun moveCursorForDelete(uids: Collection<Long>, entire: Boolean) {
+    suspend fun moveCursorForDelete(uids: Collection<Long>, entire: Boolean) {
         val decision = markedDelete(
             held.cursorUid,
             uids.toSet(),
             entire,
             account.deleteMovesToNext,
-            held.cursorUid?.let { OpenMessageOrder.followingAfterDelete(it) },
+            held.cursorUid?.let {
+                try {
+                    OpenMessageOrder.followingAfterDeleteLoading(it)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: MailFailure) {
+                    null
+                }
+            },
         )
         if (!decision.moved) return
         held.cursorUid = decision.nextUid

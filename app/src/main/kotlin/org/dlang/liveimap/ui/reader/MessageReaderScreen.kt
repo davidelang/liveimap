@@ -215,8 +215,6 @@ import org.dlang.liveimap.window.afterDelete
 import org.dlang.liveimap.window.next
 import org.dlang.liveimap.window.previous
 import org.dlang.liveimap.ui.index.swipeWidthPercent
-import org.dlang.liveimap.ui.index.followingUid
-import org.dlang.liveimap.ui.index.precedingUid
 import org.dlang.liveimap.ui.index.swipeBindingForOffset
 import org.dlang.liveimap.ui.index.swipeReached
 import org.dlang.liveimap.ui.index.swipeVisual
@@ -1669,12 +1667,18 @@ private fun ReaderScreen(
         }
     }
 
-    fun nextAfterDeleteOrMove(useFollowingAfterDelete: Boolean = false): Pair<Long, Int>? {
+    suspend fun nextAfterDeleteOrMove(useFollowingAfterDelete: Boolean = false): Pair<Long, Int>? {
         if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return null // F93
-        val next = if (useFollowingAfterDelete) {
-            OpenMessageOrder.followingAfterDelete(uid)
-        } else {
-            followingUid(OpenMessageOrder.uids, uid)
+        val next = try {
+            if (useFollowingAfterDelete) {
+                OpenMessageOrder.followingAfterDeleteLoading(uid)
+            } else {
+                OpenMessageOrder.adjacent(uid, forward = true)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: MailFailure) {
+            null
         } ?: return null
         val nextSequence = try {
             OpenMessageOrder.sequence(next)
@@ -1936,30 +1940,35 @@ private fun ReaderScreen(
         }
     }
 
+    fun stepReader(forward: Boolean) {
+        scope.launch {
+            if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return@launch
+            val target = try {
+                OpenMessageOrder.adjacent(uid, forward)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: MailFailure) {
+                null
+            } ?: return@launch
+            val sequence = try {
+                OpenMessageOrder.sequence(target)
+            } catch (_: MailFailure) {
+                return@launch
+            }
+            val marked = if (forward) {
+                IndexRecord(emptySet(), uid, null).next(target).index.cursorUid
+            } else {
+                IndexRecord(emptySet(), uid, null).previous(target).index.cursorUid
+            }
+            onMark(marked)
+            onAdvance(MessageRef(accountId, mailbox, readerEpoch, target), sequence)
+        }
+    }
+
     fun performReaderSwipe(binding: SwipeBinding) {
         when (binding.action) {
-            SwipeAction.Next -> {
-                if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
-                val next = followingUid(OpenMessageOrder.uids, uid) ?: return
-                val nextSequence = try {
-                    OpenMessageOrder.sequence(next)
-                } catch (_: MailFailure) {
-                    return
-                }
-                onMark(IndexRecord(emptySet(), uid, null).next(next).index.cursorUid)
-                onAdvance(MessageRef(accountId, mailbox, readerEpoch, next), nextSequence)
-            }
-            SwipeAction.Previous -> {
-                if (!OpenMessageOrder.matches(accountId, mailbox, readerEpoch)) return
-                val previous = precedingUid(OpenMessageOrder.uids, uid) ?: return
-                val previousSequence = try {
-                    OpenMessageOrder.sequence(previous)
-                } catch (_: MailFailure) {
-                    return
-                }
-                onMark(IndexRecord(emptySet(), uid, null).previous(previous).index.cursorUid)
-                onAdvance(MessageRef(accountId, mailbox, readerEpoch, previous), previousSequence)
-            }
+            SwipeAction.Next -> stepReader(forward = true)
+            SwipeAction.Previous -> stepReader(forward = false)
             SwipeAction.Reply ->
                 onCompose(ComposeSeed(ComposeKind.Reply, mailbox, listOf(uid), readerEpoch, quoteView = quoteViewName()))
             SwipeAction.ReplyAll ->

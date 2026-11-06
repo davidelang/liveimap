@@ -4195,3 +4195,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Mail stack back and order fixup
 
 - Back from a drawer mailbox finishes instead of leaving an empty navigation host. deleteMovesToNext applies only to delete. Showing a folder index again publishes its own order. A uid outside a loaded sort window loads that window.
+
+## 2026-11-06 - Mail stack next window
+
+- Next and previous load the sort window that holds the neighbor, including a hole between loaded windows, instead of stepping onto an unknown uid.

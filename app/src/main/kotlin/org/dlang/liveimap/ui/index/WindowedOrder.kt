@@ -79,34 +79,78 @@ class WindowedOrder(
 
     /**
      * Position of [uid], loading the window that holds it.
-     * Starts at the loaded range and steps outward. A partial COUNT can be enormous, so this stops after
-     * [MaxWindowLoads] fetches instead of walking every window.
+     * A partial sort seeds window 0 and a jump loads only the anchor window, so the windows between them are
+     * holes. Those holes are searched as well as the outside of the loaded range. A partial COUNT can be
+     * enormous, so this stops after [MaxWindowLoads] fetches instead of walking every window.
      */
     suspend fun indexOfLoading(uid: Long): Int? {
         if (uid == Unknown || total <= 0) return null
         indexOfLoaded(uid)?.let { return it }
         val last = (total - 1) / windowSize
-        val pending = ArrayList<Int>()
+        val pending = ArrayDeque<Int>()
+        val queued = HashSet<Int>()
+        fun enqueue(window: Int) {
+            if (window < 0 || window > last || window in windows || window in queued) return
+            queued.add(window)
+            pending.add(window)
+        }
         if (windows.isEmpty()) {
-            pending.add(0)
+            enqueue(0)
         } else {
-            val maxW = windows.keys.max()
-            val minW = windows.keys.min()
-            if (maxW < last) pending.add(maxW + 1)
-            if (minW > 0) pending.add(minW - 1)
+            for (loaded in windows.keys) {
+                enqueue(loaded - 1)
+                enqueue(loaded + 1)
+            }
         }
         var fetched = 0
         while (pending.isNotEmpty() && fetched < MaxWindowLoads) {
-            val window = pending.removeAt(0)
+            val window = pending.removeFirst()
             if (window !in windows) {
                 ensure(window * windowSize, 1)
                 fetched += 1
             }
             indexOfLoaded(uid)?.let { return it }
-            if (window + 1 <= last && window + 1 !in windows && window + 1 !in pending) pending.add(window + 1)
-            if (window - 1 >= 0 && window - 1 !in windows && window - 1 !in pending) pending.add(window - 1)
+            enqueue(window + 1)
+            enqueue(window - 1)
         }
         return indexOfLoaded(uid)
+    }
+
+    /**
+     * UID [delta] positions from [current], loading that one position when its window is not in yet.
+     * An unloaded slot is [Unknown], which is not a message, so this does not return it.
+     */
+    suspend fun neighborUid(current: Long, delta: Int): Long? {
+        if (current == Unknown || delta == 0 || total <= 0) return null
+        val index = indexOfLoaded(current) ?: indexOfLoading(current) ?: return null
+        val at = index + delta
+        if (at < 0 || at >= total) return null
+        if (get(at) == Unknown) ensure(at, 1)
+        val uid = get(at)
+        return uid.takeIf { it != Unknown }
+    }
+
+    /**
+     * Next real UID after [current], skipping [deleted]. An unloaded position is loaded, not returned as [Unknown].
+     * Stops after [MaxWindowLoads] fetches.
+     */
+    suspend fun nextUndeleted(current: Long, deleted: Set<Long>): Long? {
+        if (current == Unknown || total <= 0) return null
+        val start = indexOfLoaded(current) ?: indexOfLoading(current) ?: return null
+        var fetches = 0
+        var at = start + 1
+        while (at < total) {
+            if (get(at) == Unknown) {
+                if (fetches >= MaxWindowLoads) return null
+                ensure(at, 1)
+                fetches += 1
+            }
+            val uid = get(at)
+            if (uid == Unknown) return null
+            if (uid !in deleted) return uid
+            at += 1
+        }
+        return null
     }
 
     /** First loaded position matching [match]. Scans loaded windows only and does not call [ensure]. */

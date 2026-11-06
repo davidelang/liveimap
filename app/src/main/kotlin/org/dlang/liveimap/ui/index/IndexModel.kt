@@ -801,15 +801,25 @@ sealed class IndexCommand {
 }
 
 fun followingUid(uids: List<Long>, current: Long): Long? {
+    if (uids is WindowedOrder) return loadedSlot(uids, current, 1)
     val index = uids.indexOf(current)
     if (index < 0 || index + 1 >= uids.size) return null
-    return uids[index + 1]
+    return uids[index + 1].takeIf { it != WindowedOrder.Unknown }
 }
 
 fun precedingUid(uids: List<Long>, current: Long): Long? {
+    if (uids is WindowedOrder) return loadedSlot(uids, current, -1)
     val index = uids.indexOf(current)
     if (index <= 0) return null
-    return uids[index - 1]
+    return uids[index - 1].takeIf { it != WindowedOrder.Unknown }
+}
+
+/** Neighbor already in a loaded window. Does not fetch, and never treats an unloaded slot as a uid. */
+private fun loadedSlot(order: WindowedOrder, current: Long, delta: Int): Long? {
+    val index = order.indexOfLoaded(current) ?: return null
+    val at = index + delta
+    if (at < 0 || at >= order.size) return null
+    return order[at].takeIf { it != WindowedOrder.Unknown }
 }
 
 fun followingUndeleted(uids: List<Long>, deleted: Set<Long>, current: Long): Long? {
@@ -832,6 +842,8 @@ internal object OpenMessageOrder {
         val sequences: LongArray,
         val sequenceAt: IntArray,
         val deleted: LongArray,
+        val windowed: WindowedOrder? = null,
+        val rowSequence: Map<Long, Int> = emptyMap(),
     )
 
     private val emptySnapshot = Snapshot("", 0L, "", LongArray(0), LongArray(0), IntArray(0), LongArray(0))
@@ -882,16 +894,88 @@ internal object OpenMessageOrder {
         )
     }
 
+    /**
+     * Keeps the live windowed order. Copying it by index would store [WindowedOrder.Unknown] for every
+     * unloaded position and the next step would look up that 0.
+     */
+    fun publishWindowed(accountId: String, uidValidity: Long, mailbox: String, order: WindowedOrder, rows: List<IndexRow>) {
+        if (uidValidity == 0L) throw MailFailure("message reference is incomplete; reload the list")
+        val fromRows = HashMap<Long, Int>(rows.size)
+        val deleted = ArrayList<Long>()
+        for (row in rows) {
+            fromRows[row.uid] = row.sequence
+            if ("\\Deleted" in row.flags) deleted.add(row.uid)
+        }
+        deleted.sort()
+        snapshot.set(
+            Snapshot(
+                accountId,
+                uidValidity,
+                mailbox,
+                LongArray(0),
+                LongArray(0),
+                IntArray(0),
+                deleted.toLongArray(),
+                order,
+                fromRows,
+            ),
+        )
+    }
+
     fun sequence(uid: Long): Int {
         val held = snapshot.get()
+        val windowed = held.windowed
+        if (windowed != null) {
+            held.rowSequence[uid]?.let { return it }
+            val index = windowed.indexOfLoaded(uid) ?: throw MailFailure("anchor $uid")
+            return index + 1
+        }
         val index = held.sequences.indexOf(uid)
         if (index < 0) throw MailFailure("anchor $uid")
         return held.sequenceAt[index]
     }
 
+    /** Next or previous message. A windowed order loads the window that holds that position. */
+    suspend fun adjacent(current: Long, forward: Boolean): Long? {
+        val held = snapshot.get()
+        val windowed = held.windowed
+        if (windowed != null) return windowed.neighborUid(current, if (forward) 1 else -1)
+        val list = held.uids.asList()
+        return if (forward) followingUid(list, current) else precedingUid(list, current)
+    }
+
+    /** Next or previous already loaded. Does not fetch. */
+    fun loadedAdjacent(current: Long, forward: Boolean): Long? {
+        val held = snapshot.get()
+        val windowed = held.windowed
+        if (windowed != null) return loadedSlot(windowed, current, if (forward) 1 else -1)
+        val list = held.uids.asList()
+        return if (forward) followingUid(list, current) else precedingUid(list, current)
+    }
+
     fun followingAfterDelete(current: Long): Long? {
         val held = snapshot.get()
+        val windowed = held.windowed
+        if (windowed != null) {
+            val index = windowed.indexOfLoaded(current) ?: return null
+            val deleted = held.deleted.toSet()
+            var at = index + 1
+            while (at < windowed.size) {
+                val uid = windowed[at]
+                if (uid == WindowedOrder.Unknown) return null
+                if (uid !in deleted) return uid
+                at += 1
+            }
+            return null
+        }
         return followingUndeleted(held.uids.asList(), held.deleted.toSet(), current)
+    }
+
+    /** Like [followingAfterDelete], and loads the next window when that row is not in yet. */
+    suspend fun followingAfterDeleteLoading(current: Long): Long? {
+        val held = snapshot.get()
+        val windowed = held.windowed ?: return followingAfterDelete(current)
+        return windowed.nextUndeleted(current, held.deleted.toSet())
     }
 
     fun clear() {
@@ -1790,6 +1874,10 @@ class IndexModel(
     private fun publishOpen(uids: List<Long>, rows: List<IndexRow>) {
         val epoch = epochs[mailbox] ?: 0L
         if (epoch == 0L) return
+        if (uids is WindowedOrder) {
+            OpenMessageOrder.publishWindowed(orderAccountId, epoch, mailbox, uids, rows)
+            return
+        }
         val ids = LongArray(uids.size) { uids[it] }
         OpenMessageOrder.publish(orderAccountId, epoch, mailbox, ids, rows)
     }

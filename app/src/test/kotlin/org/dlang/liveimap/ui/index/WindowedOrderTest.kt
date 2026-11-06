@@ -36,6 +36,47 @@ class WindowedOrderTest {
         assertEquals(151L, o[150])
         val hostile = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> listOf(1L, 2L, 3L, 4L) }
         assertNull(hostile.indexOfLoading(99L))
+        assertNull(o.indexOfLoading(WindowedOrder.Unknown))
+    }
+
+    @Test
+    fun indexOfLoadingFindsAUidInAHole() = runBlocking {
+        val o = order()
+        o.seed(0, all.subList(0, 100))
+        o.seed(5, all.subList(500, 600))
+        calls = 0
+        assertEquals(449, o.indexOfLoading(450L))
+        assertTrue(calls >= 1)
+        assertEquals(450L, o[449])
+    }
+
+    @Test
+    fun neighborLoadsTheWindowOutsideAndTheHoleBehindAJump() = runBlocking {
+        val edge = order()
+        edge.seed(0, all.subList(0, 100))
+        calls = 0
+        assertNull(followingUid(edge, 100L))
+        assertEquals(101L, edge.neighborUid(100L, 1))
+        assertTrue(calls >= 1)
+        assertEquals(101L, edge[100])
+
+        val jumped = order()
+        jumped.seed(0, all.subList(0, 100))
+        jumped.seed(5, all.subList(500, 600))
+        calls = 0
+        assertEquals(500L, jumped.neighborUid(501L, -1))
+        assertEquals(500L, jumped[499])
+        assertTrue(calls >= 1)
+
+        OpenMessageOrder.clear()
+        try {
+            OpenMessageOrder.publishWindowed("acct", 7L, "INBOX", jumped, emptyList())
+            assertEquals(500L, OpenMessageOrder.adjacent(501L, forward = false))
+            assertEquals(500, OpenMessageOrder.sequence(500L))
+            assertEquals(502L, OpenMessageOrder.loadedAdjacent(501L, forward = true))
+        } finally {
+            OpenMessageOrder.clear()
+        }
     }
 
     @Test
