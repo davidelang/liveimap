@@ -2017,6 +2017,18 @@ private fun MessageIndexLoaded(
                 // instead of the list's Pine key commands.
                 val searchFocus = remember { androidx.compose.ui.focus.FocusRequester() }
                 LaunchedEffect(Unit) { searchFocus.requestFocus() }
+                fun runSearch() {
+                    narrowArmed = false
+                    prompt = null
+                    enqueueModel {
+
+                        noteVisibleTop()
+                        model.applySearch(query, held.searchField)
+                        pull()
+                    
+                        if (model.rows.isNotEmpty()) scrollToStart()
+                    }
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -2025,10 +2037,9 @@ private fun MessageIndexLoaded(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Box {
-                        Text(
-                            text = simpleSearchLabel(held.searchField),
-                            modifier = Modifier.clickable { searchFieldOpen = true },
-                        )
+                        TextButton(onClick = { searchFieldOpen = true }) {
+                            Text(simpleSearchLabel(held.searchField))
+                        }
                         DropdownMenu(
                             expanded = searchFieldOpen,
                             onDismissRequest = { searchFieldOpen = false },
@@ -2072,25 +2083,15 @@ private fun MessageIndexLoaded(
                         label = { Text(S("Search")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(
-                            onSearch = {
-                                narrowArmed = false
-                                prompt = null
-                                enqueueModel {
-
-                                    noteVisibleTop()
-                                    model.applySearch(query, held.searchField)
-                                    pull()
-                                
-                                    if (model.rows.isNotEmpty()) scrollToStart()
-                                }
-                            },
-                        ),
+                        keyboardActions = KeyboardActions(onSearch = { runSearch() }),
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(searchFocus)
                             .testTag("index-search-field"),
                     )
+                    TextButton(onClick = { runSearch() }) {
+                        Text(S("Search"))
+                    }
                     TextButton(onClick = onAdvanced) {
                         Text(S("Advanced", name = "index_search_advanced"))
                     }

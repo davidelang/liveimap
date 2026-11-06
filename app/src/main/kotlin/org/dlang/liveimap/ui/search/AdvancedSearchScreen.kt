@@ -5,7 +5,6 @@ import org.dlang.liveimap.i18n.Phrase
 import org.dlang.liveimap.i18n.phrase
 
 import org.dlang.liveimap.session.folderInfo
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -337,10 +336,9 @@ private fun AdvancedSearchLoaded(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Box {
-                        Text(
-                            text = advancedFieldLabel(row.kind),
-                            modifier = Modifier.clickable { openRow = index },
-                        )
+                        TextButton(onClick = { openRow = index }) {
+                            Text(advancedFieldLabel(row.kind))
+                        }
                         DropdownMenu(
                             expanded = openRow == index,
                             onDismissRequest = { openRow = -1 },

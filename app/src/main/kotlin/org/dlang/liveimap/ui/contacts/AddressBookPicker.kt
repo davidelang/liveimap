@@ -1,7 +1,6 @@
 package org.dlang.liveimap.ui.contacts
 import org.dlang.liveimap.i18n.S
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -129,17 +128,16 @@ private fun AddressBookPickerLoaded(
         }
         TextButton(onClick = onDismiss) { Text(S("Close")) }
         for (entry in entries) {
-            Text(
-                text = entryLabel(entry),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        for (picked in pickedAddresses(entry, entries)) {
-                            onPicked(picked)
-                        }
+            TextButton(
+                onClick = {
+                    for (picked in pickedAddresses(entry, entries)) {
+                        onPicked(picked)
                     }
-                    .padding(vertical = 8.dp),
-            )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(entryLabel(entry))
+            }
         }
     }
 }

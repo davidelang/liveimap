@@ -11,8 +11,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import org.dlang.liveimap.ui.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -125,6 +128,7 @@ fun FilterListScreen(accountId: String, onOpen: (Int, String) -> Unit) {
             ListItem(
                 headlineContent = { Text(criterionLabel(rule)) },
                 supportingContent = { Text(actionLabel(rule)) },
+                trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
                 modifier = Modifier.clickable { onOpen(index, rule.id) },
             )
         }

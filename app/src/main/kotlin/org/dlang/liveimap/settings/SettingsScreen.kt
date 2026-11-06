@@ -4000,6 +4000,7 @@ internal fun row_favorites(walk: SettingsWalk) {
         }
         ListItem(
             headlineContent = { Text(shown) },
+            trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { walk.onEditFavorite(favorite) },
@@ -4262,6 +4263,7 @@ internal fun SettingsNode(
 internal fun OpenRow(title: String, onOpen: () -> Unit) {
     ListItem(
         headlineContent = { Text(title) },
+        trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),

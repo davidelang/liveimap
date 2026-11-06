@@ -181,6 +181,7 @@ internal fun SendingRulesRows(editor: SettingsEditor) {
         ListItem(
             headlineContent = { Text(S("%1\$d. %2\$s", index + 1, rule.name)) },
             supportingContent = { Text(ruleSummary(rule)) },
+            trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
             modifier = Modifier.clickable { editing = if (editing == index) null else index },
         )
         Row {

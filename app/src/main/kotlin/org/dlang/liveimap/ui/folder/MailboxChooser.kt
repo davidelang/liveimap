@@ -3,6 +3,10 @@ import org.dlang.liveimap.i18n.S
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -336,15 +340,15 @@ private fun MailboxPickRow(
         }
         Box(modifier = slot, contentAlignment = Alignment.Center) {
             if (row.hasChildren) {
-                Text(if (row.expanded) "-" else "+")
+                Icon(
+                    imageVector = if (row.expanded) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                )
             }
         }
-        Text(
-            text = row.leaf,
-            modifier = Modifier
-                .clickable(onClick = onPick)
-                .padding(vertical = 8.dp),
-        )
+        TextButton(onClick = onPick) {
+            Text(row.leaf)
+        }
     }
 }
 

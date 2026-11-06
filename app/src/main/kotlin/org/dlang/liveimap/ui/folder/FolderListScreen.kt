@@ -907,13 +907,16 @@ private fun FolderListLoaded(
             }
         }
         if (unsentCount > 0) {
-            Text(
-                text = S("Unsent %1\$d", unsentCount),
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpenUnsent)
                     .padding(horizontal = 8.dp, vertical = 8.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = S("Unsent %1\$d", unsentCount), modifier = Modifier.weight(1f))
+                Icon(Icons.Filled.ChevronRight, contentDescription = null)
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
         }
         if (!stopped) {

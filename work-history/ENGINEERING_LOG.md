@@ -4175,3 +4175,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-04 - Manual draft and screenshot walk
 
 - The manual draft and manual-capture.yaml name the screenshots. Incoming mail is the existing cyrus-3137 image at 10.2.3.133 port 20000 with TLS off. Sending is 10.0.0.1 port 25 with no password. David runs the phone captures.
+
+## 2026-11-05 - A tappable control shows that it is tappable
+
+- A tappable control shows that it is tappable, and search has a button.

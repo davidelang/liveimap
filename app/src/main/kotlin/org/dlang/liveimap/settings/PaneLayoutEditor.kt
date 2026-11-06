@@ -76,7 +76,7 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
             Modifier.fillMaxWidth().height(160.dp).padding(top = 8.dp)
                 .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline)),
         ) {
-            LayoutPreview(shown, emptyList(), if (custom) selected else null) { path -> if (custom) selected = path }
+            LayoutPreview(shown, emptyList(), if (custom) selected else null, custom) { path -> if (custom) selected = path }
         }
         val current = tree
         val sel = selected
@@ -124,13 +124,26 @@ fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) ->
 }
 
 @Composable
-private fun LayoutPreview(node: PaneNode, path: List<Int>, selected: List<Int>?, onPick: (List<Int>) -> Unit) {
+private fun LayoutPreview(
+    node: PaneNode,
+    path: List<Int>,
+    selected: List<Int>?,
+    pickable: Boolean,
+    onPick: (List<Int>) -> Unit,
+) {
     when (node) {
         is PaneNode.Leaf -> {
             val label = paneContentLabel(node.content)
             val chosen = selected == path
             Box(
                 Modifier.fillMaxSize().padding(2.dp)
+                    .then(
+                        if (pickable) {
+                            Modifier.border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
+                        } else {
+                            Modifier
+                        },
+                    )
                     .background(if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onPick(path) }
                     .semantics { contentDescription = "layout-panel-${path.joinToString("")}-$label" },
@@ -139,13 +152,21 @@ private fun LayoutPreview(node: PaneNode, path: List<Int>, selected: List<Int>?,
         }
         is PaneNode.Split -> if (node.axis == SplitAxis.Horizontal) {
             Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(node.ratio).fillMaxSize()) { LayoutPreview(node.first, path + 0, selected, onPick) }
-                Box(Modifier.weight(1f - node.ratio).fillMaxSize()) { LayoutPreview(node.second, path + 1, selected, onPick) }
+                Box(Modifier.weight(node.ratio).fillMaxSize()) {
+                    LayoutPreview(node.first, path + 0, selected, pickable, onPick)
+                }
+                Box(Modifier.weight(1f - node.ratio).fillMaxSize()) {
+                    LayoutPreview(node.second, path + 1, selected, pickable, onPick)
+                }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(node.ratio).fillMaxWidth()) { LayoutPreview(node.first, path + 0, selected, onPick) }
-                Box(Modifier.weight(1f - node.ratio).fillMaxWidth()) { LayoutPreview(node.second, path + 1, selected, onPick) }
+                Box(Modifier.weight(node.ratio).fillMaxWidth()) {
+                    LayoutPreview(node.first, path + 0, selected, pickable, onPick)
+                }
+                Box(Modifier.weight(1f - node.ratio).fillMaxWidth()) {
+                    LayoutPreview(node.second, path + 1, selected, pickable, onPick)
+                }
             }
         }
     }

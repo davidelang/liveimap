@@ -60,6 +60,7 @@ import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -3495,11 +3496,21 @@ private fun ReaderHeaderCard(
                         .testTag("reader-recipients"),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    Text(
-                        text = toLine,
-                        maxLines = if (recipientsOpen) Int.MAX_VALUE else 1,
-                        overflow = if (recipientsOpen) TextOverflow.Clip else TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = toLine,
+                            maxLines = if (recipientsOpen) Int.MAX_VALUE else 1,
+                            overflow = if (recipientsOpen) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = if (recipientsOpen) Icons.Filled.ExpandMore else Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                        )
+                    }
                 }
             }
             Text(date)
@@ -3596,12 +3607,12 @@ private fun AttachmentChip(
     val detail = if (row.busy && !row.done) row.fetched.toString() else attachmentSizeText(row.size)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(attachmentIcon(row.type, row.subtype), contentDescription = null)
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 8.dp)
-                .clickable(enabled = !row.done && !row.busy, onClick = onFetch),
-        ) {
-            Text(row.label)
+        Column(modifier = Modifier.padding(horizontal = 8.dp)) {
+            if (row.done) {
+                Text(row.label)
+            } else {
+                TextButton(onClick = onFetch, enabled = !row.busy) { Text(row.label) }
+            }
             if (detail != null) Text(detail)
         }
         if (row.done) {

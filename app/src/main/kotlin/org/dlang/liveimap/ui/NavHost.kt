@@ -48,6 +48,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -1730,23 +1731,22 @@ private fun LiveImapNavHostReady() {
                     } else {
                         Column(Modifier.verticalScroll(rememberScrollState())) {
                             for (account in listed) {
-                                Text(
-                                    text = account.name,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            openCompose(
-                                                ComposeSeed(
-                                                    ComposeKind.New,
-                                                    null,
-                                                    emptyList(),
-                                                    accountId = account.id,
-                                                ),
-                                            )
-                                            composeAccounts = null
-                                        }
-                                        .padding(vertical = 12.dp),
-                                )
+                                TextButton(
+                                    onClick = {
+                                        openCompose(
+                                            ComposeSeed(
+                                                ComposeKind.New,
+                                                null,
+                                                emptyList(),
+                                                accountId = account.id,
+                                            ),
+                                        )
+                                        composeAccounts = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(account.name)
+                                }
                             }
                         }
                     }
@@ -1791,14 +1791,17 @@ private fun ColumnScope.DrawerSheetContent(
     val postponedDescription = S("Postponed")
     if (blocks.isEmpty()) {
         // David's drawer rule: tapping the account name opens its full folder list.
-        Text(
-            text = header,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { UnsavedEdits.guard(onAllFolders) }
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .testTag("drawer-account-name"),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = header, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.ChevronRight, contentDescription = null)
+        }
         NavigationDrawerItem(
             label = { Text(S("INBOX")) },
             selected = false,
@@ -1848,14 +1851,17 @@ private fun ColumnScope.DrawerSheetContent(
     } else {
         for (account in blocks) {
             // David's drawer rule: tapping the account name opens that account's full folder list.
-            Text(
-                text = account.name,
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { UnsavedEdits.guard { onAccountAllFolders(account) } }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .testTag("drawer-account-name"),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = account.name, modifier = Modifier.weight(1f))
+                Icon(Icons.Filled.ChevronRight, contentDescription = null)
+            }
             if (account.corrupt) {
                 Text(
                     text = S("This account's settings could not be read."),
