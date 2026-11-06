@@ -77,6 +77,38 @@ class WindowedOrder(
         return indexOfLoaded { it == uid }
     }
 
+    /**
+     * Position of [uid], loading the window that holds it.
+     * Starts at the loaded range and steps outward. A partial COUNT can be enormous, so this stops after
+     * [MaxWindowLoads] fetches instead of walking every window.
+     */
+    suspend fun indexOfLoading(uid: Long): Int? {
+        if (uid == Unknown || total <= 0) return null
+        indexOfLoaded(uid)?.let { return it }
+        val last = (total - 1) / windowSize
+        val pending = ArrayList<Int>()
+        if (windows.isEmpty()) {
+            pending.add(0)
+        } else {
+            val maxW = windows.keys.max()
+            val minW = windows.keys.min()
+            if (maxW < last) pending.add(maxW + 1)
+            if (minW > 0) pending.add(minW - 1)
+        }
+        var fetched = 0
+        while (pending.isNotEmpty() && fetched < MaxWindowLoads) {
+            val window = pending.removeAt(0)
+            if (window !in windows) {
+                ensure(window * windowSize, 1)
+                fetched += 1
+            }
+            indexOfLoaded(uid)?.let { return it }
+            if (window + 1 <= last && window + 1 !in windows && window + 1 !in pending) pending.add(window + 1)
+            if (window - 1 >= 0 && window - 1 !in windows && window - 1 !in pending) pending.add(window - 1)
+        }
+        return indexOfLoaded(uid)
+    }
+
     /** First loaded position matching [match]. Scans loaded windows only and does not call [ensure]. */
     fun indexOfLoaded(match: (Long) -> Boolean): Int? {
         for (w in windows.keys.sorted()) {
@@ -130,6 +162,7 @@ class WindowedOrder(
 
     companion object {
         const val Unknown = 0L
+        private const val MaxWindowLoads = 32
     }
 }
 

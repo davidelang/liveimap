@@ -221,6 +221,8 @@ internal class IndexLoadHost {
             connected = true
             loading = false
             pull()
+            // A search index publishes into the one order. Showing this folder again puts its own order back.
+            model.publishMessageOrder()
             heading = MailboxTitle(held.headingLeaf, held.headingParent)
             val uid = held.anchorUid
             if (uid != null) {

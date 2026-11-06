@@ -25,6 +25,20 @@ class WindowedOrderTest {
     }
 
     @Test
+    fun indexOfLoadingFetchesTheWindowOutsideTheLoadedRange() = runBlocking {
+        val o = order()
+        o.seed(0, all.subList(0, 100))
+        calls = 0
+        assertEquals(5, o.indexOfLoading(6L))
+        assertEquals(0, calls)
+        assertEquals(150, o.indexOfLoading(151L))
+        assertTrue(calls >= 1)
+        assertEquals(151L, o[150])
+        val hostile = WindowedOrder(Int.MAX_VALUE, 4) { _, _ -> listOf(1L, 2L, 3L, 4L) }
+        assertNull(hostile.indexOfLoading(99L))
+    }
+
+    @Test
     fun loadsEachWindowOnce() = runBlocking {
         val o = order()
         repeat(3) { o.ensure(0, 200) }

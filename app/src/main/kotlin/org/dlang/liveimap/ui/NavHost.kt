@@ -14,6 +14,9 @@ import org.dlang.liveimap.settings.mailNode
 import org.dlang.liveimap.settings.mailSplit
 import org.dlang.liveimap.settings.messageFirst
 import org.dlang.liveimap.settings.paneLayoutProblem
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -332,7 +335,8 @@ private fun LiveImapNavHostReady() {
         hingePresent = hinges.isNotEmpty(),
     )
     val axisNow = rememberUpdatedState(axis)
-    val appContext = LocalContext.current.applicationContext
+    val uiContext = LocalContext.current
+    val appContext = uiContext.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
     val certPrompt = remember { mutableStateOf<PendingCert?>(null) }
     // F74: one prompt at a time; a second caller waits its turn instead of replacing (and stranding) the first.
@@ -630,11 +634,20 @@ private fun LiveImapNavHostReady() {
         mailStack = mailStack.pushMessage(uid.toString(), source)
     }
 
+    /** A drawer mailbox is the only destination. Popping it leaves a blank host, so Back finishes. */
+    fun popMailDestination() {
+        if (navController.previousBackStackEntry == null) {
+            uiContext.hostActivity()?.finish()
+        } else {
+            navController.popBackStack()
+        }
+    }
+
     /** Back pops one mail layer. A tree that is not already under this entry is shown in its place. */
     fun leaveLayer(failure: String? = null) {
         if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
         if (mailStack.layers.size == 1) {
-            navController.popBackStack()
+            popMailDestination()
             return
         }
         val popped = mailStack.pop()
@@ -647,7 +660,7 @@ private fun LiveImapNavHostReady() {
                 popUpTo(currentId) { inclusive = true }
             }
         } else {
-            navController.popBackStack()
+            popMailDestination()
         }
     }
 
@@ -2493,6 +2506,17 @@ private fun PaneTree(
             leading = { PaneTree(node.first, key + "0", sizes, mail, mailArea, leaf) },
             trailing = { PaneTree(node.second, key + "1", sizes, mail, mailArea, leaf) },
         )
+    }
+}
+
+private fun Context.hostActivity(): Activity? {
+    var current: Context = this
+    while (true) {
+        if (current is Activity) return current
+        if (current !is ContextWrapper) return null
+        val next = current.baseContext
+        if (next === current) return null
+        current = next
     }
 }
 

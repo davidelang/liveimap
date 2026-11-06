@@ -615,6 +615,7 @@ private fun ReaderScreen(
     var undoToken by remember { mutableIntStateOf(0) }
     var snackMode by remember { mutableStateOf("retry") }
     var advanceAfterUndo by remember { mutableStateOf(false) }
+    var advanceForDelete by remember { mutableStateOf(false) }
     var advanceTarget by remember { mutableStateOf<Pair<Long, Int>?>(null) }
     var confirmExpunge by remember { mutableStateOf(false) }
     var confirmPermanent by remember { mutableStateOf(false) }
@@ -1683,8 +1684,23 @@ private fun ReaderScreen(
         return next to nextSequence
     }
 
-    fun openNextOrIndex(target: Pair<Long, Int>?) {
+    fun openNextOrIndex(target: Pair<Long, Int>?, forDelete: Boolean) {
         val nextUid = target?.first
+        if (!forDelete) {
+            onMark(
+                if (nextUid == null) {
+                    null
+                } else {
+                    IndexRecord(emptySet(), uid, null).next(nextUid).index.cursorUid
+                },
+            )
+            if (target != null) {
+                onAdvance(MessageRef(accountId, mailbox, readerEpoch, target.first), target.second)
+            } else {
+                onBack()
+            }
+            return
+        }
         val step = IndexRecord(emptySet(), uid, null).afterDelete(account.deleteMovesToNext, nextUid)
         onMark(step.index.cursorUid)
         if (step.message == MessageAfterDelete.ShowNext && target != null) {
@@ -1694,9 +1710,10 @@ private fun ReaderScreen(
         }
     }
 
-    fun showActionUndo(undo: MailUndo, next: Pair<Long, Int>?) {
+    fun showActionUndo(undo: MailUndo, next: Pair<Long, Int>?, forDelete: Boolean) {
         undoOffer = undo
         advanceTarget = next
+        advanceForDelete = forDelete
         advanceAfterUndo = true
         snackMode = "undo"
         undoToken += 1
@@ -1760,10 +1777,11 @@ private fun ReaderScreen(
         if (undoToken != token) return@LaunchedEffect
         val go = advanceAfterUndo
         val next = advanceTarget
+        val forDelete = advanceForDelete
         undoOffer = null
         advanceAfterUndo = false
         snackMode = "retry"
-        if (go) openNextOrIndex(next)
+        if (go) openNextOrIndex(next, forDelete)
     }
 
     fun openConfirmedLink(url: String) {
@@ -1802,7 +1820,7 @@ private fun ReaderScreen(
                         s.storeFlags(listOf(uid), setOf("\\Deleted"), emptySet())
                         e
                     }
-                    showActionUndo(refUndo(accountId, mailbox, epoch, uid), target)
+                    showActionUndo(refUndo(accountId, mailbox, epoch, uid), target, forDelete = true)
                 }
                 DeletePolicy.MoveToTrash -> {
                     val trash = session.knownTrash()
@@ -1814,7 +1832,7 @@ private fun ReaderScreen(
                         Triple(e, s.copiedEpoch(), s.takeCopiedUids())
                     }
                     val usedMove = moveCommandKind(account.disableImapMove, session.featureCaps.move) == "Move"
-                    showActionUndo(refUndo(accountId, mailbox, epoch, uid, trash, dest.asList(), targetEpoch, usedMove), target)
+                    showActionUndo(refUndo(accountId, mailbox, epoch, uid, trash, dest.asList(), targetEpoch, usedMove), target, forDelete = true)
                 }
                 DeletePolicy.DeletePermanently -> {
                     if (!session.featureCaps.uidPlus) {
@@ -1828,7 +1846,7 @@ private fun ReaderScreen(
                             s.uidExpunge(listOf(uid))
                         }
                     }
-                    openNextOrIndex(target)
+                    openNextOrIndex(target, forDelete = true)
                 }
             }
         } catch (error: CancellationException) {
@@ -1977,6 +1995,7 @@ private fun ReaderScreen(
                     showActionUndo(
                         refUndo(accountId, mailbox, epoch, uid, spamMailbox, dest.asList(), targetEpoch, usedMove),
                         target,
+                        forDelete = false,
                     )
                 } catch (error: CancellationException) {
                     throw error
@@ -3107,6 +3126,7 @@ private fun ReaderScreen(
                                 showActionUndo(
                                     refUndo(accountId, mailbox, epoch, uid, picked, dest.asList(), targetEpoch, usedMove),
                                     target,
+                                    forDelete = false,
                                 )
                             } catch (error: CancellationException) {
                                 throw error

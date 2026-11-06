@@ -1339,7 +1339,7 @@ class IndexModel(
     suspend fun loadWindowContaining(uid: Long): Boolean {
         if (heldRows.any { it.uid == uid }) return true
         val at = when (val current = order) {
-            is WindowedOrder -> current.indexOfLoaded(uid) ?: return false
+            is WindowedOrder -> current.indexOfLoading(uid) ?: return false
             else -> {
                 val found = current.indexOf(uid)
                 if (found < 0) return false

@@ -4191,3 +4191,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Mail stack on the screen
 
 - The drawer, folder tree, folder index, search index, and open message are window-stack layers. A layer that stays on the stack keeps its rows and scroll while a higher layer covers it. Back pops one layer. A search index sits above the folder index and does not replace that index's query. The open message is a cursor mark, separate from a checked row. deleteMovesToNext shows the next message or closes the message layer, and the mark moves either way. The old pane menu still decides the split. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-06 - Mail stack back and order fixup
+
+- Back from a drawer mailbox finishes instead of leaving an empty navigation host. deleteMovesToNext applies only to delete. Showing a folder index again publishes its own order. A uid outside a loaded sort window loads that window.
