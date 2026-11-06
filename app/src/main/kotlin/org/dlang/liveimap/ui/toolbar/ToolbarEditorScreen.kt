@@ -87,7 +87,11 @@ private class ToolbarSettings(
 
     fun save() {
         scope.launch {
-            ToolbarStore.save(appContext)
+            try {
+                ToolbarStore.save(appContext)
+            } catch (_: org.dlang.liveimap.window.SettingsHeldElsewhere) {
+                return@launch
+            }
             committed = true
             ToolbarRevision.bump()
         }

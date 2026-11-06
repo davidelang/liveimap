@@ -130,6 +130,7 @@ object SettingsHub {
     }
 
     suspend fun saveUiKeys(context: Context, draft: Settings, keys: Set<String>, replaceUnknowns: Boolean = false) {
+        org.dlang.liveimap.window.requireSettingsWritable(context)
         if (keys.isEmpty() && !replaceUnknowns) {
             if (ScopePicks.chosen.isNotEmpty()) settleScope(context)
             return

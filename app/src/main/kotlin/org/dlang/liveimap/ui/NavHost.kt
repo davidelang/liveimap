@@ -694,6 +694,16 @@ private fun LiveImapNavHostReady() {
     @Composable
     fun ScreenLayerPage(screenKey: String) {
         key(screenKey) {
+            val settingsRefusal = org.dlang.liveimap.window.SettingsEntry.generation
+            var seenRefusal by remember(screenKey) { mutableIntStateOf(settingsRefusal) }
+            LaunchedEffect(settingsRefusal) {
+                if (settingsRefusal != seenRefusal && screenKey.startsWith("settings")) {
+                    seenRefusal = settingsRefusal
+                    leaveLayer()
+                } else {
+                    seenRefusal = settingsRefusal
+                }
+            }
             // Registered before the page, so a page that asks about unsaved edits wins while it is pending.
             BackHandler { leaveLayer() }
             val toolbar = toolbarScreenOf(screenKey)
@@ -1357,6 +1367,7 @@ private fun LiveImapNavHostReady() {
         openFavoriteEditor(favorite, account.id) // F121: manage it in its own account; no account switch
     }
 
+    var noFreeWindow by remember { mutableStateOf(false) }
     val drawerSheet: @Composable ColumnScope.() -> Unit = {
         // Scrolls: with several accounts, Settings/Help/About fall below the edge in landscape.
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("drawer-scroll")) {
@@ -1406,6 +1417,18 @@ private fun LiveImapNavHostReady() {
             onSettings = {
                 navigateFromDrawer(keepZoom = true) {
                     openScreen("settings")
+                }
+            },
+            onNewWindow = {
+                navigateFromDrawer {
+                    val slot = withContext(Dispatchers.IO) {
+                        org.dlang.liveimap.window.firstFreeSlot(uiContext)
+                    }
+                    if (slot == null) {
+                        noFreeWindow = true
+                    } else {
+                        org.dlang.liveimap.window.startWindow(uiContext, slot)
+                    }
                 }
             },
             onManageAddresses = {
@@ -1716,6 +1739,17 @@ private fun LiveImapNavHostReady() {
                 },
             )
         }
+        if (noFreeWindow) {
+            AlertDialog(
+                onDismissRequest = { noFreeWindow = false },
+                title = { Text(S("No free window")) },
+                confirmButton = {
+                    TextButton(onClick = { noFreeWindow = false }) {
+                        Text(S("OK"))
+                    }
+                },
+            )
+        }
         if (composeLayer == ComposeFabLayer.Overlay) {
             ComposeFab(Modifier.zIndex(2f))
         }
@@ -1783,6 +1817,7 @@ private fun ColumnScope.DrawerSheetContent(
     onEditFilters: () -> Unit,
     showFilters: Boolean,
     onSettings: () -> Unit,
+    onNewWindow: () -> Unit,
     onManageAddresses: () -> Unit = {},
     onHelp: () -> Unit,
     onAbout: () -> Unit,
@@ -1918,6 +1953,11 @@ private fun ColumnScope.DrawerSheetContent(
         }
     }
     HorizontalDivider()
+    NavigationDrawerItem(
+        label = { Text(S("New window")) },
+        selected = false,
+        onClick = { UnsavedEdits.guard(onNewWindow) },
+    )
     NavigationDrawerItem(
         label = { Text(S("Settings")) },
         selected = false,

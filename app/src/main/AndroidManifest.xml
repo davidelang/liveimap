@@ -43,14 +43,66 @@
 
         <meta-data android:name="liveimap.gitCommit" android:value="${gitCommit}" />
 
+        <!-- Eight windows, eight process names. The launcher does not take a slot. -->
         <activity
-            android:name="org.dlang.liveimap.MainActivity"
-            android:exported="true">
+            android:name="org.dlang.liveimap.window.LauncherActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name="org.dlang.liveimap.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w0"
+            android:taskAffinity="com.davidlang.liveimap.w0" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity1"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w1"
+            android:taskAffinity="com.davidlang.liveimap.w1" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity2"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w2"
+            android:taskAffinity="com.davidlang.liveimap.w2" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity3"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w3"
+            android:taskAffinity="com.davidlang.liveimap.w3" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity4"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w4"
+            android:taskAffinity="com.davidlang.liveimap.w4" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity5"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w5"
+            android:taskAffinity="com.davidlang.liveimap.w5" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity6"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w6"
+            android:taskAffinity="com.davidlang.liveimap.w6" />
+        <activity
+            android:name="org.dlang.liveimap.window.WindowActivity7"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":w7"
+            android:taskAffinity="com.davidlang.liveimap.w7" />
 
         <provider
             android:name="org.dlang.liveimap.engine.TrafficFileProvider"

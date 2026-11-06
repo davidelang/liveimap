@@ -80,7 +80,10 @@ fun AppTextZoom(content: @Composable () -> Unit) {
                     zoom = next
                     scope.launch {
                         val current = SettingsHub.uiNow()
-                        SettingsHub.saveUiKeys(context, current.withSetting("appTextZoom", SettingValue(next.toString())), setOf("appTextZoom"))
+                        try {
+                            SettingsHub.saveUiKeys(context, current.withSetting("appTextZoom", SettingValue(next.toString())), setOf("appTextZoom"))
+                        } catch (_: org.dlang.liveimap.window.SettingsHeldElsewhere) {
+                        }
                     }
                 }
             },

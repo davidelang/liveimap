@@ -14,6 +14,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,17 +34,32 @@ import org.dlang.liveimap.session.launchExtraIdleStop
 import org.dlang.liveimap.session.runAfterExtraIdleStop
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.LayoutApply
+import org.dlang.liveimap.settings.SettingsHub
+import org.dlang.liveimap.settings.withUiOf
 import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
+import org.dlang.liveimap.window.claimWindow
+import org.dlang.liveimap.window.nextFreeSlot
+import org.dlang.liveimap.window.releaseWindow
+import org.dlang.liveimap.window.startWindow
 
-class MainActivity : ComponentActivity() {
+open class MainActivity : ComponentActivity() {
+    protected open val windowSlot: Int = 0
     private lateinit var store: DataStoreSettingsStore
     private var extraIdleStart: Job? = null
     private var extraIdleStop: Job? = null
+    private var slotHeld = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!claimWindow(this, windowSlot)) {
+            val next = nextFreeSlot(this, windowSlot + 1)
+            if (next != null) startWindow(this, next)
+            finish()
+            return
+        }
+        slotHeld = true
         store = DataStoreSettingsStore(applicationContext)
         org.dlang.liveimap.engine.KeyChainCerts.appContext = applicationContext
         org.dlang.liveimap.ui.reader.clearStaleAttachmentCache(cacheDir)
@@ -60,16 +76,14 @@ class MainActivity : ComponentActivity() {
             var theme by remember { mutableStateOf(ThemeMode.FollowSystem) }
             var dynamicColor by remember { mutableStateOf(true) }
             var fullScreen by remember { mutableStateOf(false) }
-            LaunchedEffect(store) {
-                store.theme().collect {
-                    try {
-                        val loaded = store.load()
-                        theme = loaded.theme
-                        dynamicColor = loaded.dynamicColor
-                        fullScreen = loaded.fullScreen
-                    } catch (_: NoAccountSelected) {
-                    }
-                }
+            val accounts by SettingsHub.accounts.collectAsState()
+            val openId by SettingsHub.openId.collectAsState()
+            val ui by SettingsHub.ui.collectAsState()
+            LaunchedEffect(accounts, openId, ui) {
+                val shown = openId?.let { accounts[it] }?.withUiOf(ui) ?: return@LaunchedEffect
+                theme = shown.theme
+                dynamicColor = shown.dynamicColor
+                fullScreen = shown.fullScreen
             }
             LaunchedEffect(LayoutApply.fullScreenGeneration) {
                 try {
@@ -110,8 +124,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (slotHeld && isFinishing && !isChangingConfigurations) releaseWindow(this, windowSlot)
+        super.onDestroy()
+    }
+
     override fun onStart() {
         super.onStart()
+        if (!slotHeld) return
         if (smokeLaunch(intent)) return
         val stopping = extraIdleStop
         extraIdleStart = lifecycleScope.launch {

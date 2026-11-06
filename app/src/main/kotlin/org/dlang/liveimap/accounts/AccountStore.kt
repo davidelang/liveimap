@@ -134,6 +134,7 @@ class AccountStore private constructor(private val context: Context) {
     }
 
     suspend fun save(settings: Settings) {
+        org.dlang.liveimap.window.requireSettingsWritable(context)
         val encoded = settings.encode()
         try {
             onAccount {
@@ -157,6 +158,13 @@ class AccountStore private constructor(private val context: Context) {
 
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
     suspend fun update(edit: (Settings) -> Settings): Settings {
+        if (!org.dlang.liveimap.window.SettingsSession.allowWrite(context)) {
+            return try {
+                load()
+            } catch (_: NoAccountSelected) {
+                newAccountSettings()
+            }
+        }
         var next: Settings = newAccountSettings()
         try {
             onAccount {
@@ -187,6 +195,7 @@ class AccountStore private constructor(private val context: Context) {
         keys: Set<String>,
         writeUnknowns: Boolean = false,
     ): org.dlang.liveimap.settings.Settings {
+        org.dlang.liveimap.window.requireSettingsWritable(context)
         val picksPending = org.dlang.liveimap.settings.ScopePicks.chosen.isNotEmpty()
         if (keys.isEmpty() && !writeUnknowns && !picksPending) return draft
         val registry = org.dlang.liveimap.settings.settingsRegistry
@@ -503,11 +512,14 @@ class AccountStore private constructor(private val context: Context) {
                 }
                 val ui = org.dlang.liveimap.settings.SettingsHub.uiNow()
                 if (ui.settingsLastEditedAccount == accountId) {
-                    org.dlang.liveimap.settings.SettingsHub.saveUiKeys(
-                        context,
-                        ui.copy(settingsLastEditedAccount = ""),
-                        setOf("settingsLastEditedAccount"),
-                    )
+                    try {
+                        org.dlang.liveimap.settings.SettingsHub.saveUiKeys(
+                            context,
+                            ui.copy(settingsLastEditedAccount = ""),
+                            setOf("settingsLastEditedAccount"),
+                        )
+                    } catch (_: org.dlang.liveimap.window.SettingsHeldElsewhere) {
+                    }
                 }
             }
             if (entry != null && !manager.removeAccountExplicitly(entry)) {

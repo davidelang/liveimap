@@ -423,18 +423,16 @@ internal class SettingsEditor(
         removeAccount(id)
     }
 
-    fun load() {
+    suspend fun load() {
         if (org.dlang.liveimap.settings.editors.PendingNewAccount.active) {
             beginNewAccount()
             return
         }
-        settingsIo.launch {
-            val epoch = captureEpochs()
-            store.onAccount(publish = { loaded: EditorLoad ->
-                applyReload(loaded, epoch, force = false)
-            }) {
-                computeReload(editingMirror.get())
-            }
+        val epoch = captureEpochs()
+        store.onAccount(publish = { loaded: EditorLoad ->
+            applyReload(loaded, epoch, force = false)
+        }) {
+            computeReload(editingMirror.get())
         }
     }
 
@@ -484,9 +482,41 @@ internal class SettingsEditor(
 
     private fun captureEpochs() = EditorEpoch(settingsEpoch.get(), passwordEpoch.get(), smtpEpoch.get())
 
+    private suspend fun readEditorUi(): Settings {
+        val text = try {
+            freshPreferenceStrings(globalSettingsFile(appContext))["value"].orEmpty()
+        } catch (_: Exception) {
+            return SettingsHub.uiNow()
+        }
+        val error = documentError(text)
+        if (error != null) {
+            SettingsHub.noteLoad(error)
+            return Settings()
+        }
+        return decodeSettings(text)
+    }
+
+    /** The saved file, not this process's snapshot. The draft is applied after this returns. */
+    private suspend fun readEditorAccount(id: String, ui: Settings): Settings {
+        val text = try {
+            freshPreferenceStrings(accountSettingsFile(appContext))[id]
+        } catch (_: Exception) {
+            return SettingsHub.accountNow(id)?.withUiOf(ui) ?: throw NoAccountSelected()
+        }
+        if (text == null) throw NoAccountSelected()
+        val decoded = try {
+            decodeSettings(text)
+        } catch (error: SettingsDocumentException) {
+            SettingsHub.noteLoad(error.message ?: "settings document")
+            Settings()
+        }
+        val fields = store.accountFields(id) ?: emptyMap()
+        return overlayAccountFields(decoded, fields).withUiOf(ui)
+    }
+
     private suspend fun computeReload(preferred: String?): EditorLoad {
         val listed = store.listAccounts()
-        val ui = SettingsHub.uiNow()
+        val ui = readEditorUi()
         val opensOn = ui.settingsOpensOn.ifEmpty { "drawer" }
         val lastEdited = ui.settingsLastEditedAccount
         val editing = if (preferred != null && listed.any { it.id == preferred }) {
@@ -513,7 +543,7 @@ internal class SettingsEditor(
         return try {
             EditorLoad(
                 editingId = editing,
-                settings = boundStore.load().withUiOf(ui),
+                settings = readEditorAccount(editing, ui),
                 password = rawPassword ?: "",
                 smtpPassword = rawSmtp ?: "",
                 accounts = listed.map { it.copy(editing = it.id == editing) },
@@ -1036,9 +1066,17 @@ internal fun rememberSettingsEditor(): SettingsEditor {
     val editor = remember(store) { SettingsEditor(store, appContext, ui) }
     DisposableEffect(editor) {
         bindSettingsEditor(editor)
-        onDispose { unbindSettingsEditor(editor) }
+        onDispose {
+            org.dlang.liveimap.window.SettingsSession.leave(appContext)
+            unbindSettingsEditor(editor)
+        }
     }
-    LaunchedEffect(store) { editor.load() }
+    LaunchedEffect(store) {
+        editor.load()
+        if (!org.dlang.liveimap.window.SettingsSession.enter(appContext)) {
+            org.dlang.liveimap.window.SettingsEntry.refuse()
+        }
+    }
     return editor
 }
 
