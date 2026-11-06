@@ -114,6 +114,7 @@
   "leaf:datePattern:title": "settings_date_pattern",
   "leaf:defaultAccount:title": "setting_defaultAccount_title",
   "leaf:defaultView:title": "settings_default_view",
+  "leaf:deleteMovesToNext:title": "leaf_deletemovestonext_title",
   "leaf:deletePolicy:choice:DeletePermanently": "settings_delete_permanently",
   "leaf:deletePolicy:choice:MarkDeleted": "settings_mark_deleted",
   "leaf:deletePolicy:choice:MoveToTrash": "settings_move_to_trash",
