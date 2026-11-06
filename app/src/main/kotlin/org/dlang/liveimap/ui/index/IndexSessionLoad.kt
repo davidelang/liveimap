@@ -22,6 +22,8 @@ import org.dlang.liveimap.session.folderInfo
 import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.session.MailSession
 import org.dlang.liveimap.session.MailboxChange
+import org.dlang.liveimap.window.IndexRecord
+import org.dlang.liveimap.window.afterNewMail
 import org.dlang.liveimap.session.MessageRef
 import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.session.idleDroppedByServer
@@ -628,6 +630,10 @@ internal class IndexLoadHost {
                         if (after >= 0 && after != anchorIndex) {
                             listState.requestScrollToItem(after, anchorOffset)
                         }
+                    }
+                    if (change is MailboxChange.Exists) {
+                        // New mail does not move the cursor. The anchor row is restored above.
+                        held.cursorUid = IndexRecord(emptySet(), held.cursorUid, null).afterNewMail().cursorUid
                     }
                     if (change is MailboxChange.Exists &&
                         (model.pendingNew > 0 || model.newMailUnnumbered)

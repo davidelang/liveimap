@@ -98,7 +98,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -147,9 +149,6 @@ import kotlin.coroutines.resumeWithException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import org.dlang.liveimap.ui.help.HelpDropdownMenuItem
 import org.dlang.liveimap.ui.help.HelpIconButton
 import org.dlang.liveimap.ui.LocalScreenAccounts
@@ -690,6 +689,11 @@ internal class IndexScreenHeld : ViewModel() {
     var anchorOffset: Int = 0
     var windowReady: Boolean = false
     var recordAnchor: Boolean = true
+    /** The open message. Not a checked row, and not the scroll anchor. */
+    var cursorUid by mutableStateOf<Long?>(null)
+    var revealUid by mutableStateOf<Long?>(null)
+    var viewToken: Int = -1
+    var seenMark: Int = 0
     var headingLeaf: String = ""
     var headingParent: String = ""
     val expandedThreadsState = mutableStateOf<Set<MessageRef>>(emptySet())
@@ -712,10 +716,17 @@ internal class IndexScreenHeld : ViewModel() {
         anchorOffset = 0
         windowReady = false
         recordAnchor = true
+        cursorUid = null
+        revealUid = null
+        seenMark = 0
         headingLeaf = ""
         headingParent = ""
         expandedThreadsState.value = emptySet()
         return created
+    }
+
+    override fun onCleared() {
+        dropLoaded()
     }
 
     fun dropLoaded() {
@@ -730,6 +741,9 @@ internal class IndexScreenHeld : ViewModel() {
         anchorOffset = 0
         windowReady = false
         recordAnchor = true
+        cursorUid = null
+        revealUid = null
+        seenMark = 0
         headingLeaf = ""
         headingParent = ""
         expandedThreadsState.value = emptySet()
@@ -743,17 +757,6 @@ private fun simpleSearchLabel(field: SimpleSearchField): String = when (field) {
     SimpleSearchField.To -> S("To")
     SimpleSearchField.Cc -> S("Cc")
     SimpleSearchField.Participant -> S("Participating")
-}
-
-private fun Context.hostActivity(): Activity? {
-    var current: Context = this
-    while (true) {
-        if (current is Activity) return current
-        if (current !is ContextWrapper) return null
-        val next = current.baseContext
-        if (next === current) return null
-        current = next
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -771,6 +774,10 @@ fun MessageIndexScreen(
     advancedScope: SearchScope = SearchScope.Current,
     onAdvancedConsumed: () -> Unit = {},
     onOpenFolder: (String) -> Unit = {},
+    markKey: String = "",
+    onCloseMessage: () -> Unit = {},
+    reloadToken: Int = 0,
+    messageOpen: Boolean = false,
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -796,6 +803,10 @@ fun MessageIndexScreen(
         advancedScope = advancedScope,
         onAdvancedConsumed = onAdvancedConsumed,
         onOpenFolder = onOpenFolder,
+        markKey = markKey,
+        onCloseMessage = onCloseMessage,
+        reloadToken = reloadToken,
+        messageOpen = messageOpen,
     )
 }
 
@@ -900,6 +911,10 @@ private fun MessageIndexLoaded(
     advancedScope: SearchScope = SearchScope.Current,
     onAdvancedConsumed: () -> Unit = {},
     onOpenFolder: (String) -> Unit = {},
+    markKey: String = "",
+    onCloseMessage: () -> Unit = {},
+    reloadToken: Int = 0,
+    messageOpen: Boolean = false,
 ) {
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
@@ -920,13 +935,20 @@ private fun MessageIndexLoaded(
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<IndexScreenHeld>()
+    // A higher layer covers this one without popping it. Drop only for a real reload or when the entry is cleared.
+    if (reloadToken != held.viewToken) {
+        if (held.viewToken >= 0) held.dropLoaded()
+        held.viewToken = reloadToken
+    }
     val model = held.bind(session, store, mailbox, accountId)
     val reuseWindow = held.windowReady && held.boundMailbox == mailbox
-    val host = LocalContext.current.hostActivity()
-    DisposableEffect(held) {
-        onDispose {
-            if (host?.isChangingConfigurations != true) held.dropLoaded()
-        }
+    val markNote = if (markKey.isEmpty()) null else IndexMarks.notes[markKey]
+    SideEffect {
+        val note = markNote ?: return@SideEffect
+        if (note.token == held.seenMark) return@SideEffect
+        held.seenMark = note.token
+        held.cursorUid = note.uid
+        if (note.reveal) held.revealUid = note.uid
     }
     remember {
         if (reuseWindow && held.anchorUid != null) held.recordAnchor = false
@@ -965,7 +987,25 @@ private fun MessageIndexLoaded(
     val watchRecovery = remember { WatchBackoff() }
     val indexWatch = remember { arrayOfNulls<Job>(1) }
     val sync = remember { SnapshotSync() }
-    val listState = rememberLazyListState()
+    val anchorAt = if (reuseWindow && held.anchorUid != null) {
+        anchorIndex(
+            buildIndexEntries(
+                held.rowsState.value,
+                held.expandedThreadsState.value,
+                model.threadMembers,
+                model.threadHidden,
+                model.threadDepth,
+                model.anchorPage,
+            ),
+            held.anchorUid!!.uid,
+        )
+    } else {
+        -1
+    }
+    val listState = rememberLazyListState(
+        if (anchorAt >= 0) anchorAt else 0,
+        if (anchorAt >= 0) held.anchorOffset else 0,
+    )
     var rows by held.rowsState
     var loading by mem.loading
     var longProgress by mem.longProgress
@@ -1101,6 +1141,10 @@ private fun MessageIndexLoaded(
     }
 
     fun leaveIndex() {
+        if (messageOpen) {
+            onCloseMessage()
+            return
+        }
         if (leavingIndex) return
         leavingIndex = true
         scope.launch {
@@ -1339,6 +1383,34 @@ private fun MessageIndexLoaded(
         return trash
     }
 
+    fun moveCursorForDelete(uids: Collection<Long>, entire: Boolean) {
+        val decision = markedDelete(
+            held.cursorUid,
+            uids.toSet(),
+            entire,
+            account.deleteMovesToNext,
+            held.cursorUid?.let { OpenMessageOrder.followingAfterDelete(it) },
+        )
+        if (!decision.moved) return
+        held.cursorUid = decision.nextUid
+        if (decision.nextUid != null) held.revealUid = decision.nextUid
+        val next = decision.nextUid
+        val sequence = if (next == null) {
+            null
+        } else {
+            try {
+                OpenMessageOrder.sequence(next)
+            } catch (_: MailFailure) {
+                null
+            }
+        }
+        if (decision.showNext && next != null && sequence != null) {
+            onOpen(homeRef(next), sequence)
+        } else if (decision.closeMessage) {
+            onCloseMessage()
+        }
+    }
+
     suspend fun applyDeletePolicy(
         policy: DeletePolicy,
         uids: List<Long>,
@@ -1372,6 +1444,7 @@ private fun MessageIndexLoaded(
     
         val pending = undo
         if (pending != null) publishUndo(pending)
+        moveCursorForDelete(uids + hits.map { it.second }, entire)
     }
 
     suspend fun finishSwipe(
@@ -1393,6 +1466,7 @@ private fun MessageIndexLoaded(
     
         val pending = undo
         if (pending != null) publishUndo(pending)
+        if (binding.action == SwipeAction.Delete) moveCursorForDelete(listOf(uid) + also, false)
     }
 
     fun onNewMailPill() {
@@ -1868,6 +1942,48 @@ private fun MessageIndexLoaded(
             held.anchorOffset = offset
         }
     }
+    LaunchedEffect(held.revealUid) {
+        val uid = held.revealUid ?: return@LaunchedEffect
+        held.revealUid = null
+        revealCursor(
+            uid = uid,
+            hidden = model.threadHidden,
+            expanded = expandedThreads.map { it.uid }.toSet(),
+            loaded = model.rows.map { it.uid }.toSet(),
+            members = model.threadMembers.keys,
+            expand = { root ->
+                onModelQueue {
+                    if (!model.cacheThreadMembers(root)) return@onModelQueue
+                    val next = LinkedHashSet(expandedThreads)
+                    next.add(homeRef(root))
+                    expandedThreads = next
+                    model.noteExpanded(next.map { it.uid }.toSet())
+                    model.publishMessageOrder()
+                    pull()
+                }
+            },
+            load = { target ->
+                onModelQueue {
+                    model.loadWindowContaining(target)
+                    pull()
+                }
+            },
+            rowIndex = {
+                anchorIndex(
+                    buildIndexEntries(
+                        held.rowsState.value,
+                        held.expandedThreadsState.value,
+                        model.threadMembers,
+                        model.threadHidden,
+                        model.threadDepth,
+                        model.anchorPage,
+                    ),
+                    uid,
+                )
+            },
+            listState = listState,
+        )
+    }
     noteVisibleTop = {
         if (model.rows.isEmpty()) {
             model.noteTopUid(null)
@@ -2307,6 +2423,7 @@ private fun MessageIndexLoaded(
                                 badPattern = indexBadPattern,
                                 threadCount = threadCount,
                                 threadExpanded = expandedThreads.any { it.uid == row.uid },
+                                marked = rowMarked(held.cursorUid, row.uid, shown = true),
                                 onToggleThread = { toggleThread(rowRef(row)) },
                                 onClick = {
                                     val ref = rowRef(row)
@@ -2321,7 +2438,12 @@ private fun MessageIndexLoaded(
                                         }
                                     } else {
                                         val seed = model.openSeed(row.uid, row.mailbox, row.flags)
-                                        if (seed != null) onCompose(seed) else onOpen(ref, row.sequence)
+                                        if (seed != null) {
+                                            onCompose(seed)
+                                        } else {
+                                            held.cursorUid = openedCursor(held.cursorUid, row.uid)
+                                            onOpen(ref, row.sequence)
+                                        }
                                     }
                                 },
                                 onLongPress = {
@@ -3788,6 +3910,7 @@ private fun IndexMessageRow(
     threadCount: String? = null,
     threadExpanded: Boolean = false,
     onToggleThread: () -> Unit = {},
+    marked: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onSwipe: suspend (SwipeBinding) -> Unit,
@@ -3914,9 +4037,14 @@ private fun IndexMessageRow(
                 S("has attachment"),
             )
             val rowSelected = selected
+            val markColor = MaterialTheme.colorScheme.primary
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .then(if (marked) Modifier.testTag("index-cursor") else Modifier)
+                    .drawBehind {
+                        if (marked) drawRect(markColor, size = Size(4.dp.toPx(), size.height))
+                    }
                     .background(
                         if (rowSelected) {
                             MaterialTheme.colorScheme.secondaryContainer

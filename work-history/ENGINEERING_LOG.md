@@ -4187,3 +4187,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Window rules
 
 - deleteMovesToNext is a hidden Deleting setting, default on. Pinerc feature-list emits delete-moves-to-next or no-delete-moves-to-next. The stack, layout fill, zoom and back, index cursor, and settings-marker look are pure rules with unit tests. No screen behavior changes. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-06 - Mail stack on the screen
+
+- The drawer, folder tree, folder index, search index, and open message are window-stack layers. A layer that stays on the stack keeps its rows and scroll while a higher layer covers it. Back pops one layer. A search index sits above the folder index and does not replace that index's query. The open message is a cursor mark, separate from a checked row. deleteMovesToNext shows the next message or closes the message layer, and the mark moves either way. The old pane menu still decides the split. First action per standard-plan-compliance-block.md; commits stay on master.

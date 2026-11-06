@@ -155,9 +155,12 @@ import org.dlang.liveimap.ui.folder.FolderListModel
 import org.dlang.liveimap.ui.folder.FolderListScreen
 import org.dlang.liveimap.ui.help.HelpExtendedFab
 import org.dlang.liveimap.ui.help.HelpScreen
+import org.dlang.liveimap.ui.index.IndexMarks
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.SearchScope
+import org.dlang.liveimap.window.WindowLayerKind
+import org.dlang.liveimap.window.WindowStack
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
@@ -377,6 +380,7 @@ private fun LiveImapNavHostReady() {
         }
     }
     val navController = rememberNavController()
+    var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     // Back with the drawer open closes it (it used to leave the app).
@@ -499,6 +503,16 @@ private fun LiveImapNavHostReady() {
         drawerAccounts = drawers
         header = drawers.firstOrNull { it.chosen }?.name ?: org.dlang.liveimap.accounts.accountVisibleName(account)
         layoutAccountId = drawers.firstOrNull { it.chosen }?.id.orEmpty()
+        if (layoutAccountId.isNotEmpty() && mailStack.layers.first().key.isEmpty()) {
+            // A mailbox jump can land before the account id is known. Stamp the key; do not add a tree over that index.
+            mailStack = if (mailStack.layers.size == 1) {
+                WindowStack.drawer(layoutAccountId).pushFolderTree("root")
+            } else {
+                withDrawerKey(mailStack, layoutAccountId)
+            }
+        } else if (layoutAccountId.isNotEmpty()) {
+            mailStack = withDrawerKey(mailStack, layoutAccountId)
+        }
         if (editingFavorite == null) favorites = account.favorites
         postponedMailbox = account.postponedMailbox
         NonAsciiText.active = account.nonAsciiDisplay
@@ -520,6 +534,7 @@ private fun LiveImapNavHostReady() {
             applyRunningLayout()
             // The folder root is replaced even when it is already showing, so its saved account id does not survive.
             if (resetToNoAccount(accounts)) {
+                mailStack = WindowStack.drawer("")
                 navController.navigate("folders") {
                     popUpTo(0) { inclusive = true }
                 }
@@ -538,6 +553,7 @@ private fun LiveImapNavHostReady() {
             // The selected-id clear is not "no accounts". Decide from the list after the entry is gone.
             applyOpenAccount()
             if (resetToNoAccount(accounts)) {
+                mailStack = WindowStack.drawer("")
                 navController.navigate("folders") {
                     popUpTo(0) { inclusive = true }
                 }
@@ -600,10 +616,52 @@ private fun LiveImapNavHostReady() {
         navController.navigate("toolbar/$name")
     }
 
+    fun publishMark(uid: Long?, reveal: Boolean) {
+        val key = navController.currentBackStackEntry?.savedStateHandle?.get<String>("markKey")
+            ?: navController.previousBackStackEntry?.savedStateHandle?.get<String>("markKey")
+            ?: return
+        IndexMarks.publish(key, uid, reveal)
+    }
+
+    fun pushMessageLayer(uid: Long) {
+        val source = messageSource(mailStack)
+        if (source != WindowLayerKind.FolderIndex && source != WindowLayerKind.SearchIndex) return
+        if (mailStack.layers.none { it.kind == source }) return
+        mailStack = mailStack.pushMessage(uid.toString(), source)
+    }
+
+    /** Back pops one mail layer. A tree that is not already under this entry is shown in its place. */
+    fun leaveLayer(failure: String? = null) {
+        if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
+        if (mailStack.layers.size == 1) {
+            navController.popBackStack()
+            return
+        }
+        val popped = mailStack.pop()
+        mailStack = popped
+        val showTree = popped.layers.last().kind == WindowLayerKind.FolderTree &&
+            navController.previousBackStackEntry?.destination?.route != "folders"
+        if (showTree) {
+            val currentId = navController.currentBackStackEntry?.destination?.id ?: return
+            navController.navigate("folders") {
+                popUpTo(currentId) { inclusive = true }
+            }
+        } else {
+            navController.popBackStack()
+        }
+    }
+
+    fun closeMessageLayer() {
+        if (mailStack.layers.last().kind == WindowLayerKind.Message) {
+            mailStack = mailStack.pop()
+        }
+    }
+
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
     val folderListPane: @Composable () -> Unit = {
                     FolderListScreen(
                         onOpenMailbox = { mailbox ->
+                            mailStack = folderFromTree(mailStack, mailbox)
                             navController.navigate("index/${Uri.encode(mailbox)}")
                         },
                         onCompose = { seed -> openCompose(seed) },
@@ -623,6 +681,7 @@ private fun LiveImapNavHostReady() {
             composable("folders") {
                 FolderListScreen(
                     onOpenMailbox = { mailbox ->
+                        mailStack = folderFromTree(mailStack, mailbox)
                         navController.navigate("index/${Uri.encode(mailbox)}")
                     },
                     onCompose = { seed -> openCompose(seed) },
@@ -668,6 +727,7 @@ private fun LiveImapNavHostReady() {
                 }
                 LaunchedEffect(entry) {
                     val handle = entry.savedStateHandle
+                    if (handle.remove<Boolean>("closePane") == true) paneUid = -1L
                     if (!handle.contains("paneUid")) return@LaunchedEffect
                     val foldedUid = handle.remove<Long>("paneUid")
                     val foldedSequence = handle.remove<Int>("paneSequence") ?: 0
@@ -717,6 +777,8 @@ private fun LiveImapNavHostReady() {
                     .getStateFlow("advancedScope", "")
                     .collectAsState()
                 val advancedScope = searchScopeOrCurrent(advancedScopeName)
+                val markKey = "index:$mailbox"
+                SideEffect { entry.savedStateHandle["markKey"] = markKey }
                 fun openAdvanced() {
                     navController.navigate("search/${Uri.encode(mailbox)}")
                 }
@@ -725,6 +787,9 @@ private fun LiveImapNavHostReady() {
                     entry.savedStateHandle.remove<String>("advancedScope")
                 }
                 fun openMessage(ref: MessageRef, sequence: Int) {
+                    if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
+                        mailStack = mailStack.pushMessage(ref.uid.toString(), WindowLayerKind.FolderIndex)
+                    }
                     val target = ref.mailbox.ifEmpty { mailbox }
                     if (useSplit && target == mailbox) {
                         paneMailbox = target
@@ -732,7 +797,11 @@ private fun LiveImapNavHostReady() {
                         paneSequence = sequence
                         paneEpoch = ref.uidValidity
                     } else {
-                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity))
+                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity)) {
+                            if (navController.currentDestination?.route == ReaderRoutePattern) {
+                                popUpTo(ReaderRoutePattern) { inclusive = true }
+                            }
+                        }
                     }
                 }
                 @Composable
@@ -742,10 +811,7 @@ private fun LiveImapNavHostReady() {
                             mailbox = mailbox,
                             onOpen = { ref, sequence -> openMessage(ref, sequence) },
                             onCompose = { seed -> openCompose(seed) },
-                            onBack = { failure ->
-                                if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
-                                navController.popBackStack()
-                            },
+                            onBack = { failure -> leaveLayer(failure) },
                             onCustomize = { openToolbar("index") },
                             onCustomizeSelection = { openToolbar("selection") },
                             watchMailbox = watch,
@@ -754,7 +820,17 @@ private fun LiveImapNavHostReady() {
                             advancedScope = advancedScope,
                             onAdvancedConsumed = { consumeAdvanced() },
                             onOpenFolder = { name ->
-                                navController.navigate("index/${Uri.encode(name)}")
+                                mailStack = folderFromTree(mailStack, name)
+                                navController.navigate("index/${Uri.encode(name)}") {
+                                    popUpTo("index/{mailbox}") { inclusive = true }
+                                }
+                            },
+                            markKey = markKey,
+                            reloadToken = viewKey,
+                            messageOpen = useSplit && paneUid >= 0L,
+                            onCloseMessage = {
+                                paneUid = -1L
+                                closeMessageLayer()
                             },
                         )
                     }
@@ -774,9 +850,6 @@ private fun LiveImapNavHostReady() {
                             }
                         }
                     }
-                }
-                BackHandler(enabled = useSplit && paneUid >= 0L) {
-                    paneUid = -1L
                 }
                 if (!useSplit) {
                     IndexBody(folderViewToken, watch = true)
@@ -810,8 +883,16 @@ private fun LiveImapNavHostReady() {
                                         paneUid = next.uid
                                         paneSequence = nextSequence
                                         paneEpoch = next.uidValidity
+                                        if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
+                                            mailStack = mailStack.pushMessage(next.uid.toString(), WindowLayerKind.FolderIndex)
+                                        }
+                                        IndexMarks.publish(markKey, next.uid, true)
                                     },
-                                    onBack = { paneUid = -1L },
+                                    onBack = {
+                                        paneUid = -1L
+                                        closeMessageLayer()
+                                    },
+                                    onMark = { uid -> IndexMarks.publish(markKey, uid, true) },
                                     onFolderViewSaved = { noteFolderView() },
                                     onCustomize = { openToolbar("reader") },
                                     onFilterLike = { from, to, listId, subject, accountId ->
@@ -832,6 +913,7 @@ private fun LiveImapNavHostReady() {
                             val next = base.coerceIn(0f, max) + delta
                             if (next + 8f >= span) {
                                 paneUid = -1L
+                                closeMessageLayer()
                             } else {
                                 indexWidthDp = next.coerceAtLeast(0f)
                             }
@@ -857,13 +939,20 @@ private fun LiveImapNavHostReady() {
                     mailbox = mailbox,
                     onBack = { navController.popBackStack() },
                     onSearch = { text, scope ->
-                        val previous = navController.previousBackStackEntry
-                        val indexMailbox = previous?.arguments?.getString("mailbox")
-                        if (previous?.destination?.route == "index/{mailbox}" && indexMailbox == mailbox) {
-                            previous.savedStateHandle["advancedQuery"] = text
-                            previous.savedStateHandle["advancedScope"] = scope.name
-                        }
+                        PendingSearch.query = text
+                        PendingSearch.scope = scope
                         navController.popBackStack()
+                        if (navController.currentDestination?.route == FoundRoutePattern) {
+                            navController.popBackStack()
+                        }
+                        if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
+                            mailStack = mailStack.pushSearchIndex(text)
+                        }
+                        navController.currentBackStack.value
+                            .lastOrNull { it.destination.route == "index/{mailbox}" }
+                            ?.savedStateHandle
+                            ?.set("closePane", true)
+                        navController.navigate("found/${Uri.encode(mailbox)}/${scope.name}")
                     },
                 )
             }
@@ -903,6 +992,46 @@ private fun LiveImapNavHostReady() {
                 }
             }
             composable(
+                route = FoundRoutePattern,
+                arguments = listOf(
+                    navArgument("mailbox") { type = NavType.StringType },
+                    navArgument("scope") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                val encoded = entry.arguments?.getString("mailbox") ?: return@composable
+                val mailbox = encoded
+                val scopeName = entry.arguments?.getString("scope").orEmpty()
+                val query = rememberSaveable { PendingSearch.query }
+                var armed by rememberSaveable { mutableStateOf(query) }
+                val markKey = "search:$mailbox:$query"
+                SideEffect { entry.savedStateHandle["markKey"] = markKey }
+                BackHandler { leaveLayer() }
+                MessageIndexScreen(
+                    mailbox = mailbox,
+                    onOpen = { ref, sequence ->
+                        if (mailStack.layers.any { it.kind == WindowLayerKind.SearchIndex }) {
+                            mailStack = mailStack.pushMessage(ref.uid.toString(), WindowLayerKind.SearchIndex)
+                        }
+                        val target = ref.mailbox.ifEmpty { mailbox }
+                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity)) {
+                            if (navController.currentDestination?.route == ReaderRoutePattern) {
+                                popUpTo(ReaderRoutePattern) { inclusive = true }
+                            }
+                        }
+                    },
+                    onCompose = { seed -> openCompose(seed) },
+                    onBack = { failure -> leaveLayer(failure) },
+                    onCustomize = { openToolbar("index") },
+                    onCustomizeSelection = { openToolbar("selection") },
+                    onAdvanced = { navController.navigate("search/${Uri.encode(mailbox)}") },
+                    advancedQuery = armed.ifEmpty { null },
+                    advancedScope = searchScopeOrCurrent(scopeName),
+                    onAdvancedConsumed = { armed = "" },
+                    markKey = markKey,
+                    onCloseMessage = { closeMessageLayer() },
+                )
+            }
+            composable(
                 route = ReaderRoutePattern,
                 arguments = listOf(
                     navArgument("mailbox") { type = NavType.StringType },
@@ -917,6 +1046,7 @@ private fun LiveImapNavHostReady() {
                 val args = entry.arguments ?: return@composable
                 val encoded = args.getString("mailbox") ?: return@composable
                 val mailbox = encoded // F73: Navigation already percent-decoded the path argument
+                BackHandler { leaveLayer() }
                 MessageReaderScreen(
                     mailbox = mailbox,
                     uid = args.getLong("uid"),
@@ -924,6 +1054,8 @@ private fun LiveImapNavHostReady() {
                     uidValidity = args.getLong("epoch"),
                     onCompose = { seed -> openCompose(seed) },
                     onAdvance = { next, nextSequence ->
+                        pushMessageLayer(next.uid)
+                        publishMark(next.uid, true)
                         navController.navigate(
                             readerRoute(
                                 next.mailbox.ifEmpty { mailbox },
@@ -935,7 +1067,8 @@ private fun LiveImapNavHostReady() {
                             popUpTo(ReaderRoutePattern) { inclusive = true }
                         }
                     },
-                    onBack = { navController.popBackStack() },
+                    onBack = { leaveLayer() },
+                    onMark = { uid -> publishMark(uid, true) },
                     onFolderViewSaved = {
                         val previous = navController.previousBackStackEntry
                         val indexMailbox = previous?.arguments?.getString("mailbox")
@@ -994,6 +1127,7 @@ private fun LiveImapNavHostReady() {
             composable("settings/setup") {
                 org.dlang.liveimap.settings.editors.SetupGuide(
                     onDone = {
+                        mailStack = drawerMailbox(mailStack, "INBOX")
                         navController.navigate("index/${Uri.encode("INBOX")}") {
                             popUpTo(0) { inclusive = true }
                         }
@@ -1005,6 +1139,7 @@ private fun LiveImapNavHostReady() {
                         pending.password = password
                         pending.smtpPassword = smtp
                         pending.onCreated = { _ ->
+                            mailStack = drawerMailbox(mailStack, "INBOX")
                             navController.navigate("index/${Uri.encode("INBOX")}") {
                                 popUpTo(0) { inclusive = true }
                             }
@@ -1235,6 +1370,34 @@ private fun LiveImapNavHostReady() {
         editingFavorite = null
     }
 
+    fun backStackHas(route: String): Boolean =
+        navController.currentBackStack.value.any { it.destination.route == route }
+
+    /** A drawer mailbox replaces the nav stack so Back does not uncover a folder tree. */
+    fun openDrawerMailbox(mailbox: String) {
+        mailStack = drawerMailbox(mailStack, mailbox)
+        navController.navigate("index/${Uri.encode(mailbox)}") {
+            popUpTo(0) { inclusive = true }
+        }
+    }
+
+    /** Same-account All folders. An open index stays; the tree is what Back shows. */
+    fun openSameAccountTree() {
+        if (mailCoversTree(mailStack)) {
+            mailStack = revealTree(mailStack, "root")
+            return
+        }
+        mailStack = mailStack.pushFolderTree("root")
+        navController.navigate("folders") {
+            if (backStackHas("folders")) {
+                popUpTo("folders")
+                launchSingleTop = true
+            } else {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
     fun openFavorite(favorite: FolderFavorite) {
         scope.launch {
             drawerState.close()
@@ -1250,12 +1413,20 @@ private fun LiveImapNavHostReady() {
                 }
                 focusMailbox.value = favorite.mailbox
                 focusToken.value = focusToken.value + 1
+                mailStack = chooseFolderNode(mailStack, favorite.mailbox)
                 navController.navigate("folders") {
-                    popUpTo("folders")
-                    launchSingleTop = true
+                    if (backStackHas("folders")) {
+                        popUpTo("folders")
+                        launchSingleTop = true
+                    } else {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             } else {
-                navController.navigate("index/${Uri.encode(favorite.mailbox)}")
+                mailStack = chooseFavoriteMailbox(mailStack, favorite.mailbox)
+                navController.navigate("index/${Uri.encode(favorite.mailbox)}") {
+                    popUpTo(0) { inclusive = true }
+                }
             }
         }
     }
@@ -1265,12 +1436,12 @@ private fun LiveImapNavHostReady() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
+                mailStack = chooseAccountMailbox(mailStack, account.id, mailbox)
                 navController.navigate("index/${Uri.encode(mailbox)}") {
-                    popUpTo("folders")
-                    launchSingleTop = false
+                    popUpTo(0) { inclusive = true }
                 }
             } else {
-                navController.navigate("index/${Uri.encode(mailbox)}")
+                openDrawerMailbox(mailbox)
             }
         }
     }
@@ -1280,15 +1451,12 @@ private fun LiveImapNavHostReady() {
             if (!account.chosen) {
                 store.selectAccount(account.id)
                 applyOpenAccount()
+                mailStack = chooseAccountTree(mailStack, account.id, "root")
                 navController.navigate("folders") {
-                    popUpTo("folders") { inclusive = true }
-                    launchSingleTop = false
+                    popUpTo(0) { inclusive = true }
                 }
             } else {
-                navController.navigate("folders") {
-                    popUpTo("folders")
-                    launchSingleTop = true
-                }
+                openSameAccountTree()
             }
         }
     }
@@ -1314,14 +1482,14 @@ private fun LiveImapNavHostReady() {
                 }
                 focusMailbox.value = favorite.mailbox
                 focusToken.value = focusToken.value + 1
+                mailStack = chooseFolderNode(mailStack, favorite.mailbox)
                 navController.navigate("folders") {
-                    popUpTo("folders") { inclusive = true }
-                    launchSingleTop = false
+                    popUpTo(0) { inclusive = true }
                 }
             } else {
+                mailStack = chooseFavoriteMailbox(mailStack, favorite.mailbox)
                 navController.navigate("index/${Uri.encode(favorite.mailbox)}") {
-                    popUpTo("folders")
-                    launchSingleTop = false
+                    popUpTo(0) { inclusive = true }
                 }
             }
         }
@@ -1345,22 +1513,19 @@ private fun LiveImapNavHostReady() {
             favorites = favorites,
             onInbox = {
                 navigateFromDrawer {
-                    navController.navigate("index/${Uri.encode("INBOX")}")
+                    openDrawerMailbox("INBOX")
                 }
             },
             onAccountInbox = { account -> openIndexRow(account, "INBOX") },
             onPostponed = { row ->
                 navigateFromDrawer {
-                    navController.navigate("index/${Uri.encode(row)}")
+                    openDrawerMailbox(row)
                 }
             },
             onAccountPostponed = { account -> openIndexRow(account, account.postponedMailbox) },
             onAllFolders = {
                 navigateFromDrawer {
-                    navController.navigate("folders") {
-                        popUpTo("folders")
-                        launchSingleTop = true
-                    }
+                    openSameAccountTree()
                 }
             },
             onAccountAllFolders = { account -> openFoldersRow(account) },
@@ -2333,6 +2498,9 @@ private fun PaneTree(
 
 /** F105: the reader route carries the folder's UIDVALIDITY as listed (0 = unknown, captured on first open). */
 internal const val ReaderRoutePattern = "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"
+
+/** A search index above the folder index. Its query is [PendingSearch], not the folder index's. */
+internal const val FoundRoutePattern = "found/{mailbox}/{scope}"
 
 internal fun navForwardChoice(stored: String): Boolean? = when (stored) {
     "true" -> true

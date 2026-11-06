@@ -10,11 +10,9 @@ import org.dlang.liveimap.session.LibetpanTooDeepSubtype
 import org.dlang.liveimap.ui.compose.nestedLeafParts
 import org.dlang.liveimap.session.TooDeepSubtype
 import android.Manifest
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
-import android.content.Context
-import android.content.ContextWrapper
+
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -211,6 +209,11 @@ import org.dlang.liveimap.ui.mailBarInsets
 import org.dlang.liveimap.ui.mailScreenInsets
 import org.dlang.liveimap.ui.index.MailUndo
 import org.dlang.liveimap.ui.index.OpenMessageOrder
+import org.dlang.liveimap.window.IndexRecord
+import org.dlang.liveimap.window.MessageAfterDelete
+import org.dlang.liveimap.window.afterDelete
+import org.dlang.liveimap.window.next
+import org.dlang.liveimap.window.previous
 import org.dlang.liveimap.ui.index.swipeWidthPercent
 import org.dlang.liveimap.ui.index.followingUid
 import org.dlang.liveimap.ui.index.precedingUid
@@ -368,6 +371,10 @@ internal class MessageReaderLoaded : ViewModel() {
     val selectedMailboxState = mutableStateOf<String?>(null)
     val headingState = mutableStateOf(MailboxTitle("", ""))
 
+    override fun onCleared() {
+        dropLoaded()
+    }
+
     fun holds(ref: MessageRef): Boolean =
         ready && openAccount == ref.accountId && openMailbox == ref.mailbox &&
             openEpoch == ref.uidValidity && openUid == ref.uid
@@ -500,17 +507,6 @@ private fun readerLabels(): ReaderLabels = ReaderLabels(
     indexBadPattern = S("bad date pattern"),
 )
 
-private fun Context.hostActivity(): Activity? {
-    var current: Context = this
-    while (true) {
-        if (current is Activity) return current
-        if (current !is ContextWrapper) return null
-        val next = current.baseContext
-        if (next === current) return null
-        current = next
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MessageReaderScreen(
@@ -524,6 +520,7 @@ fun MessageReaderScreen(
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onMark: (Long?) -> Unit = {},
 ) {
     val appContext = LocalContext.current.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -547,6 +544,7 @@ fun MessageReaderScreen(
         onFolderViewSaved = onFolderViewSaved,
         onCustomize = onCustomize,
         onFilterLike = onFilterLike,
+        onMark = onMark,
     )
 }
 
@@ -565,6 +563,7 @@ private fun ReaderScreen(
     onFolderViewSaved: () -> Unit = {},
     onCustomize: () -> Unit = {},
     onFilterLike: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onMark: (Long?) -> Unit = {},
 ) {
     val RawViewCapBytes = SettingsHub.uiNow().maxRawViewBytes.toInt()
     LocalScreenAccounts.current.Register(accountId)
@@ -598,12 +597,6 @@ private fun ReaderScreen(
     val held = viewModel<MessageReaderLoaded>(key = "pane")
     if (held.ready && !held.holds(messageRef)) held.dropLoaded()
     val reuseBody = held.holds(messageRef)
-    val host = context.hostActivity()
-    DisposableEffect(held) {
-        onDispose {
-            if (host?.isChangingConfigurations != true) held.dropLoaded()
-        }
-    }
     remember {
         if (reuseBody) held.recordScroll = false
         true
@@ -1691,7 +1684,14 @@ private fun ReaderScreen(
     }
 
     fun openNextOrIndex(target: Pair<Long, Int>?) {
-        if (target == null) onBack() else onAdvance(MessageRef(accountId, mailbox, readerEpoch, target.first), target.second)
+        val nextUid = target?.first
+        val step = IndexRecord(emptySet(), uid, null).afterDelete(account.deleteMovesToNext, nextUid)
+        onMark(step.index.cursorUid)
+        if (step.message == MessageAfterDelete.ShowNext && target != null) {
+            onAdvance(MessageRef(accountId, mailbox, readerEpoch, target.first), target.second)
+        } else {
+            onBack()
+        }
     }
 
     fun showActionUndo(undo: MailUndo, next: Pair<Long, Int>?) {
@@ -1928,6 +1928,7 @@ private fun ReaderScreen(
                 } catch (_: MailFailure) {
                     return
                 }
+                onMark(IndexRecord(emptySet(), uid, null).next(next).index.cursorUid)
                 onAdvance(MessageRef(accountId, mailbox, readerEpoch, next), nextSequence)
             }
             SwipeAction.Previous -> {
@@ -1938,6 +1939,7 @@ private fun ReaderScreen(
                 } catch (_: MailFailure) {
                     return
                 }
+                onMark(IndexRecord(emptySet(), uid, null).previous(previous).index.cursorUid)
                 onAdvance(MessageRef(accountId, mailbox, readerEpoch, previous), previousSequence)
             }
             SwipeAction.Reply ->

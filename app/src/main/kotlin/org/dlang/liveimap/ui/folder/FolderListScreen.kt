@@ -60,7 +60,6 @@ import org.dlang.liveimap.ui.ObscuredTouchFilter
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -143,6 +142,8 @@ internal class FolderScreenHeld : ViewModel() {
     var boundSession: MailSession? = null
     val rowsState = mutableStateOf<List<FolderRow>>(emptyList())
     var levelReady: Boolean = false
+    var scrollIndex: Int = 0
+    var scrollOffset: Int = 0
     private val turns = Channel<suspend () -> Unit>(Channel.UNLIMITED)
     private val turnScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -183,6 +184,7 @@ internal class FolderScreenHeld : ViewModel() {
     }
 
     override fun onCleared() {
+        dropLoaded()
         turnScope.cancel()
         turns.close()
     }
@@ -203,6 +205,8 @@ internal class FolderScreenHeld : ViewModel() {
         boundSession = null
         rowsState.value = emptyList()
         levelReady = false
+        scrollIndex = 0
+        scrollOffset = 0
     }
 }
 
@@ -338,14 +342,17 @@ private fun FolderListLoaded(
     val debugStatus by TrafficLog.debugStatus.collectAsState()
     val held = viewModel<FolderScreenHeld>()
     val model = held.bind(session, store)
-    val host = LocalContext.current.hostActivity()
-    DisposableEffect(held) {
-        onDispose {
-            if (host?.isChangingConfigurations != true) held.dropLoaded()
-        }
-    }
     val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
+    // Covered by a higher layer: the entry keeps this scroll until the layer is popped.
+    val listState = rememberLazyListState(held.scrollIndex, held.scrollOffset)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                if (held.rowsState.value.isEmpty()) return@collect
+                held.scrollIndex = index
+                held.scrollOffset = offset
+            }
+    }
     var rows by held.rowsState
     var loading by remember { mutableStateOf(!held.levelReady) }
     var banner by remember { mutableStateOf<String?>(null) }

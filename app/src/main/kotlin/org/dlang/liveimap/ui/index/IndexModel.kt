@@ -1335,6 +1335,20 @@ class IndexModel(
         return null
     }
 
+    /** Loads the window that contains [uid] when the full order knows it and this page does not. */
+    suspend fun loadWindowContaining(uid: Long): Boolean {
+        if (heldRows.any { it.uid == uid }) return true
+        val at = when (val current = order) {
+            is WindowedOrder -> current.indexOfLoaded(uid) ?: return false
+            else -> {
+                val found = current.indexOf(uid)
+                if (found < 0) return false
+                found
+            }
+        }
+        return placeUnread(at)
+    }
+
     private suspend fun placeUnread(index: Int): Boolean {
         val count = order.size
         if (index < 0 || index >= count) return false
