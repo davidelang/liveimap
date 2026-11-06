@@ -1,43 +1,27 @@
 package org.dlang.liveimap.settings
 
 /**
- * Automatic layout defaults from what the user can read, not from device classes. Inputs are the window in dp
+ * Preview size from what the user can read, not a pane layout. Inputs are the window in dp
  * (Android already enlarges dp on TVs, cars and watches for viewing distance) and the effective font scale
  * (system font scale x app text size). Text metrics at scale 1: ~7 dp per average character, ~20 dp per line.
  * Re-evaluated on every configuration change (rotation, fold/unfold, window resize, font change).
- * Every output is only a default; each has its own user setting.
+ * Panes, folder placement, arrangement, and the drawer come from the selected [org.dlang.liveimap.window.LayoutRecord],
+ * not from this plan. One selected id is used at every size.
  */
-enum class PaneArrangement { SideBySide, Stacked }
-enum class FolderPlacement { None, Beside, AboveList }
 enum class PreviewSize { None, Small, Large }
 
 data class LayoutPlan(
-    val panes: Int,                 // 1 = one pane at a time; 2 = list + reader; 3 = folders + list + reader
-    val arrangement: PaneArrangement,
-    val folders: FolderPlacement,
-    val readerFullScreen: Boolean,  // the message opens full screen instead of in a split
-    val listShare: Float,           // share of the list/reader span given to the list (side by side: width; stacked: height)
-    val preview: PreviewSize,       // preview lines in list rows
-    val columns: Int,               // readable characters across the window
-    val lines: Int,                 // readable lines down the window
-    val drawerPane: Boolean = false, // the account drawer fits as a pane beside the rest; else hidden (openable)
+    val preview: PreviewSize,
+    val columns: Int,
+    val lines: Int,
 )
 
 const val CharDp = 7.0
 const val LineDp = 20.0
 const val ListMinChars = 40
 const val ReaderMinChars = 60
-const val FolderMinChars = 24
-/** The account drawer as a pane needs this many characters beside everything else. */
-const val DrawerMinChars = 40
 const val GutterChars = 2
-const val ListMinLines = 8
 const val ReaderMinLines = 16
-const val FolderMinLines = 8
-/** Stacked list over reader: ~20 list lines + ~40 reader lines. */
-const val StackMinLines = 60
-/** Folders above the list in the left column: ~16 folder lines + ~40 list lines. */
-const val FoldersAboveMinLines = 56
 
 fun planLayout(widthDp: Int, heightDp: Int, fontScale: Float): LayoutPlan {
     val scale = fontScale.coerceAtLeast(0.5f)
@@ -45,45 +29,16 @@ fun planLayout(widthDp: Int, heightDp: Int, fontScale: Float): LayoutPlan {
     val lines = (heightDp / (LineDp * scale)).toInt()
     val bothWide = ListMinChars + GutterChars + ReaderMinChars
     val sideBySide = cols >= bothWide && lines >= ReaderMinLines
-    val stacked = !sideBySide && cols >= ReaderMinChars && lines >= StackMinLines
-    // Folders: their own column when wide enough for three; else above the list in the left column when it is
-    // tall enough for both (short, wide screens such as a car dash cannot).
-    val folders = when {
-        !sideBySide -> FolderPlacement.None
-        cols >= FolderMinChars + bothWide + 2 * GutterChars + 30 -> FolderPlacement.Beside
-        lines >= FoldersAboveMinLines -> FolderPlacement.AboveList
-        else -> FolderPlacement.None
-    }
-    val panes = when {
-        sideBySide && folders != FolderPlacement.None -> 3
-        sideBySide || stacked -> 2
-        else -> 1
-    }
-    val listShare = when {
-        sideBySide -> {
-            val span = cols - if (folders == FolderPlacement.Beside) FolderMinChars + GutterChars else 0
-            val extra = span - bothWide
-            ((ListMinChars + extra / 3.0) / span).toFloat().coerceIn(0.25f, 0.5f)
-        }
-        stacked -> 0.4f
-        else -> 1f
+    val listShare = if (sideBySide) {
+        val extra = cols - bothWide
+        ((ListMinChars + extra / 3.0) / cols).toFloat().coerceIn(0.25f, 0.5f)
+    } else {
+        1f
     }
     val preview = when {
         lines < 12 || cols < 30 -> PreviewSize.None
         lines >= 40 && (if (sideBySide) cols * listShare else cols.toFloat()) >= 50 -> PreviewSize.Large
         else -> PreviewSize.Small
     }
-    return LayoutPlan(
-        panes = panes,
-        arrangement = if (stacked) PaneArrangement.Stacked else PaneArrangement.SideBySide,
-        folders = folders,
-        readerFullScreen = panes == 1,
-        listShare = listShare,
-        preview = preview,
-        columns = cols,
-        lines = lines,
-        // Space is tight -> hidden drawer: a pane only when list + reader (+ folder column) keep their minimums.
-        drawerPane = sideBySide && cols >= bothWide + GutterChars + DrawerMinChars +
-            (if (folders == FolderPlacement.Beside) FolderMinChars + GutterChars else 0),
-    )
+    return LayoutPlan(preview = preview, columns = cols, lines = lines)
 }

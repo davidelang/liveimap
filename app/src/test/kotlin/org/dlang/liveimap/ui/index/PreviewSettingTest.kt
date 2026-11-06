@@ -2,7 +2,6 @@ package org.dlang.liveimap.ui.index
 
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.Density
-import org.dlang.liveimap.settings.FolderPlace
 import org.dlang.liveimap.settings.PreviewChoice
 import org.dlang.liveimap.settings.PreviewSize
 import org.dlang.liveimap.settings.decodeSettings
@@ -17,7 +16,6 @@ class PreviewSettingTest {
     @Test fun storedAccountsKeepDensityBehaviour() {
         val legacy = decodeSettings(Settings(density = Density.Medium, previewSize = PreviewChoice.Density).encode())
         assertEquals(PreviewChoice.Density, legacy.previewSize)
-        assertEquals(FolderPlace.Auto, legacy.folderPlace)
         assertEquals(3, previewLines(legacy, PreviewSize.None))
         assertTrue(wantsPreview(legacy))
         assertFalse(wantsPreview(legacy.copy(density = Density.Compact)))
@@ -38,6 +36,5 @@ class PreviewSettingTest {
     @Test fun newAccountsAutoRoundTrip() {
         val n = decodeSettings(newAccountSettings().encode())
         assertEquals(PreviewChoice.Auto, n.previewSize)
-        assertEquals(FolderPlace.Auto, n.folderPlace)
     }
 }

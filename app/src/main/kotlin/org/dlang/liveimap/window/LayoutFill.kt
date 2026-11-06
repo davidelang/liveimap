@@ -9,17 +9,49 @@ enum class UnusedPanel { Collapse, StayEmpty }
  */
 data class LayoutPanel(val id: String, val pin: WindowLayerKind? = null)
 
+/** Beside is side by side. Above is the first child on top. [share] is the first child's fraction. */
+enum class SplitDirection { Beside, Above }
+
+sealed class LayoutNode {
+    data class Panel(val panel: LayoutPanel) : LayoutNode()
+    data class Split(
+        val direction: SplitDirection,
+        val share: Float,
+        val first: LayoutNode,
+        val second: LayoutNode,
+    ) : LayoutNode()
+}
+
+fun LayoutNode.panels(): List<LayoutPanel> = when (this) {
+    is LayoutNode.Panel -> listOf(panel)
+    is LayoutNode.Split -> first.panels() + second.panels()
+}
+
 /**
- * How one window fills. Not stored by this change.
+ * How one window fills. [root] is the split geometry; a null root is an empty panel list.
  * [coverPanels] is how many panels the top layer occupies, taken from the focused end as one span.
  * [unpinnedKeep] is how many layers, from the top, the unpinned panels may show.
+ * Dragged divider positions are not stored here.
  */
 data class LayoutRecord(
-    val panels: List<LayoutPanel>,
+    val root: LayoutNode?,
     val unused: UnusedPanel,
     val coverPanels: Int,
     val unpinnedKeep: Int,
-)
+) {
+    val panels: List<LayoutPanel> get() = root?.panels().orEmpty()
+}
+
+/** Two panels pinned to one layer kind, or two panels with one id. A message with no index panel is allowed. */
+enum class LayoutRecordProblem { DuplicateLayer }
+
+fun layoutRecordProblem(record: LayoutRecord): LayoutRecordProblem? {
+    val pins = record.panels.mapNotNull { it.pin }
+    if (pins.size != pins.toSet().size) return LayoutRecordProblem.DuplicateLayer
+    val ids = record.panels.map { it.id }
+    if (ids.size != ids.toSet().size) return LayoutRecordProblem.DuplicateLayer
+    return null
+}
 
 data class FillSlot(val panelIds: List<String>, val layer: WindowLayer?, val collapsed: Boolean)
 
@@ -91,6 +123,32 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
 }
 
 fun zoom(current: FillResult, layer: WindowLayer): ZoomState = ZoomState(layer, current)
+
+/**
+ * Zoom of the one panel that is already the whole window does nothing.
+ * A pin does not block zoom: more than one visible slot still zooms.
+ */
+fun zoomTarget(current: FillResult, layer: WindowLayer): ZoomState? {
+    val shown = current.slots.filter { !it.collapsed && it.layer != null }
+    if (shown.size == 1 && shown[0].layer == layer) return null
+    return zoom(current, layer)
+}
+
+/**
+ * The panel that has the keys. [requested] stays when that panel is still on screen,
+ * even when it is not the top of the stack. Otherwise the focused end.
+ */
+fun keyPanel(fill: FillResult, requested: String?): String? {
+    val ids = fill.slots.filter { !it.collapsed }.flatMap { it.panelIds }
+    if (ids.isEmpty()) return null
+    if (requested != null && requested in ids) return requested
+    return ids.last()
+}
+
+fun keyLayer(fill: FillResult, panelId: String?): WindowLayer? {
+    if (panelId == null) return null
+    return fill.slots.firstOrNull { panelId in it.panelIds }?.layer
+}
 
 /** One panel, the zoomed layer. The remembered fill is left on [ZoomState.unzoomed]. */
 fun zoomFill(zoom: ZoomState): FillResult =

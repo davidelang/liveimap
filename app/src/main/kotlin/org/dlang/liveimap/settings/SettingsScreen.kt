@@ -158,7 +158,6 @@ import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.FavoriteEditDialog
 import org.dlang.liveimap.ui.FavoriteWhere
-import org.dlang.liveimap.ui.paneControlsEnabled
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 import org.dlang.liveimap.ui.toolbar.notePaneScroll
@@ -1952,7 +1951,7 @@ internal fun rowFor(leaf: TreeLeaf, walk: SettingsWalk) {
         "settingsFile" -> SettingsFileRow(leaf.setting, walk)
         "rules", "swipe" -> SubscreenRow(leaf.setting, walk)
         "toolbar" -> ToolbarLeafRow(leaf.setting, walk)
-        "paneLayout" -> row_customLayout(walk)
+        "paneLayout" -> row_layoutCatalog(walk)
         else -> if (leaf.setting.endsWith("Pin") || leaf.setting == "certPin") {
             PinRow(leaf.setting, walk)
         } else {
@@ -2220,10 +2219,6 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "theme" -> row_theme(walk)
         "density" -> row_density(walk)
         "dateFormat" -> row_dateFormat(walk)
-        "multiPane" -> row_multiPane(walk)
-        "folderPlace" -> row_folderPlace(walk)
-        "foldPosture" -> row_foldPosture(walk)
-        "paneArrangement" -> row_paneArrangement(walk)
         "previewSize" -> row_previewSize(walk)
         "clientSortCollation" -> row_clientSortCollation(key, walk)
         "settingsOpensOn" -> row_settingsOpensOn(walk)
@@ -2384,7 +2379,6 @@ internal fun SubscreenRow(key: String, walk: SettingsWalk) {
         "completionSources" -> row_completionSources(walk)
         "extraAddressBooks" -> row_extraAddressBooks(walk)
         "globalAddressBooks" -> row_globalAddressBooks(walk)
-        "customLayout" -> row_customLayout(walk)
         "hiddenCapabilities" -> row_hiddenCapabilities(walk)
         "favorites" -> row_favorites(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
@@ -3632,65 +3626,10 @@ internal fun row_datePattern(walk: SettingsWalk) {
 }
 
 @Composable
-internal fun row_customLayout(walk: SettingsWalk) {
+internal fun row_layoutCatalog(walk: SettingsWalk) {
     val editor = walk.editor
-    val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    PaneLayoutEditor(settings.customLayout, persist = panesOn) { text ->
-        if (panesOn) editor.persist(editor.settings.copy(customLayout = text))
-    }
-}
-
-@Composable
-internal fun row_multiPane(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    ChoiceField(
-        stringResource(SettingsTreeGenerated.resource("settings_multi_pane")),
-        MultiPane.entries,
-        settings.multiPane,
-        { multiPaneName(it) },
-    ) {
-        editor.persist(editor.settings.copy(multiPane = it))
-    }
-}
-
-@Composable
-internal fun row_folderPlace(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    ChoiceField(
-        stringResource(SettingsTreeGenerated.resource("settings_folder_pane")),
-        FolderPlace.entries,
-        settings.folderPlace,
-        { place ->
-            stringResource(when (place) {
-                FolderPlace.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
-                FolderPlace.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
-                FolderPlace.Beside -> SettingsTreeGenerated.resource("settings_folder_beside")
-                FolderPlace.AboveList -> SettingsTreeGenerated.resource("settings_folder_above")
-            })
-        },
-        enabled = panesOn,
-    ) {
-        if (panesOn) editor.persist(editor.settings.copy(folderPlace = it))
-    }
-}
-
-@Composable
-internal fun row_foldPosture(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    ChoiceField(
-        stringResource(SettingsTreeGenerated.resource("settings_fold_posture")),
-        listOf(LayoutChoice.Off, LayoutChoice.On),
-        settings.foldPosture,
-        { layoutChoiceName(it) },
-        enabled = panesOn,
-    ) {
-        if (panesOn) editor.persist(editor.settings.copy(foldPosture = it))
+    PaneLayoutEditor(editor.settings.layoutCatalog) { text ->
+        editor.persist(editor.settings.copy(layoutCatalog = text))
     }
 }
 
@@ -3700,26 +3639,6 @@ internal fun row_fullScreen(walk: SettingsWalk) {
     val settings = editor.settings
     BoolField(stringResource(SettingsTreeGenerated.resource("settings_full_screen")), settings.fullScreen) {
         editor.persist(editor.settings.copy(fullScreen = it))
-    }
-}
-
-@Composable
-internal fun row_paneArrangement(walk: SettingsWalk) {
-    val editor = walk.editor
-    val settings = editor.settings
-    val panesOn = paneControlsEnabled(settings.multiPane)
-    ChoiceField(
-        stringResource(SettingsTreeGenerated.resource("settings_pane_arrangement")),
-        ArrangementChoice.entries,
-        settings.paneArrangement,
-        { stringResource(when (it) {
-            ArrangementChoice.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
-            ArrangementChoice.SideBySide -> SettingsTreeGenerated.resource("settings_pane_side_by_side")
-            ArrangementChoice.Stacked -> SettingsTreeGenerated.resource("settings_pane_stacked")
-        }) },
-        enabled = panesOn,
-    ) {
-        if (panesOn) editor.persist(editor.settings.copy(paneArrangement = it))
     }
 }
 
@@ -4729,24 +4648,6 @@ internal fun dateFormatName(format: DateFormat): String = stringResource(
         DateFormat.Short -> SettingsTreeGenerated.resource("label_short")
         DateFormat.Relative -> SettingsTreeGenerated.resource("label_relative")
         DateFormat.Custom -> SettingsTreeGenerated.resource("label_custom")
-    },
-)
-
-@Composable
-internal fun multiPaneName(mode: MultiPane): String = stringResource(
-    when (mode) {
-        MultiPane.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
-        MultiPane.Wide -> SettingsTreeGenerated.resource("settings_multi_pane_wide")
-        MultiPane.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
-    },
-)
-
-@Composable
-internal fun layoutChoiceName(choice: LayoutChoice): String = stringResource(
-    when (choice) {
-        LayoutChoice.Off -> SettingsTreeGenerated.resource("settings_multi_pane_off")
-        LayoutChoice.On -> SettingsTreeGenerated.resource("settings_multi_pane_wide")
-        LayoutChoice.Auto -> SettingsTreeGenerated.resource("settings_pane_auto")
     },
 )
 

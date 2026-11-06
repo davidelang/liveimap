@@ -133,9 +133,20 @@ fun decodeSettings(text: String): Settings {
 
 private val retiredReaderKeys = setOf("bodyView", "readerTextLayout", "preferHtml")
 
+private val retiredLayoutKeys = setOf(
+    "multiPane",
+    "folderPlace",
+    "foldPosture",
+    "paneArrangement",
+    "customLayout",
+)
+
 /** A stored readerDisplay is kept. An older pair is mapped once and is not written back. */
 private fun migrateReaderDisplay(decoded: Settings, values: Map<String, JsonValue>): Settings {
-    val kept = decoded.unknownSettings.filter { it.substringBefore('\n') !in retiredReaderKeys }
+    val kept = decoded.unknownSettings.filter {
+        val key = it.substringBefore('\n')
+        key !in retiredReaderKeys && key !in retiredLayoutKeys
+    }
     val stripped = if (kept.size == decoded.unknownSettings.size) decoded else decoded.copy(unknownSettings = kept)
     if ("readerDisplay" in values) return stripped
     return stripped.copy(readerDisplay = readerDisplayFromRetired(values))

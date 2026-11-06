@@ -149,7 +149,6 @@ import org.dlang.liveimap.ui.contacts.withSourceEnabled
 import org.dlang.liveimap.ui.debug.DebugReportReview
 import org.dlang.liveimap.ui.FavoriteEditDialog
 import org.dlang.liveimap.ui.FavoriteWhere
-import org.dlang.liveimap.ui.paneControlsEnabled
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
 import org.dlang.liveimap.ui.toolbar.notePaneScroll

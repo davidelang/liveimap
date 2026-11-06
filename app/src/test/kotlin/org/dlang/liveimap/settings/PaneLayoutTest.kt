@@ -1,64 +1,112 @@
 package org.dlang.liveimap.settings
 
+import org.dlang.liveimap.window.LayoutAutomatic
+import org.dlang.liveimap.window.LayoutCatalog
+import org.dlang.liveimap.window.LayoutDrawerPinned
+import org.dlang.liveimap.window.LayoutFolderTreePinned
+import org.dlang.liveimap.window.LayoutIndexBesideMessage
+import org.dlang.liveimap.window.LayoutListAboveMessage
+import org.dlang.liveimap.window.LayoutNode
+import org.dlang.liveimap.window.LayoutPanel
+import org.dlang.liveimap.window.LayoutRecord
+import org.dlang.liveimap.window.LayoutRecordProblem
+import org.dlang.liveimap.window.SplitDirection
+import org.dlang.liveimap.window.UnusedPanel
+import org.dlang.liveimap.window.WindowLayerKind
+import org.dlang.liveimap.window.WindowStack
+import org.dlang.liveimap.window.decodeLayoutCatalog
+import org.dlang.liveimap.window.delete
+import org.dlang.liveimap.window.editFactory
+import org.dlang.liveimap.window.encodeLayoutCatalog
+import org.dlang.liveimap.window.factoryLayoutIds
+import org.dlang.liveimap.window.factoryRecord
+import org.dlang.liveimap.window.fill
+import org.dlang.liveimap.window.layoutRecordProblem
+import org.dlang.liveimap.window.offeredIds
+import org.dlang.liveimap.window.resolve
+import org.dlang.liveimap.window.restoreDefaults
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PaneLayoutTest {
-    private fun plan(w: Int, h: Int) = planLayout(w, h, 1f)
+    private val stack = WindowStack.drawer("account")
+        .pushFolderTree("root")
+        .pushMailboxIndex("INBOX")
+        .pushMessage("4", WindowLayerKind.FolderIndex)
 
-    @Test fun roundTrip() {
-        val text = "H0.25(folders,V0.5(list,message))"
-        val node = decodePaneLayout(text)!!
-        assertEquals(text, node.encode())
-        assertEquals(3, node.panelCount())
-        assertNull(decodePaneLayout("H0.5(list"))
-        assertNull(decodePaneLayout("H1.5(list,message)"))
-        assertNull(decodePaneLayout(""))
-    }
-
-    @Test fun rules() {
-        assertEquals(PaneLayoutProblem.NoMessageList, paneLayoutProblem(decodePaneLayout("H0.5(folders,message)")!!))
-        assertEquals(PaneLayoutProblem.Duplicate, paneLayoutProblem(decodePaneLayout("H0.5(list,list)")!!))
-        assertEquals(PaneLayoutProblem.MessageNotBesideList,
-            paneLayoutProblem(decodePaneLayout("H0.5(V0.5(list,folders),V0.5(drawer,message))")!!))
-        assertNull(paneLayoutProblem(decodePaneLayout("H0.5(V0.35(folders,list),message)")!!))
-        assertNull(paneLayoutProblem(decodePaneLayout("V0.4(message,list)")!!))
-    }
-
-    @Test fun autoMatchesThePlanner() {
-        // phone: one pane
-        assertEquals("list", autoPaneLayout(plan(400, 800)).encode())
-        val wide = plan(2560, 1600)
-        val tree = autoPaneLayout(wide)
-        assertEquals(wide.panes, tree.panelCount())
-        if (wide.folders == FolderPlacement.Beside) {
-            assertEquals(PaneContent.Folders, tree.leaves().first())
-            // folders shown: the drawer stays hidden even when a drawer panel is asked for
-            assertEquals(tree, autoPaneLayout(wide, drawerPane = true))
+    @Test
+    fun factoriesRoundTripAndAreTheSameKindAsCustom() {
+        assertEquals(5, factoryLayoutIds.size)
+        for (id in factoryLayoutIds) {
+            val record = factoryRecord(id)!!
+            val catalog = LayoutCatalog(custom = listOf(org.dlang.liveimap.window.CustomLayout("c1", record)))
+            val decoded = decodeLayoutCatalog(encodeLayoutCatalog(catalog))
+            assertEquals(record, decoded.custom.single().record)
+            assertNull(layoutRecordProblem(record))
         }
-        assertNull(paneLayoutProblem(tree))
     }
 
-    @Test fun editing() {
-        var t: PaneNode = PaneNode.Leaf(PaneContent.MessageList)
-        t = t.splitAt(emptyList(), SplitAxis.Horizontal, PaneContent.Message)
-        t = t.splitAt(listOf(0), SplitAxis.Vertical, PaneContent.Folders)
-        assertEquals("H0.5(V0.5(list,folders),message)", t.encode())
-        t = t.setContent(listOf(0, 1), PaneContent.AccountDrawer)
-        assertEquals(listOf(PaneContent.MessageList, PaneContent.AccountDrawer, PaneContent.Message), t.leaves())
-        t = t.removeAt(listOf(0, 1)).withRatio(emptyList(), 0.3f)
-        assertEquals("H0.3(list,message)", t.encode())
-    }
-}
+    @Test
+    fun messageWithTheIndexOffScreenIsValidAndTwoPanelsOfOneLayerAreNot() {
+        val messageOnly = LayoutRecord(
+            LayoutNode.Panel(LayoutPanel("message", WindowLayerKind.Message)),
+            UnusedPanel.Collapse,
+            coverPanels = 0,
+            unpinnedKeep = 0,
+        )
+        assertNull(layoutRecordProblem(messageOnly))
+        val filled = fill(messageOnly, stack)
+        assertEquals(WindowLayerKind.Message, filled.slots.single().layer?.kind)
+        assertTrue(filled.slots.none { it.layer?.kind == WindowLayerKind.FolderIndex })
 
-class DrawerPlanTest {
-    @Test fun drawerPaneOnlyWhenRoomy() {
-        // Boox portrait ~1100x1467 dp: at 1.0 the folder column fits but not a drawer pane too
-        val wide = planLayout(2560, 1600, 1f)
-        assertEquals(true, wide.drawerPane || wide.folders == FolderPlacement.Beside)
-        assertEquals(false, planLayout(1100, 1467, 1.3f).drawerPane)
-        assertEquals(false, planLayout(400, 800, 1f).drawerPane)
-        assertEquals(true, planLayout(1400, 900, 1f).let { it.drawerPane == (it.columns >= 40 + 2 + 60 + 2 + 40 + (if (it.folders == FolderPlacement.Beside) 26 else 0)) })
+        val duplicate = LayoutRecord(
+            LayoutNode.Split(
+                SplitDirection.Beside,
+                0.5f,
+                LayoutNode.Panel(LayoutPanel("a", WindowLayerKind.Message)),
+                LayoutNode.Panel(LayoutPanel("b", WindowLayerKind.Message)),
+            ),
+            UnusedPanel.StayEmpty,
+            coverPanels = 0,
+            unpinnedKeep = 0,
+        )
+        assertEquals(LayoutRecordProblem.DuplicateLayer, layoutRecordProblem(duplicate))
+    }
+
+    @Test
+    fun catalogKeepsCustomRecordsAndOneSelectedId() {
+        val empty = LayoutCatalog()
+        assertEquals(factoryRecord(LayoutAutomatic), empty.resolve())
+        val top = fill(empty.resolve(), stack).slots.single()
+        assertEquals(stack.layers.last(), top.layer)
+        assertEquals(false, top.collapsed)
+
+        val selected = LayoutCatalog(selectedId = LayoutListAboveMessage)
+        assertEquals(factoryRecord(LayoutListAboveMessage), selected.resolve())
+        assertEquals(selected.resolve(), LayoutCatalog(selectedId = LayoutListAboveMessage).resolve())
+
+        val edited = LayoutCatalog().editFactory(LayoutIndexBesideMessage)
+        assertEquals(factoryRecord(LayoutIndexBesideMessage), factoryRecord(LayoutIndexBesideMessage))
+        assertEquals(factoryRecord(LayoutIndexBesideMessage), edited.custom.single().record)
+        assertNotEquals(LayoutIndexBesideMessage, edited.selectedId)
+        assertTrue(LayoutIndexBesideMessage in edited.offeredIds())
+
+        val removed = edited.delete(LayoutIndexBesideMessage)
+        assertEquals("", removed.delete(edited.selectedId).selectedId)
+        val deletedSelected = LayoutCatalog(selectedId = LayoutDrawerPinned).delete(LayoutDrawerPinned)
+        assertEquals("", deletedSelected.selectedId)
+        assertEquals(factoryRecord(LayoutAutomatic), deletedSelected.resolve())
+        assertTrue(LayoutDrawerPinned in deletedSelected.removedFactories)
+
+        val custom = deletedSelected.editFactory(LayoutFolderTreePinned)
+        val restored = custom.restoreDefaults()
+        assertTrue(restored.removedFactories.isEmpty())
+        assertEquals(custom.custom, restored.custom)
+        assertTrue(LayoutDrawerPinned in restored.offeredIds())
+
+        assertEquals(factoryRecord(LayoutAutomatic), LayoutCatalog(selectedId = "missing").resolve())
     }
 }

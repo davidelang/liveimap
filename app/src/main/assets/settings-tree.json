@@ -1690,20 +1690,16 @@
               "header": "label",
               "children": [
                 {
-                  "setting": "customLayout",
+                  "setting": "layoutCatalog",
                   "type": "paneLayout",
                   "default": "",
-                  "title": "Custom panel layout",
-                  "enabledWhen": {
-                    "setting": "multiPane",
-                    "notEquals": "Off"
-                  }
+                  "title": "Custom panel layout"
                 }
               ],
               "summary": [
                 {
                   "when": {
-                    "setting": "customLayout",
+                    "setting": "layoutCatalog",
                     "empty": true
                   },
                   "text": "Automatic (by screen size)"
@@ -1714,88 +1710,10 @@
               ]
             },
             {
-              "setting": "multiPane",
-              "type": "choice",
-              "default": "Auto",
-              "title": "Multi-pane",
-              "choices": [
-                "Off",
-                "Wide",
-                "Auto"
-              ],
-              "choiceTitles": {
-                "Off": "Off",
-                "Wide": "On",
-                "Auto": "Automatic (by screen size)"
-              }
-            },
-            {
-              "setting": "folderPlace",
-              "type": "choice",
-              "default": "Auto",
-              "title": "Folder list pane",
-              "choices": [
-                "Off",
-                "Auto",
-                "Beside",
-                "AboveList"
-              ],
-              "choiceTitles": {
-                "Off": "Off",
-                "Auto": "Automatic (by screen size)",
-                "Beside": "Own column",
-                "AboveList": "Above the list"
-              },
-              "enabledWhen": {
-                "setting": "multiPane",
-                "notEquals": "Off"
-              }
-            },
-            {
-              "setting": "foldPosture",
-              "type": "choice",
-              "default": "Off",
-              "title": "Fold posture",
-              "choices": [
-                "Off",
-                "On",
-                "Auto"
-              ],
-              "choiceTitles": {
-                "Off": "Off",
-                "On": "On",
-                "Auto": "Automatic (by screen size)"
-              },
-              "enabledWhen": {
-                "setting": "multiPane",
-                "notEquals": "Off"
-              }
-            },
-            {
               "setting": "fullScreen",
               "type": "bool",
               "default": false,
               "title": "Full screen"
-            },
-            {
-              "setting": "paneArrangement",
-              "type": "choice",
-              "default": "Auto",
-              "title": "List and message arrangement",
-              "choices": [
-                "Auto",
-                "SideBySide",
-                "Stacked"
-              ],
-              "choiceTitles": {
-                "Auto": "Automatic (by screen size)",
-                "SideBySide": "Side by side",
-                "Stacked": "List above message"
-              },
-              "enabledWhen": {
-                "setting": "multiPane",
-                "notEquals": "Off"
-              }
             },
             {
               "setting": "previewSize",
@@ -1821,7 +1739,7 @@
           "summary": [
             {
               "value": {
-                "choiceTitle": "multiPane"
+                "choiceTitle": "previewSize"
               }
             }
           ]

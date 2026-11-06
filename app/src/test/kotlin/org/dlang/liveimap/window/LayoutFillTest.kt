@@ -12,14 +12,27 @@ class LayoutFillTest {
         .pushMailboxIndex("INBOX")
         .pushMessage("4", WindowLayerKind.FolderIndex)
 
+    private fun record(
+        panels: List<LayoutPanel>,
+        unused: UnusedPanel,
+        coverPanels: Int,
+        unpinnedKeep: Int,
+    ): LayoutRecord {
+        val root = panels.foldRight<LayoutPanel, LayoutNode?>(null) { panel, acc ->
+            val leaf = LayoutNode.Panel(panel)
+            if (acc == null) leaf else LayoutNode.Split(SplitDirection.Beside, 0.5f, leaf, acc)
+        }
+        return LayoutRecord(root, unused, coverPanels, unpinnedKeep)
+    }
+
     @Test
     fun pinKeepsALayerTheUnpinnedOrderWouldDrop() {
-        val record = LayoutRecord(
-            panels = listOf(
+        val record = record(
+            listOf(
                 LayoutPanel("side", WindowLayerKind.Drawer),
                 LayoutPanel("main"),
             ),
-            unused = UnusedPanel.Collapse,
+            UnusedPanel.Collapse,
             coverPanels = 0,
             unpinnedKeep = 1,
         )
@@ -33,7 +46,7 @@ class LayoutFillTest {
     fun unusedPanelCollapsesOrStaysEmpty() {
         val panels = listOf(LayoutPanel("side"), LayoutPanel("main"))
         val collapse = fill(
-            LayoutRecord(panels, UnusedPanel.Collapse, coverPanels = 0, unpinnedKeep = 1),
+            record(panels, UnusedPanel.Collapse, coverPanels = 0, unpinnedKeep = 1),
             stack,
         )
         assertNull(collapse.slots[0].layer)
@@ -41,7 +54,7 @@ class LayoutFillTest {
         assertEquals(WindowLayerKind.Message, collapse.slots[1].layer?.kind)
 
         val empty = fill(
-            LayoutRecord(panels, UnusedPanel.StayEmpty, coverPanels = 0, unpinnedKeep = 1),
+            record(panels, UnusedPanel.StayEmpty, coverPanels = 0, unpinnedKeep = 1),
             stack,
         )
         assertNull(empty.slots[0].layer)
@@ -51,9 +64,9 @@ class LayoutFillTest {
 
     @Test
     fun coveringLayerTakesPanelsFromTheFocusedEnd() {
-        val record = LayoutRecord(
-            panels = listOf(LayoutPanel("a"), LayoutPanel("b"), LayoutPanel("c")),
-            unused = UnusedPanel.StayEmpty,
+        val record = record(
+            listOf(LayoutPanel("a"), LayoutPanel("b"), LayoutPanel("c")),
+            UnusedPanel.StayEmpty,
             coverPanels = 2,
             unpinnedKeep = 3,
         )
@@ -66,12 +79,12 @@ class LayoutFillTest {
 
     @Test
     fun twoPanelsNeverReceiveTheSameLayer() {
-        val record = LayoutRecord(
-            panels = listOf(
+        val record = record(
+            listOf(
                 LayoutPanel("a", WindowLayerKind.Drawer),
                 LayoutPanel("b", WindowLayerKind.Drawer),
             ),
-            unused = UnusedPanel.StayEmpty,
+            UnusedPanel.StayEmpty,
             coverPanels = 0,
             unpinnedKeep = 0,
         )
@@ -88,7 +101,7 @@ class LayoutFillTest {
         val missing = fill(null, stack)
         assertEquals(listOf(FillSlot(listOf("panel"), top, collapsed = false)), missing.slots)
         val empty = fill(
-            LayoutRecord(emptyList(), UnusedPanel.Collapse, coverPanels = 2, unpinnedKeep = 1),
+            record(emptyList(), UnusedPanel.Collapse, coverPanels = 2, unpinnedKeep = 1),
             stack,
         )
         assertEquals(missing, empty)
@@ -125,10 +138,62 @@ class LayoutFillTest {
         assertEquals(WindowLayerKind.FolderIndex, popped.stack.layers.last().kind)
 
         val filled = fill(
-            LayoutRecord(listOf(LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 1),
+            record(listOf(LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 1),
             stack,
         )
-        assertEquals(filled, fill(filled.let { LayoutRecord(listOf(LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 1) }, stack))
+        assertEquals(filled, fill(record(listOf(LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 1), stack))
         assertTrue(filled.slots.none { it.layer == null && it.panelIds.isEmpty() })
+    }
+
+    @Test
+    fun factoriesAreRecordsAndUnusedPanelsCollapse() {
+        val one = factoryRecord(LayoutAutomatic)!!
+        assertEquals(1, one.panels.size)
+        assertEquals(UnusedPanel.Collapse, one.unused)
+        assertEquals(1, one.unpinnedKeep)
+        val beside = factoryRecord(LayoutIndexBesideMessage)!!
+        val above = factoryRecord(LayoutListAboveMessage)!!
+        assertEquals(2, beside.unpinnedKeep)
+        assertEquals(2, above.unpinnedKeep)
+        val besideSplit = beside.root as LayoutNode.Split
+        val aboveSplit = above.root as LayoutNode.Split
+        assertEquals(SplitDirection.Beside, besideSplit.direction)
+        assertEquals(SplitDirection.Above, aboveSplit.direction)
+        assertTrue(besideSplit.share > 0f && besideSplit.share < 1f)
+        assertTrue(aboveSplit.share > 0f && aboveSplit.share < 1f)
+        for (id in listOf(LayoutFolderTreePinned, LayoutDrawerPinned)) {
+            val three = factoryRecord(id)!!
+            assertEquals(3, three.panels.size)
+            assertEquals(2, three.unpinnedKeep)
+            assertEquals(UnusedPanel.Collapse, three.unused)
+            assertEquals(1, three.panels.count { it.pin != null })
+        }
+        assertEquals(WindowLayerKind.FolderTree, factoryRecord(LayoutFolderTreePinned)!!.panels.first().pin)
+        assertEquals(WindowLayerKind.Drawer, factoryRecord(LayoutDrawerPinned)!!.panels.first().pin)
+        val collapsed = fill(beside, WindowStack.drawer("account"))
+        assertTrue(collapsed.slots.any { it.collapsed })
+    }
+
+    @Test
+    fun keysStayOnAPanelThatIsNotTheTopLayer() {
+        val beside = factoryRecord(LayoutIndexBesideMessage)!!
+        val filled = fill(beside, stack)
+        val indexId = beside.panels.first().id
+        val keys = keyPanel(filled, indexId)
+        assertEquals(indexId, keys)
+        assertEquals(WindowLayerKind.FolderIndex, keyLayer(filled, keys)?.kind)
+        assertEquals(WindowLayerKind.Message, stack.layers.last().kind)
+    }
+
+    @Test
+    fun zoomOfAnAlreadyFullPanelDoesNothing() {
+        val current = fill(factoryRecord(LayoutAutomatic), stack)
+        assertNull(zoomTarget(current, stack.layers.last()))
+        val beside = fill(factoryRecord(LayoutIndexBesideMessage), stack)
+        val drawer = stack.layers.first()
+        val zoomed = zoomTarget(beside, drawer)
+        assertEquals(drawer, zoomed?.layer)
+        assertEquals(beside, zoomed?.unzoomed)
+        assertNull(zoomTarget(zoomFill(zoomed!!), drawer))
     }
 }

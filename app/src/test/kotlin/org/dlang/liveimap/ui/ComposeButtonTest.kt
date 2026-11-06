@@ -33,22 +33,13 @@ class ComposeButtonTest {
     }
 
     @Test
-    fun modalDrawerMatchesTheMailSheet() {
-        assertEquals(
-            false,
-            mailUsesModalDrawer(
-                settingsSplit = true,
-                hasCustomTree = false,
-                drawerOutsideMail = false,
-                split = true,
-            ),
-        )
+    fun mailDoesNotUseAModalDrawer() {
         assertEquals(
             false,
             mailUsesModalDrawer(
                 settingsSplit = false,
-                hasCustomTree = true,
-                drawerOutsideMail = true,
+                hasCustomTree = false,
+                drawerOutsideMail = false,
                 split = false,
             ),
         )
@@ -56,27 +47,9 @@ class ComposeButtonTest {
             false,
             mailUsesModalDrawer(
                 settingsSplit = false,
-                hasCustomTree = false,
-                drawerOutsideMail = false,
-                split = true,
-            ),
-        )
-        assertEquals(
-            true,
-            mailUsesModalDrawer(
-                settingsSplit = false,
                 hasCustomTree = true,
                 drawerOutsideMail = false,
                 split = true,
-            ),
-        )
-        assertEquals(
-            true,
-            mailUsesModalDrawer(
-                settingsSplit = false,
-                hasCustomTree = false,
-                drawerOutsideMail = false,
-                split = false,
             ),
         )
     }

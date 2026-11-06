@@ -416,11 +416,6 @@ _CHOICE_NAME = {
     ("dsnMode", "Off"): "settings_dsn_off",
     ("compression", "Off"): "settings_compression_off",
     ("compression", "On"): "settings_compression_on",
-    ("multiPane", "Off"): "settings_multi_pane_off",
-    ("multiPane", "Wide"): "settings_multi_pane_wide",
-    ("folderPlace", "Off"): "settings_multi_pane_off",
-    ("foldPosture", "Off"): "settings_multi_pane_off",
-    ("foldPosture", "On"): "settings_multi_pane_wide",
 }
 
 _SUMMARY_NAME = {
@@ -1294,7 +1289,7 @@ def emit(doc, kt_root, tree_bytes, tree_path):
             lines.append("    const val %s: Long = %sL" % (key, int(default)))
         elif stored == "Boolean" and isinstance(default, bool):
             lines.append("    const val %s: Boolean = %s" % (key, "true" if default else "false"))
-        elif key in ("tlsMode", "multiPane", "folderPane", "paneArrangement", "previewSize", "folderPosition"):
+        elif key in ("tlsMode", "previewSize"):
             lines.append("    const val %s: String = %s" % (key, kt_string(default)))
     extra_max = by_key["extraIdleBudget"].get("max", 8)
     lines.append("    const val extraIdleBudgetMax: Int = %s" % int(extra_max))
@@ -1325,11 +1320,7 @@ ENUM_CLASS = {
     "theme": "ThemeMode",
     "density": "Density",
     "dateFormat": "DateFormat",
-    "multiPane": "MultiPane",
-    "foldPosture": "LayoutChoice",
-    "paneArrangement": "ArrangementChoice",
     "previewSize": "PreviewChoice",
-    "folderPlace": "FolderPlace",
     "clientSortCollation": "ClientSortCollation",
 }
 
@@ -1351,7 +1342,6 @@ TYPE_OVERRIDE = {
     "altAddresses": "List<String>",
     "watchedFolders": "List<String>",
     "sendingRules": "String",
-    "customLayout": "String",
     "indexBar": "IndexBarLayout",
     "selectionBar": "SelectionBarLayout",
     "folderBar": "FolderBarLayout",
@@ -1362,14 +1352,11 @@ TYPE_OVERRIDE = {
 # Readers that are not the type's ordinary decode. The id still comes from the JSON leaf.
 DECODE_READER = {
     "authMechanism": "jsonString(it).trim().uppercase()",
-    "customLayout": "jsonString(it).takeIf { decodePaneLayout(it) != null }.orEmpty()",
     "sievePort": "parseSievePort(jsonLong(it).toString())",
 }
 
 SETTINGS_DEFAULT_ENUM = {
     "tlsMode",
-    "multiPane",
-    "paneArrangement",
     "previewSize",
 }
 

@@ -226,41 +226,8 @@ fun favoriteLabel(node: Boolean, mailbox: String, delimiter: Char): String {
 
 const val pineSourceId: String = "pine"
 
-/** Auto: chosen from the screen's size in dp and inches ([classifyScreen]); the default for new accounts. */
-enum class MultiPane {
-    Off,
-    Wide,
-    Auto,
-}
-
-enum class LayoutChoice {
-    Off,
-    On,
-    /** Folder pane only: shown when [classifyScreen] gives three panes. Elsewhere it counts as Off. */
-    Auto,
-}
-
-enum class ArrangementChoice { Auto, SideBySide, Stacked }
-
 /** Density = preview lines follow the Density setting (stored accounts); Auto = from [planLayout]. */
 enum class PreviewChoice { Auto, Density, None, Small, Large }
-
-enum class FolderPositionChoice { Auto, Beside, AboveList }
-
-/** Off, Auto, Beside, or Above the list. Replaces the separate pane and position settings. */
-enum class FolderPlace { Off, Auto, Beside, AboveList }
-
-fun layoutChoiceOf(place: FolderPlace): LayoutChoice = when (place) {
-    FolderPlace.Off -> LayoutChoice.Off
-    FolderPlace.Auto -> LayoutChoice.Auto
-    FolderPlace.Beside, FolderPlace.AboveList -> LayoutChoice.On
-}
-
-fun positionOf(place: FolderPlace): FolderPositionChoice = when (place) {
-    FolderPlace.AboveList -> FolderPositionChoice.AboveList
-    FolderPlace.Beside -> FolderPositionChoice.Beside
-    FolderPlace.Off, FolderPlace.Auto -> FolderPositionChoice.Auto
-}
 
 /** Anti-phishing display of non-ASCII in folder names, From and subjects (see ui/NonAsciiText). */
 enum class NonAsciiDisplay { Normal, HighlightSuspicious, HighlightAll, Warn, Escape }

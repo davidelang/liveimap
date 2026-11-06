@@ -4199,3 +4199,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Mail stack next window
 
 - Next and previous load the sort window that holds the neighbor, including a hole between loaded windows, instead of stepping onto an unknown uid.
+
+## 2026-11-06 - Layout records on the window
+
+- The pane menu is gone. Every layout is one record, factory or custom, and the window fills the mail stack through that record. Automatic is the single-panel factory. Zoom is layout state and does not change the stack or the stored shares. First action per standard-plan-compliance-block.md; commits stay on master.

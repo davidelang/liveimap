@@ -26,7 +26,7 @@ class SettingsOneLeafTest {
         val read = { _: String -> "" }
         fun shown(id: String, sdk: Int) = leafShownInstead(groups.first { it.id == id }, read, sdk)?.setting
         assertEquals("replyAboveQuote", shown("replying", 30))
-        assertEquals("customLayout", shown("custom_panel_layout", 30))
+        assertEquals("layoutCatalog", shown("custom_panel_layout", 30))
         assertEquals("favorites", shown("favorites", 30))
         assertEquals("theme", shown("theme", 30))
         assertNull(shown("theme", 31))

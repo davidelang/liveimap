@@ -3,17 +3,6 @@ import org.dlang.liveimap.i18n.S
 import org.dlang.liveimap.settings.SettingsTreeGenerated
 
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.snapshots.SnapshotStateMap
-import org.dlang.liveimap.settings.PaneContent
-import org.dlang.liveimap.settings.PaneNode
-import org.dlang.liveimap.settings.SplitAxis
-import org.dlang.liveimap.settings.decodePaneLayout
-import org.dlang.liveimap.settings.leaves
-import org.dlang.liveimap.settings.listSide
-import org.dlang.liveimap.settings.mailNode
-import org.dlang.liveimap.settings.mailSplit
-import org.dlang.liveimap.settings.messageFirst
-import org.dlang.liveimap.settings.paneLayoutProblem
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -42,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -53,7 +43,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -61,18 +50,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import org.dlang.liveimap.ui.TextButton
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
 import org.dlang.liveimap.settings.UnsavedEdits
 import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -82,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,7 +98,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import kotlin.math.roundToInt
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -130,17 +115,12 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.session.setMailCertConfirmer
 import org.dlang.liveimap.session.setMailPlaintextConfirmer
 import org.dlang.liveimap.settings.AccountChoice
-import org.dlang.liveimap.settings.planLayout
-import org.dlang.liveimap.settings.PaneArrangement
-import org.dlang.liveimap.settings.ArrangementChoice
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.editors.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.editors.FolderStartsScreen
 import org.dlang.liveimap.settings.editors.FolderViewsScreen
-import org.dlang.liveimap.settings.LayoutChoice
-import org.dlang.liveimap.settings.MultiPane
 import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.settings.SettingsTree
 import org.dlang.liveimap.settings.LoadCheckDialog
@@ -162,12 +142,31 @@ import org.dlang.liveimap.ui.index.IndexMarks
 import org.dlang.liveimap.ui.index.MessageIndexScreen
 import org.dlang.liveimap.ui.index.OpenMessageOrder
 import org.dlang.liveimap.ui.index.SearchScope
+import org.dlang.liveimap.window.FillResult
+import org.dlang.liveimap.window.LayoutRecord
+import org.dlang.liveimap.window.WindowLayer
 import org.dlang.liveimap.window.WindowLayerKind
 import org.dlang.liveimap.window.WindowStack
+import org.dlang.liveimap.window.ZoomState
+import org.dlang.liveimap.window.back
+import org.dlang.liveimap.window.decodeLayoutCatalog
+import org.dlang.liveimap.window.fill
+import org.dlang.liveimap.window.resolve
+import org.dlang.liveimap.window.keyPanel
+import org.dlang.liveimap.window.zoomFill
+import org.dlang.liveimap.window.zoomTarget
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
 import org.dlang.liveimap.ui.toolbar.ToolbarScreen
+
+private data class OpenedMessage(
+    val mailbox: String,
+    val uid: Long,
+    val sequence: Int,
+    val uidValidity: Long,
+    val markKey: String,
+)
 
 private class PendingCert(
     val prompt: CertPrompt,
@@ -239,16 +238,13 @@ internal fun composeButton(route: String, accounts: Set<String>): ComposeButton 
 
 internal enum class ComposeFabLayer { Hidden, UnderDrawer, Overlay }
 
+/** The mail window zooms the drawer. It does not use a modal drawer. */
 internal fun mailUsesModalDrawer(
     settingsSplit: Boolean,
     hasCustomTree: Boolean,
     drawerOutsideMail: Boolean,
     split: Boolean,
-): Boolean {
-    if (settingsSplit) return false
-    if (hasCustomTree) return !drawerOutsideMail
-    return !split
-}
+): Boolean = false
 
 internal fun composeFabLayer(choice: ComposeButton, modalDrawer: Boolean): ComposeFabLayer {
     if (choice == ComposeButton.Hidden) return ComposeFabLayer.Hidden
@@ -293,48 +289,12 @@ fun LiveImapNavHost() {
 @Composable
 private fun LiveImapNavHostReady() {
     LoadCheckDialog()
-    var multiPane by remember { mutableStateOf(MultiPane.Off) }
-    // Custom panel layout (null = Auto); design-decisions.md "Custom panel layout".
-    var customTree by remember { mutableStateOf<PaneNode?>(null) }
-    var layoutProblem by remember { mutableStateOf<String?>(null) }
+    var layoutCatalogText by remember { mutableStateOf("") }
     var layoutAccountId by remember { mutableStateOf("") }
     val treeDp = remember { mutableStateMapOf<String, Float>() }
-    val drawerPaneSlot = remember { mutableStateOf<(@Composable () -> Unit)?>(null) }
-    var folderPane by remember { mutableStateOf(LayoutChoice.Off) }
-    var foldPosture by remember { mutableStateOf(LayoutChoice.Off) }
-    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    var arrangement by remember { mutableStateOf(ArrangementChoice.SideBySide) }
-    val autoLayout = planLayout(
-        configuration.screenWidthDp,
-        configuration.screenHeightDp,
-        androidx.compose.ui.platform.LocalDensity.current.fontScale,
-    )
-    // Folders above the list (left column) is planned but not rendered yet; that plan uses two panes for now.
-    val autoPanes = if (autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.Beside) 3 else minOf(autoLayout.panes, 2)
-    var folderPosition by remember { mutableStateOf(org.dlang.liveimap.settings.FolderPositionChoice.Beside) }
-    val foldersAbove = customTree == null && useFolderPane(folderPane, 3) &&
-        (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.AboveList ||
-            (folderPosition == org.dlang.liveimap.settings.FolderPositionChoice.Auto &&
-                autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)) &&
-        (folderPane != LayoutChoice.Auto || autoLayout.folders == org.dlang.liveimap.settings.FolderPlacement.AboveList)
-    val stackedNow = arrangement == ArrangementChoice.Stacked ||
-        (arrangement == ArrangementChoice.Auto && autoLayout.arrangement == PaneArrangement.Stacked)
-    val customMail = customTree?.let { mailSplit(it) }
-    val customMailNow = rememberUpdatedState(customMail)
-    // A drawer panel inside the list/message part shows only on the index; elsewhere the modal drawer stays.
-    val drawerOutsideMail = customTree?.let { tree ->
-        PaneContent.AccountDrawer in tree.leaves() && PaneContent.AccountDrawer !in mailNode(tree).leaves()
-    } == true
-    val split = if (customTree != null) customMail != null else useMultiPane(multiPane, autoPanes)
-    val splitNow = rememberUpdatedState(split)
-    val hinges = currentWindowAdaptiveInfo().windowPosture.hingeList
-    val axis = customMail?.let { if (it.axis == SplitAxis.Horizontal) PaneAxis.SideBySide else PaneAxis.TopBottom } ?: paneAxis(
-        foldOn = useFoldPosture(foldPosture),
-        autoTopBottom = stackedNow,
-        hingeVertical = hinges.firstOrNull()?.isVertical == true,
-        hingePresent = hinges.isNotEmpty(),
-    )
-    val axisNow = rememberUpdatedState(axis)
+    var zoom by remember { mutableStateOf<ZoomState?>(null) }
+    var keyPanelId by remember { mutableStateOf<String?>(null) }
+    var openedMessage by remember { mutableStateOf<OpenedMessage?>(null) }
     val uiContext = LocalContext.current
     val appContext = uiContext.applicationContext
     val store = remember { DataStoreSettingsStore(appContext) }
@@ -385,15 +345,19 @@ private fun LiveImapNavHostReady() {
     }
     val navController = rememberNavController()
     var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    // Back with the drawer open closes it (it used to leave the app).
-    androidx.activity.compose.BackHandler(enabled = drawerState.isOpen || drawerState.targetValue == DrawerValue.Open) {
-        scope.launch { drawerState.close() }
+    fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve()
+    fun currentFill(): FillResult {
+        val base = fill(currentRecord(), mailStack)
+        val active = zoom
+        return if (active == null) base else zoomFill(active)
+    }
+    fun zoomLayer(layer: WindowLayer) {
+        val next = zoomTarget(currentFill(), layer)
+        if (next != null) zoom = next
     }
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
-    val drawerGestures = route == "folders"
     var header by remember { mutableStateOf("") }
     var accounts by remember { mutableStateOf<List<AccountChoice>>(emptyList()) }
     var drawerAccounts by remember { mutableStateOf<List<DrawerAccount>>(emptyList()) }
@@ -424,38 +388,14 @@ private fun LiveImapNavHostReady() {
     var editingAccountId by remember { mutableStateOf<String?>(null) }
     var editingFavorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var editingWhere by remember { mutableStateOf(FavoriteWhere("", "", "")) }
-    val availableDpState = remember { mutableIntStateOf(0) }
-    var readerOpen by remember { mutableStateOf(false) }
-    var userSized by rememberSaveable { mutableStateOf(false) }
-    var drawerWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
-    var indexWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
-    var folderWidthDp by rememberSaveable { mutableFloatStateOf(unsetPaneDp) }
-    val folderColumn = customTree == null && !(foldersAbove && split) && showFolderPane(folderPane, route, autoPanes)
-    // Hidden (openable) drawer when the folder column shows, or when Auto finds no room for a drawer pane.
-    val drawerHidden = drawerHiddenFor(folderColumn, route, multiPane, autoLayout.drawerPane)
-    val folderColumnNow = rememberUpdatedState(drawerHidden)
-    LaunchedEffect(drawerHidden, split) {
-        val available = availableDpState.intValue
-        if (split && !userSized && available > 0) {
-            drawerWidthDp = initialDrawerDp(available, readerOpen, drawerHidden).toFloat()
-        }
+    val openDrawerState = rememberUpdatedState<(() -> Unit)?>({
+        zoomLayer(mailStack.layers.first())
+    })
+    val displayFill = currentFill()
+    val activeKey = keyPanel(displayFill, keyPanelId)
+    SideEffect {
+        if (activeKey != keyPanelId) keyPanelId = activeKey
     }
-    val openDrawerState = rememberUpdatedState<(() -> Unit)?>(
-        if (drawerOutsideMail) {
-            null
-        } else if (!split || customTree != null) {
-            { scope.launch { drawerState.open() } }
-        } else if (drawerWidthDp >= 0f && drawerWidthDp <= 0f) {
-            {
-                val available = availableDpState.intValue
-                if (available > 0) {
-                    drawerWidthDp = minOf(360, available).toFloat()
-                }
-            }
-        } else {
-            null
-        },
-    )
 
     suspend fun applyRunningLayout() {
         val account = try {
@@ -463,28 +403,12 @@ private fun LiveImapNavHostReady() {
         } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
             return
         }
-        multiPane = account.multiPane
-        val decoded = decodePaneLayout(account.customLayout)
-        val problem = decoded?.let { paneLayoutProblem(it) }
-        customTree = if (problem == null) decoded else null
-        layoutProblem = if (problem == null) {
-            null
-        } else {
-            S(
-                appContext,
-                "This layout can't be shown: %1\$s",
-                when (problem) {
-                    org.dlang.liveimap.settings.PaneLayoutProblem.NoMessageList -> S(appContext, "The layout needs a message list. Not saved yet.")
-                    org.dlang.liveimap.settings.PaneLayoutProblem.Duplicate -> S(appContext, "Each panel type can appear only once. Not saved yet.")
-                    org.dlang.liveimap.settings.PaneLayoutProblem.MessageNotBesideList -> S(appContext, "The message panel must share a split with the message list. Not saved yet.")
-                },
-            )
+        val next = account.layoutCatalog
+        if (next != layoutCatalogText) {
+            layoutCatalogText = next
+            zoom = null
+            treeDp.clear()
         }
-        treeDp.clear()
-        folderPane = org.dlang.liveimap.settings.layoutChoiceOf(account.folderPlace)
-        foldPosture = account.foldPosture
-        arrangement = account.paneArrangement
-        folderPosition = org.dlang.liveimap.settings.positionOf(account.folderPlace)
         LayoutApply.noteFullScreen()
     }
 
@@ -497,9 +421,9 @@ private fun LiveImapNavHostReady() {
             header = ""
             val showing = navController.currentBackStackEntry?.destination?.route
             if (openDrawerOnNoAccount(showing, accounts)) {
-                drawerState.open()
-            } else if (accounts.isNotEmpty()) {
-                drawerState.close()
+                zoomLayer(mailStack.layers.first())
+            } else {
+                zoom = null
             }
             return
         }
@@ -523,7 +447,7 @@ private fun LiveImapNavHostReady() {
         accounts = store.listAccounts()
     }
 
-    LaunchedEffect(route, drawerState.currentValue) {
+    LaunchedEffect(route) {
         applyOpenAccount()
     }
 
@@ -563,22 +487,6 @@ private fun LiveImapNavHostReady() {
                 }
             }
         }
-    }
-
-    LaunchedEffect(split, route, currentEntry?.id) {
-        if (!foldReaderIntoIndex(split, route)) return@LaunchedEffect
-        val reader = navController.currentBackStackEntry ?: return@LaunchedEffect
-        val previous = navController.previousBackStackEntry ?: return@LaunchedEffect
-        if (previous.destination.route != "index/{mailbox}") return@LaunchedEffect
-        val readerArgs = reader.arguments ?: return@LaunchedEffect
-        val previousArgs = previous.arguments ?: return@LaunchedEffect
-        val readerMailbox = readerArgs.getString("mailbox") ?: return@LaunchedEffect
-        val indexMailbox = previousArgs.getString("mailbox") ?: return@LaunchedEffect
-        if (readerMailbox != indexMailbox) return@LaunchedEffect
-        previous.savedStateHandle["paneUid"] = readerArgs.getLong("uid")
-        previous.savedStateHandle["paneSequence"] = readerArgs.getInt("sequence")
-        previous.savedStateHandle["paneEpoch"] = readerArgs.getLong("epoch")
-        navController.popBackStack()
     }
 
     fun openFilterEditor(
@@ -643,16 +551,44 @@ private fun LiveImapNavHostReady() {
         }
     }
 
-    /** Back pops one mail layer. A tree that is not already under this entry is shown in its place. */
+    fun dialogOpen(): Boolean =
+        certPrompt.value != null || plaintextPrompt.value != null || editingFavorite != null
+
+    fun dismissOpenDialog() {
+        val cert = certPrompt.value
+        if (cert != null) {
+            cert.resume(false)
+            return
+        }
+        val plain = plaintextPrompt.value
+        if (plain != null) {
+            plain(false)
+            return
+        }
+        editingFavorite = null
+    }
+
+    /**
+     * Back dismisses a dialog, then leaves zoom, then pops the top mail layer.
+     * A tree that is not already under this entry is shown in its place.
+     */
     fun leaveLayer(failure: String? = null) {
         if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
+        val step = back(dialogOpen(), zoom, mailStack)
+        if (step.dismissedDialog) {
+            dismissOpenDialog()
+            return
+        }
+        if (zoom != null) {
+            zoom = null
+            return
+        }
         if (mailStack.layers.size == 1) {
             popMailDestination()
             return
         }
-        val popped = mailStack.pop()
-        mailStack = popped
-        val showTree = popped.layers.last().kind == WindowLayerKind.FolderTree &&
+        mailStack = step.stack
+        val showTree = step.stack.layers.last().kind == WindowLayerKind.FolderTree &&
             navController.previousBackStackEntry?.destination?.route != "folders"
         if (showTree) {
             val currentId = navController.currentBackStackEntry?.destination?.id ?: return
@@ -661,6 +597,25 @@ private fun LiveImapNavHostReady() {
             }
         } else {
             popMailDestination()
+        }
+    }
+
+    fun placeMessage(ref: MessageRef, sequence: Int, from: WindowLayerKind, mailboxFallback: String, markKey: String) {
+        if (mailStack.layers.any { it.kind == from }) {
+            mailStack = mailStack.pushMessage(ref.uid.toString(), from)
+        }
+        val target = ref.mailbox.ifEmpty { mailboxFallback }
+        openedMessage = OpenedMessage(target, ref.uid, sequence, ref.uidValidity, markKey)
+        zoom = null
+        val kinds = fill(currentRecord(), mailStack).slots.filter { !it.collapsed }.mapNotNull { it.layer?.kind }.toSet()
+        if (WindowLayerKind.Message in kinds && from in kinds) {
+            if (navController.currentDestination?.route == ReaderRoutePattern) navController.popBackStack()
+            return
+        }
+        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity)) {
+            if (navController.currentDestination?.route == ReaderRoutePattern) {
+                popUpTo(ReaderRoutePattern) { inclusive = true }
+            }
         }
     }
 
@@ -688,7 +643,9 @@ private fun LiveImapNavHostReady() {
                         onOpenDrawer = openDrawerState.value,
                     )
     }
-    val foldersAboveNow = rememberUpdatedState(foldersAbove)
+    androidx.activity.compose.BackHandler(enabled = zoom != null) {
+        leaveLayer()
+    }
     val navGraph: NavGraphBuilder.() -> Unit = remember {
         {
             composable("folders") {
@@ -717,70 +674,11 @@ private fun LiveImapNavHostReady() {
             ) { entry ->
                 val encoded = entry.arguments?.getString("mailbox") ?: return@composable
                 val mailbox = encoded // F73: Navigation already percent-decoded the path argument
-                val useSplit = splitNow.value
-                val useAxis = axisNow.value
-                var paneUid by rememberSaveable { mutableStateOf(-1L) }
-                var paneMailbox by rememberSaveable { mutableStateOf("") }
-                var paneSequence by rememberSaveable { mutableIntStateOf(0) }
-                // F105: the opened row's folder UIDVALIDITY as listed; the reader acts only in that epoch.
-                var paneEpoch by rememberSaveable { mutableStateOf(0L) }
-                var contentSpan by remember { mutableFloatStateOf(0f) }
-                val folderViewToken by entry.savedStateHandle
-                    .getStateFlow("folderViewToken", 0)
-                    .collectAsState()
-                var shownViewToken by remember {
-                    mutableIntStateOf(entry.savedStateHandle.get<Int>("folderViewToken") ?: 0)
-                }
-                LaunchedEffect(folderViewToken, paneUid) {
-                    if (paneUid < 0L) shownViewToken = folderViewToken
-                }
-                fun noteFolderView() {
-                    val next = (entry.savedStateHandle.get<Int>("folderViewToken") ?: 0) + 1
-                    entry.savedStateHandle["folderViewToken"] = next
-                }
                 LaunchedEffect(entry) {
                     val handle = entry.savedStateHandle
-                    if (handle.remove<Boolean>("closePane") == true) paneUid = -1L
-                    if (!handle.contains("paneUid")) return@LaunchedEffect
-                    val foldedUid = handle.remove<Long>("paneUid")
-                    val foldedSequence = handle.remove<Int>("paneSequence") ?: 0
-                    val foldedEpoch = handle.remove<Long>("paneEpoch") ?: 0L
-                    if (foldedUid == null) return@LaunchedEffect
-                    paneSequence = foldedSequence
-                    paneEpoch = foldedEpoch
-                    paneUid = foldedUid
-                }
-                LaunchedEffect(useSplit, paneUid, paneSequence) {
-                    if (!useSplit && paneUid >= 0L) {
-                        val uid = paneUid
-                        val sequence = paneSequence
-                        paneUid = -1L
-                        navController.navigate(readerRoute(mailbox, uid, sequence, paneEpoch))
-                    }
-                }
-                LaunchedEffect(useSplit, paneUid, availableDpState.intValue) {
-                    if (!useSplit) {
-                        readerOpen = false
-                        return@LaunchedEffect
-                    }
-                    val open = paneUid >= 0L
-                    readerOpen = open
-                    val available = availableDpState.intValue
-                    if (userSized || available <= 0) return@LaunchedEffect
-                    drawerWidthDp = initialDrawerDp(available, open, folderColumnNow.value).toFloat()
-                }
-                DisposableEffect(Unit) {
-                    onDispose {
-                        readerOpen = false
-                        val available = availableDpState.intValue
-                        if (!userSized && available > 0) {
-                            drawerWidthDp = initialDrawerDp(available, false, folderColumnNow.value).toFloat()
-                        }
-                    }
-                }
-                LaunchedEffect(useSplit, paneUid, contentSpan, userSized) {
-                    if (useSplit && paneUid >= 0L && !userSized && contentSpan > 8f) {
-                        indexWidthDp = (contentSpan - 8f) * (customMailNow.value?.ratio?.coerceIn(0.1f, 0.9f) ?: autoLayout.listShare.coerceIn(0.2f, 0.8f))
+                    if (handle.remove<Boolean>("closePane") == true) {
+                        closeMessageLayer()
+                        openedMessage = null
                     }
                 }
                 val advancedQuery by entry.savedStateHandle
@@ -792,46 +690,32 @@ private fun LiveImapNavHostReady() {
                 val advancedScope = searchScopeOrCurrent(advancedScopeName)
                 val markKey = "index:$mailbox"
                 SideEffect { entry.savedStateHandle["markKey"] = markKey }
-                fun openAdvanced() {
-                    navController.navigate("search/${Uri.encode(mailbox)}")
-                }
-                fun consumeAdvanced() {
-                    entry.savedStateHandle.remove<String>("advancedQuery")
-                    entry.savedStateHandle.remove<String>("advancedScope")
-                }
-                fun openMessage(ref: MessageRef, sequence: Int) {
-                    if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
-                        mailStack = mailStack.pushMessage(ref.uid.toString(), WindowLayerKind.FolderIndex)
-                    }
-                    val target = ref.mailbox.ifEmpty { mailbox }
-                    if (useSplit && target == mailbox) {
-                        paneMailbox = target
-                        paneUid = ref.uid
-                        paneSequence = sequence
-                        paneEpoch = ref.uidValidity
-                    } else {
-                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity)) {
-                            if (navController.currentDestination?.route == ReaderRoutePattern) {
-                                popUpTo(ReaderRoutePattern) { inclusive = true }
-                            }
-                        }
-                    }
+                val folderViewToken by entry.savedStateHandle
+                    .getStateFlow("folderViewToken", 0)
+                    .collectAsState()
+                val messageShown = currentFill().slots.any { slot ->
+                    !slot.collapsed && slot.layer?.kind == WindowLayerKind.Message
                 }
                 @Composable
                 fun IndexBody(viewKey: Int, watch: Boolean) {
                     key(viewKey) {
                         MessageIndexScreen(
                             mailbox = mailbox,
-                            onOpen = { ref, sequence -> openMessage(ref, sequence) },
+                            onOpen = { ref, sequence ->
+                                placeMessage(ref, sequence, WindowLayerKind.FolderIndex, mailbox, markKey)
+                            },
                             onCompose = { seed -> openCompose(seed) },
                             onBack = { failure -> leaveLayer(failure) },
                             onCustomize = { openToolbar("index") },
                             onCustomizeSelection = { openToolbar("selection") },
                             watchMailbox = watch,
-                            onAdvanced = { openAdvanced() },
+                            onAdvanced = { navController.navigate("search/${Uri.encode(mailbox)}") },
                             advancedQuery = advancedQuery.ifEmpty { null },
                             advancedScope = advancedScope,
-                            onAdvancedConsumed = { consumeAdvanced() },
+                            onAdvancedConsumed = {
+                                entry.savedStateHandle.remove<String>("advancedQuery")
+                                entry.savedStateHandle.remove<String>("advancedScope")
+                            },
                             onOpenFolder = { name ->
                                 mailStack = folderFromTree(mailStack, name)
                                 navController.navigate("index/${Uri.encode(name)}") {
@@ -840,105 +724,15 @@ private fun LiveImapNavHostReady() {
                             },
                             markKey = markKey,
                             reloadToken = viewKey,
-                            messageOpen = useSplit && paneUid >= 0L,
+                            messageOpen = messageShown,
                             onCloseMessage = {
-                                paneUid = -1L
                                 closeMessageLayer()
+                                openedMessage = null
                             },
                         )
                     }
                 }
-                @Composable
-                fun ListSide(viewKey: Int, watch: Boolean) {
-                    val cm = customMailNow.value
-                    if (cm == null) {
-                        IndexBody(viewKey, watch)
-                    } else {
-                        PaneTree(cm.listSide(), "L", treeDp, null, {}) { content ->
-                            when (content) {
-                                PaneContent.MessageList -> IndexBody(viewKey, watch)
-                                PaneContent.Folders -> folderListPane()
-                                PaneContent.AccountDrawer -> drawerPaneSlot.value?.invoke()
-                                PaneContent.Message -> Unit
-                            }
-                        }
-                    }
-                }
-                if (!useSplit) {
-                    IndexBody(folderViewToken, watch = true)
-                } else if (paneUid < 0L) {
-                    ListSide(shownViewToken, watch = true)
-                } else {
-                    val listLeading: @Composable () -> Unit = {
-                            if (foldersAboveNow.value) {
-                                Column(Modifier.fillMaxSize()) {
-                                    Box(Modifier.weight(0.35f).fillMaxWidth()) {
-                                        folderListPane()
-                                    }
-                                    Box(Modifier.height(8.dp).fillMaxWidth().background(MaterialTheme.colorScheme.outlineVariant))
-                                    Box(Modifier.weight(0.65f).fillMaxWidth()) { IndexBody(shownViewToken, watch = false) }
-                                }
-                            } else {
-                                ListSide(shownViewToken, watch = false)
-                            }
-                        
-                    }
-                    val readerSide: @Composable () -> Unit = {
-                            key(paneMailbox, paneUid, paneEpoch) {
-                                MessageReaderScreen(
-                                    mailbox = paneMailbox.ifEmpty { mailbox },
-                                    uid = paneUid,
-                                    sequence = paneSequence,
-                                    uidValidity = paneEpoch,
-                                    onCompose = { seed -> openCompose(seed) },
-                                    onAdvance = { next, nextSequence ->
-                                        paneMailbox = next.mailbox.ifEmpty { paneMailbox.ifEmpty { mailbox } }
-                                        paneUid = next.uid
-                                        paneSequence = nextSequence
-                                        paneEpoch = next.uidValidity
-                                        if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
-                                            mailStack = mailStack.pushMessage(next.uid.toString(), WindowLayerKind.FolderIndex)
-                                        }
-                                        IndexMarks.publish(markKey, next.uid, true)
-                                    },
-                                    onBack = {
-                                        paneUid = -1L
-                                        closeMessageLayer()
-                                    },
-                                    onMark = { uid -> IndexMarks.publish(markKey, uid, true) },
-                                    onFolderViewSaved = { noteFolderView() },
-                                    onCustomize = { openToolbar("reader") },
-                                    onFilterLike = { from, to, listId, subject, accountId ->
-                                        openFilterEditor(-1, from, to, listId, subject, accountId, "")
-                                    },
-                                )
-                            }
-                    }
-                    AxisSplit(
-                        axis = useAxis,
-                        leadingDp = indexWidthDp,
-                        fallback = { span -> ((span - 8f) / 2f).coerceAtLeast(0f) },
-                        onSpan = { contentSpan = it },
-                        onDrag = { delta, span ->
-                            userSized = true
-                            val max = (span - 8f).coerceAtLeast(0f)
-                            val base = if (indexWidthDp < 0f) (span - 8f) / 2f else indexWidthDp
-                            val next = base.coerceIn(0f, max) + delta
-                            if (next + 8f >= span) {
-                                paneUid = -1L
-                                closeMessageLayer()
-                            } else {
-                                indexWidthDp = next.coerceAtLeast(0f)
-                            }
-                        },
-                        leading = {
-                            if (customMailNow.value?.messageFirst() == true) readerSide() else listLeading()
-                        },
-                        trailing = {
-                            if (customMailNow.value?.messageFirst() == true) listLeading() else readerSide()
-                        },
-                    )
-                }
+                IndexBody(folderViewToken, watch = true)
             }
             composable(
                 route = "search/{mailbox}",
@@ -1022,15 +816,10 @@ private fun LiveImapNavHostReady() {
                 MessageIndexScreen(
                     mailbox = mailbox,
                     onOpen = { ref, sequence ->
-                        if (mailStack.layers.any { it.kind == WindowLayerKind.SearchIndex }) {
-                            mailStack = mailStack.pushMessage(ref.uid.toString(), WindowLayerKind.SearchIndex)
-                        }
-                        val target = ref.mailbox.ifEmpty { mailbox }
-                        navController.navigate(readerRoute(target, ref.uid, sequence, ref.uidValidity)) {
-                            if (navController.currentDestination?.route == ReaderRoutePattern) {
-                                popUpTo(ReaderRoutePattern) { inclusive = true }
-                            }
-                        }
+                        placeMessage(ref, sequence, WindowLayerKind.SearchIndex, mailbox, markKey)
+                    },
+                    messageOpen = currentFill().slots.any { slot ->
+                        !slot.collapsed && slot.layer?.kind == WindowLayerKind.Message
                     },
                     onCompose = { seed -> openCompose(seed) },
                     onBack = { failure -> leaveLayer(failure) },
@@ -1041,7 +830,10 @@ private fun LiveImapNavHostReady() {
                     advancedScope = searchScopeOrCurrent(scopeName),
                     onAdvancedConsumed = { armed = "" },
                     markKey = markKey,
-                    onCloseMessage = { closeMessageLayer() },
+                    onCloseMessage = {
+                        closeMessageLayer()
+                        openedMessage = null
+                    },
                 )
             }
             composable(
@@ -1067,18 +859,15 @@ private fun LiveImapNavHostReady() {
                     uidValidity = args.getLong("epoch"),
                     onCompose = { seed -> openCompose(seed) },
                     onAdvance = { next, nextSequence ->
-                        pushMessageLayer(next.uid)
+                        val mark = entry.savedStateHandle.get<String>("markKey") ?: "index:$mailbox"
+                        placeMessage(
+                            next,
+                            nextSequence,
+                            messageSource(mailStack),
+                            next.mailbox.ifEmpty { mailbox },
+                            mark,
+                        )
                         publishMark(next.uid, true)
-                        navController.navigate(
-                            readerRoute(
-                                next.mailbox.ifEmpty { mailbox },
-                                next.uid,
-                                nextSequence,
-                                next.uidValidity,
-                            ),
-                        ) {
-                            popUpTo(ReaderRoutePattern) { inclusive = true }
-                        }
                     },
                     onBack = { leaveLayer() },
                     onMark = { uid -> publishMark(uid, true) },
@@ -1321,7 +1110,7 @@ private fun LiveImapNavHostReady() {
     fun navigateFromDrawer(go: suspend () -> Unit) {
         scope.launch {
             go()
-            drawerState.close()
+            zoom = null
         }
     }
 
@@ -1413,7 +1202,7 @@ private fun LiveImapNavHostReady() {
 
     fun openFavorite(favorite: FolderFavorite) {
         scope.launch {
-            drawerState.close()
+            zoom = null
             if (favorite.node) {
                 val id = store.chosenAccountId()
                 if (id != null) {
@@ -1480,7 +1269,7 @@ private fun LiveImapNavHostReady() {
             return
         }
         scope.launch {
-            drawerState.close()
+            zoom = null
             store.selectAccount(account.id)
             applyOpenAccount()
             if (favorite.node) {
@@ -1632,92 +1421,6 @@ private fun LiveImapNavHostReady() {
         )
     }
 
-    @Composable
-    fun DrawerScaffold() {
-        if (split) {
-            AxisSplit(
-                axis = axis,
-                leadingDp = drawerWidthDp,
-                fallback = { span ->
-                    initialDrawerDp(span.roundToInt(), readerOpen, folderColumnNow.value).toFloat()
-                },
-                onSpan = { availableDpState.intValue = it.roundToInt() },
-                onDrag = { delta, span ->
-                    userSized = true
-                    val max = (span - 8f).coerceAtLeast(0f)
-                    val base = if (drawerWidthDp < 0f) {
-                        initialDrawerDp(span.roundToInt(), readerOpen, folderColumnNow.value).toFloat()
-                    } else {
-                        drawerWidthDp
-                    }
-                    drawerWidthDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
-                },
-                leading = {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .windowInsetsPadding(
-                                mailScreenInsets().only(
-                                    WindowInsetsSides.Vertical + WindowInsetsSides.Start,
-                                ),
-                            ),
-                    ) {
-                        // drawerSheet scrolls itself; a second verticalScroll here crashed pane mode.
-                        drawerSheet()
-                    }
-                },
-                trailing = {
-                    val resolvedDrawerDp = if (drawerWidthDp >= 0f) {
-                        drawerWidthDp
-                    } else {
-                        initialDrawerDp(availableDpState.intValue, readerOpen, folderColumnNow.value).toFloat()
-                    }
-                    val hostModifier = if (resolvedDrawerDp > 0f) {
-                        Modifier
-                            .fillMaxSize()
-                            .consumeWindowInsets(
-                                mailScreenInsets().only(WindowInsetsSides.Start),
-                            )
-                    } else {
-                        Modifier.fillMaxSize()
-                    }
-                    NavHost(
-                        navController = navController,
-                        startDestination = "folders",
-                        modifier = hostModifier,
-                        builder = navGraph,
-                    )
-                },
-            )
-        } else {
-            ModalNavigationDrawer(
-                drawerContent = {
-                    ModalDrawerSheet(
-                        windowInsets = mailScreenInsets().only(
-                            WindowInsetsSides.Vertical + WindowInsetsSides.Start,
-                        ),
-                        content = drawerSheet,
-                    )
-                },
-                modifier = Modifier.fillMaxSize(),
-                drawerState = drawerState,
-                gesturesEnabled = drawerGestures,
-            ) {
-                Box(Modifier.fillMaxSize()) {
-                    NavHost(
-                        navController = navController,
-                        startDestination = "folders",
-                        modifier = Modifier.fillMaxSize(),
-                        builder = navGraph,
-                    )
-                    if (composeLayer == ComposeFabLayer.UnderDrawer) {
-                        ComposeFab()
-                    }
-                }
-            }
-        }
-    }
     val drawerPanel: @Composable () -> Unit = {
         Column(
             Modifier
@@ -1728,91 +1431,141 @@ private fun LiveImapNavHostReady() {
                 ),
         ) { drawerSheet() }
     }
-    drawerPaneSlot.value = drawerPanel
-
-    @Composable
-    fun CustomMailArea() {
-        if (drawerOutsideMail) {
-            NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
-        } else {
-            ModalNavigationDrawer(
-                drawerContent = {
-                    ModalDrawerSheet(
-                        windowInsets = mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
-                        content = drawerSheet,
-                    )
-                },
-                modifier = Modifier.fillMaxSize(),
-                drawerState = drawerState,
-                gesturesEnabled = drawerGestures,
-            ) {
-                Box(Modifier.fillMaxSize()) {
-                    NavHost(navController = navController, startDestination = "folders", modifier = Modifier.fillMaxSize(), builder = navGraph)
-                    if (composeLayer == ComposeFabLayer.UnderDrawer) {
-                        ComposeFab()
-                    }
-                }
-            }
-        }
-    }
     CompositionLocalProvider(LocalScreenAccounts provides screenAccounts) {
     LiveImapScaffold {
         Box(Modifier.fillMaxSize()) {
-        val problem = layoutProblem
-        if (problem != null) {
-            Column(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(8.dp)
-                    .fillMaxWidth(),
-            ) {
-                Text(problem)
-                TextButton(onClick = {
-                    val id = layoutAccountId
-                    if (id.isNotEmpty()) {
-                        navController.navigate("settings/account/$id/editor/paneLayout")
-                    }
-                }) {
-                    Text(S("Edit layout"))
-                }
-            }
-        }
         val composeChoice = composeButton(route.orEmpty(), screenAccounts.ids())
-        val modalDrawer = mailUsesModalDrawer(
-            settingsSplit = false,
-            hasCustomTree = customTree != null,
-            drawerOutsideMail = drawerOutsideMail,
-            split = split,
-        )
-        composeLayer = composeFabLayer(composeChoice, modalDrawer)
+        composeLayer = composeFabLayer(composeChoice, modalDrawer = false)
         LaunchedEffect(composeChoice) {
             if (composeChoice != ComposeButton.Pick) composeAccounts = null
         }
-        val tree = customTree
-        if (tree != null) {
-            PaneTree(tree, "T", treeDp, mailNode(tree), { CustomMailArea() }) { content ->
-                when (content) {
-                    PaneContent.Folders -> folderListPane()
-                    PaneContent.AccountDrawer -> drawerPanel()
-                    else -> Unit
+        val record = currentRecord()
+        val shown = displayFill
+        val mailRoute = route == null || route == "folders" || route == "index/{mailbox}" ||
+            route == FoundRoutePattern || route == ReaderRoutePattern
+        val hostedNav = remember {
+            movableContentOf { modifier: Modifier ->
+                NavHost(
+                    navController = navController,
+                    startDestination = "folders",
+                    modifier = modifier,
+                    builder = navGraph,
+                )
+            }
+        }
+        if (!mailRoute) {
+            hostedNav(Modifier.fillMaxSize())
+        } else {
+            val routeKind = when (route) {
+                "folders" -> WindowLayerKind.FolderTree
+                "index/{mailbox}" -> WindowLayerKind.FolderIndex
+                FoundRoutePattern -> WindowLayerKind.SearchIndex
+                ReaderRoutePattern -> WindowLayerKind.Message
+                else -> null
+            }
+            val routeOnScreen = shown.slots.any { slot ->
+                !slot.collapsed && slot.layer?.kind == routeKind
+            }
+            MailLayout(
+                record = record,
+                fillResult = shown,
+                sizes = treeDp,
+                onKey = { id -> keyPanelId = id },
+            ) { slot ->
+                val kind = slot.layer?.kind
+                if (kind != null && kind == routeKind && routeOnScreen) {
+                    hostedNav(Modifier.fillMaxSize())
+                } else {
+                    when (kind) {
+                        WindowLayerKind.Drawer -> drawerPanel()
+                        WindowLayerKind.FolderTree -> folderListPane()
+                        WindowLayerKind.FolderIndex -> {
+                            val box = mailStack.layers.firstOrNull { it.kind == WindowLayerKind.FolderIndex }?.key.orEmpty()
+                            MessageIndexScreen(
+                                mailbox = box,
+                                onOpen = { ref, sequence ->
+                                    placeMessage(ref, sequence, WindowLayerKind.FolderIndex, box, "index:$box")
+                                },
+                                onCompose = { seed -> openCompose(seed) },
+                                onBack = { failure -> leaveLayer(failure) },
+                                onCustomize = { openToolbar("index") },
+                                onCustomizeSelection = { openToolbar("selection") },
+                                markKey = "index:$box",
+                                messageOpen = shown.slots.any { !it.collapsed && it.layer?.kind == WindowLayerKind.Message },
+                                onCloseMessage = {
+                                    closeMessageLayer()
+                                    openedMessage = null
+                                },
+                            )
+                        }
+                        WindowLayerKind.SearchIndex -> {
+                            val box = mailStack.layers.firstOrNull { it.kind == WindowLayerKind.FolderIndex }?.key.orEmpty()
+                            val query = slot.layer?.key.orEmpty()
+                            MessageIndexScreen(
+                                mailbox = box,
+                                onOpen = { ref, sequence ->
+                                    placeMessage(ref, sequence, WindowLayerKind.SearchIndex, box, "search:$box:$query")
+                                },
+                                onCompose = { seed -> openCompose(seed) },
+                                onBack = { failure -> leaveLayer(failure) },
+                                onCustomize = { openToolbar("index") },
+                                onCustomizeSelection = { openToolbar("selection") },
+                                advancedQuery = query.ifEmpty { null },
+                                markKey = "search:$box:$query",
+                                messageOpen = shown.slots.any { !it.collapsed && it.layer?.kind == WindowLayerKind.Message },
+                                onCloseMessage = {
+                                    closeMessageLayer()
+                                    openedMessage = null
+                                },
+                            )
+                        }
+                        WindowLayerKind.Message -> {
+                            val opened = openedMessage
+                            val uid = slot.layer?.key?.toLongOrNull()
+                            if (uid != null) {
+                                val mailbox = if (opened != null && opened.uid == uid) {
+                                    opened.mailbox
+                                } else {
+                                    mailStack.layers.firstOrNull { it.kind == WindowLayerKind.FolderIndex }?.key.orEmpty()
+                                }
+                                val sequence = if (opened != null && opened.uid == uid) opened.sequence else 0
+                                val epoch = if (opened != null && opened.uid == uid) opened.uidValidity else 0L
+                                MessageReaderScreen(
+                                    mailbox = mailbox,
+                                    uid = uid,
+                                    sequence = sequence,
+                                    uidValidity = epoch,
+                                    onCompose = { seed -> openCompose(seed) },
+                                    onAdvance = { next, nextSequence ->
+                                        val from = messageSource(mailStack)
+                                        placeMessage(
+                                            next,
+                                            nextSequence,
+                                            from,
+                                            next.mailbox.ifEmpty { mailbox },
+                                            opened?.markKey ?: "index:$mailbox",
+                                        )
+                                        IndexMarks.publish(opened?.markKey ?: "index:$mailbox", next.uid, true)
+                                    },
+                                    onBack = {
+                                        closeMessageLayer()
+                                        openedMessage = null
+                                    },
+                                    onMark = { marked ->
+                                        IndexMarks.publish(opened?.markKey ?: "index:$mailbox", marked, true)
+                                    },
+                                    onCustomize = { openToolbar("reader") },
+                                    onFilterLike = { from, to, listId, subject, accountId ->
+                                        openFilterEditor(-1, from, to, listId, subject, accountId, "")
+                                    },
+                                )
+                            }
+                        }
+                        null -> Box(Modifier.fillMaxSize())
+                    }
                 }
             }
-        } else if (folderColumn) {
-            AxisSplit(
-                axis = axis,
-                leadingDp = folderWidthDp,
-                fallback = { span -> minOf(360f, span) },
-                onSpan = { _ -> },
-                onDrag = { delta, span ->
-                    val max = (span - 8f).coerceAtLeast(0f)
-                    val base = if (folderWidthDp < 0f) minOf(360f, span) else folderWidthDp
-                    folderWidthDp = (base.coerceIn(0f, max) + delta).coerceIn(0f, max)
-                },
-                leading = { folderListPane() },
-                trailing = { DrawerScaffold() },
-            )
-        } else {
-            DrawerScaffold()
+            if (!routeOnScreen) hostedNav(Modifier.size(0.dp))
         }
         val editing = editingFavorite
         if (editing != null) {
@@ -2177,53 +1930,10 @@ internal fun favoriteDrawerLabel(favorite: FolderFavorite): String {
     return favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
 }
 
-internal fun foldReaderIntoIndex(expanded: Boolean, route: String?): Boolean {
-    return expanded && route == ReaderRoutePattern
-}
-
-internal fun useMultiPane(mode: MultiPane, autoPanes: Int = 1): Boolean =
-    mode == MultiPane.Wide || (mode == MultiPane.Auto && autoPanes >= 2)
-
-internal fun paneControlsEnabled(mode: MultiPane) = mode != MultiPane.Off
-
-
-internal fun useFolderPane(choice: LayoutChoice, autoPanes: Int = 1): Boolean =
-    choice == LayoutChoice.On || (choice == LayoutChoice.Auto && autoPanes >= 3)
-
-internal fun useFoldPosture(choice: LayoutChoice): Boolean = choice == LayoutChoice.On
-
 internal enum class PaneAxis {
     SideBySide,
     TopBottom,
 }
-
-/**
- * The account drawer is a hidden (openable) drawer when a folder column shows, or in Auto when there is no
- * room for it. In Auto the folder list screen counts as folders shown: the app starts there before it opens
- * the start folder, and a drawer pane beside the folder list flashed on the Boox before the list appeared.
- */
-internal fun drawerHiddenFor(folderColumn: Boolean, route: String?, multiPane: MultiPane, autoDrawerPane: Boolean): Boolean =
-    folderColumn || (multiPane == MultiPane.Auto && (!autoDrawerPane || route == "folders"))
-
-internal fun showFolderPane(choice: LayoutChoice, route: String?, autoPanes: Int = 1): Boolean {
-    return useFolderPane(choice, autoPanes) &&
-        (route == "index/{mailbox}" || route == ReaderRoutePattern)
-}
-
-internal fun paneAxis(foldOn: Boolean, hingeVertical: Boolean, hingePresent: Boolean, autoTopBottom: Boolean = false): PaneAxis {
-    if (foldOn && hingePresent && !hingeVertical) return PaneAxis.TopBottom
-    if (autoTopBottom && !hingePresent) return PaneAxis.TopBottom
-    return PaneAxis.SideBySide
-}
-
-internal fun initialDrawerDp(availableDp: Int, readerOpen: Boolean, folderColumn: Boolean = false): Int {
-    // The folder column already shows folders: the account drawer pane starts hidden (still openable).
-    if (folderColumn) return 0
-    if (!readerOpen) return minOf(360, availableDp)
-    return if (availableDp < 1000) 0 else 360
-}
-
-private const val unsetPaneDp = -1f
 
 @Composable
 private fun DragSplit(
@@ -2381,7 +2091,7 @@ private fun StackSplit(
 }
 
 @Composable
-private fun AxisSplit(
+internal fun AxisSplit(
     axis: PaneAxis,
     leadingDp: Float,
     fallback: (Float) -> Float,
@@ -2474,38 +2184,6 @@ private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> U
         ) {
             content()
         }
-    }
-}
-
-/** Renders a custom layout tree; [mail] (the list/message part) is drawn by [mailArea]. */
-@Composable
-private fun PaneTree(
-    node: PaneNode,
-    key: String,
-    sizes: SnapshotStateMap<String, Float>,
-    mail: PaneNode?,
-    mailArea: @Composable () -> Unit,
-    leaf: @Composable (PaneContent) -> Unit,
-) {
-    if (mail != null && node == mail) {
-        mailArea()
-        return
-    }
-    when (node) {
-        is PaneNode.Leaf -> Box(Modifier.fillMaxSize()) { leaf(node.content) }
-        is PaneNode.Split -> AxisSplit(
-            axis = if (node.axis == SplitAxis.Horizontal) PaneAxis.SideBySide else PaneAxis.TopBottom,
-            leadingDp = sizes[key] ?: unsetPaneDp,
-            fallback = { span -> ((span - 8f) * node.ratio).coerceAtLeast(0f) },
-            onSpan = { _ -> },
-            onDrag = { delta, span ->
-                val max = (span - 8f).coerceAtLeast(0f)
-                val base = sizes[key] ?: ((span - 8f) * node.ratio)
-                sizes[key] = (base + delta).coerceIn(0f, max)
-            },
-            leading = { PaneTree(node.first, key + "0", sizes, mail, mailArea, leaf) },
-            trailing = { PaneTree(node.second, key + "1", sizes, mail, mailArea, leaf) },
-        )
     }
 }
 

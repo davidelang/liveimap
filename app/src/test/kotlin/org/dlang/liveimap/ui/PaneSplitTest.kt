@@ -1,61 +1,33 @@
 package org.dlang.liveimap.ui
 
-import org.dlang.liveimap.settings.LayoutChoice
-import org.dlang.liveimap.settings.MultiPane
+import org.dlang.liveimap.window.WindowLayerKind
+import org.dlang.liveimap.window.WindowStack
+import org.dlang.liveimap.window.factoryRecord
+import org.dlang.liveimap.window.fill
+import org.dlang.liveimap.window.zoomTarget
+import org.dlang.liveimap.window.LayoutAutomatic
+import org.dlang.liveimap.window.LayoutDrawerPinned
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PaneSplitTest {
     @Test
-    fun wideOnlyWhenExpanded() {
-        assertTrue(useMultiPane(MultiPane.Wide))
-        assertFalse(useMultiPane(MultiPane.Off))
+    fun zoomOfTheOnlyPanelDoesNothing() {
+        val stack = WindowStack.drawer("a")
+        val filled = fill(factoryRecord(LayoutAutomatic), stack)
+        assertNull(zoomTarget(filled, stack.layers.first()))
     }
 
     @Test
-    fun paneControlsFollowMultiPane() {
-        assertFalse(paneControlsEnabled(MultiPane.Off))
-        assertTrue(paneControlsEnabled(MultiPane.Wide))
-        assertTrue(paneControlsEnabled(MultiPane.Auto))
-    }
-
-    @Test
-    fun phoneReaderStartsDrawerClosed() {
-        assertEquals(0, initialDrawerDp(880, readerOpen = true))
-        assertEquals(360, initialDrawerDp(1200, readerOpen = true))
-        assertEquals(360, initialDrawerDp(880, readerOpen = false))
-        assertEquals(0, initialDrawerDp(1600, readerOpen = false, folderColumn = true))
-        assertEquals(0, initialDrawerDp(1600, readerOpen = true, folderColumn = true))
-    }
-
-    @Test
-    fun folderPaneOnlyWhenOn() {
-        assertTrue(useFolderPane(LayoutChoice.On))
-        assertFalse(useFolderPane(LayoutChoice.Off))
-    }
-
-    @Test
-    fun foldPostureOnlyWhenOn() {
-        assertTrue(useFoldPosture(LayoutChoice.On))
-        assertFalse(useFoldPosture(LayoutChoice.Off))
-    }
-
-    @Test
-    fun folderListStaysForIndexAndReaderOnly() {
-        assertFalse(showFolderPane(LayoutChoice.Off, "index/{mailbox}"))
-        assertFalse(showFolderPane(LayoutChoice.On, "folders"))
-        assertTrue(showFolderPane(LayoutChoice.On, "index/{mailbox}"))
-        assertTrue(showFolderPane(LayoutChoice.On, "reader/{mailbox}/{uid}/{sequence}?epoch={epoch}"))
-        assertFalse(showFolderPane(LayoutChoice.On, "settings"))
-    }
-
-    @Test
-    fun horizontalHingeStacksOnlyWhenFoldIsOn() {
-        assertEquals(PaneAxis.SideBySide, paneAxis(false, false, true))
-        assertEquals(PaneAxis.SideBySide, paneAxis(true, true, false))
-        assertEquals(PaneAxis.SideBySide, paneAxis(true, true, true))
-        assertEquals(PaneAxis.TopBottom, paneAxis(true, false, true))
+    fun aPinDoesNotBlockZoom() {
+        val stack = WindowStack.drawer("a").pushFolderTree("root").pushMailboxIndex("INBOX")
+            .pushMessage("1", WindowLayerKind.FolderIndex)
+        val filled = fill(factoryRecord(LayoutDrawerPinned), stack)
+        val zoomed = zoomTarget(filled, stack.layers.first())
+        assertNotNull(zoomed)
+        assertEquals(WindowLayerKind.Drawer, zoomed!!.layer.kind)
+        assertEquals(filled.slots, zoomed.unzoomed.slots)
     }
 }

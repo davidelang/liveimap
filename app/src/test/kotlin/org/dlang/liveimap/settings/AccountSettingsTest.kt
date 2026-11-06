@@ -172,32 +172,20 @@ class AccountSettingsTest {
     }
 
     @Test
-    fun multiPaneOffRoundTrip() {
-        val text = Settings().encode()
-        assertTrue(text.contains("multiPane=Auto"))
-        assertEquals(MultiPane.Auto, decodeSettings(text).multiPane)
-        val offText = text.lineSequence().filter { !it.startsWith("multiPane=") }.joinToString("\n") + "\nmultiPane=Off\n"
-        assertEquals(MultiPane.Off, decodeSettings(offText).multiPane)
-        val wide = Settings(multiPane = MultiPane.Wide).encode()
-        assertTrue(wide.contains("multiPane=Wide"))
-        assertEquals(MultiPane.Wide, decodeSettings(wide).multiPane)
-    }
-
-    @Test
-    fun folderPlaceRoundTrip() {
-        val text = Settings().encode()
-        assertTrue(text.contains("folderPlace=Auto"))
-        assertTrue(text.contains("foldPosture=Off"))
-        val offText = text.lineSequence().filter { !it.startsWith("folderPlace=") && !it.startsWith("foldPosture=") }.joinToString("\n") + "\nfolderPlace=Off\nfoldPosture=Off\n"
-        val off = decodeSettings(offText)
-        assertEquals(FolderPlace.Off, off.folderPlace)
-        assertEquals(LayoutChoice.Off, off.foldPosture)
-        val beside = Settings(folderPlace = FolderPlace.Beside, foldPosture = LayoutChoice.On).encode()
-        assertTrue(beside.contains("folderPlace=Beside"))
-        assertTrue(beside.contains("foldPosture=On"))
-        val decoded = decodeSettings(beside)
-        assertEquals(FolderPlace.Beside, decoded.folderPlace)
-        assertEquals(LayoutChoice.On, decoded.foldPosture)
+    fun retiredLayoutKeysLoadAndAreNotWritten() {
+        val fresh = Settings().encode()
+        for (key in listOf("multiPane", "folderPlace", "foldPosture", "paneArrangement", "customLayout")) {
+            assertFalse(fresh.contains("\"$key\""))
+        }
+        val stored = fresh.dropLast(1) +
+            ""","multiPane":"Off","folderPlace":"Beside","foldPosture":"On","paneArrangement":"Stacked","customLayout":"H0.5(list,message)"}"""
+        val loaded = decodeSettings(stored)
+        assertEquals(Settings().layoutCatalog, loaded.layoutCatalog)
+        val again = loaded.encode()
+        for (key in listOf("multiPane", "folderPlace", "foldPosture", "paneArrangement", "customLayout")) {
+            assertFalse(again.contains("\"$key\""))
+        }
+        assertEquals(loaded, loaded.withSetting("multiPane", SettingValue("Off")))
     }
 
     @Test
@@ -1147,9 +1135,7 @@ class AccountSettingsTest {
         assertEquals(TlsMode.Implicit, Settings().tlsMode)
         assertEquals(993, Settings().imapPort)
         assertEquals(465, Settings().smtpPort)
-        assertEquals(MultiPane.Auto, Settings().multiPane)
-        assertEquals(FolderPlace.Auto, Settings().folderPlace)
-        assertEquals(ArrangementChoice.Auto, Settings().paneArrangement)
+        assertEquals("", Settings().layoutCatalog)
         assertEquals(PreviewChoice.Auto, Settings().previewSize)
         assertEquals(Settings(), newAccountSettings())
     }
@@ -1182,8 +1168,8 @@ class AccountSettingsTest {
     fun missingOrdinaryKeyUsesTreeDefault() {
         val raw = Settings().encode().lineSequence().filter { !it.startsWith("pollSeconds=") }.joinToString("\n")
         assertEquals(60, decodeSettings(raw).pollSeconds)
-        val panes = Settings().encode().lineSequence().filter { !it.startsWith("multiPane=") }.joinToString("\n")
-        assertEquals(MultiPane.Auto, decodeSettings(panes).multiPane)
+        assertFalse(Settings().encode().contains("\"multiPane\""))
+        assertEquals("", decodeSettings(Settings().encode()).layoutCatalog)
     }
 
     @Test

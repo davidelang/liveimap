@@ -133,38 +133,25 @@ Avoid:
 * A selection check mark. The background is the selection indicator.
 * Measuring a column from the rows that happen to be loaded.
 
-## Custom panel layout
+## Layout records
 
-David, 2026-10-12. Code: `settings/PaneLayout.kt` (model), `settings/PaneLayoutEditor.kt`
-(Settings > Layout), `ui/NavHost.kt` (`PaneTree`).
+David, 2026-11-06. Code: `window/LayoutFill.kt`, `window/LayoutCatalog.kt`,
+`settings/PaneLayoutEditor.kt`, `ui/MailLayout.kt`, `ui/NavHost.kt`.
 
-* **Model:** a binary split tree. A leaf is one panel showing Folders,
-  Message list, Message or Accounts drawer; a split is side by side
-  (`H`) or top and bottom (`V`) with the first child's share. Text form, e.g.
-  `H0.2(folders,H0.4(list,message))`, stored per account as `customLayout`
-  (empty = Auto).
-* **Rules:** exactly one message list; each panel type at most once; the
-  message panel shares one split with the side that holds the list (the
-  message shows the list's selection, and the pair resizes together). The
-  editor shows a broken layout's problem and doesn't save it until fixed.
-* **Auto in the model:** `autoPaneLayout(planLayout(...))` expresses the
-  automatic arrangement as a tree: one pane = `list`; list + reader side by
-  side or stacked by the planner's arrangement and list share; folders in
-  their own column (`H` first) or above the list (`V` inside the list side).
-  The editor starts from this tree ("Start from Auto"). Auto itself still
-  renders through the existing path; it is equivalent.
-* **Account drawer:** when a folder column shows, the drawer pane starts
-  hidden (width 0) and the menu button opens it; a size the user dragged is
-  kept. In a custom layout the drawer is a panel only if the user places it;
-  otherwise it is the modal drawer. A drawer panel inside the list/message
-  part shows only on the index, so the modal drawer stays available elsewhere.
-* **Rendering:** the tree is drawn with the same draggable splits. The
-  list/message part is the app's screen area: settings, compose and the other
-  screens open there; the index draws the rest of that part (folders above the
-  list, the message panel) itself. Dragged sizes last for the session; the
-  saved ratios are the starting point.
-* **Editor:** tap a panel, then Split side by side / Split top and bottom
-  (adds an unused panel type), Remove panel, or pick what it shows.
+* **One record.** Factory or custom, the window fills the mail stack through
+  that record. Automatic is the single-panel factory. The same selected id is
+  used at every size. `fullScreen`, `previewSize`, and `deleteMovesToNext` keep
+  their stored meaning. `planLayout` only chooses the preview size.
+* **Factories.** One panel; index beside message; list above message; folder
+  tree pinned with index and message; drawer pinned with index and message.
+  Unused factory panels collapse. A factory body stays in code until the user
+  edits it, which writes a new custom record.
+* **Zoom and back.** Zoom shows one layer and does not change the stack or the
+  stored shares. Zoom out fills the same record again. Back dismisses a dialog,
+  then leaves zoom, then pops the top mail layer. The menu button zooms the
+  drawer. The panel that has the keys can stay off the top of the stack.
+* **Old keys.** `multiPane`, `folderPlace`, `foldPosture`, `paneArrangement`,
+  and `customLayout` load and are not written back.
 
 ## Reading
 

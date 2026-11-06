@@ -8,8 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,147 +27,266 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import org.dlang.liveimap.window.delete
+import org.dlang.liveimap.window.editFactory
+import org.dlang.liveimap.window.LayoutAutomatic
+import org.dlang.liveimap.window.LayoutCatalog
+import org.dlang.liveimap.window.LayoutDrawerPinned
+import org.dlang.liveimap.window.LayoutFolderTreePinned
+import org.dlang.liveimap.window.LayoutIndexBesideMessage
+import org.dlang.liveimap.window.LayoutListAboveMessage
+import org.dlang.liveimap.window.LayoutNode
+import org.dlang.liveimap.window.LayoutPanel
+import org.dlang.liveimap.window.LayoutRecord
+import org.dlang.liveimap.window.SplitDirection
+import org.dlang.liveimap.window.UnusedPanel
+import org.dlang.liveimap.window.WindowLayerKind
+import org.dlang.liveimap.window.decodeLayoutCatalog
+import org.dlang.liveimap.window.encodeLayoutCatalog
+import org.dlang.liveimap.window.factoryRecord
+import org.dlang.liveimap.window.offeredIds
+import org.dlang.liveimap.window.replaceCustom
+import org.dlang.liveimap.window.resolve
+import org.dlang.liveimap.window.restoreDefaults
+import org.dlang.liveimap.window.freshPanelId
+import org.dlang.liveimap.window.layoutRecordProblem
+import org.dlang.liveimap.window.removePanel
+import org.dlang.liveimap.window.splitPanel
+import org.dlang.liveimap.window.withPin
 
-@Composable
-fun paneContentLabel(content: PaneContent): String = when (content) {
-        PaneContent.Folders -> S("Folders")
-        PaneContent.MessageList -> S("Message list")
-        PaneContent.Message -> S("Message")
-        PaneContent.AccountDrawer -> S("Accounts drawer")
-    }
-
-/** Settings editor for the custom panel layout. [onSave] gets "" for Auto. */
+/** Settings builder for the layout catalog. [onSave] gets the encoded catalog. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PaneLayoutEditor(saved: String, persist: Boolean = true, onSave: (String) -> Unit) {
-    val configuration = LocalConfiguration.current
-    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
-    val auto = autoPaneLayout(planLayout(configuration.screenWidthDp, configuration.screenHeightDp, fontScale))
-    var tree by remember(saved, persist) { mutableStateOf(decodePaneLayout(saved)) }
-    var selected by remember(saved, persist) { mutableStateOf<List<Int>?>(null) }
-    val custom = tree != null
-    fun commit(next: PaneNode?) {
-        tree = next
-        if (persist) {
-            if (next == null) onSave("") else if (paneLayoutProblem(next) == null) onSave(next.encode())
-        }
+fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
+    var catalog by remember(saved) { mutableStateOf(decodeLayoutCatalog(saved)) }
+    var picked by remember(saved) { mutableStateOf<String?>(null) }
+    var rejected by remember(saved) { mutableStateOf(false) }
+    fun commit(next: LayoutCatalog) {
+        catalog = next
+        onSave(encodeLayoutCatalog(next))
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(SettingsTreeGenerated.resource("layout_custom")), Modifier.weight(1f))
-            Switch(
-                checked = custom,
-                onCheckedChange = { on -> selected = null; commit(if (on) auto else null) },
-                modifier = Modifier.testTag("layout-custom-switch"),
-            )
+    fun edit(transform: (LayoutRecord) -> LayoutRecord) {
+        val base = catalog.custom.firstOrNull { it.id == catalog.selectedId }?.record ?: catalog.resolve()
+        val updated = transform(base)
+        if (layoutRecordProblem(updated) != null) {
+            rejected = true
+            return
         }
-        val shown = tree ?: auto
+        rejected = false
+        var next = catalog
+        val factoryId = next.selectedId.ifEmpty { LayoutAutomatic }
+        if (factoryRecord(factoryId) != null && next.custom.none { it.id == next.selectedId }) {
+            next = next.editFactory(factoryId)
+        }
+        if (next.custom.any { it.id == next.selectedId }) {
+            next = next.replaceCustom(next.selectedId, updated)
+        }
+        commit(next)
+    }
+    val selected = catalog.selectedId.ifEmpty { LayoutAutomatic }
+    val record = catalog.resolve()
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Text(
-            if (custom) S("Tap a panel, then split it side by side or top and bottom, remove it, or choose what it shows.") else S("Off: panels follow the screen size (Auto). This is the Auto arrangement for this screen."),
+            S("Tap a panel, then split it side by side or top and bottom, remove it, or choose what it shows."),
             style = MaterialTheme.typography.bodySmall,
         )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (id in catalog.offeredIds()) {
+                FilterChip(
+                    selected = id == selected || (catalog.selectedId.isEmpty() && id == LayoutAutomatic),
+                    onClick = {
+                        picked = null
+                        rejected = false
+                        commit(catalog.copy(selectedId = id))
+                    },
+                    label = { Text(layoutTitle(id)) },
+                )
+            }
+        }
         Box(
             Modifier.fillMaxWidth().height(160.dp).padding(top = 8.dp)
                 .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline)),
         ) {
-            LayoutPreview(shown, emptyList(), if (custom) selected else null, custom) { path -> if (custom) selected = path }
+            val root = record.root
+            if (root == null) {
+                Text(S("Message"), Modifier.align(Alignment.Center))
+            } else {
+                RecordPreview(root, picked) { picked = it }
+            }
         }
-        val current = tree
-        val sel = selected
-        if (current != null) {
-            paneLayoutProblem(current)?.let { problem ->
-                Text(
-                    when (problem) {
-                            PaneLayoutProblem.NoMessageList -> S("The layout needs a message list. Not saved yet.")
-                            PaneLayoutProblem.Duplicate -> S("Each panel type can appear only once. Not saved yet.")
-                            PaneLayoutProblem.MessageNotBesideList -> S("The message panel must share a split with the message list. Not saved yet.")
-                        },
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (sel != null) {
-                val used = current.leaves()
-                val unused = PaneContent.entries.firstOrNull { it !in used } ?: PaneContent.Folders
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { commit(current.splitAt(sel, SplitAxis.Horizontal, unused)) }) {
-                        Text(S("Split side by side"))
+        if (rejected) {
+            Text(
+                S("Each panel type can appear only once. Not saved yet."),
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        val panelId = picked
+        if (panelId != null && record.panels.any { it.id == panelId }) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    edit { current ->
+                        val root = current.root ?: return@edit current
+                        val added = LayoutPanel(freshPanelId(current))
+                        current.copy(root = root.splitPanel(panelId, SplitDirection.Beside, added))
                     }
-                    OutlinedButton(onClick = { commit(current.splitAt(sel, SplitAxis.Vertical, unused)) }) {
-                        Text(S("Split top and bottom"))
+                }) { Text(S("Split side by side")) }
+                OutlinedButton(onClick = {
+                    edit { current ->
+                        val root = current.root ?: return@edit current
+                        val added = LayoutPanel(freshPanelId(current))
+                        current.copy(root = root.splitPanel(panelId, SplitDirection.Above, added))
                     }
-                    if (sel.isNotEmpty()) {
-                        OutlinedButton(onClick = { selected = null; commit(current.removeAt(sel)) }) {
-                            Text(S("Remove panel"))
+                }) { Text(S("Split top and bottom")) }
+                if (record.panels.size > 1) {
+                    OutlinedButton(onClick = {
+                        picked = null
+                        edit { current ->
+                            val root = current.root ?: return@edit current
+                            current.copy(root = root.removePanel(panelId))
                         }
-                    }
+                    }) { Text(S("Remove panel")) }
                 }
-                val leaf = current.leafPaths().firstOrNull { it.first == sel }?.second
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (content in PaneContent.entries) {
-                        FilterChip(
-                            selected = leaf == content,
-                            onClick = { commit(current.setContent(sel, content)) },
-                            label = { Text(paneContentLabel(content)) },
-                        )
+                OutlinedButton(onClick = {
+                    edit { current ->
+                        val root = current.root ?: return@edit current
+                        current.copy(root = root.nudge(panelId, 0.05f))
                     }
+                }) { Text(S("Wider")) }
+                OutlinedButton(onClick = {
+                    edit { current ->
+                        val root = current.root ?: return@edit current
+                        current.copy(root = root.nudge(panelId, -0.05f))
+                    }
+                }) { Text(S("Narrower")) }
+            }
+            val pin = record.panels.firstOrNull { it.id == panelId }?.pin
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = pin == null,
+                    onClick = {
+                        edit { current ->
+                            val root = current.root ?: return@edit current
+                            current.copy(root = root.withPin(panelId, null))
+                        }
+                    },
+                    label = { Text(S("Unpinned")) },
+                )
+                for (kind in WindowLayerKind.entries) {
+                    FilterChip(
+                        selected = pin == kind,
+                        onClick = {
+                            edit { current ->
+                                val root = current.root ?: return@edit current
+                                current.copy(root = root.withPin(panelId, kind))
+                            }
+                        },
+                        label = { Text(layerTitle(kind)) },
+                    )
                 }
             }
-            OutlinedButton(onClick = { selected = null; commit(auto) }) { Text(S("Start from Auto")) }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            OutlinedButton(onClick = { edit { it.copy(unpinnedKeep = (it.unpinnedKeep - 1).coerceAtLeast(0)) } }) {
+                Text(S("Fewer layers"))
+            }
+            Text(S("Layers kept") + " ${record.unpinnedKeep}", Modifier.align(Alignment.CenterVertically))
+            OutlinedButton(onClick = { edit { it.copy(unpinnedKeep = it.unpinnedKeep + 1) } }) {
+                Text(S("More layers"))
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { edit { it.copy(coverPanels = (it.coverPanels - 1).coerceAtLeast(0)) } }) {
+                Text(S("Fewer cover panels"))
+            }
+            Text("${record.coverPanels}", Modifier.align(Alignment.CenterVertically))
+            OutlinedButton(onClick = { edit { it.copy(coverPanels = it.coverPanels + 1) } }) {
+                Text(S("More cover panels"))
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(S("Collapse unused panels"), Modifier.weight(1f))
+            Switch(
+                checked = record.unused == UnusedPanel.Collapse,
+                onCheckedChange = { on ->
+                    edit { it.copy(unused = if (on) UnusedPanel.Collapse else UnusedPanel.StayEmpty) }
+                },
+            )
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (catalog.selectedId.isNotEmpty()) {
+                OutlinedButton(onClick = {
+                    picked = null
+                    rejected = false
+                    commit(catalog.delete(catalog.selectedId.ifEmpty { selected }))
+                }) { Text(S("Delete")) }
+            }
+            OutlinedButton(onClick = {
+                picked = null
+                rejected = false
+                commit(catalog.restoreDefaults())
+            }) { Text(S("Restore defaults")) }
         }
     }
 }
 
 @Composable
-private fun LayoutPreview(
-    node: PaneNode,
-    path: List<Int>,
-    selected: List<Int>?,
-    pickable: Boolean,
-    onPick: (List<Int>) -> Unit,
-) {
+private fun layoutTitle(id: String): String = when (id) {
+    LayoutAutomatic -> stringResource(SettingsTreeGenerated.resource("settings_pane_auto"))
+    LayoutIndexBesideMessage -> S("Index beside message")
+    LayoutListAboveMessage -> S("List above message")
+    LayoutFolderTreePinned -> S("Folder tree pinned")
+    LayoutDrawerPinned -> S("Drawer pinned")
+    else -> id
+}
+
+@Composable
+private fun layerTitle(kind: WindowLayerKind): String = when (kind) {
+    WindowLayerKind.Drawer -> S("Accounts drawer")
+    WindowLayerKind.FolderTree -> S("Folders")
+    WindowLayerKind.FolderIndex -> S("Message list")
+    WindowLayerKind.SearchIndex -> S("Search")
+    WindowLayerKind.Message -> S("Message")
+}
+
+@Composable
+private fun RecordPreview(node: LayoutNode, picked: String?, onPick: (String) -> Unit) {
     when (node) {
-        is PaneNode.Leaf -> {
-            val label = paneContentLabel(node.content)
-            val chosen = selected == path
+        is LayoutNode.Panel -> {
+            val chosen = picked == node.panel.id
             Box(
                 Modifier.fillMaxSize().padding(2.dp)
-                    .then(
-                        if (pickable) {
-                            Modifier.border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
-                        } else {
-                            Modifier
-                        },
-                    )
+                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
                     .background(if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { onPick(path) }
-                    .semantics { contentDescription = "layout-panel-${path.joinToString("")}-$label" },
+                    .clickable { onPick(node.panel.id) },
                 contentAlignment = Alignment.Center,
-            ) { Text(label, style = MaterialTheme.typography.labelMedium) }
+            ) {
+                Text(
+                    node.panel.pin?.let { layerTitle(it) } ?: S("Unpinned"),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
-        is PaneNode.Split -> if (node.axis == SplitAxis.Horizontal) {
+        is LayoutNode.Split -> if (node.direction == SplitDirection.Beside) {
             Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(node.ratio).fillMaxSize()) {
-                    LayoutPreview(node.first, path + 0, selected, pickable, onPick)
-                }
-                Box(Modifier.weight(1f - node.ratio).fillMaxSize()) {
-                    LayoutPreview(node.second, path + 1, selected, pickable, onPick)
-                }
+                Box(Modifier.weight(node.share).fillMaxSize()) { RecordPreview(node.first, picked, onPick) }
+                Box(Modifier.weight(1f - node.share).fillMaxSize()) { RecordPreview(node.second, picked, onPick) }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(node.ratio).fillMaxWidth()) {
-                    LayoutPreview(node.first, path + 0, selected, pickable, onPick)
-                }
-                Box(Modifier.weight(1f - node.ratio).fillMaxWidth()) {
-                    LayoutPreview(node.second, path + 1, selected, pickable, onPick)
-                }
+                Box(Modifier.weight(node.share).fillMaxSize()) { RecordPreview(node.first, picked, onPick) }
+                Box(Modifier.weight(1f - node.share).fillMaxSize()) { RecordPreview(node.second, picked, onPick) }
             }
         }
+    }
+}
+
+private fun LayoutNode.nudge(panelId: String, delta: Float): LayoutNode = when (this) {
+    is LayoutNode.Panel -> this
+    is LayoutNode.Split -> when {
+        first is LayoutNode.Panel && first.panel.id == panelId -> copy(share = (share + delta).coerceIn(0.1f, 0.9f))
+        second is LayoutNode.Panel && second.panel.id == panelId -> copy(share = (share - delta).coerceIn(0.1f, 0.9f))
+        else -> copy(first = first.nudge(panelId, delta), second = second.nudge(panelId, delta))
     }
 }

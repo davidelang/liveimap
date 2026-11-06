@@ -514,13 +514,7 @@ fun encodePinerc(settings: Settings): String {
     ) {
         lines.add("# toolbar")
     }
-    if ((settings.folderPlace != FolderPlace.Off && settings.folderPlace != FolderPlace.Auto) ||
-        settings.foldPosture != LayoutChoice.Off ||
-        settings.fullScreen
-    ) {
-        lines.add("# layout")
-    }
-    if (settings.multiPane != MultiPane.Off && settings.multiPane != MultiPane.Auto) lines.add("# multi-pane")
+    if (settings.fullScreen) lines.add("# layout")
     if (settings.emailSubmission) lines.add("# JMAP")
     if (settings.sieveHost.isNotEmpty() ||
         settings.sievePort != 4190 ||
