@@ -12,6 +12,17 @@ enum class WindowLayerKind {
 
 data class WindowLayer(val kind: WindowLayerKind, val key: String)
 
+/** An account screen is its settings route, an editor under that route, or setup for that account. */
+internal fun screenBelongsToAccount(key: String, accountId: String): Boolean {
+    if (accountId.isEmpty()) return false
+    val account = "settings/account/$accountId"
+    if (key == account || key.startsWith("$account/")) return true
+    if (!key.startsWith("settings/setup?")) return false
+    return key.substringAfter('?').split('&').any { param ->
+        param.substringBefore('=') == "accountId" && param.substringAfter('=') == accountId
+    }
+}
+
 enum class StackChoice { Account, Favorite, Folder }
 
 /**
@@ -114,6 +125,16 @@ data class WindowStack(val layers: List<WindowLayer>) {
     fun dropMessage(): WindowStack {
         if (layers.none { it.kind == WindowLayerKind.Message }) return this
         return WindowStack(layers.filter { it.kind != WindowLayerKind.Message })
+    }
+
+    /**
+     * Drops this account's screens and every screen above the first of them.
+     * Removing the account pops that route and everything above it.
+     */
+    fun dropAccountScreens(accountId: String): WindowStack {
+        val first = layers.indexOfFirst { it.kind == WindowLayerKind.Screen && screenBelongsToAccount(it.key, accountId) }
+        if (first < 0) return this
+        return WindowStack(layers.take(first))
     }
 
     /** Removes only the top layer. The drawer stays when it is the only layer. A screen pops before the mail under it. */

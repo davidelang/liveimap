@@ -4211,3 +4211,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Screen layers on the mail stack
 
 - Settings, compose, help, and the other full screens are a pile of route keys above the mail prefix. Back pops that screen and leaves the opener. A confirm dialog is still not a layer.
+
+## 2026-11-06 - Screen layer fixup
+
+- Opening another filter replaces the filter page, and removing an account drops that account's screen layers with its routes.

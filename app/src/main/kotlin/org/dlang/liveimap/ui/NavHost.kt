@@ -474,6 +474,8 @@ private fun LiveImapNavHostReady() {
 
     LaunchedEffect(Unit) {
         org.dlang.liveimap.accounts.AccountEvents.removedIds.collect { removedId ->
+            // The route pop removes this account's screens and whatever sits above them.
+            mailStack = mailStack.dropAccountScreens(removedId)
             while (true) {
                 val entry = navController.currentBackStack.value.firstOrNull {
                     it.arguments?.getString("accountId") == removedId
@@ -816,24 +818,27 @@ private fun LiveImapNavHostReady() {
                     }
                 }
                 "filter" -> {
-                    val index = rememberSaveable { filterEditIndex.value }
-                    val from = rememberSaveable { filterSeedFrom.value }
-                    val to = rememberSaveable { filterSeedTo.value }
-                    val listId = rememberSaveable { filterSeedListId.value }
-                    val subject = rememberSaveable { filterSeedSubject.value }
-                    val accountId = rememberSaveable { filterAccountId.value }
-                    val ruleId = rememberSaveable { filterRuleId.value }
-                    UpPage(
-                        title = if (index < 0) S("Add filter") else S("Edit filter"),
-                        onUp = { leaveLayer() },
-                    ) {
-                        FilterEditorScreen(
-                            accountId = accountId,
-                            ruleId = ruleId,
-                            index = index,
-                            seed = seedCriteria(from, to, listId, subject),
-                            onDone = { leaveLayer() },
-                        )
+                    // One filter layer. A later edit replaces this page, including when the route is popped back.
+                    val index = filterEditIndex.value
+                    val from = filterSeedFrom.value
+                    val to = filterSeedTo.value
+                    val listId = filterSeedListId.value
+                    val subject = filterSeedSubject.value
+                    val accountId = filterAccountId.value
+                    val ruleId = filterRuleId.value
+                    key(index, from, to, listId, subject, accountId, ruleId) {
+                        UpPage(
+                            title = if (index < 0) S("Add filter") else S("Edit filter"),
+                            onUp = { leaveLayer() },
+                        ) {
+                            FilterEditorScreen(
+                                accountId = accountId,
+                                ruleId = ruleId,
+                                index = index,
+                                seed = seedCriteria(from, to, listId, subject),
+                                onDone = { leaveLayer() },
+                            )
+                        }
                     }
                 }
                 "help" -> UpPage(S("Help"), onUp = { leaveLayer() }) {

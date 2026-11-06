@@ -216,6 +216,38 @@ class WindowStackTest {
     }
 
     @Test
+    fun removingAnAccountDropsItsScreensAndTheScreensAboveThem() {
+        val open = WindowStack.drawer("account")
+            .pushMailboxIndex("INBOX")
+            .pushScreen("settings")
+            .pushScreen("settings/account/a")
+            .pushScreen("settings/account/a/editor/server")
+            .pushScreen("settings/setup?accountId=a")
+            .pushScreen("help")
+        val left = open.dropAccountScreens("a")
+        assertEquals(listOf("settings"), left.layers.filter { it.kind == WindowLayerKind.Screen }.map { it.key })
+        assertEquals(WindowLayerKind.FolderIndex, left.layers[1].kind)
+        val other = WindowStack.drawer("account")
+            .pushScreen("settings/account/ab")
+            .pushScreen("settings/account/a")
+            .pushScreen("filters")
+        assertEquals(
+            listOf("settings/account/ab"),
+            other.dropAccountScreens("a").layers.filter { it.kind == WindowLayerKind.Screen }.map { it.key },
+        )
+        val setup = WindowStack.drawer("account")
+            .pushScreen("settings")
+            .pushScreen("settings/setup?accountId=a")
+            .pushScreen("about")
+        assertEquals(
+            listOf("settings"),
+            setup.dropAccountScreens("a").layers.filter { it.kind == WindowLayerKind.Screen }.map { it.key },
+        )
+        assertEquals(open, open.dropAccountScreens("missing"))
+        assertEquals(open, open.dropAccountScreens(""))
+    }
+
+    @Test
     fun popRemovesOnlyTheTopLayer() {
         val stack = WindowStack.drawer("account")
             .pushMailboxIndex("INBOX")
