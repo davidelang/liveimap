@@ -4207,3 +4207,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Layout cover span and key panel
 
 - A covering layer is one span of the focused-end panels even when those panels are not one subtree. The key panel keeps the keys when another layer is the top of the stack.
+
+## 2026-11-06 - Screen layers on the mail stack
+
+- Settings, compose, help, and the other full screens are a pile of route keys above the mail prefix. Back pops that screen and leaves the opener. A confirm dialog is still not a layer.
