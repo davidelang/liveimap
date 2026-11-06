@@ -4,34 +4,28 @@ title: Layout
 
 # Layout
 
-Settings, Layout holds the pane choices. These controls will be pictured after the settings tree settles.
+Settings, Layout opens Custom panel layout.
 
-![Layout settings](images/layout.png)
+The chips are the one layout used when no rule matches. Automatic is one panel of the top layer. The factory layouts are Automatic, Index beside message, List above message, Folder tree pinned, and Drawer pinned.
 
-## Multi-pane
+Tap a panel, then split it side by side or top and bottom, remove it, or choose what it shows.
 
-Multi-pane starts at Automatic (by screen size). On is the wide layout. Off stays one column regardless of width.
+Restore defaults puts the five factory layouts back and leaves custom layouts.
 
-## Folder list pane
-
-Folder list pane, Fold posture, and List and message arrangement use Automatic (by screen size), On, and Off where the tree has those three. Folder list pane also offers Own column and Above the list. List and message arrangement is Automatic (by screen size), Side by side, or List above message.
-
-## Fold posture
-
-Fold posture uses Off, On, and Automatic (by screen size). On stacks the panes when the device reports a horizontal hinge. No hinge leaves them side by side.
++ adds a rule: one criterion, then one of those layouts. The criteria are Portrait, Landscape, Upright, Turned left, Upside down, Turned right, and External display. The rules are a list. Move earlier changes which rule is first. Remove rule deletes that row. The most specific matching rule wins. External display beats a rotation. A rotation beats Portrait or Landscape. Portrait or Landscape beats the chip. Two rules of that same specificity: the earlier one wins. An external display is a window Android has placed on a display other than the built-in one. A mirror that leaves the window on the phone does not count.
 
 ## Full screen
 
 Full screen starts off. On hides the status bar and the navigation bar. A swipe shows them again.
 
-## Custom panel layout
+## Message preview in list
 
-Custom panel layout is the editor shown when Layout is open and multi-pane is not Off.
+Message preview in list is Automatic (by screen size), Follow row density, None, Small, or Large.
 
 ## Change layout
 
-Change layout applies the arrangement.
+Change layout saves and applies the layout to this window.
 
 ## Panels
 
-Panels opens the five toolbar editors: the folder list, the message list, a selection, the reader, and compose.
+Panels opens the index, selection, folder, reader, and compose toolbars.

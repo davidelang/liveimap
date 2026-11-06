@@ -4240,3 +4240,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Open-message pinch fixup
 
 - A pinch on the message header, raw view, or HTML claims the gesture, so the window does not write appTextZoom.
+
+## 2026-11-06 - Layout manual matches the rule list
+
+- The layout manual and the layout notes describe the layout record and the rule list. They no longer describe the old pane menu, and the manual no longer includes the old layout picture. First action per standard-plan-compliance-block.md; commits stay on master.

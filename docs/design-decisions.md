@@ -139,9 +139,15 @@ David, 2026-11-06. Code: `window/LayoutFill.kt`, `window/LayoutCatalog.kt`,
 `settings/PaneLayoutEditor.kt`, `ui/MailLayout.kt`, `ui/NavHost.kt`.
 
 * **One record.** Factory or custom, the window fills the mail stack through
-  that record. Automatic is the single-panel factory. The same selected id is
-  used at every size. `fullScreen`, `previewSize`, and `deleteMovesToNext` keep
-  their stored meaning. `planLayout` only chooses the preview size.
+  that record. Automatic is the single-panel factory. A rule list picks the
+  record. The selected id is the layout when no rule matches. `fullScreen`,
+  `previewSize`, and `deleteMovesToNext` keep their stored meaning.
+  `planLayout` only chooses the preview size.
+* **Rules.** One criterion, then one layout. External display beats a rotation.
+  A rotation beats Portrait or Landscape. Portrait or Landscape beats the
+  selected id. Two rules of the same specificity: the earlier one wins. An
+  external display is a window Android has placed on a display other than the
+  built-in one. A mirror that leaves the window on the phone does not count.
 * **Factories.** One panel; index beside message; list above message; folder
   tree pinned with index and message; drawer pinned with index and message.
   Unused factory panels collapse. A factory body stays in code until the user
@@ -395,37 +401,20 @@ Avoid:
   at its default view: nothing of the session (screen, scroll position,
   selection, expanded folders, cached data) is restored, and the session
   cache is never persisted.
-* No `android:configChanges` override and no orientation lock.
-* Layout is user-configurable in Settings > Layout: multi-pane (Off = the
-  message opens full screen, Wide = split, Automatic), folder pane (Off/On/
-  Automatic), list/message arrangement (side by side, list above message,
-  Automatic), folder pane position, message preview in the list
-  (follow density/none/small/large/Automatic), fold
-  posture, full screen. New accounts start on Automatic; a stored account keeps
-  what it had (missing keys read as Off / side by side / no preview). A bar
-  between panes resizes them; dragging a pane to the edge closes it.
-* Automatic picks defaults from what the user can read, not from device classes.
-  Inputs: the window in dp (Android already enlarges dp for TVs, cars and watches
-  viewed from farther away) and the effective font scale = system font scale x
-  the app text size. At scale 1 a character is ~7 dp and a line ~20 dp, giving
-  readable columns and lines. Minimums: list 40 chars / 8 lines, message 60
-  chars / 16 lines, folders 24 chars / 8 lines, 2-char gutters.
-  - Side by side when the window fits list + message (102 columns) and 16 lines.
-  - Otherwise stacked (list above message, list 40% of the height) when at least
-    60 columns and 60 lines fit; otherwise one pane, message full screen.
-  - Folders get their own column when side by side and 160 columns fit;
-    otherwise above the list in the left column when 56 lines fit (so a short,
-    wide car dash gets no folder pane while an equally wide tall screen does).
-    Above the list, folders take 35% of the left column. Folder pane position
-    (own column / above the list / Automatic) is its own setting.
-  - Side-by-side list width: its minimum plus a third of the spare columns,
-    25-50% of the span. Preview: none under 12 lines or 30 columns, large (5
-    lines) at 40+ lines with 50+ list columns, else small (2 lines). Preview text
-    comes with the index fetch: server PREVIEW (RFC 8970) when offered, else a
-    capped peek of the first text part; nothing is fetched when the preview is
-    None. Stored accounts keep "Follow row density" (Compact 0, Medium 3, Large 7).
-  - Re-planned on every configuration change: rotation, fold/unfold, window
-    resize, font scale or text size.
+* The eight window activities handle orientation, screen size, screen layout,
+  smallest width, and density. A turn does not restart them. There is no
+  orientation lock.
+* Message preview size is chosen from what the user can read, not from device
+  classes. Inputs: the window in dp (Android already enlarges dp for TVs, cars
+  and watches viewed from farther away) and the effective font scale = system
+  font scale x the app text size. At scale 1 a character is ~7 dp and a line
+  ~20 dp. Preview: none under 12 lines or 30 columns, large (5 lines) at 40+
+  lines with 50+ list columns, else small (2 lines). Preview text comes with
+  the index fetch: server PREVIEW (RFC 8970) when offered, else a capped peek
+  of the first text part; nothing is fetched when the preview is None. Stored
+  accounts keep "Follow row density" (Compact 0, Medium 3, Large 7). Re-planned
+  on every configuration change: rotation, fold/unfold, window resize, font
+  scale or text size.
 
 - Back is predictive on every Android version that has it (13+): the manifest sets
   `android:enableOnBackInvokedCallback="true"`, so 13–15 behave like 16, where it is the default; all screens use
