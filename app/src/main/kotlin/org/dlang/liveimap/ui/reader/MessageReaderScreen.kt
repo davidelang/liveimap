@@ -3931,7 +3931,7 @@ private fun RawTextView(
     }
 }
 
-/** Two-finger pinch only: reports each zoom step and consumes it; one-finger drags stay with scrolling. */
+/** Two-finger pinch only: reports each zoom step, claims it, and consumes it. One-finger drags stay with scrolling. */
 internal fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
@@ -3941,6 +3941,7 @@ internal fun Modifier.pinchToZoom(onZoom: (Float) -> Unit): Modifier = pointerIn
                 val z = event.calculateZoom()
                 if (z != 1f && !z.isNaN()) {
                     onZoom(z)
+                    org.dlang.liveimap.ui.MessagePinchClaim.claim()
                     event.changes.forEach { it.consume() }
                 }
             }

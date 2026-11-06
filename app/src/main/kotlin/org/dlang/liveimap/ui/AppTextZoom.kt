@@ -27,7 +27,25 @@ import org.dlang.liveimap.settings.clampTextZoom
 fun scaledFontScale(systemScale: Float, appTextZoom: Int): Float =
     systemScale * appTextZoom / 100f
 
-/** One pinch gesture. A consumed reader pinch writes nothing. An index pinch commits once. */
+/**
+ * Set by [org.dlang.liveimap.ui.reader.pinchToZoom] on the main pass when the message magnifies.
+ * A scrolling child consuming the pointers is not this claim. The window reads it on the final pass.
+ */
+internal object MessagePinchClaim {
+    private var claimed = false
+
+    fun claim() {
+        claimed = true
+    }
+
+    fun read(): Boolean = claimed
+
+    fun clear() {
+        claimed = false
+    }
+}
+
+/** One pinch gesture. A message claim writes nothing. A scroll consume still commits once. */
 class AppZoomSession(private val start: Int) {
     private var factor = 1f
 
@@ -36,14 +54,8 @@ class AppZoomSession(private val start: Int) {
         factor *= step
     }
 
-    fun commit(consumed: Boolean): Int? {
-        if (consumed) return null
-        return clampTextZoom(Math.round(start * factor).toInt())
-    }
-
-    /** Settings still writes when the scrolling column consumed the gesture. */
-    fun commitForSettings(pinched: Boolean): Int? {
-        if (!pinched) return null
+    fun commit(messageClaimed: Boolean): Int? {
+        if (messageClaimed) return null
         return clampTextZoom(Math.round(start * factor).toInt())
     }
 }
@@ -64,19 +76,29 @@ fun AppTextZoom(content: @Composable () -> Unit) {
             Modifier.pointerInput(zoom) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+                    MessagePinchClaim.clear()
                     val session = AppZoomSession(zoom)
-                    var consumed = false
-                    do {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        val fingers = event.changes.count { it.pressed }
-                        if (fingers >= 2) {
-                            val step = event.calculateZoom()
-                            session.zoomBy(step)
-                            if (event.changes.any { it.isConsumed }) consumed = true
-                        }
-                    } while (event.changes.any { it.pressed })
-                    val next = session.commit(consumed) ?: return@awaitEachGesture
+                    var messageClaimed = false
+                    try {
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (MessagePinchClaim.read()) messageClaimed = true
+                            val fingers = event.changes.count { it.pressed }
+                            if (fingers >= 2) session.zoomBy(event.calculateZoom())
+                        } while (event.changes.any { it.pressed })
+                    } finally {
+                        MessagePinchClaim.clear()
+                    }
+                    val next = session.commit(messageClaimed) ?: return@awaitEachGesture
                     if (next == zoom) return@awaitEachGesture
+                    val editors = org.dlang.liveimap.settings.openSettingsEditors.get()
+                    if (editors.isNotEmpty()) {
+                        var accepted = false
+                        for (editor in editors) {
+                            if (editor.applySettingsPinch(next)) accepted = true
+                        }
+                        if (!accepted) return@awaitEachGesture
+                    }
                     zoom = next
                     scope.launch {
                         val current = SettingsHub.uiNow()

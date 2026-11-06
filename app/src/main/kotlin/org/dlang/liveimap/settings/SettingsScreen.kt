@@ -19,9 +19,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,8 +93,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -1166,31 +1161,6 @@ fun SettingsTree(
                 notePaneScroll(scroll, bounds.top, bounds.bottom)
             }
             .verticalScroll(scroll)
-            .pointerInput(editor) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
-                    val session = org.dlang.liveimap.ui.AppZoomSession(editor.settings.appTextZoom)
-                    var pinched = false
-                    do {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        if (event.changes.count { it.pressed } >= 2) {
-                            val step = event.calculateZoom()
-                            session.zoomBy(step)
-                            if (!step.isNaN() && step != 1f) pinched = true
-                        }
-                    } while (event.changes.any { it.pressed })
-                    val next = session.commitForSettings(pinched) ?: return@awaitEachGesture
-                    if (!editor.applySettingsPinch(next)) return@awaitEachGesture
-                    settingsIo.launch {
-                        val current = SettingsHub.uiNow()
-                        SettingsHub.saveUiKeys(
-                            editor.appContext,
-                            current.withSetting("appTextZoom", SettingValue(next.toString())),
-                            setOf("appTextZoom"),
-                        )
-                    }
-                }
-            }
             .padding(16.dp)
             .testTag("smoke-settings"),
     ) {

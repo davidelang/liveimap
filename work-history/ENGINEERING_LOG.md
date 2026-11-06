@@ -4231,3 +4231,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Layout choice rules fixup
 
 - A 180 degree turn and a same-size display move do not change Configuration, so the window reads the live Display rotation and display id. Density is handled with the other configuration changes so a different-dpi display does not recreate the activity.
+
+## 2026-11-06 - Pinch outside the message sets the font size
+
+- A pinch outside the open message writes appTextZoom once, including when a list consumed the pointers. The message pinch claims the gesture and still magnifies only that message. Settings uses that same write, and the font-size row updates without staying dirty.
+- First action per standard-plan-compliance-block.md; commits stay on master
