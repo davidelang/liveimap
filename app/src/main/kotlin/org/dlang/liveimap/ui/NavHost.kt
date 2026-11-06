@@ -697,7 +697,7 @@ private fun LiveImapNavHostReady() {
             val settingsRefusal = org.dlang.liveimap.window.SettingsEntry.generation
             var seenRefusal by remember(screenKey) { mutableIntStateOf(settingsRefusal) }
             LaunchedEffect(settingsRefusal) {
-                if (settingsRefusal != seenRefusal && screenKey.startsWith("settings")) {
+                if (settingsRefusal != seenRefusal && screenClosesOnSettingsRefusal(screenKey)) {
                     seenRefusal = settingsRefusal
                     leaveLayer()
                 } else {
@@ -2343,6 +2343,14 @@ private val exactScreenRoutes = setOf(
     "toolbar/reader",
     "toolbar/compose",
 )
+
+/** A settings editor, including setup and the folder-list pages, closes when the marker is refused. */
+internal fun screenClosesOnSettingsRefusal(screenKey: String): Boolean {
+    if (screenKey.startsWith("settings")) return true
+    return screenKey == "folderLists/expanded" ||
+        screenKey == "folderLists/views" ||
+        screenKey == "folderLists/starts"
+}
 
 /** The screen-layer key is the route that was opened. Mail routes are not screens. */
 internal fun screenLayerKey(route: String): String? = if (isScreenRoute(route)) route else null

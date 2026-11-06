@@ -42,6 +42,13 @@ class ScreenLayerRouteTest {
         assertTrue(isScreenRoute("settings/account/{accountId}"))
         assertTrue(isScreenRoute("settings/account/{accountId}/editor/{editorId}"))
         assertTrue(isScreenRoute("settings/setup?accountId={accountId}"))
+        assertTrue(screenClosesOnSettingsRefusal("settings/setup"))
+        assertTrue(screenClosesOnSettingsRefusal("settings/setup?accountId=abc"))
+        assertTrue(screenClosesOnSettingsRefusal("folderLists/expanded"))
+        assertTrue(screenClosesOnSettingsRefusal("folderLists/views"))
+        assertTrue(screenClosesOnSettingsRefusal("folderLists/starts"))
+        assertFalse(screenClosesOnSettingsRefusal("help"))
+        assertFalse(screenClosesOnSettingsRefusal("filters"))
         for (route in listOf(
             "folders",
             "index/{mailbox}",

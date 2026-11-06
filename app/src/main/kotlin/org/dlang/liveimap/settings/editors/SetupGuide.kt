@@ -59,6 +59,17 @@ fun SetupGuide(
     onAdvanced: (Settings, String, String) -> Unit = { _, _, _ -> },
 ) {
     val context = LocalContext.current
+    val appContext = context.applicationContext
+    var markerHeld by remember { mutableStateOf<Boolean?>(null) }
+    androidx.compose.runtime.DisposableEffect(appContext) {
+        onDispose { org.dlang.liveimap.window.SettingsSession.leave(appContext) }
+    }
+    androidx.compose.runtime.LaunchedEffect(appContext) {
+        val ok = org.dlang.liveimap.window.SettingsSession.enter(appContext)
+        markerHeld = ok
+        if (!ok) org.dlang.liveimap.window.SettingsEntry.refuse()
+    }
+    if (markerHeld != true) return
     val scope = rememberCoroutineScope()
     var step by remember { mutableIntStateOf(0) }
     var email by remember { mutableStateOf("") }

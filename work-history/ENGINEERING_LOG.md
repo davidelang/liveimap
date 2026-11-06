@@ -4219,3 +4219,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - One process per window
 
 - Eight fixed processes hold one window each. A slot file is the claim, and the settings marker is a different file. The saver keeps the new snapshot; another window keeps the one it loaded until it starts again or opens settings.
+
+## 2026-11-06 - Settings marker covers setup
+
+- Setup and the folder-list editors take the same marker. Another live marker closes that screen.
