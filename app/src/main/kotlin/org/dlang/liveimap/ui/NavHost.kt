@@ -701,9 +701,7 @@ private fun LiveImapNavHostReady() {
                         ToolbarEditorPage(toolbar)
                     }
                 }
-                return@key
-            }
-            when (screenKey) {
+            } else when (screenKey) {
                 "compose" -> {
                     val uidText = composeUids.value
                     val seed = ComposeSeed(
