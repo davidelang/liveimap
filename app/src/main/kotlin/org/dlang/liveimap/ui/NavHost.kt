@@ -152,6 +152,7 @@ import org.dlang.liveimap.window.back
 import org.dlang.liveimap.window.decodeLayoutCatalog
 import org.dlang.liveimap.window.fill
 import org.dlang.liveimap.window.resolve
+import org.dlang.liveimap.window.keyLayer
 import org.dlang.liveimap.window.keyPanel
 import org.dlang.liveimap.window.zoomFill
 import org.dlang.liveimap.window.zoomTarget
@@ -393,6 +394,7 @@ private fun LiveImapNavHostReady() {
     })
     val displayFill = currentFill()
     val activeKey = keyPanel(displayFill, keyPanelId)
+    val activeLayer = keyLayer(displayFill, activeKey)
     SideEffect {
         if (activeKey != keyPanelId) keyPanelId = activeKey
     }
@@ -1470,6 +1472,8 @@ private fun LiveImapNavHostReady() {
                 record = record,
                 fillResult = shown,
                 sizes = treeDp,
+                keyPanelId = activeKey,
+                keyLayer = activeLayer,
                 onKey = { id -> keyPanelId = id },
             ) { slot ->
                 val kind = slot.layer?.kind

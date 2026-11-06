@@ -4203,3 +4203,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-06 - Layout records on the window
 
 - The pane menu is gone. Every layout is one record, factory or custom, and the window fills the mail stack through that record. Automatic is the single-panel factory. Zoom is layout state and does not change the stack or the stored shares. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-06 - Layout cover span and key panel
+
+- A covering layer is one span of the focused-end panels even when those panels are not one subtree. The key panel keeps the keys when another layer is the top of the stack.
