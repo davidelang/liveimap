@@ -1,6 +1,8 @@
 package org.dlang.liveimap.window
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class WindowStackTest {
@@ -114,6 +116,103 @@ class WindowStackTest {
             listOf(WindowLayer(WindowLayerKind.Drawer, "account"), WindowLayer(WindowLayerKind.FolderTree, "Sent")),
             folder.layers,
         )
+    }
+
+    @Test
+    fun screensPileAfterTheMailPrefixAndARepeatDropsWhatIsAbove() {
+        val mail = WindowStack.drawer("account")
+            .pushFolderTree("root")
+            .pushMailboxIndex("INBOX")
+            .pushMessage("4", WindowLayerKind.FolderIndex)
+        val settings = mail.pushScreen("settings")
+        val editor = settings.pushScreen("settings/account/a/editor/server")
+        assertEquals(
+            listOf(
+                WindowLayerKind.Drawer,
+                WindowLayerKind.FolderTree,
+                WindowLayerKind.FolderIndex,
+                WindowLayerKind.Message,
+                WindowLayerKind.Screen,
+                WindowLayerKind.Screen,
+            ),
+            editor.kinds(),
+        )
+        assertEquals("settings", editor.layers[4].key)
+        assertEquals("settings/account/a/editor/server", editor.layers[5].key)
+        assertEquals(listOf("settings"), editor.pushScreen("settings").layers.filter { it.kind == WindowLayerKind.Screen }.map { it.key })
+        assertEquals(1, editor.pushScreen("settings/account/a/editor/server").layers.count { it.key == "settings/account/a/editor/server" })
+        assertEquals(editor, editor.pushScreen("settings/account/a/editor/server"))
+    }
+
+    @Test
+    fun popRemovesTheTopScreenBeforeTheMailUnderIt() {
+        val stack = WindowStack.drawer("account")
+            .pushMailboxIndex("INBOX")
+            .pushScreen("settings")
+            .pushScreen("help")
+        val popped = stack.pop()
+        assertEquals(WindowLayer(WindowLayerKind.Screen, "settings"), popped.layers.last())
+        assertEquals(WindowLayerKind.FolderIndex, popped.pop().layers.last().kind)
+        assertEquals(popped.pop().pop(), popped.pop().pop().pop())
+    }
+
+    @Test
+    fun choosingDropsScreenLayersAndMailJumpsStillDropWhatIsAbove() {
+        val open = WindowStack.drawer("account")
+            .pushFolderTree("root")
+            .pushMailboxIndex("INBOX")
+            .pushMessage("4", WindowLayerKind.FolderIndex)
+            .pushScreen("settings")
+            .pushScreen("filter")
+        assertEquals(listOf(WindowLayerKind.Drawer), open.choose(StackChoice.Account, "other").kinds())
+        assertEquals("other", open.choose(StackChoice.Account, "other").layers.single().key)
+        assertEquals(listOf(WindowLayerKind.Drawer), open.choose(StackChoice.Favorite, "star").kinds())
+        assertEquals(
+            listOf(WindowLayerKind.Drawer, WindowLayerKind.FolderTree),
+            open.choose(StackChoice.Folder, "Sent").kinds(),
+        )
+        val jumped = open.pushMailboxIndex("Archive")
+        assertEquals(listOf(WindowLayerKind.Drawer, WindowLayerKind.FolderTree, WindowLayerKind.FolderIndex), jumped.kinds())
+        assertEquals("Archive", jumped.layers.last().key)
+        val replaced = open.pushMessage("9", WindowLayerKind.FolderIndex)
+        assertEquals(WindowLayerKind.Message, replaced.layers.last().kind)
+        assertEquals("9", replaced.layers.last().key)
+        assertFalse(replaced.layers.any { it.kind == WindowLayerKind.Screen })
+    }
+
+    @Test
+    fun revealingTheTreeKeepsAScreenAndAScreenCannotSitUnderMail() {
+        val open = WindowStack.drawer("account").pushMailboxIndex("INBOX").pushScreen("about")
+        val revealed = open.revealFolderTree("root")
+        assertEquals(
+            listOf(
+                WindowLayerKind.Drawer,
+                WindowLayerKind.FolderTree,
+                WindowLayerKind.FolderIndex,
+                WindowLayerKind.Screen,
+            ),
+            revealed.kinds(),
+        )
+        assertEquals("about", revealed.layers.last().key)
+        assertEquals(open.dropMessage(), open)
+        assertThrows(IllegalArgumentException::class.java) {
+            WindowStack(
+                listOf(
+                    WindowLayer(WindowLayerKind.Drawer, "account"),
+                    WindowLayer(WindowLayerKind.Screen, "settings"),
+                    WindowLayer(WindowLayerKind.FolderIndex, "INBOX"),
+                ),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            WindowStack(
+                listOf(
+                    WindowLayer(WindowLayerKind.Drawer, "account"),
+                    WindowLayer(WindowLayerKind.Screen, "settings"),
+                    WindowLayer(WindowLayerKind.Screen, "settings"),
+                ),
+            )
+        }
     }
 
     @Test

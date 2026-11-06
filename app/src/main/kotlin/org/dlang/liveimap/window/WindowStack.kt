@@ -1,12 +1,13 @@
 package org.dlang.liveimap.window
 
-/** Bottom to top. A message sits on the index it was opened from. The drawer is never removed. */
+/** Bottom to top. A message sits on the index it was opened from. The drawer is never removed. Screens pile after the mail prefix. */
 enum class WindowLayerKind {
     Drawer,
     FolderTree,
     FolderIndex,
     SearchIndex,
     Message,
+    Screen,
 }
 
 data class WindowLayer(val kind: WindowLayerKind, val key: String)
@@ -14,23 +15,34 @@ data class WindowLayer(val kind: WindowLayerKind, val key: String)
 enum class StackChoice { Account, Favorite, Folder }
 
 /**
- * One window's layers. Not stored. Screen code does not read this yet.
- * Order is fixed: drawer, then an optional folder tree, folder index, search index, and one message.
+ * One window's layers. Not stored.
+ * Mail order is fixed: drawer, then an optional folder tree, folder index, search index, and one message.
+ * Screen layers are a pile after that prefix. Each screen key appears once.
  */
 data class WindowStack(val layers: List<WindowLayer>) {
     init {
         require(layers.isNotEmpty())
         require(layers.first().kind == WindowLayerKind.Drawer)
         var previous = -1
+        var screens = false
+        val screenKeys = HashSet<String>()
         for (layer in layers) {
+            if (layer.kind == WindowLayerKind.Screen) {
+                screens = true
+                require(screenKeys.add(layer.key))
+                continue
+            }
+            require(!screens)
             val rank = layer.kind.ordinal
             require(rank > previous)
             previous = rank
         }
         val kinds = layers.map { it.kind }
         if (WindowLayerKind.SearchIndex in kinds) require(WindowLayerKind.FolderIndex in kinds)
-        if (WindowLayerKind.Message in kinds) {
-            val below = layers[layers.lastIndex - 1].kind
+        val messageAt = layers.indexOfFirst { it.kind == WindowLayerKind.Message }
+        if (messageAt >= 0) {
+            require(layers.indexOfLast { it.kind == WindowLayerKind.Message } == messageAt)
+            val below = layers[messageAt - 1].kind
             require(below == WindowLayerKind.FolderIndex || below == WindowLayerKind.SearchIndex)
         }
     }
@@ -88,7 +100,23 @@ data class WindowStack(val layers: List<WindowLayer>) {
         )
     }
 
-    /** Removes only the top layer. The drawer stays when it is the only layer. */
+    /**
+     * Appends a screen after the mail prefix.
+     * A key already in the pile drops the screens above it and does not add a second copy.
+     */
+    fun pushScreen(key: String): WindowStack {
+        val existing = layers.indexOfFirst { it.kind == WindowLayerKind.Screen && it.key == key }
+        if (existing >= 0) return WindowStack(layers.take(existing + 1))
+        return WindowStack(layers + WindowLayer(WindowLayerKind.Screen, key))
+    }
+
+    /** Removes the message layer wherever it sits. Screens above it stay. */
+    fun dropMessage(): WindowStack {
+        if (layers.none { it.kind == WindowLayerKind.Message }) return this
+        return WindowStack(layers.filter { it.kind != WindowLayerKind.Message })
+    }
+
+    /** Removes only the top layer. The drawer stays when it is the only layer. A screen pops before the mail under it. */
     fun pop(): WindowStack = if (layers.size == 1) this else WindowStack(layers.dropLast(1))
 
     companion object {

@@ -55,7 +55,8 @@ internal fun messageSource(stack: WindowStack): WindowLayerKind {
         val under = layers[messageAt - 1].kind
         if (under == WindowLayerKind.SearchIndex || under == WindowLayerKind.FolderIndex) return under
     }
-    return if (layers.last().kind == WindowLayerKind.SearchIndex) {
+    val mailTop = layers.lastOrNull { it.kind != WindowLayerKind.Screen }?.kind
+    return if (mailTop == WindowLayerKind.SearchIndex) {
         WindowLayerKind.SearchIndex
     } else {
         WindowLayerKind.FolderIndex

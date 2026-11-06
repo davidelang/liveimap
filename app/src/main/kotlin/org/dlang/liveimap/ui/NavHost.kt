@@ -491,6 +491,34 @@ private fun LiveImapNavHostReady() {
         }
     }
 
+    /** Pushes the screen layer and its route. The opener's route stays underneath. */
+    fun openScreen(route: String) {
+        val key = screenLayerKey(route)
+        if (key == null) {
+            navController.navigate(route)
+            return
+        }
+        val existing = mailStack.layers.indexOfFirst { it.kind == WindowLayerKind.Screen && it.key == key }
+        if (existing >= 0) {
+            val extra = mailStack.layers.size - existing - 1
+            mailStack = mailStack.pushScreen(key)
+            repeat(extra) { navController.popBackStack() }
+            return
+        }
+        mailStack = mailStack.pushScreen(key)
+        navController.navigate(route)
+    }
+
+    /** Drops screen routes so a mail navigation sees the opener, not the screen pile. */
+    fun popScreenRoutes() {
+        while (isScreenRoute(navController.currentDestination?.route)) {
+            val top = mailStack.layers.lastOrNull() ?: break
+            if (top.kind != WindowLayerKind.Screen) break
+            mailStack = mailStack.pop()
+            if (!navController.popBackStack()) break
+        }
+    }
+
     fun openFilterEditor(
         index: Int,
         from: String,
@@ -507,7 +535,7 @@ private fun LiveImapNavHostReady() {
         filterSeedSubject.value = subject
         filterAccountId.value = accountId
         filterRuleId.value = ruleId
-        navController.navigate("filter")
+        openScreen("filter")
     }
 
     fun openCompose(seed: ComposeSeed) {
@@ -523,11 +551,11 @@ private fun LiveImapNavHostReady() {
         }
         composeUnsentId.value = ""
         composeRetryOnOpen.value = false
-        navController.navigate("compose")
+        openScreen("compose")
     }
 
     fun openToolbar(name: String) {
-        navController.navigate("toolbar/$name")
+        openScreen("toolbar/$name")
     }
 
     fun publishMark(uid: Long?, reveal: Boolean) {
@@ -538,6 +566,7 @@ private fun LiveImapNavHostReady() {
     }
 
     fun pushMessageLayer(uid: Long) {
+        popScreenRoutes()
         val source = messageSource(mailStack)
         if (source != WindowLayerKind.FolderIndex && source != WindowLayerKind.SearchIndex) return
         if (mailStack.layers.none { it.kind == source }) return
@@ -571,7 +600,8 @@ private fun LiveImapNavHostReady() {
     }
 
     /**
-     * Back dismisses a dialog, then leaves zoom, then pops the top mail layer.
+     * Back dismisses a dialog, then leaves zoom, then pops the top layer.
+     * A screen pops with its route. The opener's route stays.
      * A tree that is not already under this entry is shown in its place.
      */
     fun leaveLayer(failure: String? = null) {
@@ -585,11 +615,22 @@ private fun LiveImapNavHostReady() {
             zoom = null
             return
         }
+        val poppedScreen = mailStack.layers.lastOrNull()?.kind == WindowLayerKind.Screen
         if (mailStack.layers.size == 1) {
             popMailDestination()
             return
         }
         mailStack = step.stack
+        if (poppedScreen) {
+            popMailDestination()
+            // Closing the message while a screen covered it can leave the reader route under the screen.
+            if (navController.currentDestination?.route == ReaderRoutePattern &&
+                mailStack.layers.none { it.kind == WindowLayerKind.Message }
+            ) {
+                popMailDestination()
+            }
+            return
+        }
         val showTree = step.stack.layers.last().kind == WindowLayerKind.FolderTree &&
             navController.previousBackStackEntry?.destination?.route != "folders"
         if (showTree) {
@@ -603,6 +644,7 @@ private fun LiveImapNavHostReady() {
     }
 
     fun placeMessage(ref: MessageRef, sequence: Int, from: WindowLayerKind, mailboxFallback: String, markKey: String) {
+        popScreenRoutes()
         if (mailStack.layers.any { it.kind == from }) {
             mailStack = mailStack.pushMessage(ref.uid.toString(), from)
         }
@@ -622,23 +664,22 @@ private fun LiveImapNavHostReady() {
     }
 
     fun closeMessageLayer() {
-        if (mailStack.layers.last().kind == WindowLayerKind.Message) {
-            mailStack = mailStack.pop()
-        }
+        mailStack = mailStack.dropMessage()
     }
 
     // NavHost remembers the builder. A new lambda each pass would replace the graph and drop the stack.
     val folderListPane: @Composable () -> Unit = {
                     FolderListScreen(
                         onOpenMailbox = { mailbox ->
+                            popScreenRoutes()
                             mailStack = folderFromTree(mailStack, mailbox)
                             navController.navigate("index/${Uri.encode(mailbox)}")
                         },
                         onCompose = { seed -> openCompose(seed) },
-                        onOpenUnsent = { navController.navigate("unsent") },
-                        onOpenHelp = { navController.navigate("help") },
-                        onOpenAbout = { navController.navigate("about") },
-                        onOpenSettings = { navController.navigate("settings") },
+                        onOpenUnsent = { openScreen("unsent") },
+                        onOpenHelp = { openScreen("help") },
+                        onOpenAbout = { openScreen("about") },
+                        onOpenSettings = { openScreen("settings") },
                         onCustomize = { openToolbar("folders") },
                         focusMailbox = focusMailbox.value,
                         focusToken = focusToken.value,
@@ -648,24 +689,235 @@ private fun LiveImapNavHostReady() {
     androidx.activity.compose.BackHandler(enabled = zoom != null) {
         leaveLayer()
     }
+    @Composable
+    fun ScreenLayerPage(screenKey: String) {
+        key(screenKey) {
+            // Registered before the page, so a page that asks about unsaved edits wins while it is pending.
+            BackHandler { leaveLayer() }
+            val toolbar = toolbarScreenOf(screenKey)
+            if (toolbar != null) {
+                UpPage(S("Customize toolbar…"), onUp = { leaveLayer() }) {
+                    key(ToolbarRevision.value) {
+                        ToolbarEditorPage(toolbar)
+                    }
+                }
+                return@key
+            }
+            when (screenKey) {
+                "compose" -> {
+                    val uidText = composeUids.value
+                    val seed = ComposeSeed(
+                        kind = enumValueOf(composeKindName.value),
+                        mailbox = composeMailbox.value.takeIf { it.isNotEmpty() },
+                        uids = if (uidText.isEmpty()) {
+                            emptyList()
+                        } else {
+                            uidText.split(',').map { it.toLong() }
+                        },
+                        uidValidity = composeEpoch.value,
+                        accountId = composeAccount.value,
+                        forwardAsAttachment = navForwardChoice(composeForward.value),
+                    )
+                    ComposeScreen(
+                        seed = seed,
+                        onDone = { leaveLayer() },
+                        unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
+                        retryOnOpen = composeRetryOnOpen.value,
+                        onOpenUnsent = { openScreen("unsent") },
+                        onCustomize = { openToolbar("compose") },
+                    )
+                }
+                "unsent" -> UpPage(S("Unsent"), onUp = { leaveLayer() }) {
+                    UnsentScreen(
+                        onOpenCopy = { id, retry, account ->
+                            composeAccount.value = account // F121: retry in the copy's own account
+                            composeKindName.value = ComposeKind.New.name
+                            composeMailbox.value = ""
+                            composeUids.value = ""
+                            composeUnsentId.value = id
+                            composeRetryOnOpen.value = retry
+                            composeForward.value = ""
+                            openScreen("compose")
+                        },
+                        onBack = { leaveLayer() },
+                    )
+                }
+                "settings/setup" -> org.dlang.liveimap.settings.editors.SetupGuide(
+                    onDone = {
+                        mailStack = drawerMailbox(mailStack, "INBOX")
+                        navController.navigate("index/${Uri.encode("INBOX")}") {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onAdvanced = { settings, password, smtp ->
+                        val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
+                        pending.active = true
+                        pending.settings = settings
+                        pending.password = password
+                        pending.smtpPassword = smtp
+                        pending.onCreated = { _ ->
+                            mailStack = drawerMailbox(mailStack, "INBOX")
+                            navController.navigate("index/${Uri.encode("INBOX")}") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                        openScreen("settings/account/_")
+                    },
+                )
+                "settings" -> UpPage(S("Settings"), onUp = { leaveLayer() }) {
+                    SettingsTree(
+                        onCopyContacts = { openScreen("contacts") },
+                        onEditBook = { openScreen("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> openScreen(route) },
+                        page = "settings",
+                    )
+                }
+                "settings/accounts" -> UpPage(
+                    stringResource(SettingsTreeGenerated.resource("settings_accounts")),
+                    onUp = { leaveLayer() },
+                ) {
+                    SettingsTree(
+                        onCopyContacts = { openScreen("contacts") },
+                        onEditBook = { openScreen("addressbook") },
+                        onOpenPanel = { name, _ -> openToolbar(name) },
+                        onNavigate = { route -> openScreen(route) },
+                        page = "accounts",
+                    )
+                }
+                "folderLists/expanded" -> UpPage(
+                    stringResource(SettingsTreeGenerated.resource("settings_expanded_folders")),
+                    onUp = { leaveLayer() },
+                ) {
+                    ExpandedFoldersScreen()
+                }
+                "folderLists/views" -> UpPage(
+                    stringResource(SettingsTreeGenerated.resource("settings_folder_views")),
+                    onUp = { leaveLayer() },
+                ) {
+                    FolderViewsScreen()
+                }
+                "folderLists/starts" -> UpPage(
+                    S("Start position per folder", name = "settings_start_per_folder"),
+                    onUp = { leaveLayer() },
+                ) {
+                    FolderStartsScreen()
+                }
+                "addressbook" -> UpPage(S("Edit address book"), onUp = { leaveLayer() }) {
+                    org.dlang.liveimap.ui.contacts.AddressBookScreen()
+                }
+                "contacts" -> UpPage(S("Copy contacts"), onUp = { leaveLayer() }) {
+                    ContactCopyScreen(registerAccount = true)
+                }
+                "filters" -> {
+                    val accountId = rememberSaveable { filterListAccount.value }
+                    UpPage(S("Edit filters"), onUp = { leaveLayer() }) {
+                        FilterListScreen(accountId = accountId, onOpen = { index, ruleId ->
+                            openFilterEditor(index, "", "", "", "", accountId, ruleId)
+                        })
+                    }
+                }
+                "filter" -> {
+                    val index = rememberSaveable { filterEditIndex.value }
+                    val from = rememberSaveable { filterSeedFrom.value }
+                    val to = rememberSaveable { filterSeedTo.value }
+                    val listId = rememberSaveable { filterSeedListId.value }
+                    val subject = rememberSaveable { filterSeedSubject.value }
+                    val accountId = rememberSaveable { filterAccountId.value }
+                    val ruleId = rememberSaveable { filterRuleId.value }
+                    UpPage(
+                        title = if (index < 0) S("Add filter") else S("Edit filter"),
+                        onUp = { leaveLayer() },
+                    ) {
+                        FilterEditorScreen(
+                            accountId = accountId,
+                            ruleId = ruleId,
+                            index = index,
+                            seed = seedCriteria(from, to, listId, subject),
+                            onDone = { leaveLayer() },
+                        )
+                    }
+                }
+                "help" -> UpPage(S("Help"), onUp = { leaveLayer() }) {
+                    HelpScreen()
+                }
+                "about" -> UpPage(S("About"), onUp = { leaveLayer() }) {
+                    AboutScreen(onOpenLicenses = { openScreen("about/licenses") })
+                }
+                "about/licenses" -> UpPage(S("Open-source licenses"), onUp = { leaveLayer() }) {
+                    LicensesScreen()
+                }
+                else -> when {
+                    screenKey.startsWith("settings/setup?") -> {
+                        val setupId = screenKey.substringAfter("accountId=", "").substringBefore("&")
+                        org.dlang.liveimap.settings.editors.SetupGuide(
+                            accountId = setupId,
+                            onDone = { leaveLayer() },
+                            onAdvanced = { settings, password, smtp ->
+                                val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
+                                pending.active = true
+                                pending.settings = settings
+                                pending.password = password
+                                pending.smtpPassword = smtp
+                                openScreen("settings/account/_")
+                            },
+                        )
+                    }
+                    screenKey.contains("/editor/") -> {
+                        val accountId = screenKey.removePrefix("settings/account/").substringBefore("/")
+                        val editorId = screenKey.substringAfter("/editor/", "")
+                        UpPage(S("Settings"), onUp = { leaveLayer() }) {
+                            SettingsTree(
+                                onCopyContacts = { openScreen("contacts") },
+                                onEditBook = { openScreen("addressbook") },
+                                onOpenPanel = { name, _ -> openToolbar(name) },
+                                onNavigate = { route -> openScreen(route) },
+                                page = "editor",
+                                accountId = accountId,
+                                editorId = editorId,
+                            )
+                        }
+                    }
+                    screenKey.startsWith("settings/account/") -> {
+                        val accountId = screenKey.removePrefix("settings/account/").substringBefore("/")
+                        UpPage(
+                            stringResource(SettingsTreeGenerated.resource("settings_account")),
+                            onUp = { leaveLayer() },
+                        ) {
+                            SettingsTree(
+                                onCopyContacts = { openScreen("contacts") },
+                                onEditBook = { openScreen("addressbook") },
+                                onOpenPanel = { name, _ -> openToolbar(name) },
+                                onNavigate = { route -> openScreen(route) },
+                                page = "account",
+                                accountId = accountId,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     val navGraph: NavGraphBuilder.() -> Unit = remember {
         {
             composable("folders") {
                 FolderListScreen(
                     onOpenMailbox = { mailbox ->
+                        popScreenRoutes()
                         mailStack = folderFromTree(mailStack, mailbox)
                         navController.navigate("index/${Uri.encode(mailbox)}")
                     },
                     onCompose = { seed -> openCompose(seed) },
-                    onOpenUnsent = { navController.navigate("unsent") },
-                    onOpenHelp = { navController.navigate("help") },
+                    onOpenUnsent = { openScreen("unsent") },
+                    onOpenHelp = { openScreen("help") },
                     onCustomize = { openToolbar("folders") },
                     focusMailbox = focusMailbox.value,
                     focusToken = focusToken.value,
                     onOpenDrawer = openDrawerState.value,
-                    onAddAccount = { navController.navigate("settings/setup") },
-                    onOpenAbout = { navController.navigate("about") },
-                    onOpenSettings = { navController.navigate("settings") },
+                    onAddAccount = { openScreen("settings/setup") },
+                    onOpenAbout = { openScreen("about") },
+                    onOpenSettings = { openScreen("settings") },
                 )
             }
             composable(
@@ -719,6 +971,7 @@ private fun LiveImapNavHostReady() {
                                 entry.savedStateHandle.remove<String>("advancedScope")
                             },
                             onOpenFolder = { name ->
+                                popScreenRoutes()
                                 mailStack = folderFromTree(mailStack, name)
                                 navController.navigate("index/${Uri.encode(name)}") {
                                     popUpTo("index/{mailbox}") { inclusive = true }
@@ -754,6 +1007,7 @@ private fun LiveImapNavHostReady() {
                         if (navController.currentDestination?.route == FoundRoutePattern) {
                             navController.popBackStack()
                         }
+                        popScreenRoutes()
                         if (mailStack.layers.any { it.kind == WindowLayerKind.FolderIndex }) {
                             mailStack = mailStack.pushSearchIndex(text)
                         }
@@ -765,41 +1019,11 @@ private fun LiveImapNavHostReady() {
                     },
                 )
             }
-            composable("toolbar/index") {
-                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Index)
-                    }
-                }
-            }
-            composable("toolbar/selection") {
-                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Selection)
-                    }
-                }
-            }
-            composable("toolbar/folders") {
-                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Folders)
-                    }
-                }
-            }
-            composable("toolbar/reader") {
-                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Reader)
-                    }
-                }
-            }
-            composable("toolbar/compose") {
-                UpPage(S("Customize toolbar…"), onUp = { navController.popBackStack() }) {
-                    key(ToolbarRevision.value) {
-                        ToolbarEditorPage(ToolbarScreen.Compose)
-                    }
-                }
-            }
+            composable("toolbar/index") { ScreenLayerPage("toolbar/index") }
+            composable("toolbar/selection") { ScreenLayerPage("toolbar/selection") }
+            composable("toolbar/folders") { ScreenLayerPage("toolbar/folders") }
+            composable("toolbar/reader") { ScreenLayerPage("toolbar/reader") }
+            composable("toolbar/compose") { ScreenLayerPage("toolbar/compose") }
             composable(
                 route = FoundRoutePattern,
                 arguments = listOf(
@@ -888,110 +1112,18 @@ private fun LiveImapNavHostReady() {
                     },
                 )
             }
-            composable("compose") {
-                val uidText = composeUids.value
-                val seed = ComposeSeed(
-                    kind = enumValueOf(composeKindName.value),
-                    mailbox = composeMailbox.value.takeIf { it.isNotEmpty() },
-                    uids = if (uidText.isEmpty()) {
-                        emptyList()
-                    } else {
-                        uidText.split(',').map { it.toLong() }
-                    },
-                    uidValidity = composeEpoch.value,
-                    accountId = composeAccount.value,
-                    forwardAsAttachment = navForwardChoice(composeForward.value),
-                )
-                ComposeScreen(
-                    seed = seed,
-                    onDone = { navController.popBackStack() },
-                    unsentId = composeUnsentId.value.takeIf { it.isNotEmpty() },
-                    retryOnOpen = composeRetryOnOpen.value,
-                    onOpenUnsent = { navController.navigate("unsent") },
-                    onCustomize = { openToolbar("compose") },
-                )
-            }
-            composable("unsent") {
-                UpPage(S("Unsent"), onUp = { navController.popBackStack() }) {
-                    UnsentScreen(
-                        onOpenCopy = { id, retry, account ->
-                            composeAccount.value = account // F121: retry in the copy's own account
-                            composeKindName.value = ComposeKind.New.name
-                            composeMailbox.value = ""
-                            composeUids.value = ""
-                            composeUnsentId.value = id
-                            composeRetryOnOpen.value = retry
-                            composeForward.value = ""
-                            navController.navigate("compose")
-                        },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-            }
-            composable("settings/setup") {
-                org.dlang.liveimap.settings.editors.SetupGuide(
-                    onDone = {
-                        mailStack = drawerMailbox(mailStack, "INBOX")
-                        navController.navigate("index/${Uri.encode("INBOX")}") {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    },
-                    onAdvanced = { settings, password, smtp ->
-                        val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
-                        pending.active = true
-                        pending.settings = settings
-                        pending.password = password
-                        pending.smtpPassword = smtp
-                        pending.onCreated = { _ ->
-                            mailStack = drawerMailbox(mailStack, "INBOX")
-                            navController.navigate("index/${Uri.encode("INBOX")}") {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }
-                        navController.navigate("settings/account/_")
-                    },
-                )
-            }
+            composable("compose") { ScreenLayerPage("compose") }
+            composable("unsent") { ScreenLayerPage("unsent") }
+            composable("settings/setup") { ScreenLayerPage("settings/setup") }
             composable(
                 route = "settings/setup?accountId={accountId}",
                 arguments = listOf(navArgument("accountId") { type = NavType.StringType; defaultValue = "" }),
             ) { entry ->
                 val setupId = entry.arguments?.getString("accountId").orEmpty()
-                org.dlang.liveimap.settings.editors.SetupGuide(
-                    accountId = setupId,
-                    onDone = { navController.popBackStack() },
-                    onAdvanced = { settings, password, smtp ->
-                        val pending = org.dlang.liveimap.settings.editors.PendingNewAccount
-                        pending.active = true
-                        pending.settings = settings
-                        pending.password = password
-                        pending.smtpPassword = smtp
-                        navController.navigate("settings/account/_")
-                    },
-                )
+                ScreenLayerPage("settings/setup?accountId=$setupId")
             }
-            composable("settings") {
-                UpPage(S("Settings"), onUp = { navController.navigateUp() }) {
-                    SettingsTree(
-                        onCopyContacts = { navController.navigate("contacts") },
-                        onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, _ -> openToolbar(name) },
-                        onNavigate = { route -> navController.navigate(route) },
-                        page = "settings",
-                    )
-                }
-            }
-            composable("settings/accounts") {
-                UpPage(stringResource(SettingsTreeGenerated.resource("settings_accounts")), onUp = { navController.popBackStack() }) {
-                    SettingsTree(
-                        onCopyContacts = { navController.navigate("contacts") },
-                        onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, _ -> openToolbar(name) },
-                        onNavigate = { route -> navController.navigate(route) },
-                        page = "accounts",
-                    )
-                }
-            }
+            composable("settings") { ScreenLayerPage("settings") }
+            composable("settings/accounts") { ScreenLayerPage("settings/accounts") }
             composable(
                 route = "settings/account/{accountId}/editor/{editorId}",
                 arguments = listOf(
@@ -1001,118 +1133,32 @@ private fun LiveImapNavHostReady() {
             ) { entry ->
                 val accountId = entry.arguments?.getString("accountId").orEmpty()
                 val editorId = entry.arguments?.getString("editorId").orEmpty()
-                UpPage(S("Settings"), onUp = { navController.popBackStack() }) {
-                    SettingsTree(
-                        onCopyContacts = { navController.navigate("contacts") },
-                        onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, _ -> openToolbar(name) },
-                        onNavigate = { route -> navController.navigate(route) },
-                        page = "editor",
-                        accountId = accountId,
-                        editorId = editorId,
-                    )
-                }
+                ScreenLayerPage("settings/account/$accountId/editor/$editorId")
             }
             composable(
                 route = "settings/account/{accountId}",
                 arguments = listOf(navArgument("accountId") { type = NavType.StringType }),
             ) { entry ->
                 val accountId = entry.arguments?.getString("accountId").orEmpty()
-                UpPage(stringResource(SettingsTreeGenerated.resource("settings_account")), onUp = { navController.popBackStack() }) {
-                    SettingsTree(
-                        onCopyContacts = { navController.navigate("contacts") },
-                        onEditBook = { navController.navigate("addressbook") },
-                        onOpenPanel = { name, _ -> openToolbar(name) },
-                        onNavigate = { route -> navController.navigate(route) },
-                        page = "account",
-                        accountId = accountId,
-                    )
-                }
+                ScreenLayerPage("settings/account/$accountId")
             }
-            composable("folderLists/expanded") {
-                UpPage(stringResource(SettingsTreeGenerated.resource("settings_expanded_folders")), onUp = {
-                    navController.popBackStack("settings", inclusive = false)
-                }) {
-                    ExpandedFoldersScreen()
-                }
-            }
-            composable("folderLists/views") {
-                UpPage(stringResource(SettingsTreeGenerated.resource("settings_folder_views")), onUp = {
-                    navController.popBackStack("settings", inclusive = false)
-                }) {
-                    FolderViewsScreen()
-                }
-            }
-            composable("folderLists/starts") {
-                UpPage(S("Start position per folder", name = "settings_start_per_folder"), onUp = {
-                    navController.popBackStack("settings", inclusive = false)
-                }) {
-                    FolderStartsScreen()
-                }
-            }
-            composable("addressbook") {
-                UpPage(S("Edit address book"), onUp = { navController.popBackStack() }) {
-                    org.dlang.liveimap.ui.contacts.AddressBookScreen()
-                }
-            }
-            composable("contacts") {
-                UpPage(S("Copy contacts"), onUp = { navController.popBackStack() }) {
-                    ContactCopyScreen(registerAccount = true)
-                }
-            }
-            composable("filters") {
-                val accountId = rememberSaveable { filterListAccount.value }
-                UpPage(S("Edit filters"), onUp = { navController.popBackStack() }) {
-                    FilterListScreen(accountId = accountId, onOpen = { index, ruleId ->
-                        openFilterEditor(index, "", "", "", "", accountId, ruleId)
-                    })
-                }
-            }
-            composable("filter") {
-                val index = rememberSaveable { filterEditIndex.value }
-                val from = rememberSaveable { filterSeedFrom.value }
-                val to = rememberSaveable { filterSeedTo.value }
-                val listId = rememberSaveable { filterSeedListId.value }
-                val subject = rememberSaveable { filterSeedSubject.value }
-                val accountId = rememberSaveable { filterAccountId.value }
-                val ruleId = rememberSaveable { filterRuleId.value }
-                UpPage(
-                    title = if (index < 0) S("Add filter") else S("Edit filter"),
-                    onUp = { navController.popBackStack() },
-                ) {
-                    FilterEditorScreen(
-                        accountId = accountId,
-                        ruleId = ruleId,
-                        index = index,
-                        seed = seedCriteria(from, to, listId, subject),
-                        onDone = { navController.popBackStack() },
-                    )
-                }
-            }
-            composable("help") {
-                UpPage(S("Help"), onUp = { navController.navigateUp() }) {
-                    HelpScreen()
-                }
-            }
-            composable("about") {
-                UpPage(S("About"), onUp = { navController.navigateUp() }) {
-                    AboutScreen(onOpenLicenses = { navController.navigate("about/licenses") })
-                }
-            }
-            composable("about/licenses") {
-                UpPage(S("Open-source licenses"), onUp = {
-                    navController.popBackStack("about", inclusive = false)
-                }) {
-                    LicensesScreen()
-                }
-            }
+            composable("folderLists/expanded") { ScreenLayerPage("folderLists/expanded") }
+            composable("folderLists/views") { ScreenLayerPage("folderLists/views") }
+            composable("folderLists/starts") { ScreenLayerPage("folderLists/starts") }
+            composable("addressbook") { ScreenLayerPage("addressbook") }
+            composable("contacts") { ScreenLayerPage("contacts") }
+            composable("filters") { ScreenLayerPage("filters") }
+            composable("filter") { ScreenLayerPage("filter") }
+            composable("help") { ScreenLayerPage("help") }
+            composable("about") { ScreenLayerPage("about") }
+            composable("about/licenses") { ScreenLayerPage("about/licenses") }
         }
     }
 
-    fun navigateFromDrawer(go: suspend () -> Unit) {
+    fun navigateFromDrawer(keepZoom: Boolean = false, go: suspend () -> Unit) {
         scope.launch {
             go()
-            zoom = null
+            if (!keepZoom) zoom = null
         }
     }
 
@@ -1191,6 +1237,7 @@ private fun LiveImapNavHostReady() {
             mailStack = revealTree(mailStack, "root")
             return
         }
+        popScreenRoutes()
         mailStack = mailStack.pushFolderTree("root")
         navController.navigate("folders") {
             if (backStackHas("folders")) {
@@ -1334,18 +1381,18 @@ private fun LiveImapNavHostReady() {
             },
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
-                navigateFromDrawer {
+                navigateFromDrawer(keepZoom = true) {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) openFilterEditor(-1, "", "", "", "", chosen, "")
                 }
             },
             showFilters = drawerAccounts.isNotEmpty(),
             onEditFilters = {
-                navigateFromDrawer {
+                navigateFromDrawer(keepZoom = true) {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
                         filterListAccount.value = chosen
-                        navController.navigate("filters")
+                        openScreen("filters")
                     }
                 }
             },
@@ -1354,32 +1401,26 @@ private fun LiveImapNavHostReady() {
             onAccountFavorite = { account, favorite -> openAccountFavorite(account, favorite) },
             onAccountEditFavorite = { account, favorite -> editAccountFavorite(account, favorite) },
             onSettings = {
-                navigateFromDrawer {
-                    navController.navigate("settings") {
-                        launchSingleTop = true
-                    }
+                navigateFromDrawer(keepZoom = true) {
+                    openScreen("settings")
                 }
             },
             onManageAddresses = {
-                navigateFromDrawer {
+                navigateFromDrawer(keepZoom = true) {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
-                        navController.navigate("settings/account/$chosen/editor/addressBooks")
+                        openScreen("settings/account/$chosen/editor/addressBooks")
                     }
                 }
             },
             onHelp = {
-                navigateFromDrawer {
-                    navController.navigate("help") {
-                        launchSingleTop = true
-                    }
+                navigateFromDrawer(keepZoom = true) {
+                    openScreen("help")
                 }
             },
             onAbout = {
-                navigateFromDrawer {
-                    navController.navigate("about") {
-                        launchSingleTop = true
-                    }
+                navigateFromDrawer(keepZoom = true) {
+                    openScreen("about")
                 }
             },
         )
@@ -1445,6 +1486,10 @@ private fun LiveImapNavHostReady() {
         val shown = displayFill
         val mailRoute = route == null || route == "folders" || route == "index/{mailbox}" ||
             route == FoundRoutePattern || route == ReaderRoutePattern
+        val screenRoute = isScreenRoute(route)
+        val topScreenKey = mailStack.layers.lastOrNull()
+            ?.takeIf { it.kind == WindowLayerKind.Screen }
+            ?.key
         val hostedNav = remember {
             movableContentOf { modifier: Modifier ->
                 NavHost(
@@ -1455,7 +1500,7 @@ private fun LiveImapNavHostReady() {
                 )
             }
         }
-        if (!mailRoute) {
+        if (!mailRoute && !screenRoute) {
             hostedNav(Modifier.fillMaxSize())
         } else {
             val routeKind = when (route) {
@@ -1468,6 +1513,9 @@ private fun LiveImapNavHostReady() {
             val routeOnScreen = shown.slots.any { slot ->
                 !slot.collapsed && slot.layer?.kind == routeKind
             }
+            val screenOnScreen = shown.slots.any { slot ->
+                !slot.collapsed && slot.layer?.kind == WindowLayerKind.Screen && slot.layer?.key == topScreenKey
+            }
             MailLayout(
                 record = record,
                 fillResult = shown,
@@ -1477,7 +1525,12 @@ private fun LiveImapNavHostReady() {
                 onKey = { id -> keyPanelId = id },
             ) { slot ->
                 val kind = slot.layer?.kind
-                if (kind != null && kind == routeKind && routeOnScreen) {
+                val hostThisSlot = when {
+                    screenRoute && kind == WindowLayerKind.Screen && slot.layer?.key == topScreenKey -> true
+                    kind != null && kind == routeKind && routeOnScreen -> true
+                    else -> false
+                }
+                if (hostThisSlot) {
                     hostedNav(Modifier.fillMaxSize())
                 } else {
                     when (kind) {
@@ -1565,11 +1618,19 @@ private fun LiveImapNavHostReady() {
                                 )
                             }
                         }
+                        WindowLayerKind.Screen -> {
+                            val screenKey = slot.layer?.key.orEmpty()
+                            if (screenKey.isEmpty()) Box(Modifier.fillMaxSize()) else ScreenLayerPage(screenKey)
+                        }
                         null -> Box(Modifier.fillMaxSize())
                     }
                 }
             }
-            if (!routeOnScreen) hostedNav(Modifier.size(0.dp))
+            if (screenRoute) {
+                if (!screenOnScreen) hostedNav(Modifier.size(0.dp))
+            } else if (!routeOnScreen) {
+                hostedNav(Modifier.size(0.dp))
+            }
         }
         val editing = editingFavorite
         if (editing != null) {
@@ -2216,3 +2277,45 @@ internal fun navForwardChoice(stored: String): Boolean? = when (stored) {
 
 internal fun readerRoute(mailbox: String, uid: Long, sequence: Int, epoch: Long): String =
     "reader/${Uri.encode(mailbox)}/$uid/$sequence?epoch=$epoch"
+
+private val exactScreenRoutes = setOf(
+    "compose",
+    "unsent",
+    "settings",
+    "settings/accounts",
+    "settings/setup",
+    "folderLists/expanded",
+    "folderLists/views",
+    "folderLists/starts",
+    "addressbook",
+    "contacts",
+    "filters",
+    "filter",
+    "help",
+    "about",
+    "about/licenses",
+    "toolbar/index",
+    "toolbar/selection",
+    "toolbar/folders",
+    "toolbar/reader",
+    "toolbar/compose",
+)
+
+/** The screen-layer key is the route that was opened. Mail routes are not screens. */
+internal fun screenLayerKey(route: String): String? = if (isScreenRoute(route)) route else null
+
+internal fun isScreenRoute(route: String?): Boolean {
+    if (route.isNullOrEmpty()) return false
+    val path = route.substringBefore('?')
+    if (path in exactScreenRoutes) return true
+    return path.startsWith("settings/account/")
+}
+
+private fun toolbarScreenOf(route: String): ToolbarScreen? = when (route) {
+    "toolbar/index" -> ToolbarScreen.Index
+    "toolbar/selection" -> ToolbarScreen.Selection
+    "toolbar/folders" -> ToolbarScreen.Folders
+    "toolbar/reader" -> ToolbarScreen.Reader
+    "toolbar/compose" -> ToolbarScreen.Compose
+    else -> null
+}

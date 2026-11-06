@@ -186,6 +186,34 @@ class LayoutFillTest {
     }
 
     @Test
+    fun aScreenFillsTheTopSlotsOfTheFactoryLayouts() {
+        val one = factoryRecord(LayoutAutomatic)
+        val beside = factoryRecord(LayoutIndexBesideMessage)
+        val above = factoryRecord(LayoutListAboveMessage)
+        assertEquals(1, one!!.panels.size)
+        assertEquals(2, beside!!.panels.size)
+        assertEquals(2, above!!.panels.size)
+        val screen = stack.pushScreen("settings")
+        assertEquals(
+            listOf(WindowLayer(WindowLayerKind.Screen, "settings")),
+            fill(one, screen).slots.map { it.layer },
+        )
+        val wide = fill(beside, screen)
+        assertEquals(WindowLayerKind.Message, wide.slots[0].layer?.kind)
+        assertEquals("4", wide.slots[0].layer?.key)
+        assertEquals(WindowLayer(WindowLayerKind.Screen, "settings"), wide.slots[1].layer)
+        val piled = screen.pushScreen("filter")
+        val twoScreens = fill(beside, piled)
+        assertEquals(WindowLayer(WindowLayerKind.Screen, "settings"), twoScreens.slots[0].layer)
+        assertEquals(WindowLayer(WindowLayerKind.Screen, "filter"), twoScreens.slots[1].layer)
+        assertEquals(fill(beside, stack).slots.map { it.layer?.kind }, fill(above, stack).slots.map { it.layer?.kind })
+        assertEquals(
+            listOf(WindowLayerKind.Message, WindowLayerKind.Screen),
+            fill(above, screen).slots.map { it.layer?.kind },
+        )
+    }
+
+    @Test
     fun zoomOfAnAlreadyFullPanelDoesNothing() {
         val current = fill(factoryRecord(LayoutAutomatic), stack)
         assertNull(zoomTarget(current, stack.layers.last()))

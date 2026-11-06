@@ -174,6 +174,7 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
                     label = { Text(S("Unpinned")) },
                 )
                 for (kind in WindowLayerKind.entries) {
+                    if (kind == WindowLayerKind.Screen) continue
                     FilterChip(
                         selected = pin == kind,
                         onClick = {
@@ -248,6 +249,7 @@ private fun layerTitle(kind: WindowLayerKind): String = when (kind) {
     WindowLayerKind.FolderIndex -> S("Message list")
     WindowLayerKind.SearchIndex -> S("Search")
     WindowLayerKind.Message -> S("Message")
+    WindowLayerKind.Screen -> kind.name
 }
 
 @Composable
