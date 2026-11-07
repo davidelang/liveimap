@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Tài khoản đang mở trong ngăn"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Tài khoản được sửa sau cùng"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Gỡ lỗi (nhật ký chi tiết)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Đã thêm các dòng ngăn kéo của tài khoản vào mục yêu thích"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Chế độ xem khi khởi động"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Ngăn kéo"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Danh sách thư mục"},

@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Kontoen er open i skuffa"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Kontoen som vart redigert sist"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Feilsøking (detaljerte loggar)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Skufferadene til kontoen lagt til i favorittar"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startvising"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Skuffa"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Mappelista"},

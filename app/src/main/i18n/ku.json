@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Hesaba di deravê de vekirî"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Hesaba herî dawî ya guhertî"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Çewtîjêbirin (tomarên berfireh)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Rêzên çekmeceya hesabê li bijareyan hatin zêdekirin"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Dîmena destpêkê"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Çekmece"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Lîsteya peldankan"},

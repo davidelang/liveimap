@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "இழுப்பறையில் திறந்த கணக்கு"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "கடைசியில் திருத்திய கணக்கு"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "பிழைதிருத்தம் (விரிவான பதிவுகள்)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "கணக்கின் டிராயர் வரிசைகள் பிடித்தவற்றில் சேர்க்கப்பட்டன"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "தொடக்கக் காட்சி"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "டிராயர்"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "கோப்புறை பட்டியல்"},

@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "L’account aperto nel riquadro"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "L’account modificato per ultimo"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debug (log dettagliati)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Righe del cassetto dell'account aggiunte ai preferiti"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Vista iniziale"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Il cassetto"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "L'elenco cartelle"},

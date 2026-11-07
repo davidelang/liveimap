@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Účet otvorený v paneli"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Naposledy upravený účet"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ladenie (podrobné denníky)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Riadky zásuvky účtu pridané do obľúbených"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Úvodné zobrazenie"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Zásuvka"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Zoznam priečinkov"},

@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "I-akhawunti evulekile ekhabetheni"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "I-akhawunti ehlelwe yokugcina"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ukulungisa amaphutha (amalogi anemininingwane)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Imigqa yedilowa ye-akhawunti yengezwe ezintandokazini"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Ukubuka kokuqala"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Idilowa"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Uhlu lwamafolda"},

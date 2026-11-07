@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Çekmecede açık olan hesap"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "En son düzenlenen hesap"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Hata ayıklama (ayrıntılı günlükler)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Hesabın çekmece satırları favorilere eklendi"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Başlangıç görünümü"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Çekmece"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Klasör listesi"},

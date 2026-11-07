@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Das im Menü geöffnete Konto"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Das zuletzt bearbeitete Konto"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (ausführliche Protokolle)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Menüzeilen des Kontos zu Favoriten hinzugefügt"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startansicht"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Das Menü"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Die Ordnerliste"},

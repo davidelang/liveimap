@@ -41,6 +41,8 @@ fun startupStack(
         // Built the way a drawer pick of that favorite builds it.
         "favorite" -> when {
             firstFavorite == null -> StartupPlan(drawer, account, StartupProblem.NoFavorite)
+            // The account's folder-list favorite (a node at the empty prefix) opens the folder list, as its drawer row does.
+            firstFavorite.node && firstFavorite.mailbox.isEmpty() -> StartupPlan(drawer.pushFolderTree("root"), account, null)
             firstFavorite.mailbox.isBlank() -> StartupPlan(drawer, account, StartupProblem.FavoriteInvalid)
             firstFavorite.node -> StartupPlan(drawer.choose(StackChoice.Folder, firstFavorite.mailbox), account, null)
             else -> StartupPlan(drawer.choose(StackChoice.Favorite, firstFavorite.mailbox).pushMailboxIndex(firstFavorite.mailbox), account, null)

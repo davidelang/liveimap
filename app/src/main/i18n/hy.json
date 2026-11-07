@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Դարակում բաց հաշիվը"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Վերջինը խմբագրված հաշիվը"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Վրիպազերծում (մանրամասն գրանցամատյաններ)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Հաշվի դարակի տողերը ավելացվել են ընտրյալներին"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Մեկնարկային տեսք"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Դարակը"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Թղթապանակների ցանկը"},

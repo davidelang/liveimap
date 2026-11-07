@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "De Kont, deen an der Schublad op ass"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "De Kont, deen als lescht beaarbecht gouf"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (detailléiert Logbicher)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Tirangzeile vum Konto bei d'Favoritten derbäigesat"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startusiicht"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "D'Tirang"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "D'Dossierslëscht"},

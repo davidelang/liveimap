@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Y cyfrif sy’n agored yn y drôr"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Y cyfrif a olygwyd olaf"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Dadfygio (logiau manwl)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Rhesi drôr y cyfrif wedi'u hychwanegu at ffefrynnau"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Golwg cychwyn"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Y drôr"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Y rhestr ffolderi"},

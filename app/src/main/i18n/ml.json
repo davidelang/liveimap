@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ഡ്രോയറിൽ തുറന്ന അക്കൗണ്ട്"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "അവസാനം തിരുത്തിയ അക്കൗണ്ട്"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ഡീബഗ്ഗിംഗ് (വിശദമായ ലോഗുകൾ)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "അക്കൗണ്ടിന്റെ ഡ്രോയർ വരികൾ പ്രിയപ്പെട്ടവയിൽ ചേർത്തു"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "ആരംഭ കാഴ്ച"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ഡ്രോയർ"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ഫോൾഡർ ലിസ്റ്റ്"},

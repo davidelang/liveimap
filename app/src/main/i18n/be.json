@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Уліковы запіс, адкрыты ў панэлі"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Уліковы запіс, зменены апошнім"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Адладка (падрабязныя журналы)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Радкі шуфляды ўліковага запісу дададзены ў абранае"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Пачатковы выгляд"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Шуфляда"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Спіс папак"},

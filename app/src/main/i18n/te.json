@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "డ్రాయర్‌లో తెరిచిన ఖాతా"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "చివరిగా సవరించిన ఖాతా"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "డీబగ్గింగ్ (వివరమైన లాగ్‌లు)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "ఖాతా డ్రాయర్ వరుసలు ఇష్టమైనవాటికి జోడించబడ్డాయి"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "ప్రారంభ వీక్షణ"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "డ్రాయర్"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ఫోల్డర్ జాబితా"},

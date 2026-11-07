@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Reikningurinn sem er opinn í skúffunni"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Reikningurinn sem var breytt síðast"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Villuleit (ítarlegar annálar)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Skúffulínur reiknings bætt við eftirlæti"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Upphafsyfirlit"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Skúffan"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Möppulistinn"},

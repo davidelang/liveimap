@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Обліковий запис, відкритий у панелі"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Обліковий запис, змінений останнім"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Налагодження (докладні журнали)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Рядки шухляди облікового запису додано до вибраного"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Початковий вигляд"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Шухляда"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Список папок"},

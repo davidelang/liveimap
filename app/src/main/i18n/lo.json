@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ບັນຊີທີ່ເປີດໃນລິ້ນຊັກ"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "ບັນຊີທີ່ແກ້ຫຼ້າສຸດ"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ການດີບັກ (ບັນທຶກລະອຽດ)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "ເພີ່ມແຖວລິ້ນຊັກຂອງບັນຊີໃສ່ລາຍການທີ່ມັກແລ້ວ"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "ມຸມມອງເລີ່ມຕົ້ນ"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ລິ້ນຊັກ"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ລາຍການໂຟນເດີ"},

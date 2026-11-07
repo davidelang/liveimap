@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Профилът, отворен в панела"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Профилът, редактиран последен"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Отстраняване на грешки (подробни журнали)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Редовете на профила в чекмеджето са добавени към избраните"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Начален изглед"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Чекмеджето"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Списъкът с папки"},

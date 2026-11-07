@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "บัญชีที่เปิดอยู่ในลิ้นชัก"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "บัญชีที่แก้ไขเป็นรายการสุดท้าย"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "การดีบัก (บันทึกโดยละเอียด)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "เพิ่มแถวลิ้นชักของบัญชีในรายการโปรดแล้ว"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "มุมมองเริ่มต้น"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ลิ้นชัก"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "รายการโฟลเดอร์"},

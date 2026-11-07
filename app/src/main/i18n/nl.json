@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Het account dat in het menu open is"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Het laatst bewerkte account"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Foutopsporing (gedetailleerde logboeken)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Laderegels van het account toegevoegd aan favorieten"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startweergave"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "De lade"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "De mappenlijst"},

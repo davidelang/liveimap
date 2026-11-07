@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "It akkount iepene yn 'e lade"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "It lêst bewurke akkount"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debuggen (detaillearre logs)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Ladereigels fan de account oan favoriten tafoege"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startwerjefte"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "De lade"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "De mapelist"},

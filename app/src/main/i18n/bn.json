@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ড্রয়ারে খোলা অ্যাকাউন্ট"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "সবশেষে সম্পাদিত অ্যাকাউন্ট"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ডিবাগিং (বিস্তারিত লগ)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "অ্যাকাউন্টের ড্রয়ার সারি প্রিয়তে যোগ হয়েছে"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "শুরুর ভিউ"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ড্রয়ার"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ফোল্ডার তালিকা"},

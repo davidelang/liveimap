@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "서랍에서 열린 계정"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "마지막으로 편집한 계정"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "디버깅(상세 로그)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "계정 서랍 행이 즐겨찾기에 추가됨"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "시작 화면"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "서랍"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "폴더 목록"},

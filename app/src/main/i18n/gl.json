@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "A conta aberta no caixón"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "A conta editada en último lugar"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depuración (rexistros detallados)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Filas do caixón da conta engadidas aos favoritos"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Vista de inicio"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "O caixón"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "A lista de cartafoles"},

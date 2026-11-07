@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "A panelen nyitva lévő fiók"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "A legutóbb szerkesztett fiók"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Hibakeresés (részletes naplók)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "A fiók menüsorai hozzáadva a kedvencekhez"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Kezdőnézet"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "A fiók"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "A mappalista"},

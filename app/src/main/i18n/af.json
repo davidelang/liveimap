@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Die rekening wat in die laai oop is"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Die rekening wat laas gewysig is"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ontfouting (gedetailleerde logs)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Rekening se laairye by gunstelinge gevoeg"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Beginaansig"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Die laai"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Die vouerlys"},

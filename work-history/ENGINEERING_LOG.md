@@ -4267,3 +4267,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-07 - Startup view defaults to the default favorite
 
 - startupView default is now "favorite". New accounts get no favorites (the favorites default is empty; only a pinerc import adds some), so a user without favorites sees the no-favorites bar over the drawer at each launch. No fallback was added; pending David's decision.
+
+## 2026-11-07 - Drawer rows become favorites
+
+- Each account's former fixed drawer rows (folder list as the account name, INBOX, Postponed when set) are added once as real favorites (in front, in the old order; missing ones only; marker drawerRowsAdded so deletes stick). New accounts get them on first listing. The drawer renders only favorites plus controls (filters, New window, Settings, Manage addresses, Help, About); a corrupt account keeps its fixed name row. The folder-list favorite opens the folder list, so the default-favorite startup lands there for an untouched account.

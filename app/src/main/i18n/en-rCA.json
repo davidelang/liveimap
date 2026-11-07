@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "The account open in the drawer"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "The account edited last"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (detailed logs)", "same": true},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Account drawer rows added to favorites", "same": true},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Startup view", "same": true},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "The drawer", "same": true},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "The folder list", "same": true},

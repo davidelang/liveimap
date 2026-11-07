@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akaun yang terbuka dalam laci"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akaun yang disunting terakhir"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Penyahpepijatan (log terperinci)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Baris laci akaun ditambah ke kegemaran"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Paparan permulaan"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Laci"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Senarai folder"},

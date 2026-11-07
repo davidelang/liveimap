@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ka tuwhera te kaute i roto i te pouaka"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ko te kaute i whakatika whakamutunga"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Patuiro (ngā rangitaki taipitopito)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Kua tāpirihia ngā rārangi pouaka kumea o te pūkete ki ngā makau"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Tirohanga tīmata"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Te pouaka kumea"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Te rārangi kōpaki"},

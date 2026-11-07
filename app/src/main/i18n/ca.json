@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "El compte obert al calaix"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "El compte editat en darrer lloc"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depuració (registres detallats)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Files del calaix del compte afegides als preferits"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Vista d'inici"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "El calaix"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "La llista de carpetes"},

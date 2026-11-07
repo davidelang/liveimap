@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Àkántì tó ṣí nínú àpótí"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Àkántì tí a ṣàtúnṣe kẹ́yìn"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ìṣàtúnṣe àṣìṣe (àwọn àkọsílẹ̀ aláyè)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "A ti fi àwọn ìlà àpótí àkáǹtì kún àwọn àyànfẹ́"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Ìwò ìbẹ̀rẹ̀"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Àpótí"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Àkójọ fódà"},

@@ -1135,7 +1135,7 @@ fun SettingsTree(
         onNavigate = onNavigate,
         onEditFavorite = { favorite ->
             editingFavorite = favorite
-            favoriteDraft = if (favorite.label.isNotBlank()) {
+            favoriteDraft = if (favorite.label.isNotBlank() || org.dlang.liveimap.ui.isFolderListFavorite(favorite)) {
                 favorite.label
             } else {
                 favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)

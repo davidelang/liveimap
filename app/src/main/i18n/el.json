@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ο λογαριασμός που είναι ανοιχτός στο συρτάρι"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ο λογαριασμός που επεξεργάστηκε τελευταίος"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Εντοπισμός σφαλμάτων (λεπτομερή αρχεία καταγραφής)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Οι γραμμές συρταριού του λογαριασμού προστέθηκαν στα αγαπημένα"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Αρχική προβολή"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Το συρτάρι"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Η λίστα φακέλων"},

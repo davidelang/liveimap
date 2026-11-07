@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Račun otvoren u ladici"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Račun uređen posljednji"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Otklanjanje pogrešaka (detaljni zapisnici)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Retci ladice računa dodani u favorite"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Početni prikaz"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Ladica"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Popis mapa"},

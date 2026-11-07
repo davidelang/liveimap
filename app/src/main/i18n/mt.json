@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Il-kont miftuħ fil-kexxun"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Il-kont editjat l-aħħar"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (logs dettaljati)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Ir-ringieli tal-kexxun tal-kont miżjuda mal-favoriti"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Dehra tal-bidu"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Il-kexxun"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Il-lista tal-folders"},

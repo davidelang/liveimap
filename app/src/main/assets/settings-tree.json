@@ -1759,6 +1759,13 @@
               "pinercFormat": "incoming",
               "many": true,
               "order": "user"
+            },
+            {
+              "setting": "drawerRowsAdded",
+              "type": "bool",
+              "default": false,
+              "title": "Account drawer rows added to favorites",
+              "hidden": true
             }
           ],
           "summary": [

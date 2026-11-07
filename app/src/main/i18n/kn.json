@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ಡ್ರಾಯರ್‌ನಲ್ಲಿ ತೆರೆದ ಖಾತೆ"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "ಕೊನೆಯಲ್ಲಿ ಸಂಪಾದಿಸಿದ ಖಾತೆ"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ಡೀಬಗ್ ಮಾಡುವಿಕೆ (ವಿವರವಾದ ಲಾಗ್‌ಗಳು)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "ಖಾತೆಯ ಡ್ರಾಯರ್ ಸಾಲುಗಳನ್ನು ಮೆಚ್ಚಿನವುಗಳಿಗೆ ಸೇರಿಸಲಾಗಿದೆ"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "ಪ್ರಾರಂಭ ವೀಕ್ಷಣೆ"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ಡ್ರಾಯರ್"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ಫೋಲ್ಡರ್ ಪಟ್ಟಿ"},

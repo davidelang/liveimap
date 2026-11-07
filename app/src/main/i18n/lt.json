@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Paskyra, atidaryta stalčiuje"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Paskyra, redaguota paskutinė"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Derinimas (išsamūs žurnalai)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Paskyros stalčiaus eilutės pridėtos prie mėgstamųjų"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Pradinis vaizdas"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Stalčius"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Aplankų sąrašas"},

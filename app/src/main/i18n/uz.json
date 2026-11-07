@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Tortmada ochiq hisob"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Oxirgi tahrirlangan hisob"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Nosozliklarni tuzatish (batafsil jurnallar)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Hisob tortma qatorlari sevimlilarga qo‘shildi"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Boshlang‘ich ko‘rinish"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Tortma"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Jildlar ro‘yxati"},

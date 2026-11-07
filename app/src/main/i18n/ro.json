@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Contul deschis în panou"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Contul editat ultima dată"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depanare (jurnale detaliate)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Rândurile din sertar ale contului adăugate la favorite"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Vizualizare la pornire"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Sertarul"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Lista de dosare"},

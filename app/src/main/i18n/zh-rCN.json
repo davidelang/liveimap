@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "抽屉中打开的账户"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "上次编辑的账户"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "调试（详细日志）"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "已将账户的抽屉行添加到收藏"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "启动视图"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "抽屉"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "文件夹列表"},

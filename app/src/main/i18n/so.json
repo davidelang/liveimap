@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akoonka galka ku furan"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akoonkii ugu dambeeyay ee la tafatiray"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Cilad-bixin (diiwaanno faahfaahsan)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Safafka khaanadda akoonka waxaa lagu daray jeclaanshaha"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Muuqaalka bilowga"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Khaanadda"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Liiska galalka"},

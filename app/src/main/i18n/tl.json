@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ang account na bukas sa drawer"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ang account na huling na-edit"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Pag-debug (detalyadong mga log)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Naidagdag sa mga paborito ang mga hilera ng drawer ng account"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Panimulang view"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Ang drawer"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Ang listahan ng folder"},

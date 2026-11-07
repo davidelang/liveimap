@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "အံဆွဲထဲ ဖွင့်ထားသော အကောင့်"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "နောက်ဆုံးတည်းဖြတ်ထားသော အကောင့်"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "အမှားရှာခြင်း (အသေးစိတ် မှတ်တမ်းများ)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "အကောင့်၏ အံဆွဲတန်းများကို အကြိုက်များသို့ ထည့်ပြီး"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "စတင်မြင်ကွင်း"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "အံဆွဲ"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ဖိုင်တွဲစာရင်း"},

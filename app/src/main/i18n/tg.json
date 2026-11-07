@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ҳисоби дар ҷевон кушода"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ҳисоби охирин таҳриршуда"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ислоҳи хатоҳо (гузоришҳои муфассал)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Сатрҳои ҷевони ҳисоб ба интихобшудаҳо илова шуданд"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Намуди оғоз"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Ҷевон"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Рӯйхати ҷузвдонҳо"},

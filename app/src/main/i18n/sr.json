@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Налог отворен у фиоци"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Налог уређен последњи"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Отклањање грешака (детаљни дневници)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Редови фиоке налога додати у омиљене"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Почетни приказ"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Фиока"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Листа фасцикли"},

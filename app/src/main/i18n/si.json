@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ලාච්චුවේ විවෘත ගිණුම"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "අවසානයට සංස්කරණය කළ ගිණුම"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "නිදොස්කරණය (විස්තරාත්මක ලොග)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "ගිණුමේ ලාච්චු පේළි ප්‍රියතමවලට එක් කරන ලදී"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "ආරම්භක දසුන"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "ලාච්චුව"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "ෆෝල්ඩර ලැයිස්තුව"},

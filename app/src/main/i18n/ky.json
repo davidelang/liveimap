@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Суурмада ачык каттоо"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Акыркы оңдолгон каттоо"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Мүчүлүштүктөрдү оңдоо (толук журналдар)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Аккаунттун суурма саптары тандалмаларга кошулду"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Баштапкы көрүнүш"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Суурма"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Папкалар тизмеси"},

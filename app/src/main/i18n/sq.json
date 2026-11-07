@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Llogaria e hapur në sirtar"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Llogaria e redaktuar e fundit"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Korrigjimi (regjistra të detajuar)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Rreshtat e sirtarit të llogarisë u shtuan te të preferuarat"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Pamja fillestare"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Sirtari"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Lista e dosjeve"},

@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "An cuntas atá oscailte sa tarraiceán"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "An cuntas a cuireadh in eagar ar deireadh"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Dífhabhtú (logaí mionsonraithe)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Sraitheanna tarraiceáin an chuntais curtha le ceanáin"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Amharc tosaigh"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "An tarraiceán"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "An liosta fillteán"},

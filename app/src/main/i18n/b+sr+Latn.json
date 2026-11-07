@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Nalog otvoren u fioci"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Nalog uređen poslednji"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Otklanjanje grešaka (detaljni dnevnici)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Redovi fioke naloga dodati u omiljene"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Početni prikaz"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Fioka"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Lista fascikli"},

@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ny kaonty dia misokatra ao amin'ny vatasarihana"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ny kaonty nohavaozina farany"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Fanamboarana lesoka (firaketana amin'ny antsipiriany)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Nampiana amin'ny tiana ny andalana vatasarihan'ny kaonty"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Fijery fanombohana"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Ny vatasarihana"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Ny lisitry ny laha-tahiry"},

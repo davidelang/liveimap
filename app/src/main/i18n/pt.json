@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "A conta aberta na gaveta"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "A conta editada por último"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depuração (registros detalhados)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Linhas da gaveta da conta adicionadas aos favoritos"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Visualização inicial"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "A gaveta"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "A lista de pastas"},

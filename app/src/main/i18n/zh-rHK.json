@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "抽屜中開啟的帳戶"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "上次編輯的帳戶"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "偵錯（詳細記錄）"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "已將帳戶的抽屜列加入常用項目"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "啟動檢視"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "抽屜"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "資料夾清單"},

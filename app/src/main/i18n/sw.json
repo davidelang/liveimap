@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akaunti iliyo wazi kwenye droo"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akaunti iliyohaririwa mwisho kabisa"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Utatuzi (kumbukumbu za kina)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Safu za droo za akaunti zimeongezwa kwenye vipendwa"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Mwonekano wa kuanza"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Droo"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Orodha ya folda"},

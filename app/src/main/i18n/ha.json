@@ -1063,6 +1063,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Asusun da aka buɗe a jaka"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Asusun da aka gyara ƙarshe"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Gyara kurakurai (cikakkun bayanan log)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "An ƙara layukan aljihun asusu cikin abubuwan so"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Duban farawa"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Aljihun tebur"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Jerin fayiloli"},

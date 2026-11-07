@@ -1052,6 +1052,7 @@
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Konto otwarte w panelu"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Konto edytowane jako ostatnie"},
 {"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugowanie (szczegółowe dzienniki)"},
+{"key": "setting_drawerRowsAdded_title", "source": "Account drawer rows added to favorites", "text": "Wiersze szuflady konta dodane do ulubionych"},
 {"key": "setting_startupView_title", "source": "Startup view", "text": "Widok startowy"},
 {"key": "setting_startupView_drawer", "source": "The drawer", "text": "Szuflada"},
 {"key": "setting_startupView_folderList", "source": "The folder list", "text": "Lista folderów"},
