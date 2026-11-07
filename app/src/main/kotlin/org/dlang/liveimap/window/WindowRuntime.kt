@@ -68,6 +68,7 @@ internal object SettingsEntry {
         private set
 
     fun refuse() {
+        org.dlang.liveimap.engine.DebugLog.event("screen") { "settings refused: another window holds the settings marker" }
         generation += 1
     }
 }
@@ -82,6 +83,7 @@ internal object SettingsSession {
         }
         val app = context.applicationContext
         val ok = withContext(Dispatchers.IO) { markers(app).enter(WindowIdentity.marker()) }
+        org.dlang.liveimap.engine.DebugLog.event("screen") { "settings marker enter pid=${WindowIdentity.record.pid} ok=$ok" }
         if (ok) depth += 1
         return ok
     }

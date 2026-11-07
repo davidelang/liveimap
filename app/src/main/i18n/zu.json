@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Izilungiselelo zivuleka ku"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "I-akhawunti evulekile ekhabetheni"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "I-akhawunti ehlelwe yokugcina"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ukulungisa amaphutha (amalogi anemininingwane)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Ukuphina isitifiketi se-Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Isikhathi sokuxhuma kwe-Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Isikhathi sokufunda kwe-Sieve"},

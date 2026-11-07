@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Izicwangciso zivula"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "I-akhawunti ivula kwidrowa"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "I-akhawunti ihlelwe okokugqibela"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ukulungisa iimpazamo (iilogi ezineenkcukacha)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Ungene ngaphandle kokubophelela kwijelo (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve iphini yesatifikethi"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve qhagamshela ixesha lokuphuma"},

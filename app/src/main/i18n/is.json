@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Stillingar opnast á"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Reikningurinn sem er opinn í skúffunni"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Reikningurinn sem var breytt síðast"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Villuleit (ítarlegar annálar)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Festing Sieve-vottorðs"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Tímamörk Sieve-tengingar"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Tímamörk Sieve-lestrar"},

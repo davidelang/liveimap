@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Налады адкрываюцца на"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Уліковы запіс, адкрыты ў панэлі"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Уліковы запіс, зменены апошнім"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Адладка (падрабязныя журналы)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Замацаванне сертыфіката Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Час чакання злучэння Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Час чакання чытання Sieve"},

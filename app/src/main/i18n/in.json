@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Setelan terbuka pada"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akun yang terbuka di laci"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akun yang diubah terakhir"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (log terperinci)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sematan sertifikat Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Batas waktu sambungan Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Batas waktu baca Sieve"},

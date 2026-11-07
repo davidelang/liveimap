@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Կարգավորումները բացվում են"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Դարակում բաց հաշիվը"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Վերջինը խմբագրված հաշիվը"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Վրիպազերծում (մանրամասն գրանցամատյաններ)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve վկայագրի ամրացում"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve կապի ժամկետ"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve ընթերցման ժամկետ"},

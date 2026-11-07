@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "సెట్టింగ్ ఇక్కడ తెరుచుకుంటుంది"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "డ్రాయర్‌లో తెరిచిన ఖాతా"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "చివరిగా సవరించిన ఖాతా"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "డీబగ్గింగ్ (వివరమైన లాగ్‌లు)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve ధృవపత్ర పిన్"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve కనెక్షన్ కాలపరిమితి"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve చదివే కాలపరిమితి"},

@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Configuraziuns vegnan avertas il"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Il conto vegn avert en il truclet"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Il conto modifitgà l'ultima giada"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (protocols detagliads)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Logged in without channel link (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Servetta da certificat"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Surpassament da temp tar colliaziun Sieve"},

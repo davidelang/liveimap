@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Os axustes ábrense en"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "A conta aberta no caixón"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "A conta editada en último lugar"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depuración (rexistros detallados)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Fixación do certificado Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Tempo de conexión de Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Tempo de lectura de Sieve"},

@@ -91,10 +91,12 @@ object SettingsHub {
             published[parsed] = overlayAccountFields(decoded, userData).withUiOf(ui)
         }
         uiState.value = ui
+        org.dlang.liveimap.engine.DebugLog.enabled = ui.debugLogging
         accountState.value = published
         openState.value = resolveOpen(published.keys, ui.defaultAccount)
         ToolbarStore.install(ui)
         phase = 2
+        org.dlang.liveimap.engine.DebugLog.event("settings") { "load: ui and ${published.size} account documents" }
         }
     }
 
@@ -130,6 +132,7 @@ object SettingsHub {
         if (replaceUnknowns) next = next.copy(unknownSettings = draft.unknownSettings)
         val text = next.encodeUi()
         writeGlobalRecord(context, text)
+        org.dlang.liveimap.engine.DebugLog.event("settings") { "save ui keys=${keys.sorted()} unknowns=$replaceUnknowns" }
         publishUi(next)
         ToolbarStore.install(next)
         settleScope(context)
@@ -137,6 +140,7 @@ object SettingsHub {
 
     suspend fun noteAccountWritten(context: Context, accountId: String, settings: Settings, first: Boolean) {
         val id = parseAccountId(accountId) ?: return
+        org.dlang.liveimap.engine.DebugLog.event("settings") { "save account $id first=$first" }
         if (first) {
             var ui = loadStoredSettings(context, readGlobalRecord(context)).settings
             ui = ui.withSetting("defaultAccount", SettingValue(id))
@@ -191,6 +195,7 @@ object SettingsHub {
             published[id] = decodeSettings(textOf(map)).withUiOf(ui)
         }
         uiState.value = ui
+        org.dlang.liveimap.engine.DebugLog.enabled = ui.debugLogging
         accountState.value = published
         openState.value = resolveOpen(published.keys, ui.defaultAccount)
         if (warning.isNotEmpty()) noticeState.value = warning
@@ -200,6 +205,7 @@ object SettingsHub {
 
     private fun publishUi(ui: Settings) {
         uiState.value = ui
+        org.dlang.liveimap.engine.DebugLog.enabled = ui.debugLogging
         accountState.value = accountState.value.mapValues { (_, settings) -> settings.withUiOf(ui) }
     }
 

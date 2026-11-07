@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ètò ń ṣí sí"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Àkántì tó ṣí nínú àpótí"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Àkántì tí a ṣàtúnṣe kẹ́yìn"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Ìṣàtúnṣe àṣìṣe (àwọn àkọsílẹ̀ aláyè)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Ìfisí ìwé-ẹ̀rí Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Àkókò ìsopọ̀ Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Àkókò kíkà Sieve"},

@@ -17,6 +17,9 @@ class LiveImapApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         context = applicationContext
+        val processName = runCatching { java.io.File("/proc/self/cmdline").readText().substringBefore('\u0000') }
+            .getOrElse { error -> "unknown (${error.javaClass.simpleName})" }
+        org.dlang.liveimap.engine.DebugLog.install(filesDir, processName)
         if (Build.VERSION.SDK_INT >= 26) {
             AccountManager.get(this).addOnAccountsUpdatedListener(
                 { accounts -> AccountEvents.onUpdated(this, accounts) },
@@ -29,6 +32,7 @@ class LiveImapApplication : Application() {
                 restoreAccounts(this@LiveImapApplication)
                 AccountStore.shared(this@LiveImapApplication).sweepPendingDeletes()
                 org.dlang.liveimap.settings.SettingsHub.prepare(this@LiveImapApplication)
+                org.dlang.liveimap.engine.DebugLog.event("window") { "process start $processName pid=${android.os.Process.myPid()}" }
                 sweepTraffic()
             }
         }, "account-restore").apply { isDaemon = true; start() }

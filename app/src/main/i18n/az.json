@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ayarlar bunun üzərində açılır"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Siyirmədə açıq olan hesab"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ən son redaktə olunan hesab"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Sazlama (ətraflı jurnallar)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve sertifikat sancaqı"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve qoşulma vaxtı"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve oxuma vaxtı"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ustawienia otwierają się na"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Konto otwarte w panelu"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Konto edytowane jako ostatnie"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugowanie (szczegółowe dzienniki)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Przypięcie certyfikatu Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Limit czasu połączenia Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Limit czasu odczytu Sieve"},

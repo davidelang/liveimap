@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Parametrat hapen te"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Llogaria e hapur në sirtar"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Llogaria e redaktuar e fundit"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Korrigjimi (regjistra të detajuar)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Fiksimi i certifikatës Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Koha e lidhjes Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Koha e leximit Sieve"},

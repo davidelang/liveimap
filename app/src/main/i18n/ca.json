@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "La configuració s’obre a"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "El compte obert al calaix"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "El compte editat en darrer lloc"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Depuració (registres detallats)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Fixació del certificat Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Temps de connexió de Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Temps de lectura de Sieve"},

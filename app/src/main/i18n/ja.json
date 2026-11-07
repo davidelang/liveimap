@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "設定を開く対象"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "引き出しで開いているアカウント"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "最後に編集したアカウント"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "デバッグ（詳細ログ）"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve 証明書のピン留め"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve の接続待ち時間"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve の読み取り待ち時間"},

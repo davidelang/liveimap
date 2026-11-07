@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Dejintu waxay ku furantaa"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akoonka galka ku furan"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akoonkii ugu dambeeyay ee la tafatiray"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Cilad-bixin (diiwaanno faahfaahsan)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Lagu galay iyada oo aan xiriirka la xirin (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Dhejinta shahaadada Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Waqtiga xiriirka Sieve"},

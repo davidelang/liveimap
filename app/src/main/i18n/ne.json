@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "सेटिङ यहाँ खुल्छ"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "दराजमा खुला खाता"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "अन्तिममा सम्पादित खाता"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "डिबगिङ (विस्तृत लगहरू)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve प्रमाणपत्र पिन"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve जडानको समयसीमा"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve पढ्ने समयसीमा"},

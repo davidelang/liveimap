@@ -422,6 +422,7 @@ private fun LiveImapNavHostReady() {
     fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
     fun currentFill(): FillResult = displayedFill(currentRecord(), mailStack, zoom)
     fun toggleDrawerOverlay() {
+        org.dlang.liveimap.engine.DebugLog.event("drawer") { "hamburger: drawer was ${if (drawerOverlayOpen(zoom)) "open" else "closed"}" }
         zoom = toggleDrawer(fill(currentRecord(), mailStack), mailStack.layers.first(), zoom)
     }
     fun openDrawerOverlay() {
@@ -433,7 +434,12 @@ private fun LiveImapNavHostReady() {
         true
     }
     val drawerOverlay = drawerOverlayOpen(zoom)
+    LaunchedEffect(zoom) {
+        val z = zoom
+        org.dlang.liveimap.engine.DebugLog.event("zoom") { if (z == null) "zoom cleared" else "zoom set ${z.layer.kind}:${z.layer.key}" }
+    }
     LaunchedEffect(drawerOverlay) {
+        org.dlang.liveimap.engine.DebugLog.event("drawer") { if (drawerOverlay) "drawer open" else "drawer closed" }
         if (drawerOverlay) drawerSheetState.open() else drawerSheetState.close()
     }
     val currentEntry by navController.currentBackStackEntryAsState()
@@ -472,6 +478,17 @@ private fun LiveImapNavHostReady() {
         toggleDrawerOverlay()
     })
     val displayFill = currentFill()
+    LaunchedEffect(mailStack) {
+        org.dlang.liveimap.engine.DebugLog.event("stack") { "stack " + mailStack.layers.joinToString(" > ") { "${it.kind}:${it.key}" } }
+    }
+    LaunchedEffect(displayFill) {
+        org.dlang.liveimap.engine.DebugLog.event("fill") {
+            "fill " + displayFill.slots.joinToString(" | ") { slot ->
+                slot.panelIds.joinToString(",") + "=" + (slot.layer?.let { "${it.kind}:${it.key}" } ?: "-") +
+                    (if (slot.collapsed) " collapsed" else "")
+            }
+        }
+    }
     val activeKey = keyPanel(displayFill, keyPanelId)
     val activeLayer = keyLayer(displayFill, activeKey)
     SideEffect {
@@ -587,6 +604,7 @@ private fun LiveImapNavHostReady() {
             return
         }
         val plan = screenOpenPlan(mailStack, key)
+        org.dlang.liveimap.engine.DebugLog.event("stack") { "open screen $key existing=${plan.existing} pops=${plan.pops} shown=${currentScreenKey()}" }
         mailStack = plan.stack
         zoom = zoomAfterScreenOpen(zoom, key)
         repeat(plan.pops) { navController.popBackStack() }
@@ -691,6 +709,9 @@ private fun LiveImapNavHostReady() {
     fun leaveLayer(failure: String? = null) {
         if (!failure.isNullOrEmpty()) IndexLeaveReport.report(failure)
         val step = back(dialogOpen(), zoom, mailStack)
+        org.dlang.liveimap.engine.DebugLog.event("stack") {
+            "leave layer dialog=${step.dismissedDialog} zoom=${zoom?.layer?.kind} pop=${mailStack.layers.lastOrNull()?.kind}"
+        }
         if (step.dismissedDialog) {
             dismissOpenDialog()
             return
@@ -780,6 +801,7 @@ private fun LiveImapNavHostReady() {
             var seenRefusal by remember(screenKey) { mutableIntStateOf(settingsRefusal) }
             LaunchedEffect(settingsRefusal) {
                 if (settingsRefusal != seenRefusal && screenClosesOnSettingsRefusal(screenKey)) {
+                    org.dlang.liveimap.engine.DebugLog.event("screen") { "close $screenKey: settings refused" }
                     seenRefusal = settingsRefusal
                     leaveLayer()
                 } else {

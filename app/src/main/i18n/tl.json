@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Bubukas ang mga setting sa"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ang account na bukas sa drawer"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ang account na huling na-edit"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Pag-debug (detalyadong mga log)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Pag-pin ng sertipiko ng Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Limitasyon sa oras ng koneksyon ng Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Limitasyon sa oras ng pagbasa ng Sieve"},

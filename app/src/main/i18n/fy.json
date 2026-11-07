@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ynstellings iepenje op"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "It akkount iepene yn 'e lade"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "It lêst bewurke akkount"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debuggen (detaillearre logs)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Oanmelde sûnder kanaalbinding (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve sertifikaat pin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve ferbine timeout"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Тохиргоо үүн дээр нээгдэнэ"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Шургуулгад нээлттэй бүртгэл"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Хамгийн сүүлд зассан бүртгэл"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Алдаа засах (дэлгэрэнгүй бүртгэл)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve гэрчилгээ бэхлэх"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve холболтын хугацаа"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve унших хугацаа"},

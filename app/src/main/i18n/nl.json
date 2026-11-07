@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Instellingen openen op"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Het account dat in het menu open is"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Het laatst bewerkte account"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Foutopsporing (gedetailleerde logboeken)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve-certificaatpin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Time-out voor Sieve-verbinding"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Time-out voor Sieve-lezen"},

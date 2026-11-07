@@ -2157,6 +2157,12 @@
           }
         },
         {
+          "setting": "debugLogging",
+          "type": "bool",
+          "default": false,
+          "title": "Debugging (detailed logs)"
+        },
+        {
           "editor": "accountList",
           "opens": "screen",
           "title": "Accounts",

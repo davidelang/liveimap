@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "ဆက်တင် ဖွင့်သည့်နေရာ"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "အံဆွဲထဲ ဖွင့်ထားသော အကောင့်"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "နောက်ဆုံးတည်းဖြတ်ထားသော အကောင့်"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "အမှားရှာခြင်း (အသေးစိတ် မှတ်တမ်းများ)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve လက်မှတ်ပင်"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve ချိတ်ဆက်ချိန်"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve ဖတ်ချိန်"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "設定開啟到"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "抽屜中開啟的帳戶"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "上次編輯的帳戶"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "偵錯（詳細記錄）"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve 憑證釘選"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve 連線逾時"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve 讀取逾時"},

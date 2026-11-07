@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Osclaíonn na socruithe ar"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "An cuntas atá oscailte sa tarraiceán"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "An cuntas a cuireadh in eagar ar deireadh"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Dífhabhtú (logaí mionsonraithe)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Pionnáil teastais Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Teorainn ama ceangail Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Teorainn ama léite Sieve"},

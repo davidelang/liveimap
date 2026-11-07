@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Sätted avanevad"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Sahtlis avatud konto"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Viimasena muudetud konto"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Silumine (üksikasjalikud logid)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve-sertifikaadi kinnitamine"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve ühenduse ajalõpp"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve lugemise ajalõpp"},

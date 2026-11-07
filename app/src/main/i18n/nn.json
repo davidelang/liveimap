@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Innstillingar blir opna på"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Kontoen er open i skuffa"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Kontoen som vart redigert sist"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Feilsøking (detaljerte loggar)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Logga på utan kanalbinding (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sil sertifikat pin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Tidsavbrot for siltilkobling"},

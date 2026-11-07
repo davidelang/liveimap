@@ -12,6 +12,7 @@ object AccountEvents {
     private var known: Set<String>? = null
 
     fun onUpdated(context: Context, accounts: Array<out Account>) {
+        org.dlang.liveimap.engine.DebugLog.event("account") { "accounts updated: ${accounts.count { it.type == liveimapAccountType }} LiveIMAP accounts" }
         val manager = AccountManager.get(context)
         val ids = accounts.filter { it.type == liveimapAccountType }.mapNotNull { account ->
             manager.getUserData(account, userAccountId)

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Iestatījumi atveras uz"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Konts, kas atvērts panelī"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Konts, kas rediģēts pēdējais"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Atkļūdošana (detalizēti žurnāli)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve sertifikāta piespraušana"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve savienojuma noildze"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve lasīšanas noildze"},

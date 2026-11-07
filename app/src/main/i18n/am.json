@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "ቅንብሮች በዚህ ይከፈታሉ"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "በመሳቢያው ውስጥ የተከፈተ መለያ"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "ለመጨረሻ የተስተካከለ መለያ"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ማረም (ዝርዝር መዝገቦች)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "የ Sieve እውቅና ወረቀት መሰካት"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "የ Sieve ግንኙነት ጊዜ"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "የ Sieve ንባብ ጊዜ"},

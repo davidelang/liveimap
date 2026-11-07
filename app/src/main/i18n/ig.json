@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ntọala na-emepe na"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Akaụntụ mepere na drawer"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Akaụntụ edeziri ikpeazụ"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Nchọpụta njehie (ndekọ zuru ezu)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Abanyela na-enweghị ijikọ ọwa (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Mkpị asambodo Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Oge njikọ Sieve"},

@@ -2220,6 +2220,7 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "previewSize" -> row_previewSize(walk)
         "clientSortCollation" -> row_clientSortCollation(key, walk)
         "settingsOpensOn" -> row_settingsOpensOn(walk)
+        "debugLogging" -> row_debugLogging(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
 }
@@ -3874,6 +3875,14 @@ internal fun row_logImapTraffic(walk: SettingsWalk) {
     val settings = editor.settings
     BoolField(stringResource(SettingsTreeGenerated.resource("settings_log_traffic")), settings.logImapTraffic) {
         editor.persist(editor.settings.copy(logImapTraffic = it))
+    }
+}
+
+@Composable
+internal fun row_debugLogging(walk: SettingsWalk) {
+    val editor = walk.editor
+    BoolField(stringResource(SettingsTreeGenerated.regTitle("debugLogging")), editor.settings.debugLogging) {
+        editor.persist(editor.settings.copy(debugLogging = it))
     }
 }
 

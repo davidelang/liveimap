@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Asetukset avautuvat kohteeseen"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Paneelissa auki oleva tili"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Viimeksi muokattu tili"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Virheenkorjaus (yksityiskohtaiset lokit)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve-varmenteen kiinnitys"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieven yhteyden aikakatkaisu"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieven luvun aikakatkaisu"},

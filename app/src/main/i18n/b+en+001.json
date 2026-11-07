@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Settings opens on"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "The account open in the drawer"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "The account edited last"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (detailed logs)", "same": true},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Logged in without channel binding (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve certificate pin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve connect timeout"},

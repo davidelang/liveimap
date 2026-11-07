@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Innstillingar lata upp á"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Kontan opna í skuffuni"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Kontan rættað seinast"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Feilfinning (nágreiniligar loggar)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Ritað inn uttan rásarbindingar (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sigtiváttanarpinnur"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sigta samband tíðaravmarking"},

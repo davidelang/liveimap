@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Подешавања се отварају на"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Налог отворен у фиоци"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Налог уређен последњи"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Отклањање грешака (детаљни дневници)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Качење сертификата Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Време повезивања на Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Време читања Sieve-а"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Nastavitve se odprejo na"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Račun, odprt v predalu"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Račun, urejen zadnji"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Razhroščevanje (podrobni dnevniki)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Pripenjanje potrdila Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Časovna omejitev povezave Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Časovna omejitev branja Sieve"},

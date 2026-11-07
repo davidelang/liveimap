@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Is-settings jinfetħu fuq"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Il-kont miftuħ fil-kexxun"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Il-kont editjat l-aħħar"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (logs dettaljati)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Twaħħil taċ-ċertifikat Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Limitu ta’ ħin tal-konnessjoni Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Limitu ta’ ħin tal-qari Sieve"},

@@ -35,6 +35,7 @@ internal fun loadStoredSettings(context: Context, text: String): StoredSettingsL
         // Neither parser exceptions nor document text are safe to log: either can contain private values.
         android.util.Log.e("liveimap", "Damaged settings document preserved in private damaged-settings backup")
         SettingsHub.noteLoad(damagedSettingsNotice)
+        org.dlang.liveimap.engine.DebugLog.event("settings") { "recovery: damaged document backed up to damaged-settings" }
     }
     return loaded
 }

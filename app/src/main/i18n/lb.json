@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Astellunge ginn op"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "De Kont, deen an der Schublad op ass"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "De Kont, deen als lescht beaarbecht gouf"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Debugging (detailléiert Logbicher)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve-Zertifikatspin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Zäitlimit fir d’Sieve-Verbindung"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Zäitlimit fir d’Sieve-Liesen"},

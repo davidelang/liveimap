@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Настройките се отварят на"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Профилът, отворен в панела"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Профилът, редактиран последен"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Отстраняване на грешки (подробни журнали)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Фиксиране на сертификат Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Време за връзка със Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Време за четене от Sieve"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "A beállítások erre nyílnak"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "A panelen nyitva lévő fiók"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "A legutóbb szerkesztett fiók"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Hibakeresés (részletes naplók)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve-tanúsítvány rögzítése"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve-kapcsolat időkorlátja"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve-olvasás időkorlátja"},

@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "அமைப்பு இங்கே திறக்கும்"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "இழுப்பறையில் திறந்த கணக்கு"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "கடைசியில் திருத்திய கணக்கு"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "பிழைதிருத்தம் (விரிவான பதிவுகள்)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve சான்றிதழ் பின்"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve இணைப்பு நேர வரம்பு"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve வாசிப்பு நேர வரம்பு"},

@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ajustes kicharikun"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Cuenta kicharikun cajonpi"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Qhipaman allichasqa yupay"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Pantasqa allichay (sapanchasqa qillqakuna)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Mana kanal watasqawan yaykusqa (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Tamiz certificado pin"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve tinkinakuy pacha tukusqa"},

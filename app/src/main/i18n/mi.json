@@ -1058,6 +1058,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Ka tuwhera nga tautuhinga"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ka tuwhera te kaute i roto i te pouaka"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ko te kaute i whakatika whakamutunga"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Patuiro (ngā rangitaki taipitopito)"},
 {"key": "session_no_channel_binding", "source": "Logged in without channel binding (%1$s)", "text": "Kua takiuru me te kore e herea te hongere (%1$s)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Tatari titi tiwhikete"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Tatari hono te wa mutunga"},

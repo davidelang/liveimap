@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "ക്രമീകരണം ഇവിടെ തുറക്കുന്നു"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "ഡ്രോയറിൽ തുറന്ന അക്കൗണ്ട്"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "അവസാനം തിരുത്തിയ അക്കൗണ്ട്"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "ഡീബഗ്ഗിംഗ് (വിശദമായ ലോഗുകൾ)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve സർട്ടിഫിക്കറ്റ് പിൻ"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve കണക്ഷൻ സമയപരിധി"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve വായന സമയപരിധി"},

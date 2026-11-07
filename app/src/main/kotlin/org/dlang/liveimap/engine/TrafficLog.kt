@@ -43,6 +43,7 @@ object TrafficLog {
 
     fun status(text: String) {
         if (text.isEmpty()) return
+        DebugLog.event("status") { text }
         synchronized(statusHistory) {
             statusHistory.addLast(text)
             while (statusHistory.size > 100) statusHistory.removeFirst()

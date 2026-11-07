@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "Οι ρυθμίσεις ανοίγουν σε"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "Ο λογαριασμός που είναι ανοιχτός στο συρτάρι"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "Ο λογαριασμός που επεξεργάστηκε τελευταίος"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "Εντοπισμός σφαλμάτων (λεπτομερή αρχεία καταγραφής)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Καρφίτσωμα πιστοποιητικού Sieve"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Χρονικό όριο σύνδεσης Sieve"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Χρονικό όριο ανάγνωσης Sieve"},

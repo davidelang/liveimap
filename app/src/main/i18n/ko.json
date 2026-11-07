@@ -1047,6 +1047,7 @@
 {"key": "setting_settingsOpensOn_title", "source": "Settings opens on", "text": "설정을 여는 대상"},
 {"key": "setting_settingsOpensOn_drawer", "source": "The account open in the drawer", "text": "서랍에서 열린 계정"},
 {"key": "setting_settingsOpensOn_lastEdited", "source": "The account edited last", "text": "마지막으로 편집한 계정"},
+{"key": "setting_debugLogging_title", "source": "Debugging (detailed logs)", "text": "디버깅(상세 로그)"},
 {"key": "setting_sieveCertPin_title", "source": "Sieve certificate pin", "text": "Sieve 인증서 고정"},
 {"key": "setting_sieveConnectSeconds_title", "source": "Sieve connect timeout", "text": "Sieve 연결 제한 시간"},
 {"key": "setting_sieveReadSeconds_title", "source": "Sieve read timeout", "text": "Sieve 읽기 제한 시간"},
