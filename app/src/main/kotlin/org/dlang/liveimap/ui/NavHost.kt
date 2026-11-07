@@ -62,6 +62,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.rememberDrawerState
 import org.dlang.liveimap.settings.UnsavedEdits
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -164,8 +168,9 @@ import org.dlang.liveimap.window.fill
 import org.dlang.liveimap.window.resolve
 import org.dlang.liveimap.window.keyLayer
 import org.dlang.liveimap.window.keyPanel
-import org.dlang.liveimap.window.zoomFill
-import org.dlang.liveimap.window.zoomTarget
+import org.dlang.liveimap.window.displayedFill
+import org.dlang.liveimap.window.drawerOverlayOpen
+import org.dlang.liveimap.window.toggleDrawer
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
@@ -413,14 +418,21 @@ private fun LiveImapNavHostReady() {
     val scope = rememberCoroutineScope()
     val situation = windowSituation()
     fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
-    fun currentFill(): FillResult {
-        val base = fill(currentRecord(), mailStack)
-        val active = zoom
-        return if (active == null) base else zoomFill(active)
+    fun currentFill(): FillResult = displayedFill(currentRecord(), mailStack, zoom)
+    fun toggleDrawerOverlay() {
+        zoom = toggleDrawer(fill(currentRecord(), mailStack), mailStack.layers.first(), zoom)
     }
-    fun zoomLayer(layer: WindowLayer) {
-        val next = zoomTarget(currentFill(), layer)
-        if (next != null) zoom = next
+    fun openDrawerOverlay() {
+        if (!drawerOverlayOpen(zoom)) toggleDrawerOverlay()
+    }
+    // A swipe, a scrim tap, or Back closing the sheet clears the drawer zoom.
+    val drawerSheetState = rememberDrawerState(DrawerValue.Closed) { value ->
+        if (value == DrawerValue.Closed && drawerOverlayOpen(zoom)) zoom = null
+        true
+    }
+    val drawerOverlay = drawerOverlayOpen(zoom)
+    LaunchedEffect(drawerOverlay) {
+        if (drawerOverlay) drawerSheetState.open() else drawerSheetState.close()
     }
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
@@ -455,7 +467,7 @@ private fun LiveImapNavHostReady() {
     var editingFavorites by remember { mutableStateOf<List<FolderFavorite>>(emptyList()) }
     var editingWhere by remember { mutableStateOf(FavoriteWhere("", "", "")) }
     val openDrawerState = rememberUpdatedState<(() -> Unit)?>({
-        zoomLayer(mailStack.layers.first())
+        toggleDrawerOverlay()
     })
     val displayFill = currentFill()
     val activeKey = keyPanel(displayFill, keyPanelId)
@@ -488,7 +500,7 @@ private fun LiveImapNavHostReady() {
             header = ""
             val showing = navController.currentBackStackEntry?.destination?.route
             if (openDrawerOnNoAccount(showing, accounts)) {
-                zoomLayer(mailStack.layers.first())
+                openDrawerOverlay()
             } else {
                 zoom = null
             }
@@ -1233,10 +1245,11 @@ private fun LiveImapNavHostReady() {
         }
     }
 
-    fun navigateFromDrawer(keepZoom: Boolean = false, go: suspend () -> Unit) {
+    /** Picking any drawer item closes the drawer. */
+    fun navigateFromDrawer(go: suspend () -> Unit) {
         scope.launch {
             go()
-            if (!keepZoom) zoom = null
+            zoom = null
         }
     }
 
@@ -1460,14 +1473,14 @@ private fun LiveImapNavHostReady() {
             },
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) openFilterEditor(-1, "", "", "", "", chosen, "")
                 }
             },
             showFilters = drawerAccounts.isNotEmpty(),
             onEditFilters = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
                         filterListAccount.value = chosen
@@ -1480,7 +1493,7 @@ private fun LiveImapNavHostReady() {
             onAccountFavorite = { account, favorite -> openAccountFavorite(account, favorite) },
             onAccountEditFavorite = { account, favorite -> editAccountFavorite(account, favorite) },
             onSettings = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     openScreen("settings")
                 }
             },
@@ -1497,7 +1510,7 @@ private fun LiveImapNavHostReady() {
                 }
             },
             onManageAddresses = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
                         openScreen("settings/account/$chosen/editor/addressBooks")
@@ -1505,12 +1518,12 @@ private fun LiveImapNavHostReady() {
                 }
             },
             onHelp = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     openScreen("help")
                 }
             },
             onAbout = {
-                navigateFromDrawer(keepZoom = true) {
+                navigateFromDrawer {
                     openScreen("about")
                 }
             },
@@ -1591,6 +1604,24 @@ private fun LiveImapNavHostReady() {
                 )
             }
         }
+        ModalNavigationDrawer(
+            drawerContent = {
+                // A panel that already shows the drawer gets no second copy; toggleDrawer never opens over it.
+                val baseShowsDrawer = fill(record, mailStack).slots.any {
+                    !it.collapsed && it.layer?.kind == WindowLayerKind.Drawer
+                }
+                if (!baseShowsDrawer) {
+                    ModalDrawerSheet(
+                        windowInsets = mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
+                        content = drawerSheet,
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            drawerState = drawerSheetState,
+            gesturesEnabled = drawerOverlay,
+        ) {
+        Box(Modifier.fillMaxSize()) {
         if (!mailRoute && !screenRoute) {
             hostedNav(Modifier.fillMaxSize())
         } else {
@@ -1722,6 +1753,8 @@ private fun LiveImapNavHostReady() {
             } else if (!routeOnScreen) {
                 hostedNav(Modifier.size(0.dp))
             }
+        }
+        }
         }
         val editing = editingFavorite
         if (editing != null) {

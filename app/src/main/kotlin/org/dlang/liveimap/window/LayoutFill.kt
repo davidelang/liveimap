@@ -124,6 +124,27 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
 
 fun zoom(current: FillResult, layer: WindowLayer): ZoomState = ZoomState(layer, current)
 
+/** A drawer zoom is drawn over the fill as a modal sheet, not in place of the fill. */
+fun drawerOverlayOpen(zoom: ZoomState?): Boolean = zoom?.layer?.kind == WindowLayerKind.Drawer
+
+/**
+ * The hamburger. An open drawer closes. A fill that already shows the drawer in a panel keeps [zoom].
+ * Otherwise the drawer opens over [base].
+ */
+fun toggleDrawer(base: FillResult, drawer: WindowLayer, zoom: ZoomState?): ZoomState? {
+    require(drawer.kind == WindowLayerKind.Drawer)
+    if (drawerOverlayOpen(zoom)) return null
+    if (base.slots.any { !it.collapsed && it.layer == drawer }) return zoom
+    return ZoomState(drawer, base)
+}
+
+/** What the window draws. The drawer overlay leaves the fill under it; any other zoom replaces it. */
+fun displayedFill(record: LayoutRecord?, stack: WindowStack, zoom: ZoomState?): FillResult {
+    val base = fill(record, stack)
+    if (zoom == null || drawerOverlayOpen(zoom)) return base
+    return zoomFill(zoom)
+}
+
 /**
  * Zoom of the one panel that is already the whole window does nothing.
  * A pin does not block zoom: more than one visible slot still zooms.

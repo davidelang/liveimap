@@ -224,4 +224,43 @@ class LayoutFillTest {
         assertEquals(beside, zoomed?.unzoomed)
         assertNull(zoomTarget(zoomFill(zoomed!!), drawer))
     }
+
+    private val drawerLayer get() = stack.layers.first()
+
+    @Test
+    fun drawerOpensOverTheSinglePanelAndTheFillStaysUnderIt() {
+        val phone = record(listOf(LayoutPanel("main")), UnusedPanel.Collapse, coverPanels = 0, unpinnedKeep = 1)
+        val base = fill(phone, stack)
+        val open = toggleDrawer(base, drawerLayer, null)
+        assertTrue(drawerOverlayOpen(open))
+        // The message stays drawn under the sheet; the scrim, a swipe and a pick can close it.
+        assertEquals(base, displayedFill(phone, stack, open))
+        assertEquals(WindowLayerKind.Message, displayedFill(phone, stack, open).slots.single().layer?.kind)
+        // A second hamburger press closes it.
+        assertNull(toggleDrawer(base, drawerLayer, open))
+        assertEquals(base, displayedFill(phone, stack, null))
+    }
+
+    @Test
+    fun drawerAlreadyInAPanelDoesNotOpenASecondCopy() {
+        val twoPanel = record(
+            listOf(LayoutPanel("side", WindowLayerKind.Drawer), LayoutPanel("main")),
+            UnusedPanel.Collapse,
+            coverPanels = 0,
+            unpinnedKeep = 1,
+        )
+        val base = fill(twoPanel, stack)
+        assertNull(toggleDrawer(base, drawerLayer, null))
+        assertFalse(drawerOverlayOpen(toggleDrawer(base, drawerLayer, null)))
+    }
+
+    @Test
+    fun aNonDrawerZoomStillReplacesTheFill() {
+        val twoPanel = record(listOf(LayoutPanel("side"), LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 2)
+        val base = fill(twoPanel, stack)
+        val message = stack.layers.last()
+        val zoomed = zoomTarget(base, message)!!
+        assertFalse(drawerOverlayOpen(zoomed))
+        assertEquals(zoomFill(zoomed), displayedFill(twoPanel, stack, zoomed))
+    }
 }
