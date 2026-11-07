@@ -227,7 +227,8 @@ fun deletesDefaultView(list: List<FolderFavorite>, target: FolderFavorite): Bool
     list.any { it.defaultView && it.node == target.node && it.mailbox == target.mailbox }
 
 /** Shown once after the tagged favorite is deleted. */
-fun deletedDefaultViewText(): String = org.dlang.liveimap.i18n.S(
+fun deletedDefaultViewText(context: android.content.Context): String = org.dlang.liveimap.i18n.S(
+    context,
     "You deleted the default view. Unless you set a new default, the first favorite in the list will be used.",
     name = "favorite_default_view_deleted",
 )

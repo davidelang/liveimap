@@ -1390,7 +1390,7 @@ private fun LiveImapNavHostReady() {
     fun deleteEditingFavorite() {
         val current = editingFavorite ?: return
         if (org.dlang.liveimap.settings.deletesDefaultView(editingFavorites, current)) {
-            android.widget.Toast.makeText(uiContext, org.dlang.liveimap.settings.deletedDefaultViewText(), android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(uiContext, org.dlang.liveimap.settings.deletedDefaultViewText(uiContext), android.widget.Toast.LENGTH_LONG).show()
         }
         persistEditingFavorites(editingFavorites.filterNot { it.node == current.node && it.mailbox == current.mailbox })
         editingFavorite = null

@@ -1283,7 +1283,7 @@ fun SettingsTree(
             },
             onDelete = {
                 if (deletesDefaultView(editor.settings.favorites, editing)) {
-                    android.widget.Toast.makeText(deleteContext, deletedDefaultViewText(), android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(deleteContext, deletedDefaultViewText(deleteContext), android.widget.Toast.LENGTH_LONG).show()
                 }
                 editor.persist(
                     editor.settings.copy(
