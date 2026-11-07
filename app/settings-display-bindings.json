@@ -126,6 +126,7 @@
   "leaf:disableImapMove:title": "leaf_disableimapmove_title",
   "leaf:displayImages:title": "leaf_displayimages_title",
   "leaf:displayName:title": "settings_display_name",
+  "leaf:drawerRowsAdded:title": "setting_drawerRowsAdded_title",
   "leaf:dsnMode:choice:All": "settings_dsn_all",
   "leaf:dsnMode:choice:Failure": "settings_dsn_failure",
   "leaf:dsnMode:choice:FailureDelay": "settings_dsn_delay",

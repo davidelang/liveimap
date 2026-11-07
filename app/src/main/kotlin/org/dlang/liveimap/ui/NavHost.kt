@@ -2171,6 +2171,7 @@ private fun ColumnScope.DrawerSheetContent(
 }
 
 /** One drawer favorite: tap opens, long-press edits (rename, reorder, delete, default view). */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DrawerFavoriteRow(
     favorite: FolderFavorite,
