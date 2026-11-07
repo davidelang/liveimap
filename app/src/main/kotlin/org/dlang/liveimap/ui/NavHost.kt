@@ -573,6 +573,13 @@ private fun LiveImapNavHostReady() {
     }
 
     /** Pushes the screen layer and its route. The opener's route stays underneath. */
+    /** The screen key of the shown route, rebuilt from its arguments as ScreenLayerPage does. */
+    fun currentScreenKey(): String? {
+        val entry = navController.currentBackStackEntry ?: return null
+        val pattern = entry.destination.route ?: return null
+        return screenKeyOfRoute(pattern) { name -> entry.arguments?.getString(name) }
+    }
+
     fun openScreen(route: String) {
         val key = screenLayerKey(route)
         if (key == null) {
@@ -584,13 +591,6 @@ private fun LiveImapNavHostReady() {
         zoom = zoomAfterScreenOpen(zoom, key)
         repeat(plan.pops) { navController.popBackStack() }
         if (screenNeedsNavigate(plan, currentScreenKey(), key)) navController.navigate(route)
-    }
-
-    /** The screen key of the shown route, rebuilt from its arguments as ScreenLayerPage does. */
-    fun currentScreenKey(): String? {
-        val entry = navController.currentBackStackEntry ?: return null
-        val pattern = entry.destination.route ?: return null
-        return screenKeyOfRoute(pattern) { name -> entry.arguments?.getString(name) }
     }
 
     /** Drops screen routes so a mail navigation sees the opener, not the screen pile. */
