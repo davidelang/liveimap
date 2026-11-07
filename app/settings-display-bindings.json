@@ -111,6 +111,7 @@
   "leaf:dateFormat:choice:Short": "label_short",
   "leaf:dateFormat:title": "settings_date_format",
   "leaf:datePattern:title": "settings_date_pattern",
+  "leaf:debugLogging:title": "setting_debugLogging_title",
   "leaf:defaultAccount:title": "setting_defaultAccount_title",
   "leaf:defaultView:title": "settings_default_view",
   "leaf:deleteMovesToNext:title": "leaf_deletemovestonext_title",
