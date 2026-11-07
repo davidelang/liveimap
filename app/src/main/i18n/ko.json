@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "자동에서 시작"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "레이아웃에는 메시지 목록이 필요합니다. 아직 저장되지 않았습니다."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "각 패널 유형은 한 번만 나타날 수 있습니다. 아직 저장되지 않았습니다."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "여는 메일을 위해 패널을 하나 이상 고정하지 않은 상태로 두세요. 아직 저장되지 않았습니다."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "메시지 패널은 메시지 목록과 분할을 공유해야 합니다. 아직 저장되지 않았습니다."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "전송되지 않음: 이 주소에는 SMTP가 전달할 수 없는 문자가 포함되어 있습니다: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "유휴 깨우기 간격"},

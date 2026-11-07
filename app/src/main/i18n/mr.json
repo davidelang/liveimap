@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "ऑटोपासून सुरुवात करा"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "लेआउटला संदेश सूचीची आवश्यकता आहे. अद्याप जतन केले नाही."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "प्रत्येक पॅनल प्रकार फक्त एकदाच दिसू शकतो. अद्याप जतन केले नाही."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "तुम्ही उघडता त्या मेलसाठी किमान एक पॅनेल अनपिन ठेवा. अद्याप जतन केलेले नाही."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "मेसेज पॅनलने मेसेज सूचीसह स्प्लिट शेअर करणे आवश्यक आहे. अद्याप जतन केले नाही."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "पाठवलेले नाही: या पत्त्यांमध्ये SMTP कॅरी करू शकत नाही असे वर्ण आहेत: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "IDLE वेक मध्यांतर"},

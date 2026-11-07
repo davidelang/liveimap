@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Filloni nga Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Paraqitja ka nevojë për një listë mesazhesh. Nuk është ruajtur ende."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Çdo lloj paneli mund të shfaqet vetëm një herë. Nuk është ruajtur ende."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Lini të paktën një panel të pangulur për postën që hapni. Ende e paruajtur."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Paneli i mesazheve duhet të ndajë një ndarje me listën e mesazheve. Nuk është ruajtur ende."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Nuk u dërgua: këto adresa përmbajnë karaktere që SMTP nuk mund të mbajë: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "Intervali i zgjimit në boshe"},

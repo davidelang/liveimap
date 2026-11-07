@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Anza kutoka kwa Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Mpangilio unahitaji orodha ya ujumbe. Bado haijahifadhiwa."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Kila aina ya paneli inaweza kuonekana mara moja tu. Bado haijahifadhiwa."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Acha angalau paneli moja bila kubandikwa kwa barua unazofungua. Bado haijahifadhiwa."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Kidirisha cha ujumbe lazima kishiriki mgawanyiko na orodha ya ujumbe. Bado haijahifadhiwa."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Haijatumwa: anwani hizi zina vibambo SMTP haiwezi kubeba: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "IDLE muda wake"},

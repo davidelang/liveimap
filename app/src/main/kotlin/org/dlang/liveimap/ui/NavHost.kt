@@ -743,6 +743,11 @@ private fun LiveImapNavHostReady() {
             popMailDestination()
             return
         }
+        if (org.dlang.liveimap.window.backLeavesWindow(mailStack, org.dlang.liveimap.window.pinnedKinds(currentRecord()))) {
+            org.dlang.liveimap.engine.DebugLog.event("stack") { "back leaves the window: only pinned layers would remain" }
+            uiContext.hostActivity()?.finish()
+            return
+        }
         mailStack = step.stack
         if (step.stack.layers.size == 1) {
             // Down to the drawer: it is the bottom layer and stays shown; the next Back leaves.
@@ -1709,7 +1714,8 @@ private fun LiveImapNavHostReady() {
                         WindowLayerKind.Drawer -> drawerPanel()
                         WindowLayerKind.FolderTree -> folderListPane()
                         WindowLayerKind.FolderIndex -> {
-                            val box = mailStack.layers.firstOrNull { it.kind == WindowLayerKind.FolderIndex }?.key.orEmpty()
+                            // The slot's layer: a pinned message list with no index in the stack shows its stand-in.
+                            val box = slot.layer?.key.orEmpty()
                             MessageIndexScreen(
                                 mailbox = box,
                                 onOpen = { ref, sequence ->

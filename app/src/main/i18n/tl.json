@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Magsimula sa Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Ang layout ay nangangailangan ng isang listahan ng mensahe. Hindi pa nase-save."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Ang bawat uri ng panel ay maaaring lumitaw nang isang beses lamang. Hindi pa nase-save."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Mag-iwan ng kahit isang panel na hindi naka-pin para sa mail na bubuksan mo. Hindi pa nase-save."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Ang panel ng mensahe ay dapat magbahagi ng isang hati sa listahan ng mensahe. Hindi pa nase-save."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Hindi naipadala: ang mga address na ito ay naglalaman ng mga character na hindi maaaring dalhin ng SMTP: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "IDLE wake interval", "same": true},

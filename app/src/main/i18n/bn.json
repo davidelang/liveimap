@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "অটো থেকে শুরু করুন"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "বিন্যাস একটি বার্তা তালিকা প্রয়োজন. এখনও সংরক্ষণ করা হয়নি."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "প্রতিটি প্যানেল প্রকার শুধুমাত্র একবার প্রদর্শিত হতে পারে. এখনও সংরক্ষণ করা হয়নি."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "আপনি যে মেল খোলেন তার জন্য অন্তত একটি প্যানেল আনপিন রাখুন। এখনও সংরক্ষিত হয়নি।"},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "বার্তা প্যানেল অবশ্যই বার্তা তালিকার সাথে একটি বিভাজন ভাগ করবে৷ এখনও সংরক্ষণ করা হয়নি."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "পাঠানো হয়নি: এই ঠিকানাগুলিতে এমন অক্ষর রয়েছে যা SMTP বহন করতে পারে না: %1$s৷"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "আইডিএল জেগে থাকার ব্যবধান"},

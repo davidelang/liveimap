@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Dechreuwch o Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Mae angen rhestr negeseuon ar y gosodiad. Heb ei gadw eto."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Dim ond unwaith y gall pob math o banel ymddangos. Heb ei gadw eto."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Gadewch o leiaf un panel heb ei binio ar gyfer y post rydych chi'n ei agor. Heb ei gadw eto."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Rhaid i'r panel negeseuon rannu rhaniad gyda'r rhestr negeseuon. Heb ei gadw eto."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Heb ei anfon: mae'r cyfeiriadau hyn yn cynnwys nodau na all SMTP eu cario: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "Cyfwng deffro IDLE"},

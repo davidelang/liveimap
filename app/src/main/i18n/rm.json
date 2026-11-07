@@ -885,6 +885,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Cumenzar da Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Il layout dovra ina glista da messadis. Anc betg arcunà."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Mintga tip da panel po vegnir avant mo ina giada. Anc betg arcunà."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Laschai almain in panel betg fixà per la posta che Vus avrais. Anc betg memorisà."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Il champ da messadis sto parter ina partiziun cun la glista da messadis. Anc betg arcunà."},
 {"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Quest layout na po betg vegnir mussà: %1$s"},
 {"key": "pane_layout_edit", "source": "Edit layout", "text": "modifitgar il layout"},

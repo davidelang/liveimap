@@ -65,6 +65,7 @@ import org.dlang.liveimap.window.layoutRecordProblem
 import org.dlang.liveimap.window.removePanel
 import org.dlang.liveimap.window.splitPanel
 import org.dlang.liveimap.window.withPin
+import org.dlang.liveimap.window.LayoutRecordProblem
 
 /** Settings builder for the layout catalog. [onSave] gets the encoded catalog. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -72,7 +73,7 @@ import org.dlang.liveimap.window.withPin
 fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
     var catalog by remember(saved) { mutableStateOf(decodeLayoutCatalog(saved)) }
     var picked by remember(saved) { mutableStateOf<String?>(null) }
-    var rejected by remember(saved) { mutableStateOf(false) }
+    var rejected by remember(saved) { mutableStateOf<LayoutRecordProblem?>(null) }
     var addingRule by remember(saved) { mutableStateOf(false) }
     var ruleCriterion by remember(saved) { mutableStateOf<String?>(null) }
     fun commit(next: LayoutCatalog) {
@@ -82,11 +83,12 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
     fun edit(transform: (LayoutRecord) -> LayoutRecord) {
         val base = catalog.custom.firstOrNull { it.id == catalog.selectedId }?.record ?: catalog.resolve()
         val updated = transform(base)
-        if (layoutRecordProblem(updated) != null) {
-            rejected = true
+        val problem = layoutRecordProblem(updated)
+        if (problem != null) {
+            rejected = problem
             return
         }
-        rejected = false
+        rejected = null
         var next = catalog
         val factoryId = next.selectedId.ifEmpty { LayoutAutomatic }
         if (factoryRecord(factoryId) != null && next.custom.none { it.id == next.selectedId }) {
@@ -110,7 +112,7 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
                     selected = id == selected || (catalog.selectedId.isEmpty() && id == LayoutAutomatic),
                     onClick = {
                         picked = null
-                        rejected = false
+                        rejected = null
                         commit(catalog.copy(selectedId = id))
                     },
                     label = { Text(layoutTitle(id)) },
@@ -180,11 +182,16 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
                 RecordPreview(root, picked) { picked = it }
             }
         }
-        if (rejected) {
-            Text(
+        when (rejected) {
+            LayoutRecordProblem.DuplicateLayer -> Text(
                 S("Each panel type can appear only once. Not saved yet."),
                 color = MaterialTheme.colorScheme.error,
             )
+            LayoutRecordProblem.NoUnpinnedPanel -> Text(
+                S("Leave at least one panel unpinned for the mail you open. Not saved yet.", name = "layout_problem_all_pinned"),
+                color = MaterialTheme.colorScheme.error,
+            )
+            null -> Unit
         }
         val panelId = picked
         if (panelId != null && record.panels.any { it.id == panelId }) {
@@ -237,6 +244,7 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
                     },
                     label = { Text(S("Unpinned")) },
                 )
+                // Any stack kind with a fixed place in the stack can be pinned; screens come and go above it.
                 for (kind in WindowLayerKind.entries) {
                     if (kind == WindowLayerKind.Screen) continue
                     FilterChip(
@@ -283,13 +291,13 @@ fun PaneLayoutEditor(saved: String, onSave: (String) -> Unit) {
             if (catalog.selectedId.isNotEmpty()) {
                 OutlinedButton(onClick = {
                     picked = null
-                    rejected = false
+                    rejected = null
                     commit(catalog.delete(catalog.selectedId.ifEmpty { selected }))
                 }) { Text(S("Delete")) }
             }
             OutlinedButton(onClick = {
                 picked = null
-                rejected = false
+                rejected = null
                 commit(catalog.restoreDefaults())
             }) { Text(S("Restore defaults")) }
         }

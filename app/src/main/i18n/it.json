@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Inizia da Automatico"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Il layout necessita di un elenco di messaggi. Non ancora salvato."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Ciascun tipo di pannello può essere visualizzato una sola volta. Non ancora salvato."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Lascia almeno un pannello non fissato per la posta che apri. Non ancora salvato."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Il pannello dei messaggi deve condividere una suddivisione con l'elenco dei messaggi. Non ancora salvato."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Non inviato: questi indirizzi contengono caratteri che SMTP non può trasportare: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "Intervallo di riattivazione IDLE"},

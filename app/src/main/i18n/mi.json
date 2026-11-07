@@ -885,6 +885,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Tīmata mai i Aunoa"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Me whai rarangi karere te tahora. Kaore ano kia tiakina."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Ka taea e ia momo panui te puta kotahi anake. Kaore ano kia tiakina."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Waiho kia kotahi te paewhiri kāore i titi mō te īmēra ka huakina e koe. Kāore anō kia tiakina."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Me tiritiri te rarangi karere ki te rarangi karere. Kaore ano kia tiakina."},
 {"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Kaore e taea te whakaatu i tenei tahora: %1$s"},
 {"key": "pane_layout_edit", "source": "Edit layout", "text": "Whakatika tahora"},

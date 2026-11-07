@@ -43,15 +43,30 @@ data class LayoutRecord(
 }
 
 /** Two panels pinned to one layer kind, or two panels with one id. A message with no index panel is allowed. */
-enum class LayoutRecordProblem { DuplicateLayer }
+enum class LayoutRecordProblem { DuplicateLayer, NoUnpinnedPanel }
 
 fun layoutRecordProblem(record: LayoutRecord): LayoutRecordProblem? {
     val pins = record.panels.mapNotNull { it.pin }
     if (pins.size != pins.toSet().size) return LayoutRecordProblem.DuplicateLayer
     val ids = record.panels.map { it.id }
     if (ids.size != ids.toSet().size) return LayoutRecordProblem.DuplicateLayer
+    // The window stack needs somewhere to go.
+    if (record.panels.isNotEmpty() && record.panels.all { it.pin != null }) return LayoutRecordProblem.NoUnpinnedPanel
     return null
 }
+
+/**
+ * The pins fill uses. A saved record whose panels are all pinned (older records, or one written before the
+ * editor refused it) keeps every pin but the last panel's, so the stack always has a panel.
+ */
+fun effectivePanels(panels: List<LayoutPanel>): List<LayoutPanel> {
+    if (panels.isEmpty() || panels.any { it.pin == null }) return panels
+    return panels.dropLast(1) + panels.last().copy(pin = null)
+}
+
+/** The layer kinds this record (as fill uses it) binds to panels. */
+fun pinnedKinds(record: LayoutRecord?): Set<WindowLayerKind> =
+    record?.let { r -> effectivePanels(r.panels).mapNotNull { it.pin }.toSet() }.orEmpty()
 
 data class FillSlot(val panelIds: List<String>, val layer: WindowLayer?, val collapsed: Boolean)
 
@@ -71,7 +86,7 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
     if (record == null || record.panels.isEmpty()) {
         return FillResult(listOf(FillSlot(listOf("panel"), top, collapsed = false)))
     }
-    val panels = record.panels
+    val panels = effectivePanels(record.panels)
     val count = panels.size
     val coverCount = record.coverPanels.coerceIn(0, count)
     val used = HashSet<WindowLayer>()
@@ -84,12 +99,14 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
     for (index in 0 until count) {
         if (covered[index]) continue
         val pin = panels[index].pin ?: continue
+        // A pin binds the panel to a layer kind. No layer of that kind: the panel stays empty, and nothing flows in.
         val layer = stack.layers.lastOrNull { it.kind == pin && it !in used } ?: continue
         assigned[index] = layer
         used.add(layer)
     }
+    // The dynamic stack flows only through the unpinned panels: pinned layers neither show there nor count.
     val queue = ArrayDeque(
-        stack.layers.takeLast(record.unpinnedKeep.coerceAtLeast(0)).asReversed().filter { it !in used },
+        stack.layers.filter { it !in used }.takeLast(record.unpinnedKeep.coerceAtLeast(0)).asReversed(),
     )
     for (index in (count - 1) downTo 0) {
         if (covered[index] || panels[index].pin != null || queue.isEmpty()) continue
@@ -109,7 +126,8 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
             FillSlot(
                 panelIds = listOf(panels[index].id),
                 layer = layer,
-                collapsed = layer == null && record.unused == UnusedPanel.Collapse,
+                // An empty pinned panel stays in place (empty), so the unpinned panels do not shift.
+                collapsed = layer == null && record.unused == UnusedPanel.Collapse && panels[index].pin == null,
             ),
         )
         index += 1

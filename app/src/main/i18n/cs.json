@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Začněte z Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Rozvržení vyžaduje seznam zpráv. Zatím neuloženo."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Každý typ panelu se může objevit pouze jednou. Zatím neuloženo."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Ponechte alespoň jeden panel nepřipnutý pro poštu, kterou otevřete. Zatím neuloženo."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Panel zpráv musí sdílet rozdělení se seznamem zpráv. Zatím neuloženo."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Neodesláno: tyto adresy obsahují znaky, které SMTP nemůže přenést: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "NEČINNÝ interval probuzení"},

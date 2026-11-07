@@ -885,6 +885,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Tòisich bho Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Feumaidh an cruth liosta teachdaireachd. Cha deach a shàbhaladh fhathast."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Chan urrainn do gach seòrsa pannal nochdadh ach aon turas. Cha deach a shàbhaladh fhathast."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Fàg co-dhiù aon phanail gun phrìneachadh airson a' phuist a dh'fhosglas tu. Cha deach a shàbhaladh fhathast."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Feumaidh am pannal teachdaireachd sgaradh a roinn leis an liosta teachdaireachd. Cha deach a shàbhaladh fhathast."},
 {"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Cha ghabh an cruth seo a shealltainn: %1$s"},
 {"key": "pane_layout_edit", "source": "Edit layout", "text": "Deasaich cruth"},

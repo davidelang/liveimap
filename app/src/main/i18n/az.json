@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Avtomatikdən başlayın"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Düzenə mesaj siyahısı lazımdır. Hələ saxlanmayıb."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Hər panel növü yalnız bir dəfə görünə bilər. Hələ saxlanmayıb."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Açdığınız poçt üçün ən azı bir paneli bərkidilməmiş saxlayın. Hələ saxlanmayıb."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Mesaj paneli mesaj siyahısı ilə bölüşdürülməlidir. Hələ saxlanmayıb."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Göndərilmədi: bu ünvanlar SMTP-nin daşıya bilməyəcəyi simvolları ehtiva edir: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "BOŞ Oyanma intervalı"},

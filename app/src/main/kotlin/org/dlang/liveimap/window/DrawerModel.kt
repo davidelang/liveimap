@@ -30,3 +30,12 @@ fun drawerStep(view: DrawerView, input: DrawerInput, drawerInPanel: Boolean): Dr
 /** Whether a visible panel of [shown] holds the drawer layer. */
 fun drawerInPanel(shown: FillResult): Boolean =
     shown.slots.any { !it.collapsed && it.layer?.kind == WindowLayerKind.Drawer }
+
+/**
+ * Generic: Back leaves the window when there is nothing to pop, or when the pop would leave only layers that
+ * pinned panels show (the unpinned panels would hold nothing from the stack). A pinned layer is never popped.
+ */
+fun backLeavesWindow(stack: WindowStack, pinned: Set<WindowLayerKind>): Boolean {
+    if (stack.layers.size == 1) return true
+    return stack.pop().layers.all { it.kind in pinned }
+}

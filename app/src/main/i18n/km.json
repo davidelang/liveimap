@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "ចាប់ផ្តើមពីស្វ័យប្រវត្តិ"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "ប្លង់ត្រូវការបញ្ជីសារ។ មិន​ទាន់​បាន​រក្សា​ទុក។"},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "ប្រភេទបន្ទះនីមួយៗអាចបង្ហាញតែម្តងប៉ុណ្ណោះ។ មិន​ទាន់​បាន​រក្សា​ទុក។"},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "ទុកផ្ទាំងយ៉ាងហោចណាស់មួយមិនខ្ទាស់ សម្រាប់សំបុត្រដែលអ្នកបើក។ មិនទាន់រក្សាទុកទេ។"},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "បន្ទះសារត្រូវតែចែករំលែកការបំបែកជាមួយបញ្ជីសារ។ មិន​ទាន់​បាន​រក្សា​ទុក។"},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "មិនបានផ្ញើ៖ អាសយដ្ឋានទាំងនេះមានតួអក្សរ SMTP មិនអាចអនុវត្តបាន៖ %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "ចន្លោះពេលភ្ញាក់ IDLE"},

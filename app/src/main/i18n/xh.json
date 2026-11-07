@@ -885,6 +885,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Qala kwi-Auto"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Uyilo lufuna uluhlu lomyalezo. Ayikagcinwa."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Uhlobo lwephaneli nganye inokuvela kube kanye kuphela. Ayikagcinwa."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Shiya ubuncinane iphaneli enye ingancamathelisiwe kwiposi oyivulayo. Ayikagcinwa."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Iphaneli yomyalezo kufuneka yabelane ngokwahlula ngoluhlu lomyalezo. Ayikagcinwa."},
 {"key": "pane_layout_problem", "source": "This layout can't be shown: %1$s", "text": "Olu luyilo alunakuboniswa: %1$s"},
 {"key": "pane_layout_edit", "source": "Edit layout", "text": "Hlela uyilo"},

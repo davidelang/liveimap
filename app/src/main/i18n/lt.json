@@ -877,6 +877,7 @@
 {"key": "layout_reset_auto", "source": "Start from Auto", "text": "Pradėkite nuo automatinio"},
 {"key": "layout_problem_no_list", "source": "The layout needs a message list. Not saved yet.", "text": "Išdėstymui reikalingas pranešimų sąrašas. Dar neišsaugota."},
 {"key": "layout_problem_duplicate", "source": "Each panel type can appear only once. Not saved yet.", "text": "Kiekvienas skydelio tipas gali būti rodomas tik vieną kartą. Dar neišsaugota."},
+{"key": "layout_problem_all_pinned", "source": "Leave at least one panel unpinned for the mail you open. Not saved yet.", "text": "Palikite bent vieną skydelį neprisegtą atidaromam paštui. Dar neišsaugota."},
 {"key": "layout_problem_message", "source": "The message panel must share a split with the message list. Not saved yet.", "text": "Pranešimų skydelis turi dalytis su pranešimų sąrašu. Dar neišsaugota."},
 {"key": "compose_bad_envelope_address", "source": "Not sent: these addresses contain characters SMTP cannot carry: %1$s", "text": "Neišsiųsta: šiuose adresuose yra simbolių, kurių SMTP negali turėti: %1$s"},
 {"key": "settings_idle_wake", "source": "IDLE wake interval", "text": "IDLE pažadinimo intervalas"},
