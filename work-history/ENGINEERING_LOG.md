@@ -4263,3 +4263,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - startupView (drawer, folderList default, folder, favorite), startupAccount (empty = the account open in the drawer), startupFolder (INBOX). startupStack() builds a normal stack (drawer plus the view's layers) once per launch; an invalid target (missing account, blank folder, no or blank favorite, unknown view) shows the drawer and a visible, dismissable bar instead of a silent substitute.
 - Favorites carry a defaultView tag (string form |d, JSON defaultView, absent = untagged; more than one keeps the first). Favorite startup uses the tagged one, else the first. Deleting the tagged one shows a notice; the tag goes with it.
+
+## 2026-11-07 - Startup view defaults to the default favorite
+
+- startupView default is now "favorite". New accounts get no favorites (the favorites default is empty; only a pinerc import adds some), so a user without favorites sees the no-favorites bar over the drawer at each launch. No fallback was added; pending David's decision.

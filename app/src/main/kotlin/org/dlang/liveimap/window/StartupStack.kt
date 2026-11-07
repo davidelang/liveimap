@@ -14,7 +14,7 @@ data class StartupFavorite(val node: Boolean, val mailbox: String)
 data class StartupPlan(val stack: WindowStack, val accountId: String, val problem: StartupProblem?)
 
 /**
- * [view]: "drawer", "folderList" (the default), "folder" or "favorite" (resolved to [firstFavorite]). [configuredAccount] empty means the account
+ * [view]: "drawer", "folderList", "folder" or "favorite" (the default; resolved to [firstFavorite]). [configuredAccount] empty means the account
  * open in the drawer ([openAccount]). [folder] is the folder for "folder".
  */
 fun startupStack(
@@ -30,7 +30,7 @@ fun startupStack(
     if (configuredAccount.isNotEmpty() && configuredAccount !in accounts) {
         return StartupPlan(WindowStack.drawer(openAccount), openAccount, StartupProblem.AccountMissing)
     }
-    return when (view.ifEmpty { "folderList" }) {
+    return when (view.ifEmpty { "favorite" }) {
         "drawer" -> StartupPlan(drawer, account, null)
         "folderList" -> StartupPlan(drawer.pushFolderTree("root"), account, null)
         "folder" -> if (folder.isBlank()) {

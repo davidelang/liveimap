@@ -2159,7 +2159,7 @@
         {
           "setting": "startupView",
           "type": "choice",
-          "default": "folderList",
+          "default": "favorite",
           "title": "Startup view",
           "choices": [
             "drawer",

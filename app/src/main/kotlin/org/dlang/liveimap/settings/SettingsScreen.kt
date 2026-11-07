@@ -2402,7 +2402,7 @@ internal fun row_startupView(walk: SettingsWalk) {
     ChoiceField(
         stringResource(SettingsTreeGenerated.resource("setting_startupView_title")),
         choices,
-        editor.settings.startupView.ifEmpty { "folderList" },
+        editor.settings.startupView.ifEmpty { "favorite" },
         { picked -> stringResource(SettingsTreeGenerated.resource("setting_startupView_$picked")) },
     ) { picked ->
         editor.persist(editor.settings.copy(startupView = picked))

@@ -9,8 +9,18 @@ class StartupStackTest {
     private val accounts = setOf("a", "b")
     private val phone = LayoutRecord(LayoutNode.Panel(LayoutPanel("main")), UnusedPanel.Collapse, 0, 1)
 
-    @Test fun theDefaultIsTodaysFolderListOverTheDrawer() {
-        val plan = startupStack("", "", "a", accounts, "INBOX")
+    @Test fun theDefaultIsTheDefaultFavoriteAndWithoutOneItIsReported() {
+        val work = startupStack("", "", "a", accounts, "INBOX", StartupFavorite(false, "Work"))
+        assertNull(work.problem)
+        assertEquals(WindowStack.drawer("a").pushMailboxIndex("Work"), work.stack)
+        // A fresh account has no favorites: the default reports it and shows the drawer; it does not pick a folder.
+        val fresh = startupStack("", "", "a", accounts, "INBOX", null)
+        assertEquals(StartupProblem.NoFavorite, fresh.problem)
+        assertEquals(WindowStack.drawer("a"), fresh.stack)
+    }
+
+    @Test fun theFolderListOptionIsTheFolderListOverTheDrawer() {
+        val plan = startupStack("folderList", "", "a", accounts, "INBOX")
         assertNull(plan.problem)
         assertEquals(WindowStack.drawer("a").pushFolderTree("root"), plan.stack)
         // Like any stack: the phone shows the folder list, Back pops to the drawer, and the drawer is not in a panel.
