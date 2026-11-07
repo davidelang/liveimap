@@ -18,7 +18,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import org.dlang.liveimap.settings.SettingValue
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.withSetting
@@ -54,11 +60,18 @@ class AppZoomSession(private val start: Int) {
         factor *= step
     }
 
+    /** The zoom the gesture would commit now, for the live preview. */
+    fun preview(): Int = clampTextZoom(Math.round(start * factor).toInt())
+
     fun commit(messageClaimed: Boolean): Int? {
         if (messageClaimed) return null
         return clampTextZoom(Math.round(start * factor).toInt())
     }
 }
+
+/** Live scale for the preview: the previewed zoom over the laid-out zoom. 1 when nothing changes. */
+fun livePreviewScale(laidOut: Int, preview: Int?): Float =
+    if (preview == null || laidOut <= 0) 1f else preview.toFloat() / laidOut
 
 @Composable
 fun AppTextZoom(content: @Composable () -> Unit) {
@@ -66,6 +79,9 @@ fun AppTextZoom(content: @Composable () -> Unit) {
     val scope = rememberCoroutineScope()
     val ui by SettingsHub.ui.collectAsState()
     var zoom by remember { mutableIntStateOf(100) }
+    // Live gesture preview, drawn with a layer scale: no re-layout, no save, until the fingers lift.
+    var preview by remember { mutableStateOf<Int?>(null) }
+    var pivot by remember { mutableStateOf(TransformOrigin.Center) }
     LaunchedEffect(ui.appTextZoom) {
         zoom = clampTextZoom(ui.appTextZoom)
     }
@@ -73,7 +89,12 @@ fun AppTextZoom(content: @Composable () -> Unit) {
     val scaled = Density(system.density, scaledFontScale(system.fontScale, zoom))
     CompositionLocalProvider(LocalDensity provides scaled) {
         androidx.compose.foundation.layout.Box(
-            Modifier.pointerInput(zoom) {
+            Modifier
+                .graphicsLayer {
+                    val k = livePreviewScale(zoom, preview)
+                    scaleX = k; scaleY = k; transformOrigin = pivot
+                }
+                .pointerInput(zoom) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     MessagePinchClaim.clear()
@@ -84,10 +105,22 @@ fun AppTextZoom(content: @Composable () -> Unit) {
                             val event = awaitPointerEvent(PointerEventPass.Final)
                             if (MessagePinchClaim.read()) messageClaimed = true
                             val fingers = event.changes.count { it.pressed }
-                            if (fingers >= 2) session.zoomBy(event.calculateZoom())
+                            if (fingers >= 2) {
+                                session.zoomBy(event.calculateZoom())
+                                if (!messageClaimed) {
+                                    val c = event.calculateCentroid(useCurrent = true)
+                                    if (c != Offset.Unspecified && size.width > 0 && size.height > 0) {
+                                        pivot = TransformOrigin(c.x / size.width, c.y / size.height)
+                                    }
+                                    preview = session.preview()
+                                } else {
+                                    preview = null
+                                }
+                            }
                         } while (event.changes.any { it.pressed })
                     } finally {
                         MessagePinchClaim.clear()
+                        preview = null
                     }
                     val next = session.commit(messageClaimed) ?: return@awaitEachGesture
                     if (next == zoom) return@awaitEachGesture
@@ -100,7 +133,8 @@ fun AppTextZoom(content: @Composable () -> Unit) {
                         if (!accepted) return@awaitEachGesture
                     }
                     zoom = next
-                    scope.launch {
+                    // Off the main thread: the record read/write and marker checks used to block the frame.
+                    scope.launch(Dispatchers.IO) {
                         val current = SettingsHub.uiNow()
                         try {
                             SettingsHub.saveUiKeys(context, current.withSetting("appTextZoom", SettingValue(next.toString())), setOf("appTextZoom"))

@@ -4248,3 +4248,7 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-07 - Panel pins bind a panel to a stack layer kind
 
 - A layout panel can pin a layer kind (drawer, folder list, folder). A pinned panel shows the stack's layer of that kind, or stays empty; the rest of the stack flows and hides only through unpinned panels. Back never pops a pinned layer (generic rule: Back leaves the window when only pinned layers would remain). The editor refuses an all-pinned layout; with fewer panels than pins, the last pin is released. Pinnable kinds are every fixed stack kind, not a code list. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-07 - Live pinch zoom
+
+- Cause of the delay: the window pinch accumulated the factor and changed nothing until the fingers lifted; then it changed LocalDensity (full-tree re-layout) and ran the settings save (record read, write, publish, scope settle) on the main thread in the composition scope. Now the gesture draws a live graphicsLayer scale around the pinch point, commits the real zoom on lift, and saves on Dispatchers.IO. First action per standard-plan-compliance-block.md; commits stay on master.
