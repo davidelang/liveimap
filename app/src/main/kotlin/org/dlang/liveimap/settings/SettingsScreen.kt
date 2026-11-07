@@ -1254,6 +1254,7 @@ fun SettingsTree(
     }
     MailboxPickDialog(editor, picking.value, { walk.drafts }) { picking.value = it }
     val editing = editingFavorite
+    val deleteContext = androidx.compose.ui.platform.LocalContext.current
     if (editing != null) {
         FavoriteEditDialog(
             where = FavoriteWhere(
@@ -1281,6 +1282,9 @@ fun SettingsTree(
                 editingFavorite = null
             },
             onDelete = {
+                if (deletesDefaultView(editor.settings.favorites, editing)) {
+                    android.widget.Toast.makeText(deleteContext, deletedDefaultViewText(), android.widget.Toast.LENGTH_LONG).show()
+                }
                 editor.persist(
                     editor.settings.copy(
                         favorites = editor.settings.favorites.filterNot {
@@ -1291,6 +1295,10 @@ fun SettingsTree(
                 editingFavorite = null
             },
             onDismiss = { editingFavorite = null },
+            isDefaultView = editor.settings.favorites.any { it.defaultView && it.node == editing.node && it.mailbox == editing.mailbox },
+            onDefaultView = { on ->
+                editor.persist(editor.settings.copy(favorites = withDefaultView(editor.settings.favorites, editing, on)))
+            },
         )
     }
 }
@@ -2220,6 +2228,7 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "previewSize" -> row_previewSize(walk)
         "clientSortCollation" -> row_clientSortCollation(key, walk)
         "settingsOpensOn" -> row_settingsOpensOn(walk)
+        "startupView" -> row_startupView(walk)
         "debugLogging" -> row_debugLogging(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
     }
@@ -2279,6 +2288,8 @@ internal fun NumberRow(key: String, walk: SettingsWalk) {
 internal fun TextRow(key: String, walk: SettingsWalk) {
     when (key) {
         "friendlyName" -> row_friendlyName(walk)
+        "startupAccount" -> row_startupAccount(walk)
+        "startupFolder" -> row_startupFolder(walk)
         "email" -> row_email(walk)
         "displayName" -> row_displayName(walk)
         "imapHost" -> row_imapHost(walk)
@@ -2381,6 +2392,45 @@ internal fun SubscreenRow(key: String, walk: SettingsWalk) {
         "hiddenCapabilities" -> row_hiddenCapabilities(walk)
         "favorites" -> row_favorites(walk)
         else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+    }
+}
+
+@Composable
+internal fun row_startupView(walk: SettingsWalk) {
+    val editor = walk.editor
+    val choices = listOf("drawer", "folderList", "folder", "favorite")
+    ChoiceField(
+        stringResource(SettingsTreeGenerated.resource("setting_startupView_title")),
+        choices,
+        editor.settings.startupView.ifEmpty { "folderList" },
+        { picked -> stringResource(SettingsTreeGenerated.resource("setting_startupView_$picked")) },
+    ) { picked ->
+        editor.persist(editor.settings.copy(startupView = picked))
+    }
+}
+
+/** Empty: the account open in the drawer. An id that no longer exists stays listed so it can be changed. */
+@Composable
+internal fun row_startupAccount(walk: SettingsWalk) {
+    val editor = walk.editor
+    val current = editor.settings.startupAccount
+    val ids = listOf("") + editor.accounts.map { it.id } + listOfNotNull(current.takeIf { it.isNotEmpty() && editor.accounts.none { a -> a.id == it } })
+    val openInDrawer = stringResource(SettingsTreeGenerated.resource("setting_settingsOpensOn_drawer"))
+    ChoiceField(
+        stringResource(SettingsTreeGenerated.regTitle("startupAccount")),
+        ids,
+        current,
+        { id -> if (id.isEmpty()) openInDrawer else editor.accounts.firstOrNull { it.id == id }?.name ?: id },
+    ) { picked ->
+        editor.persist(editor.settings.copy(startupAccount = picked))
+    }
+}
+
+@Composable
+internal fun row_startupFolder(walk: SettingsWalk) {
+    val editor = walk.editor
+    LineField(stringResource(SettingsTreeGenerated.regTitle("startupFolder")), editor.settings.startupFolder, singleLine = true, ready = editor.ready) {
+        editor.persist(editor.settings.copy(startupFolder = it))
     }
 }
 

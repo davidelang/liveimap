@@ -4258,3 +4258,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Fill no longer releases the last pin of an all-pinned record. It reports NoUnpinnedPanel on the fill and the window shows a translated bar; the editor still refuses such a layout. Search and message pins stay allowed (user policy); a pinned message pane follows the open message and stays empty without one.
 - Stack arrows move the visible window over the unpinned part of the stack (a StackView tied to one stack, so any push, pop or pick shows the top again). They appear only when layers are hidden. Arrows move the view; Back still pops.
 - Tests trimmed to behavior: removed DebugLoggingSettingTest and the process-name case, reduced the route list test to the mail-route rule, rewrote PinchPreviewTest and LayoutPinTest, added StackViewTest.
+
+## 2026-11-07 - Startup view setting and default-view favorite
+
+- startupView (drawer, folderList default, folder, favorite), startupAccount (empty = the account open in the drawer), startupFolder (INBOX). startupStack() builds a normal stack (drawer plus the view's layers) once per launch; an invalid target (missing account, blank folder, no or blank favorite, unknown view) shows the drawer and a visible, dismissable bar instead of a silent substitute.
+- Favorites carry a defaultView tag (string form |d, JSON defaultView, absent = untagged; more than one keeps the first). Favorite startup uses the tagged one, else the first. Deleting the tagged one shows a notice; the tag goes with it.

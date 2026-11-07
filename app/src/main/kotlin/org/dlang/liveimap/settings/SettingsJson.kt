@@ -84,20 +84,22 @@ internal fun favoritesJson(values: List<FolderFavorite>): JsonValue = JsonValue.
         "name" to JsonValue.Str(favorite.label),
         "container" to JsonValue.Bool(favorite.node),
         "delimiter" to JsonValue.Str(favorite.delimiter.toString()),
-    ))
+    ).also { if (favorite.defaultView) it["defaultView"] = JsonValue.Bool(true) }) // written only when tagged
 })
 
 internal fun readFavorites(value: JsonValue): List<FolderFavorite> {
     val arr = value as? JsonValue.Arr ?: throw IllegalArgumentException("favorites")
-    return arr.items.map { item ->
+    return normalizeDefaultView(arr.items.map { item ->
         val obj = item as? JsonValue.Obj ?: throw IllegalArgumentException("favorites")
         val mailbox = jsonString(obj.fields.getValue("mailbox"))
         val name = (obj.fields["name"] as? JsonValue.Str)?.value.orEmpty()
         val container = (obj.fields["container"] as? JsonValue.Bool)?.value == true
         val delimiter = jsonString(obj.fields.getValue("delimiter"))
         if (delimiter.length != 1) throw IllegalArgumentException("favorites")
-        FolderFavorite(container, mailbox, delimiter[0], name)
-    }
+        // Absent in data written before the tag: untagged.
+        val defaultView = (obj.fields["defaultView"] as? JsonValue.Bool)?.value == true
+        FolderFavorite(container, mailbox, delimiter[0], name, defaultView)
+    })
 }
 
 internal fun viewJson(view: FolderView): JsonValue = JsonValue.Obj(linkedMapOf(

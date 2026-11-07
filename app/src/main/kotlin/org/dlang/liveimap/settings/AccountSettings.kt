@@ -205,7 +205,35 @@ data class FolderFavorite(
     val mailbox: String,
     val delimiter: Char,
     val label: String = "",
+    /** The favorite the "first favorite" startup view opens. At most one per list; see [withDefaultView]. */
+    val defaultView: Boolean = false,
 )
+
+/** Tags [target] as the default view and untags the rest ([on] false just untags it). */
+fun withDefaultView(list: List<FolderFavorite>, target: FolderFavorite, on: Boolean): List<FolderFavorite> =
+    list.map { item ->
+        val same = item.node == target.node && item.mailbox == target.mailbox
+        item.copy(defaultView = on && same)
+    }
+
+/** Older or hand-edited data: no tag stays no tag; more than one tag keeps the first. */
+fun normalizeDefaultView(list: List<FolderFavorite>): List<FolderFavorite> {
+    val first = list.indexOfFirst { it.defaultView }
+    return if (first < 0) list else list.mapIndexed { i, f -> if (f.defaultView != (i == first)) f.copy(defaultView = i == first) else f }
+}
+
+/** Deleting [target] from [list] removes the default-view tag (startup then uses the first favorite). */
+fun deletesDefaultView(list: List<FolderFavorite>, target: FolderFavorite): Boolean =
+    list.any { it.defaultView && it.node == target.node && it.mailbox == target.mailbox }
+
+/** Shown once after the tagged favorite is deleted. */
+fun deletedDefaultViewText(): String = org.dlang.liveimap.i18n.S(
+    "You deleted the default view. Unless you set a new default, the first favorite in the list will be used.",
+    name = "favorite_default_view_deleted",
+)
+
+/** The startup favorite: the tagged one, else the first, else null. A tagged one is never swapped for another. */
+fun startupFavoriteOf(list: List<FolderFavorite>): FolderFavorite? = list.firstOrNull { it.defaultView } ?: list.firstOrNull()
 
 /** One address book. `kind` is `pine` or `android`. Order in the list is completion order. */
 data class AddressBookEntry(
@@ -755,7 +783,7 @@ internal fun delimiterText(value: String): String = try {
 }
 
 internal fun encodeFavorite(favorite: FolderFavorite): String =
-    "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}|${percentEncode(favorite.label)}"
+    "${if (favorite.node) "1" else "0"}|${percentEncode(favorite.mailbox)}|${percentEncode(favorite.delimiter.toString())}|${percentEncode(favorite.label)}" + if (favorite.defaultView) "|d" else ""
 
 internal fun encodeFavorites(favorites: List<FolderFavorite>): String =
     favorites.joinToString(";") { encodeFavorite(it) }
@@ -767,7 +795,7 @@ internal fun parseFavorites(value: String): List<FolderFavorite> {
     for (part in value.split(';')) {
         val favorite = try {
             val bits = part.split('|')
-            if (bits.size != 3 && bits.size != 4) throw IllegalArgumentException("bad favorites")
+            if (bits.size !in 3..5 || (bits.size == 5 && bits[4] != "d")) throw IllegalArgumentException("bad favorites")
             val node = when (bits[0]) {
                 "1" -> true
                 "0" -> false
@@ -776,15 +804,15 @@ internal fun parseFavorites(value: String): List<FolderFavorite> {
             val mailbox = percentDecode(bits[1])
             val delimText = delimiterText(bits[2])
             if (delimText.length != 1) throw IllegalArgumentException("bad favorites")
-            val label = if (bits.size == 4) percentDecode(bits[3]) else ""
-            FolderFavorite(node, mailbox, delimText[0], label)
+            val label = if (bits.size >= 4) percentDecode(bits[3]) else ""
+            FolderFavorite(node, mailbox, delimText[0], label, defaultView = bits.size == 5)
         } catch (_: Exception) {
             continue
         }
         if (!seen.add(favorite.node to favorite.mailbox)) continue
         out += favorite
     }
-    return out
+    return normalizeDefaultView(out)
 }
 
 internal fun encodeView(view: FolderView): String =

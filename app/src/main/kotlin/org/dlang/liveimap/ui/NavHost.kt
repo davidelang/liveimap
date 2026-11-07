@@ -421,6 +421,9 @@ private fun LiveImapNavHostReady() {
     var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
     // Where the stack arrows moved the view. Tied to the stack it was set on: any stack change shows the top again.
     var stackView by remember { mutableStateOf<org.dlang.liveimap.window.StackView?>(null) }
+    // The configured startup view is built once, when the first account is known.
+    var startupBuilt by remember { mutableStateOf(false) }
+    var startupProblem by remember { mutableStateOf<org.dlang.liveimap.window.StartupProblem?>(null) }
     val scope = rememberCoroutineScope()
     val situation = windowSituation()
     fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
@@ -546,7 +549,28 @@ private fun LiveImapNavHostReady() {
         layoutAccountId = drawers.firstOrNull { it.chosen }?.id.orEmpty()
         if (layoutAccountId.isNotEmpty() && mailStack.layers.first().key.isEmpty()) {
             // A mailbox jump can land before the account id is known. Stamp the key; do not add a tree over that index.
-            mailStack = if (mailStack.layers.size == 1) {
+            mailStack = if (mailStack.layers.size == 1 && !startupBuilt) {
+                startupBuilt = true
+                val ui = org.dlang.liveimap.settings.SettingsHub.uiNow()
+                val plan = org.dlang.liveimap.window.startupStack(
+                    ui.startupView, ui.startupAccount, layoutAccountId, drawers.map { it.id }.toSet(), ui.startupFolder,
+                    // The startup account's favorites: the open account's, or the configured account's own.
+                    (if (ui.startupAccount.isEmpty() || ui.startupAccount == layoutAccountId) account.favorites
+                    else org.dlang.liveimap.settings.SettingsHub.accountNow(ui.startupAccount)?.favorites.orEmpty())
+                        .let { org.dlang.liveimap.settings.startupFavoriteOf(it) }
+                        ?.let { org.dlang.liveimap.window.StartupFavorite(it.node, it.mailbox) },
+                )
+                startupProblem = plan.problem
+                org.dlang.liveimap.engine.DebugLog.event("stack") {
+                    "startup ${ui.startupView} -> " + plan.stack.layers.joinToString { "${it.kind}:${it.key}" } + " problem=${plan.problem}"
+                }
+                if (plan.accountId != layoutAccountId) store.selectAccount(plan.accountId)
+                val index = plan.stack.layers.lastOrNull()?.takeIf { it.kind == WindowLayerKind.FolderIndex }
+                if (index != null) {
+                    navController.navigate("index/${Uri.encode(index.key)}") { popUpTo(0) { inclusive = true } }
+                }
+                plan.stack
+            } else if (mailStack.layers.size == 1) {
                 WindowStack.drawer(layoutAccountId).pushFolderTree("root")
             } else {
                 withDrawerKey(mailStack, layoutAccountId)
@@ -1365,6 +1389,9 @@ private fun LiveImapNavHostReady() {
 
     fun deleteEditingFavorite() {
         val current = editingFavorite ?: return
+        if (org.dlang.liveimap.settings.deletesDefaultView(editingFavorites, current)) {
+            android.widget.Toast.makeText(uiContext, org.dlang.liveimap.settings.deletedDefaultViewText(), android.widget.Toast.LENGTH_LONG).show()
+        }
         persistEditingFavorites(editingFavorites.filterNot { it.node == current.node && it.mailbox == current.mailbox })
         editingFavorite = null
     }
@@ -1821,6 +1848,29 @@ private fun LiveImapNavHostReady() {
                 },
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
+            val startupText = when (startupProblem) {
+                org.dlang.liveimap.window.StartupProblem.AccountMissing ->
+                    S("The startup account no longer exists. Showing the drawer.", name = "startup_problem_account")
+                org.dlang.liveimap.window.StartupProblem.FolderMissing ->
+                    S("No startup folder is set. Showing the drawer.", name = "startup_problem_folder")
+                org.dlang.liveimap.window.StartupProblem.UnknownView ->
+                    S("The startup view setting is not recognized. Showing the drawer.", name = "startup_problem_view")
+                org.dlang.liveimap.window.StartupProblem.NoFavorite ->
+                    S("There are no favorites to start on. Showing the drawer.", name = "startup_problem_no_favorite")
+                org.dlang.liveimap.window.StartupProblem.FavoriteInvalid ->
+                    S("The default favorite has no folder. Showing the drawer.", name = "startup_problem_bad_favorite")
+                null -> null
+            }
+            if (startupText != null) {
+                // Tap to dismiss; it stays until then.
+                Text(
+                    startupText,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .clickable { startupProblem = null }.padding(12.dp),
+                )
+            }
             if (shown.problem == org.dlang.liveimap.window.LayoutRecordProblem.NoUnpinnedPanel) {
                 Text(
                     S("Every panel in this layout is pinned, so what you open has nowhere to show. Change the layout in Settings.", name = "layout_runtime_all_pinned"),
@@ -1859,6 +1909,11 @@ private fun LiveImapNavHostReady() {
                 onSave = { saveEditingFavorite() },
                 onDelete = { deleteEditingFavorite() },
                 onDismiss = { editingFavorite = null },
+                isDefaultView = editingFavorites.any { it.defaultView && it.node == editingFavorite?.node && it.mailbox == editingFavorite?.mailbox },
+                onDefaultView = { on ->
+                    val current = editingFavorite
+                    if (current != null) persistEditingFavorites(org.dlang.liveimap.settings.withDefaultView(editingFavorites, current, on))
+                },
             )
         }
         val pendingCert = certPrompt.value
@@ -2177,6 +2232,8 @@ internal fun FavoriteEditDialog(
     onSave: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
+    isDefaultView: Boolean = false,
+    onDefaultView: (Boolean) -> Unit = {},
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2195,6 +2252,14 @@ internal fun FavoriteEditDialog(
                     label = { Text(S("Name")) },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // One favorite per account carries the tag; tagging this one moves it here.
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onDefaultView(!isDefaultView) }.testTag("favorite-default-view"),
+                ) {
+                    androidx.compose.material3.Checkbox(checked = isDefaultView, onCheckedChange = onDefaultView)
+                    Text(S("Default view", name = "favorite_default_view"))
+                }
             }
         },
         confirmButton = {

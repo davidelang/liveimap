@@ -2157,6 +2157,36 @@
           }
         },
         {
+          "setting": "startupView",
+          "type": "choice",
+          "default": "folderList",
+          "title": "Startup view",
+          "choices": [
+            "drawer",
+            "folderList",
+            "folder",
+            "favorite"
+          ],
+          "choiceTitles": {
+            "drawer": "The drawer",
+            "folderList": "The folder list",
+            "folder": "A folder",
+            "favorite": "The default favorite"
+          }
+        },
+        {
+          "setting": "startupAccount",
+          "type": "text",
+          "default": "",
+          "title": "Startup account"
+        },
+        {
+          "setting": "startupFolder",
+          "type": "text",
+          "default": "INBOX",
+          "title": "Startup folder"
+        },
+        {
           "setting": "debugLogging",
           "type": "bool",
           "default": false,
