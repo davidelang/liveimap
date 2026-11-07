@@ -170,7 +170,9 @@ import org.dlang.liveimap.window.keyLayer
 import org.dlang.liveimap.window.keyPanel
 import org.dlang.liveimap.window.displayedFill
 import org.dlang.liveimap.window.drawerOverlayOpen
-import org.dlang.liveimap.window.toggleDrawer
+import org.dlang.liveimap.window.DrawerInput
+import org.dlang.liveimap.window.DrawerView
+import org.dlang.liveimap.window.drawerStep
 import org.dlang.liveimap.window.hamburgerPlan
 import org.dlang.liveimap.window.zoomAfterScreenOpen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
@@ -423,7 +425,17 @@ private fun LiveImapNavHostReady() {
     fun currentFill(): FillResult = displayedFill(currentRecord(), mailStack, zoom)
     fun toggleDrawerOverlay() {
         org.dlang.liveimap.engine.DebugLog.event("drawer") { "hamburger: drawer was ${if (drawerOverlayOpen(zoom)) "open" else "closed"}" }
-        zoom = toggleDrawer(fill(currentRecord(), mailStack), mailStack.layers.first(), zoom)
+        val base = fill(currentRecord(), mailStack)
+        val next = drawerStep(DrawerView(mailStack, drawerOverlayOpen(zoom)), DrawerInput.Menu,
+            org.dlang.liveimap.window.drawerInPanel(base))
+        zoom = if (next.peek) ZoomState(mailStack.layers.first(), base) else null
+    }
+    /** A drawer pick: the drawer stays, [above] replaces the rest of the stack, the peek closes. */
+    fun pickFromDrawer(above: List<WindowLayer>) {
+        val next = drawerStep(DrawerView(mailStack, drawerOverlayOpen(zoom)), DrawerInput.Pick(above), false)
+        org.dlang.liveimap.engine.DebugLog.event("stack") { "drawer pick " + above.joinToString { "${it.kind}:${it.key}" } }
+        mailStack = next.stack
+        zoom = null
     }
     fun openDrawerOverlay() {
         if (!drawerOverlayOpen(zoom)) toggleDrawerOverlay()
@@ -597,10 +609,15 @@ private fun LiveImapNavHostReady() {
         return screenKeyOfRoute(pattern) { name -> entry.arguments?.getString(name) }
     }
 
-    fun openScreen(route: String) {
+    fun openScreen(route: String, fromDrawer: Boolean = false) {
         val key = screenLayerKey(route)
         if (key == null) {
             navController.navigate(route)
+            return
+        }
+        if (fromDrawer) {
+            pickFromDrawer(listOf(WindowLayer(WindowLayerKind.Screen, key)))
+            navController.navigate(route) { popUpTo(0) { inclusive = true } }
             return
         }
         val plan = screenOpenPlan(mailStack, key)
@@ -629,6 +646,7 @@ private fun LiveImapNavHostReady() {
         subject: String,
         accountId: String,
         ruleId: String,
+        fromDrawer: Boolean = false,
     ) {
         filterEditIndex.value = index
         filterSeedFrom.value = from
@@ -637,7 +655,7 @@ private fun LiveImapNavHostReady() {
         filterSeedSubject.value = subject
         filterAccountId.value = accountId
         filterRuleId.value = ruleId
-        openScreen("filter")
+        openScreen("filter", fromDrawer)
     }
 
     fun openCompose(seed: ComposeSeed) {
@@ -726,6 +744,11 @@ private fun LiveImapNavHostReady() {
             return
         }
         mailStack = step.stack
+        if (step.stack.layers.size == 1) {
+            // Down to the drawer: it is the bottom layer and stays shown; the next Back leaves.
+            navController.navigate("folders") { popUpTo(0) { inclusive = true } }
+            return
+        }
         if (poppedScreen) {
             popMailDestination()
             // Closing the message while a screen covered it can leave the reader route under the screen.
@@ -1350,21 +1373,10 @@ private fun LiveImapNavHostReady() {
     }
 
     /** Same-account All folders. An open index stays; the tree is what Back shows. */
+    /** Drawer "All folders": the tree replaces everything above the drawer. */
     fun openSameAccountTree() {
-        if (mailCoversTree(mailStack)) {
-            mailStack = revealTree(mailStack, "root")
-            return
-        }
-        popScreenRoutes()
-        mailStack = mailStack.pushFolderTree("root")
-        navController.navigate("folders") {
-            if (backStackHas("folders")) {
-                popUpTo("folders")
-                launchSingleTop = true
-            } else {
-                popUpTo(0) { inclusive = true }
-            }
-        }
+        pickFromDrawer(listOf(WindowLayer(WindowLayerKind.FolderTree, "root")))
+        navController.navigate("folders") { popUpTo(0) { inclusive = true } }
     }
 
     fun openFavorite(favorite: FolderFavorite) {
@@ -1502,7 +1514,7 @@ private fun LiveImapNavHostReady() {
             onAddFilter = {
                 navigateFromDrawer {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
-                    if (!chosen.isNullOrEmpty()) openFilterEditor(-1, "", "", "", "", chosen, "")
+                    if (!chosen.isNullOrEmpty()) openFilterEditor(-1, "", "", "", "", chosen, "", fromDrawer = true)
                 }
             },
             showFilters = drawerAccounts.isNotEmpty(),
@@ -1511,7 +1523,7 @@ private fun LiveImapNavHostReady() {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
                         filterListAccount.value = chosen
-                        openScreen("filters")
+                        openScreen("filters", fromDrawer = true)
                     }
                 }
             },
@@ -1521,7 +1533,7 @@ private fun LiveImapNavHostReady() {
             onAccountEditFavorite = { account, favorite -> editAccountFavorite(account, favorite) },
             onSettings = {
                 navigateFromDrawer {
-                    openScreen("settings")
+                    openScreen("settings", fromDrawer = true)
                 }
             },
             onNewWindow = {
@@ -1540,18 +1552,18 @@ private fun LiveImapNavHostReady() {
                 navigateFromDrawer {
                     val chosen = drawerAccounts.firstOrNull { it.chosen }?.id ?: accounts.firstOrNull()?.id
                     if (!chosen.isNullOrEmpty()) {
-                        openScreen("settings/account/$chosen/editor/addressBooks")
+                        openScreen("settings/account/$chosen/editor/addressBooks", fromDrawer = true)
                     }
                 }
             },
             onHelp = {
                 navigateFromDrawer {
-                    openScreen("help")
+                    openScreen("help", fromDrawer = true)
                 }
             },
             onAbout = {
                 navigateFromDrawer {
-                    openScreen("about")
+                    openScreen("about", fromDrawer = true)
                 }
             },
         )
