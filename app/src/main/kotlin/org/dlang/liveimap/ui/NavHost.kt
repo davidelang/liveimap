@@ -172,6 +172,7 @@ import org.dlang.liveimap.window.displayedFill
 import org.dlang.liveimap.window.drawerOverlayOpen
 import org.dlang.liveimap.window.toggleDrawer
 import org.dlang.liveimap.window.hamburgerPlan
+import org.dlang.liveimap.window.zoomAfterScreenOpen
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
@@ -578,15 +579,18 @@ private fun LiveImapNavHostReady() {
             navController.navigate(route)
             return
         }
-        val existing = mailStack.layers.indexOfFirst { it.kind == WindowLayerKind.Screen && it.key == key }
-        if (existing >= 0) {
-            val extra = mailStack.layers.size - existing - 1
-            mailStack = mailStack.pushScreen(key)
-            repeat(extra) { navController.popBackStack() }
-            return
-        }
-        mailStack = mailStack.pushScreen(key)
-        navController.navigate(route)
+        val plan = screenOpenPlan(mailStack, key)
+        mailStack = plan.stack
+        zoom = zoomAfterScreenOpen(zoom, key)
+        repeat(plan.pops) { navController.popBackStack() }
+        if (screenNeedsNavigate(plan, currentScreenKey(), key)) navController.navigate(route)
+    }
+
+    /** The screen key of the shown route, rebuilt from its arguments as ScreenLayerPage does. */
+    fun currentScreenKey(): String? {
+        val entry = navController.currentBackStackEntry ?: return null
+        val pattern = entry.destination.route ?: return null
+        return screenKeyOfRoute(pattern) { name -> entry.arguments?.getString(name) }
     }
 
     /** Drops screen routes so a mail navigation sees the opener, not the screen pile. */
@@ -2475,6 +2479,29 @@ internal fun screenClosesOnSettingsRefusal(screenKey: String): Boolean {
     return screenKey == "folderLists/expanded" ||
         screenKey == "folderLists/views" ||
         screenKey == "folderLists/starts"
+}
+
+/** [pops] routes come off above an existing copy of the screen; [existing] says there was one. */
+internal data class ScreenOpen(val stack: WindowStack, val pops: Int, val existing: Boolean)
+
+internal fun screenOpenPlan(stack: WindowStack, key: String): ScreenOpen {
+    val at = stack.layers.indexOfFirst { it.kind == WindowLayerKind.Screen && it.key == key }
+    val pops = if (at >= 0) stack.layers.size - at - 1 else 0
+    return ScreenOpen(stack.pushScreen(key), pops, existing = at >= 0)
+}
+
+/** A layer already in the stack still needs its route when the shown route is not that screen. */
+internal fun screenNeedsNavigate(plan: ScreenOpen, shownKey: String?, key: String): Boolean =
+    !plan.existing || shownKey != key
+
+/** A route pattern with its `{name}` arguments filled in, as a screen key. Null when an argument is missing. */
+internal fun screenKeyOfRoute(pattern: String, arg: (String) -> String?): String? {
+    var missing = false
+    val filled = Regex("\\{([^}]+)\\}").replace(pattern) { match ->
+        arg(match.groupValues[1]) ?: run { missing = true; "" }
+    }
+    if (missing) return null
+    return screenLayerKey(filled)
 }
 
 /** The screen-layer key is the route that was opened. Mail routes are not screens. */

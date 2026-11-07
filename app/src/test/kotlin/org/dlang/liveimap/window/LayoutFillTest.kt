@@ -293,4 +293,24 @@ class LayoutFillTest {
         val noDrawer = fill(unpinned, stack)
         assertEquals(HamburgerPlan(slot = 0, overOpenDrawer = false), hamburgerPlan(noDrawer, noDrawer, null))
     }
+
+    @Test
+    fun aScreenPushedOverAZoomIsShownAndOpeningItClearsTheZoom() {
+        val twoPanel = record(listOf(LayoutPanel("side"), LayoutPanel("main")), UnusedPanel.StayEmpty, 0, 2)
+        val zoomed = zoomTarget(fill(twoPanel, stack), stack.layers.last())!!
+        val withSettings = stack.pushScreen("settings")
+        val shown = displayedFill(twoPanel, withSettings, zoomed)
+        assertTrue(shown.slots.any { !it.collapsed && it.layer == WindowLayer(WindowLayerKind.Screen, "settings") })
+        assertEquals(zoomFill(zoomed), displayedFill(twoPanel, stack, zoomed))
+        assertNull(zoomAfterScreenOpen(zoomed, "settings"))
+        val screenZoom = ZoomState(WindowLayer(WindowLayerKind.Screen, "settings"), shown)
+        assertEquals(screenZoom, zoomAfterScreenOpen(screenZoom, "settings"))
+        // The drawer opened over Settings, then Settings again from the drawer: shown, not hidden.
+        val phone = record(listOf(LayoutPanel("main")), UnusedPanel.Collapse, 0, 1)
+        val open = toggleDrawer(fill(phone, stack), drawerLayer, null)
+        assertEquals(
+            WindowLayer(WindowLayerKind.Screen, "settings"),
+            displayedFill(phone, withSettings, zoomAfterScreenOpen(open, "settings")).slots.single().layer,
+        )
+    }
 }

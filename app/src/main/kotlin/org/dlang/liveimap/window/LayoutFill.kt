@@ -156,8 +156,15 @@ fun hamburgerPlan(base: FillResult, shown: FillResult, zoom: ZoomState?): Hambur
 fun displayedFill(record: LayoutRecord?, stack: WindowStack, zoom: ZoomState?): FillResult {
     val base = fill(record, stack)
     if (zoom == null || drawerOverlayOpen(zoom)) return base
+    // A screen pushed above a zoom is what the user asked for; the zoom must not hide it.
+    val top = stack.layers.last()
+    if (top.kind == WindowLayerKind.Screen && zoom.layer != top) return base
     return zoomFill(zoom)
 }
+
+/** Opening screen [key] keeps a zoom only when that zoom is this screen. */
+fun zoomAfterScreenOpen(zoom: ZoomState?, key: String): ZoomState? =
+    zoom?.takeIf { it.layer == WindowLayer(WindowLayerKind.Screen, key) }
 
 /**
  * Zoom of the one panel that is already the whole window does nothing.

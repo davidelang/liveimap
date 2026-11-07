@@ -64,4 +64,40 @@ class ScreenLayerRouteTest {
             assertFalse(isScreenRoute(route))
         }
     }
+
+    @Test
+    fun reopeningAScreenWhoseRouteIsNotShownNavigatesAgain() {
+        val base = org.dlang.liveimap.window.WindowStack.drawer("a").pushMailboxIndex("INBOX")
+        val fresh = screenOpenPlan(base, "settings")
+        assertFalse(fresh.existing)
+        assertEquals(0, fresh.pops)
+        assertTrue(screenNeedsNavigate(fresh, null, "settings"))
+        val withSettings = fresh.stack
+        val again = screenOpenPlan(withSettings, "settings")
+        assertTrue(again.existing)
+        assertEquals(withSettings, again.stack)
+        assertEquals(0, again.pops)
+        // Layer present and its route on top: nothing to do. Layer present, route gone: navigate.
+        assertFalse(screenNeedsNavigate(again, "settings", "settings"))
+        assertTrue(screenNeedsNavigate(again, null, "settings"))
+        assertTrue(screenNeedsNavigate(again, "help", "settings"))
+        val piled = withSettings.pushScreen("help").pushScreen("about")
+        val back = screenOpenPlan(piled, "settings")
+        assertEquals(2, back.pops)
+        assertEquals(withSettings, back.stack)
+    }
+
+    @Test
+    fun routePatternsRebuildTheScreenKeys() {
+        val args = mapOf("accountId" to "abc", "editorId" to "addressBooks")
+        assertEquals("settings", screenKeyOfRoute("settings") { args[it] })
+        assertEquals("settings/account/abc", screenKeyOfRoute("settings/account/{accountId}") { args[it] })
+        assertEquals(
+            "settings/account/abc/editor/addressBooks",
+            screenKeyOfRoute("settings/account/{accountId}/editor/{editorId}") { args[it] },
+        )
+        assertEquals("settings/setup?accountId=abc", screenKeyOfRoute("settings/setup?accountId={accountId}") { args[it] })
+        assertNull(screenKeyOfRoute("settings/account/{accountId}") { null })
+        assertNull(screenKeyOfRoute("folders") { args[it] })
+    }
 }
