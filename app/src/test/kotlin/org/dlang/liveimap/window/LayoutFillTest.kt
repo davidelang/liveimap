@@ -263,4 +263,34 @@ class LayoutFillTest {
         assertFalse(drawerOverlayOpen(zoomed))
         assertEquals(zoomFill(zoomed), displayedFill(twoPanel, stack, zoomed))
     }
+
+    @Test
+    fun singlePanelShowsTheHamburgerOnEveryLayerAndKeepsItOverTheOpenDrawer() {
+        val phone = record(listOf(LayoutPanel("main")), UnusedPanel.Collapse, coverPanels = 0, unpinnedKeep = 1)
+        val tree = WindowStack.drawer("account").pushFolderTree("root")
+        val index = tree.pushMailboxIndex("INBOX")
+        val settings = stack.pushScreen("settings")
+        for (each in listOf(tree, index, stack, settings)) {
+            val base = fill(phone, each)
+            assertEquals(HamburgerPlan(slot = 0, overOpenDrawer = false), hamburgerPlan(base, base, null))
+            val open = toggleDrawer(base, drawerLayer, null)
+            val shown = displayedFill(phone, each, open)
+            // Still on the same bar, and drawn again above the sheet so a second tap closes it.
+            assertEquals(HamburgerPlan(slot = 0, overOpenDrawer = true), hamburgerPlan(base, shown, open))
+            assertNull(toggleDrawer(base, drawerLayer, open))
+        }
+    }
+
+    @Test
+    fun multiPanelShowsTheHamburgerOnlyWhenNoPanelHasTheDrawer() {
+        val pinned = record(
+            listOf(LayoutPanel("side", WindowLayerKind.Drawer), LayoutPanel("main")),
+            UnusedPanel.Collapse, coverPanels = 0, unpinnedKeep = 1,
+        )
+        val withDrawer = fill(pinned, stack)
+        assertEquals(HamburgerPlan(slot = null, overOpenDrawer = false), hamburgerPlan(withDrawer, withDrawer, null))
+        val unpinned = record(listOf(LayoutPanel("side"), LayoutPanel("main")), UnusedPanel.Collapse, 0, 2)
+        val noDrawer = fill(unpinned, stack)
+        assertEquals(HamburgerPlan(slot = 0, overOpenDrawer = false), hamburgerPlan(noDrawer, noDrawer, null))
+    }
 }

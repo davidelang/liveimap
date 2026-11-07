@@ -2144,7 +2144,8 @@ private fun ReaderScreen(
         topBar = {
             TopAppBar(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },
-                navigationIcon = {
+                navigationIcon = { androidx.compose.foundation.layout.Row {
+                    org.dlang.liveimap.ui.DrawerToggleButton()
                     HelpIconButton(
                         label = S("Back", name = "reader_back"),
                         help = S("Returns to the message list."),
@@ -2156,7 +2157,7 @@ private fun ReaderScreen(
                             contentDescription = S("Back", name = "reader_back"),
                         )
                     }
-                },
+                } },
                 actions = {
                     ReaderDisplayMenu(
                         selected = messageDisplay,

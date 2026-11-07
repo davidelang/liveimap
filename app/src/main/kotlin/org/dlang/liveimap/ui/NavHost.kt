@@ -171,6 +171,7 @@ import org.dlang.liveimap.window.keyPanel
 import org.dlang.liveimap.window.displayedFill
 import org.dlang.liveimap.window.drawerOverlayOpen
 import org.dlang.liveimap.window.toggleDrawer
+import org.dlang.liveimap.window.hamburgerPlan
 import org.dlang.liveimap.ui.reader.MessageReaderScreen
 import org.dlang.liveimap.ui.search.AdvancedSearchScreen
 import org.dlang.liveimap.ui.toolbar.ToolbarEditorPage
@@ -1604,6 +1605,14 @@ private fun LiveImapNavHostReady() {
                 )
             }
         }
+        val baseFill = fill(record, mailStack)
+        val hamburger = hamburgerPlan(baseFill, shown, zoom)
+        val hamburgerSlot = hamburger.slot?.let { shown.slots[it] }
+        val drawerToggle: () -> Unit = { toggleDrawerOverlay() }
+        var drawerAreaOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+        Box(
+            Modifier.fillMaxSize().onGloballyPositioned { drawerAreaOrigin = it.positionInWindow() },
+        ) {
         ModalNavigationDrawer(
             drawerContent = {
                 // A panel that already shows the drawer gets no second copy; toggleDrawer never opens over it.
@@ -1623,7 +1632,9 @@ private fun LiveImapNavHostReady() {
         ) {
         Box(Modifier.fillMaxSize()) {
         if (!mailRoute && !screenRoute) {
-            hostedNav(Modifier.fillMaxSize())
+            CompositionLocalProvider(LocalDrawerToggle provides (if (hamburgerSlot != null) drawerToggle else null)) {
+                hostedNav(Modifier.fillMaxSize())
+            }
         } else {
             val routeKind = when (route) {
                 "folders" -> WindowLayerKind.FolderTree
@@ -1646,6 +1657,7 @@ private fun LiveImapNavHostReady() {
                 keyLayer = activeLayer,
                 onKey = { id -> keyPanelId = id },
             ) { slot ->
+                CompositionLocalProvider(LocalDrawerToggle provides (if (slot == hamburgerSlot) drawerToggle else null)) {
                 val kind = slot.layer?.kind
                 val hostThisSlot = when {
                     screenRoute && kind == WindowLayerKind.Screen && slot.layer?.key == topScreenKey -> true
@@ -1747,6 +1759,7 @@ private fun LiveImapNavHostReady() {
                         null -> Box(Modifier.fillMaxSize())
                     }
                 }
+                }
             }
             if (screenRoute) {
                 if (!screenOnScreen) hostedNav(Modifier.size(0.dp))
@@ -1754,6 +1767,19 @@ private fun LiveImapNavHostReady() {
                 hostedNav(Modifier.size(0.dp))
             }
         }
+        }
+        }
+        if (hamburger.overOpenDrawer) {
+            // The same hamburger, above the sheet and scrim, on the spot the bar's button reported.
+            val spot = DrawerToggleSpot.window
+            val at = if (spot == null) androidx.compose.ui.unit.IntOffset.Zero else androidx.compose.ui.unit.IntOffset(
+                (spot.x - drawerAreaOrigin.x).toInt(),
+                (spot.y - drawerAreaOrigin.y).toInt(),
+            )
+            DrawerToggleIcon(
+                drawerToggle,
+                Modifier.offset { at }.testTag("drawer-toggle-open"),
+            )
         }
         }
         val editing = editingFavorite
@@ -2362,14 +2388,15 @@ private fun UpPage(title: String, onUp: () -> Unit, content: @Composable () -> U
                 }
                 TopAppBar(
                     title = { Text(title) },
-                    navigationIcon = {
+                    navigationIcon = { androidx.compose.foundation.layout.Row {
+                        DrawerToggleButton()
                         IconButton(onClick = up) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = S("Navigate up"),
                             )
                         }
-                    },
+                    } },
                     windowInsets = if (coversStatus) {
                         TopAppBarDefaults.windowInsets
                     } else {

@@ -138,6 +138,20 @@ fun toggleDrawer(base: FillResult, drawer: WindowLayer, zoom: ZoomState?): ZoomS
     return ZoomState(drawer, base)
 }
 
+/**
+ * Where the hamburger goes. [slot] is the index in [shown] of the first visible panel; that bar carries it.
+ * None when a panel of [base] already shows the drawer. [overOpenDrawer]: an open drawer overlay keeps a
+ * copy on the same spot, drawn above the sheet, so a second tap closes it.
+ */
+data class HamburgerPlan(val slot: Int?, val overOpenDrawer: Boolean)
+
+fun hamburgerPlan(base: FillResult, shown: FillResult, zoom: ZoomState?): HamburgerPlan {
+    val inPanel = base.slots.any { !it.collapsed && it.layer?.kind == WindowLayerKind.Drawer }
+    if (inPanel && !drawerOverlayOpen(zoom)) return HamburgerPlan(slot = null, overOpenDrawer = false)
+    val first = shown.slots.indexOfFirst { !it.collapsed && it.layer != null }
+    return HamburgerPlan(slot = first.takeIf { it >= 0 }, overOpenDrawer = drawerOverlayOpen(zoom))
+}
+
 /** What the window draws. The drawer overlay leaves the fill under it; any other zoom replaces it. */
 fun displayedFill(record: LayoutRecord?, stack: WindowStack, zoom: ZoomState?): FillResult {
     val base = fill(record, stack)

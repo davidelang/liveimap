@@ -2105,7 +2105,8 @@ private fun ComposeForm(
                         ),
                     )
                 },
-                navigationIcon = {
+                navigationIcon = { androidx.compose.foundation.layout.Row {
+                    org.dlang.liveimap.ui.DrawerToggleButton()
                     HelpIconButton(
                         label = S("Back", name = "reader_back"),
                         help = S("Leaves this message."),
@@ -2117,7 +2118,7 @@ private fun ComposeForm(
                             contentDescription = S("Back", name = "reader_back"),
                         )
                     }
-                },
+                } },
                 actions = {
                     if (seed.kind != ComposeKind.Bounce) {
                         if (!deliveryDone) {

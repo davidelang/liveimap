@@ -704,19 +704,7 @@ private fun FolderListLoaded(
                 TopAppBar(
                     title = { Text(S("Folders")) },
                     navigationIcon = {
-                        if (onOpenDrawer != null) {
-                            HelpIconButton(
-                                label = S("Menu"),
-                                help = S("Opens the account list."),
-                                page = "folders.html#menu",
-                                onClick = onOpenDrawer,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Menu,
-                                    contentDescription = S("Menu"),
-                                )
-                            }
-                        }
+                        org.dlang.liveimap.ui.DrawerToggleButton()
                     },
                     actions = {
                         DebugStatusIcon(debugStatus)

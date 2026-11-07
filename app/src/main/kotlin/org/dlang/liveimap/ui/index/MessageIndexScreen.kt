@@ -3658,7 +3658,8 @@ private fun MessageIndexLoaded(
                                 contentDescription = S("Close"),
                             )
                         }
-                    } else {
+                    } else androidx.compose.foundation.layout.Row {
+                        org.dlang.liveimap.ui.DrawerToggleButton()
                         HelpIconButton(
                             label = S("Back"),
                             help = S("Returns to the folder list."),

@@ -56,14 +56,15 @@ internal fun UpTopAppBar(title: String, onUp: () -> Unit) {
     }
     TopAppBar(
         title = { Text(title) },
-        navigationIcon = {
+        navigationIcon = { androidx.compose.foundation.layout.Row {
+            DrawerToggleButton()
             IconButton(onClick = up) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = S("Navigate up"),
                 )
             }
-        },
+        } },
         windowInsets = mailBarInsets(),
     )
 }
