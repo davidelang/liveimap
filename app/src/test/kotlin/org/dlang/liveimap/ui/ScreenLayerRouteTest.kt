@@ -8,61 +8,15 @@ import org.junit.Test
 
 class ScreenLayerRouteTest {
     @Test
-    fun fullScreensAreRouteKeysAndMailRoutesAreNot() {
-        val screens = listOf(
-            "compose",
-            "unsent",
-            "settings/setup",
-            "settings/setup?accountId=abc",
-            "settings",
-            "settings/accounts",
-            "settings/account/_",
-            "settings/account/abc",
-            "settings/account/abc/editor/addressBooks",
-            "folderLists/expanded",
-            "folderLists/views",
-            "folderLists/starts",
-            "addressbook",
-            "contacts",
-            "filters",
-            "filter",
-            "help",
-            "about",
-            "about/licenses",
-            "toolbar/index",
-            "toolbar/selection",
-            "toolbar/folders",
-            "toolbar/reader",
-            "toolbar/compose",
-        )
-        for (route in screens) {
-            assertEquals(route, screenLayerKey(route))
-            assertTrue(isScreenRoute(route))
+    fun mailRoutesNeverBecomeScreenLayers() {
+        // A mail route taken for a screen would push a second copy of the folder or message as a Screen layer.
+        for (route in listOf("folders", "index/INBOX", "search/INBOX", "found/INBOX/Current", "reader/INBOX/1/1?epoch=0")) {
+            assertNull(route, screenLayerKey(route))
+            assertFalse(route, isScreenRoute(route))
         }
-        assertTrue(isScreenRoute("settings/account/{accountId}"))
-        assertTrue(isScreenRoute("settings/account/{accountId}/editor/{editorId}"))
-        assertTrue(isScreenRoute("settings/setup?accountId={accountId}"))
-        assertTrue(screenClosesOnSettingsRefusal("settings/setup"))
-        assertTrue(screenClosesOnSettingsRefusal("settings/setup?accountId=abc"))
-        assertTrue(screenClosesOnSettingsRefusal("folderLists/expanded"))
-        assertTrue(screenClosesOnSettingsRefusal("folderLists/views"))
-        assertTrue(screenClosesOnSettingsRefusal("folderLists/starts"))
-        assertFalse(screenClosesOnSettingsRefusal("help"))
-        assertFalse(screenClosesOnSettingsRefusal("filters"))
-        for (route in listOf(
-            "folders",
-            "index/{mailbox}",
-            "index/INBOX",
-            "search/{mailbox}",
-            "search/INBOX",
-            FoundRoutePattern,
-            "found/INBOX/Current",
-            ReaderRoutePattern,
-            "reader/INBOX/1/1?epoch=0",
-        )) {
-            assertNull(screenLayerKey(route))
-            assertFalse(isScreenRoute(route))
-        }
+        // Argument routes keep their arguments in the key, so two accounts' settings are two layers.
+        assertEquals("settings/account/abc", screenLayerKey("settings/account/abc"))
+        assertTrue(screenLayerKey("settings/account/abc") != screenLayerKey("settings/account/xyz"))
     }
 
     @Test

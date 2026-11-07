@@ -55,22 +55,23 @@ fun layoutRecordProblem(record: LayoutRecord): LayoutRecordProblem? {
     return null
 }
 
-/**
- * The pins fill uses. A saved record whose panels are all pinned (older records, or one written before the
- * editor refused it) keeps every pin but the last panel's, so the stack always has a panel.
- */
-fun effectivePanels(panels: List<LayoutPanel>): List<LayoutPanel> {
-    if (panels.isEmpty() || panels.any { it.pin == null }) return panels
-    return panels.dropLast(1) + panels.last().copy(pin = null)
-}
-
-/** The layer kinds this record (as fill uses it) binds to panels. */
+/** The layer kinds this record binds to panels. Pins come only from the layout definition. */
 fun pinnedKinds(record: LayoutRecord?): Set<WindowLayerKind> =
-    record?.let { r -> effectivePanels(r.panels).mapNotNull { it.pin }.toSet() }.orEmpty()
+    record?.panels?.mapNotNull { it.pin }?.toSet().orEmpty()
 
 data class FillSlot(val panelIds: List<String>, val layer: WindowLayer?, val collapsed: Boolean)
 
-data class FillResult(val slots: List<FillSlot>)
+/**
+ * [hiddenBelow]: unpinned stack layers under the visible window. [hiddenAbove]: unpinned layers above it
+ * (the view was moved down the stack). [problem]: the record cannot be shown as defined; the window
+ * reports it and does not rewrite the record.
+ */
+data class FillResult(
+    val slots: List<FillSlot>,
+    val hiddenBelow: Int = 0,
+    val hiddenAbove: Int = 0,
+    val problem: LayoutRecordProblem? = null,
+)
 
 /** Zoom remembers the fill it replaced. Back clears this before it pops a layer. */
 data class ZoomState(val layer: WindowLayer, val unzoomed: FillResult)
@@ -80,34 +81,49 @@ data class BackStep(val dismissedDialog: Boolean, val zoom: ZoomState?, val stac
 /**
  * Fills [record] from [stack]. A null record, or a record with no panels, is an empty catalog:
  * one panel, the top layer. A dialog is not an argument here.
+ *
+ * [viewOffset] moves the visible window down the unpinned part of the stack by that many layers
+ * (clamped). It only changes what is shown; the stack is untouched.
  */
-fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
-    val top = stack.layers.last()
+fun fill(record: LayoutRecord?, stack: WindowStack, viewOffset: Int = 0): FillResult {
     if (record == null || record.panels.isEmpty()) {
-        return FillResult(listOf(FillSlot(listOf("panel"), top, collapsed = false)))
+        val layers = stack.layers
+        val off = viewOffset.coerceIn(0, layers.size - 1)
+        return FillResult(
+            listOf(FillSlot(listOf("panel"), layers[layers.size - 1 - off], collapsed = false)),
+            hiddenBelow = layers.size - 1 - off,
+            hiddenAbove = off,
+        )
     }
-    val panels = effectivePanels(record.panels)
+    val panels = record.panels
     val count = panels.size
     val coverCount = record.coverPanels.coerceIn(0, count)
-    val used = HashSet<WindowLayer>()
     val covered = BooleanArray(count)
-    if (coverCount > 0) {
-        for (index in (count - coverCount) until count) covered[index] = true
-        used.add(top)
-    }
+    for (index in (count - coverCount) until count) covered[index] = true
     val assigned = arrayOfNulls<WindowLayer>(count)
+    val used = HashSet<WindowLayer>()
+    // A pin binds the panel to a layer kind. No layer of that kind: the panel stays empty, and nothing flows in.
+    // With the view at the top, a cover takes the top layer first (pins then use the next layer of their kind).
+    val coverFirst = coverCount > 0 && viewOffset <= 0
+    if (coverFirst) used.add(stack.layers.last())
     for (index in 0 until count) {
         if (covered[index]) continue
         val pin = panels[index].pin ?: continue
-        // A pin binds the panel to a layer kind. No layer of that kind: the panel stays empty, and nothing flows in.
         val layer = stack.layers.lastOrNull { it.kind == pin && it !in used } ?: continue
         assigned[index] = layer
         used.add(layer)
     }
-    // The dynamic stack flows only through the unpinned panels: pinned layers neither show there nor count.
-    val queue = ArrayDeque(
-        stack.layers.filter { it !in used }.takeLast(record.unpinnedKeep.coerceAtLeast(0)).asReversed(),
-    )
+    if (coverFirst) used.remove(stack.layers.last())
+    // The dynamic stack flows only through the unpinned panels; pinned layers neither show there nor count.
+    val flow = stack.layers.filter { it !in used }
+    val free = (0 until count).count { !covered[it] && panels[it].pin == null }
+    val capacity = (if (coverCount > 0) 1 else 0) + minOf(free, record.unpinnedKeep.coerceAtLeast(0))
+    val offset = viewOffset.coerceIn(0, maxOf(0, flow.size - capacity))
+    val window = flow.dropLast(offset)
+    val coverLayer = if (coverCount > 0) window.lastOrNull() else null
+    val rest = if (coverLayer != null) window.dropLast(1) else window
+    val queue = ArrayDeque(rest.takeLast(minOf(free, record.unpinnedKeep.coerceAtLeast(0))).asReversed())
+    val shownFromFlow = (if (coverLayer != null) 1 else 0) + queue.size
     for (index in (count - 1) downTo 0) {
         if (covered[index] || panels[index].pin != null || queue.isEmpty()) continue
         assigned[index] = queue.removeFirst()
@@ -118,7 +134,7 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
         if (covered[index]) {
             val ids = ArrayList<String>(coverCount)
             for (coveredIndex in index until count) ids.add(panels[coveredIndex].id)
-            slots.add(FillSlot(ids, top, collapsed = false))
+            slots.add(FillSlot(ids, coverLayer, collapsed = false))
             break
         }
         val layer = assigned[index]
@@ -137,7 +153,32 @@ fun fill(record: LayoutRecord?, stack: WindowStack): FillResult {
         val layer = slot.layer ?: continue
         require(seen.add(layer))
     }
-    return FillResult(slots)
+    return FillResult(
+        slots,
+        hiddenBelow = window.size - shownFromFlow,
+        hiddenAbove = offset,
+        problem = if (free == 0 && coverCount == 0) LayoutRecordProblem.NoUnpinnedPanel else null,
+    )
+}
+
+/** Which stack arrows the window shows. None when every stack layer is visible. */
+data class StackArrows(val down: Boolean, val up: Boolean)
+
+fun stackArrows(shown: FillResult): StackArrows = StackArrows(down = shown.hiddenBelow > 0, up = shown.hiddenAbove > 0)
+
+/**
+ * The view position over a stack. It belongs to [stack]: any push, pop or pick makes a new stack,
+ * and the view goes back to the top.
+ */
+data class StackView(val stack: WindowStack, val offset: Int)
+
+fun viewOffset(view: StackView?, stack: WindowStack): Int = if (view?.stack == stack) view.offset else 0
+
+/** An arrow moves the view one layer; [down] shows a lower layer. The new offset is what fill shows. */
+fun stackViewStep(record: LayoutRecord?, view: StackView?, stack: WindowStack, down: Boolean): StackView {
+    val now = fill(record, stack, viewOffset(view, stack))
+    val wanted = now.hiddenAbove + if (down) 1 else -1
+    return StackView(stack, fill(record, stack, wanted.coerceAtLeast(0)).hiddenAbove)
 }
 
 fun zoom(current: FillResult, layer: WindowLayer): ZoomState = ZoomState(layer, current)
@@ -171,8 +212,8 @@ fun hamburgerPlan(base: FillResult, shown: FillResult, zoom: ZoomState?): Hambur
 }
 
 /** What the window draws. The drawer overlay leaves the fill under it; any other zoom replaces it. */
-fun displayedFill(record: LayoutRecord?, stack: WindowStack, zoom: ZoomState?): FillResult {
-    val base = fill(record, stack)
+fun displayedFill(record: LayoutRecord?, stack: WindowStack, zoom: ZoomState?, viewOffset: Int = 0): FillResult {
+    val base = fill(record, stack, viewOffset)
     if (zoom == null || drawerOverlayOpen(zoom)) return base
     // A screen pushed above a zoom is what the user asked for; the zoom must not hide it.
     val top = stack.layers.last()

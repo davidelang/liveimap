@@ -4252,3 +4252,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-07 - Live pinch zoom
 
 - Cause of the delay: the window pinch accumulated the factor and changed nothing until the fingers lifted; then it changed LocalDensity (full-tree re-layout) and ran the settings save (record read, write, publish, scope settle) on the main thread in the composition scope. Now the gesture draws a live graphicsLayer scale around the pinch point, commits the real zoom on lift, and saves on Dispatchers.IO. First action per standard-plan-compliance-block.md; commits stay on master.
+
+## 2026-11-07 - Pins only from the layout definition; stack arrows; test review
+
+- Fill no longer releases the last pin of an all-pinned record. It reports NoUnpinnedPanel on the fill and the window shows a translated bar; the editor still refuses such a layout. Search and message pins stay allowed (user policy); a pinned message pane follows the open message and stays empty without one.
+- Stack arrows move the visible window over the unpinned part of the stack (a StackView tied to one stack, so any push, pop or pick shows the top again). They appear only when layers are hidden. Arrows move the view; Back still pops.
+- Tests trimmed to behavior: removed DebugLoggingSettingTest and the process-name case, reduced the route list test to the mail-route rule, rewrote PinchPreviewTest and LayoutPinTest, added StackViewTest.

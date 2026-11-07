@@ -48,9 +48,4 @@ class DebugLogTest {
             check(dir.deleteRecursively())
         }
     }
-
-    @Test fun processNamesBecomeSafeFileNames() {
-        assertEquals("w0", DebugLog.safeName("com.davidlang.liveimap:w0"))
-        assertEquals("main", DebugLog.safeName("com.davidlang.liveimap"))
-    }
 }

@@ -419,13 +419,16 @@ private fun LiveImapNavHostReady() {
     }
     val navController = rememberNavController()
     var mailStack by remember { mutableStateOf(WindowStack.drawer("")) }
+    // Where the stack arrows moved the view. Tied to the stack it was set on: any stack change shows the top again.
+    var stackView by remember { mutableStateOf<org.dlang.liveimap.window.StackView?>(null) }
     val scope = rememberCoroutineScope()
     val situation = windowSituation()
     fun currentRecord(): LayoutRecord = decodeLayoutCatalog(layoutCatalogText).resolve(situation)
-    fun currentFill(): FillResult = displayedFill(currentRecord(), mailStack, zoom)
+    fun currentOffset(): Int = org.dlang.liveimap.window.viewOffset(stackView, mailStack)
+    fun currentFill(): FillResult = displayedFill(currentRecord(), mailStack, zoom, currentOffset())
     fun toggleDrawerOverlay() {
         org.dlang.liveimap.engine.DebugLog.event("drawer") { "hamburger: drawer was ${if (drawerOverlayOpen(zoom)) "open" else "closed"}" }
-        val base = fill(currentRecord(), mailStack)
+        val base = fill(currentRecord(), mailStack, currentOffset())
         val next = drawerStep(DrawerView(mailStack, drawerOverlayOpen(zoom)), DrawerInput.Menu,
             org.dlang.liveimap.window.drawerInPanel(base))
         zoom = if (next.peek) ZoomState(mailStack.layers.first(), base) else null
@@ -784,7 +787,7 @@ private fun LiveImapNavHostReady() {
         val target = ref.mailbox.ifEmpty { mailboxFallback }
         openedMessage = OpenedMessage(target, ref.uid, sequence, ref.uidValidity, markKey)
         zoom = null
-        val kinds = fill(currentRecord(), mailStack).slots.filter { !it.collapsed }.mapNotNull { it.layer?.kind }.toSet()
+        val kinds = fill(currentRecord(), mailStack, currentOffset()).slots.filter { !it.collapsed }.mapNotNull { it.layer?.kind }.toSet()
         if (WindowLayerKind.Message in kinds && from in kinds) {
             if (navController.currentDestination?.route == ReaderRoutePattern) navController.popBackStack()
             return
@@ -1648,7 +1651,7 @@ private fun LiveImapNavHostReady() {
                 )
             }
         }
-        val baseFill = fill(record, mailStack)
+        val baseFill = fill(record, mailStack, currentOffset())
         val hamburger = hamburgerPlan(baseFill, shown, zoom)
         val hamburgerSlot = hamburger.slot?.let { shown.slots[it] }
         val drawerToggle: () -> Unit = { toggleDrawerOverlay() }
@@ -1659,7 +1662,7 @@ private fun LiveImapNavHostReady() {
         ModalNavigationDrawer(
             drawerContent = {
                 // A panel that already shows the drawer gets no second copy; toggleDrawer never opens over it.
-                val baseShowsDrawer = fill(record, mailStack).slots.any {
+                val baseShowsDrawer = fill(record, mailStack, currentOffset()).slots.any {
                     !it.collapsed && it.layer?.kind == WindowLayerKind.Drawer
                 }
                 if (!baseShowsDrawer) {
@@ -1809,6 +1812,22 @@ private fun LiveImapNavHostReady() {
                 if (!screenOnScreen) hostedNav(Modifier.size(0.dp))
             } else if (!routeOnScreen) {
                 hostedNav(Modifier.size(0.dp))
+            }
+            StackArrowsBar(
+                arrows = org.dlang.liveimap.window.stackArrows(shown),
+                onMove = { down ->
+                    stackView = org.dlang.liveimap.window.stackViewStep(record, stackView, mailStack, down)
+                    org.dlang.liveimap.engine.DebugLog.event("stack") { "view moved ${if (down) "down" else "up"} to ${stackView?.offset}" }
+                },
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+            if (shown.problem == org.dlang.liveimap.window.LayoutRecordProblem.NoUnpinnedPanel) {
+                Text(
+                    S("Every panel in this layout is pinned, so what you open has nowhere to show. Change the layout in Settings.", name = "layout_runtime_all_pinned"),
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.errorContainer).padding(12.dp),
+                )
             }
         }
         }
