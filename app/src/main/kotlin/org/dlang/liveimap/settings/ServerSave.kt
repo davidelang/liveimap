@@ -57,7 +57,7 @@ internal fun boundSaveCapture(started: SaveCapture, editingNow: String?, finishe
     return finished
 }
 
-/** Log and failure text when the attempt wrote no key and no password. Not a string resource. */
+/** Internal diagnostic only; UI uses a curated translated save error. */
 internal const val settingsSaveEmptyWrite: String = "empty write"
 
 internal data class SettingsSaveVerdict(val stored: Boolean, val failure: String?) {
@@ -79,7 +79,8 @@ internal fun applyWrittenKeys(before: Settings, screen: Settings, keys: Set<Stri
 /**
  * Stored only when this attempt wrote the screen's edits and a following load would return them.
  * Host, port, username, and email come from the AccountManager record ([overlayAccountFields]).
- * A rejection or a commit that writes nothing is not stored. [checkRecord] is false before the write.
+ * An unchanged screen is successful without a write. Missing edits or credentials are failures.
+ * [checkRecord] is false before the write; [loadedSettings] is the actual committed snapshot afterward.
  */
 internal fun settingsSaveVerdict(
     rejected: String?,
@@ -94,24 +95,24 @@ internal fun settingsSaveVerdict(
     needSieve: Boolean,
     record: Map<String, String>?,
     checkRecord: Boolean,
+    loadedSettings: Settings? = null,
 ): SettingsSaveVerdict {
     if (!rejected.isNullOrEmpty()) return SettingsSaveVerdict(false, rejected)
     val changed = screen.changedKeysAgainst(before)
-    val wroteNothing = keysWritten.isEmpty() && !wrotePassword && !wroteSmtp && !wroteSieve
     if (!keysWritten.containsAll(changed) || (needPassword && !wrotePassword) || (needSmtp && !wroteSmtp) ||
-        (needSieve && !wroteSieve) || wroteNothing
+        (needSieve && !wroteSieve)
     ) {
         return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
     }
     if (!checkRecord) return SettingsSaveVerdict(true, null)
     if (record == null) return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
     val loaded = try {
-        overlayAccountFields(applyWrittenKeys(before, screen, keysWritten), record)
+        overlayAccountFields(loadedSettings ?: applyWrittenKeys(before, screen, keysWritten), record)
     } catch (_: Exception) {
         return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
     }
     if (accountIdentityChanged(screen, loaded)) return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
-    if (changed.any { loaded.getSetting(it) != screen.getSetting(it) }) {
+    if ((changed + keysWritten).any { loaded.getSetting(it) != screen.getSetting(it) }) {
         return SettingsSaveVerdict(false, settingsSaveEmptyWrite)
     }
     return SettingsSaveVerdict(true, null)

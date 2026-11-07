@@ -1156,5 +1156,7 @@
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Este servidor no tiene un buzón de papelera. La alternativa es marcar como borrado."},
 {"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
 {"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
-{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true},
+{"key": "settings_save_error", "source": "Settings could not be saved. Please try again.", "text": "No se pudo guardar la configuración. Inténtalo de nuevo."},
+{"key": "settings_damaged_notice", "source": "Damaged settings were backed up. Review and save your settings.", "text": "Se creó una copia de seguridad de la configuración dañada. Revisa y guarda tu configuración."}
 ]

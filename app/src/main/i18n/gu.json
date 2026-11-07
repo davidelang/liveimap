@@ -1156,5 +1156,7 @@
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "આ સર્વર પાસે કચરાપેટી નથી. વિકલ્પ કાઢી નાખેલ તરીકે ચિહ્નિત કરવાનો છે."},
 {"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
 {"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
-{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true},
+{"key": "settings_save_error", "source": "Settings could not be saved. Please try again.", "text": "સેટિંગ્સ સાચવી શકાયાં નથી. કૃપા કરીને ફરી પ્રયાસ કરો."},
+{"key": "settings_damaged_notice", "source": "Damaged settings were backed up. Review and save your settings.", "text": "ક્ષતિગ્રસ્ત સેટિંગ્સનો બેકઅપ લેવામાં આવ્યો છે. તમારાં સેટિંગ્સ તપાસો અને સાચવો."}
 ]

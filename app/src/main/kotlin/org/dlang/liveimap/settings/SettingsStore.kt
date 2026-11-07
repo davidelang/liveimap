@@ -114,6 +114,8 @@ class DataStoreSettingsStore(
 
     override fun theme(): Flow<ThemeMode> = store.theme()
 
+    suspend fun hasDamagedSettings(): Boolean = bound { store.hasDamagedSettings() }
+
     suspend fun commitKeys(draft: Settings, keys: Set<String>, writeUnknowns: Boolean = false): Settings =
         bound { store.commitKeys(draft, keys, writeUnknowns) }
 

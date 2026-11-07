@@ -1156,5 +1156,7 @@
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "ഈ സെർവറിന് ചവറ്റുകുട്ട മെയിൽബോക്സ് ഇല്ല. പകരം ഇല്ലാതാക്കിയതായി അടയാളപ്പെടുത്തുക എന്നതാണ്."},
 {"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
 {"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
-{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true},
+{"key": "settings_save_error", "source": "Settings could not be saved. Please try again.", "text": "ക്രമീകരണങ്ങൾ സംരക്ഷിക്കാനായില്ല. വീണ്ടും ശ്രമിക്കുക."},
+{"key": "settings_damaged_notice", "source": "Damaged settings were backed up. Review and save your settings.", "text": "കേടായ ക്രമീകരണങ്ങളുടെ ബാക്കപ്പ് എടുത്തു. നിങ്ങളുടെ ക്രമീകരണങ്ങൾ പരിശോധിച്ച് സംരക്ഷിക്കുക."}
 ]

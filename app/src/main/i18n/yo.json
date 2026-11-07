@@ -1156,5 +1156,7 @@
 {"key": "index_delete_needs_trash", "source": "This server has no trash mailbox. The alternate is to mark deleted.", "text": "Olupin yii ko ni apoti idoti. Aṣayan miiran ni lati samisi bi ti a ti parẹ."},
 {"key": "settings_group_imapSecurity_title", "source": "Imap Security", "text": "Imap Security", "pending": true},
 {"key": "leaf_displayimages_title", "source": "Display images by default", "text": "Display images by default", "pending": true},
-{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true}
+{"key": "leaf_readerdisplay_choice_monospaced", "source": "Monospaced text", "text": "Monospaced text", "pending": true},
+{"key": "settings_save_error", "source": "Settings could not be saved. Please try again.", "text": "A kò lè fi àwọn ètò pamọ́. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i."},
+{"key": "settings_damaged_notice", "source": "Damaged settings were backed up. Review and save your settings.", "text": "A ti ṣe ẹ̀dà àfẹ́yìntì àwọn ètò tó bàjẹ́. Ṣàyẹ̀wò kí o sì fi àwọn ètò rẹ pamọ́."}
 ]

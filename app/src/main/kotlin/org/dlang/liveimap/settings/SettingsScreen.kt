@@ -163,6 +163,10 @@ import org.dlang.liveimap.ui.toolbar.notePaneScroll
  */
 internal val settingsSaveFailure = androidx.compose.runtime.mutableStateOf<String?>(null)
 
+@Composable
+internal fun settingsSaveErrorText(): String =
+    S("Settings could not be saved. Please try again.", name = "settings_save_error")
+
 internal fun logSettingsSave(control: String, accountId: String?, outcome: String) {
     android.util.Log.w("liveimap", settingsSaveReport(control, accountId, outcome))
 }
@@ -483,12 +487,7 @@ internal class SettingsEditor(
         } catch (_: Exception) {
             return SettingsHub.uiNow()
         }
-        val error = documentError(text)
-        if (error != null) {
-            SettingsHub.noteLoad(error)
-            return Settings()
-        }
-        return decodeSettings(text)
+        return loadStoredSettings(appContext, text).settings
     }
 
     /** The saved file, not this process's snapshot. The draft is applied after this returns. */
@@ -499,12 +498,7 @@ internal class SettingsEditor(
             return SettingsHub.accountNow(id)?.withUiOf(ui) ?: throw NoAccountSelected()
         }
         if (text == null) throw NoAccountSelected()
-        val decoded = try {
-            decodeSettings(text)
-        } catch (error: SettingsDocumentException) {
-            SettingsHub.noteLoad(error.message ?: "settings document")
-            Settings()
-        }
+        val decoded = loadStoredSettings(appContext, text).settings
         val fields = store.accountFields(id) ?: emptyMap()
         return overlayAccountFields(decoded, fields).withUiOf(ui)
     }
@@ -659,9 +653,11 @@ internal class SettingsEditor(
             }
             val retarget = org.dlang.liveimap.accounts.retargetCredentials(attempt.before, attempt.screen)
             val saving = if (captured != null) retarget.settings else attempt.screen
-            val keys = if (captured != null) saving.changedKeysAgainst(attempt.before) else dirtyKeys.get()
+            val uiDamaged = loadStoredSettings(appContext, readGlobalRecord(appContext)).damaged
+            val accountDamaged = attempt.accountId?.let { store.forAccount(it).hasDamagedSettings() } ?: false
+            val keys = settingsKeysForSave(attempt.before, saving,
+                if (captured != null) emptySet() else dirtyKeys.get(), uiDamaged = uiDamaged, accountDamaged = accountDamaged)
             val unknownsChanged = saving.unknownSettings != attempt.before.unknownSettings
-            val scopePick = ScopePicks.chosen.isNotEmpty()
             // A moved server drops the old secret in the settings write. A password that is part of this attempt is written after that.
             val writePassword = attempt.password
             val writeSmtp = attempt.smtp
@@ -681,19 +677,14 @@ internal class SettingsEditor(
                 record = null,
                 checkRecord = false,
             )
-            val structuralOnly = (unknownsChanged || scopePick) && keys.isEmpty() &&
-                saving.changedKeysAgainst(attempt.before).isEmpty() &&
-                writePassword == null && writeSmtp == null && writeSieve == null
-            if (!preview.stored && !structuralOnly) {
-                if (rejected != null || settingsSaveFailure.value.isNullOrEmpty()) {
-                    settingsSaveFailure.value = preview.failure
-                }
+            if (!preview.stored) {
+                settingsSaveFailure.value = preview.failure
                 return false
             }
             val id = attempt.accountId
             val storeTarget = id?.let { store.forAccount(it) }
             if (storeTarget == null) {
-                if (!structuralOnly && (accountIdentityChanged(attempt.before, saving) || writePassword != null || writeSmtp != null || writeSieve != null || keys.isEmpty())) {
+                if (keys.any { settingsRegistry[it]?.scope != SettingScope.Ui } || writePassword != null || writeSmtp != null || writeSieve != null) {
                     if (settingsSaveFailure.value.isNullOrEmpty()) settingsSaveFailure.value = settingsSaveEmptyWrite
                     return false
                 }
@@ -705,9 +696,7 @@ internal class SettingsEditor(
                 return true
             }
             settingsSaveFailure.value = null
-            if (keys.isNotEmpty() || unknownsChanged || scopePick) {
-                storeTarget.commitKeys(saving, keys, writeUnknowns = unknownsChanged)
-            }
+            val written = storeTarget.commitKeys(saving, keys, writeUnknowns = unknownsChanged || accountDamaged)
             if (writePassword != null) storeTarget.setPassword(writePassword)
             if (writeSmtp != null) storeTarget.setSmtpPassword(writeSmtp)
             if (writeSieve != null) {
@@ -726,8 +715,9 @@ internal class SettingsEditor(
                 needSieve = writeSieve != null,
                 record = store.accountFields(id),
                 checkRecord = true,
+                loadedSettings = written.withUiOf(SettingsHub.uiNow()),
             )
-            if (!recorded.stored && !structuralOnly) {
+            if (!recorded.stored) {
                 settingsSaveFailure.value = recorded.failure
                 return false
             }
@@ -1024,7 +1014,9 @@ internal fun LoadCheckDialog() {
         AlertDialog(
             onDismissRequest = { SettingsHub.clearNotice() },
             title = { Text(S("Stored settings")) },
-            text = { Text(notice ?: "") },
+            text = { Text(if (notice == damagedSettingsNotice)
+                S("Damaged settings were backed up. Review and save your settings.", name = "settings_damaged_notice")
+                else notice ?: "") },
             confirmButton = {
                 TextButton(onClick = { SettingsHub.clearNotice() }) {
                     Text(S("OK", name = "settings_ok"))
@@ -1166,7 +1158,7 @@ fun SettingsTree(
     ) {
             val saveFailure = settingsSaveFailure.value
             if (saveFailure != null) {
-                Text(saveFailure)
+                Text(settingsSaveErrorText())
             }
             PolicyDialog(editor)
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
@@ -1527,13 +1519,9 @@ internal fun saveSettingsPage(editor: SettingsEditor, drafts: ServerDrafts?, con
         }
     }
     editor.policy = emptyList()
-    val pendingLine = PendingLines.pending()
     PendingLines.commitAll()
     if (drafts != null && drafts.hasDraft) drafts.saveServer(editor, control)
-    else if (!editor.pageDirty && !pendingLine) {
-        val ok = editor.commitPage()
-        logSettingsSave(control, editor.editingId, if (ok) "stored" else settingsSaveFailed(settingsSaveFailure.value.orEmpty()))
-    } else {
+    else {
         val capture = editor.captureSave(editor.settings, null, null)
         settingsIo.launch {
             val ok = try {

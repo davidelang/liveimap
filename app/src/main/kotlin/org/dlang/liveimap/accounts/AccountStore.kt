@@ -197,7 +197,7 @@ class AccountStore private constructor(private val context: Context) {
     ): org.dlang.liveimap.settings.Settings {
         org.dlang.liveimap.window.requireSettingsWritable(context)
         val picksPending = org.dlang.liveimap.settings.ScopePicks.chosen.isNotEmpty()
-        if (keys.isEmpty() && !writeUnknowns && !picksPending) return draft
+        if (keys.isEmpty() && !writeUnknowns && !picksPending) return onAccount { loadForCommit() }
         val registry = org.dlang.liveimap.settings.settingsRegistry
         val uiKeys = keys.filter { registry[it]?.scope == org.dlang.liveimap.settings.SettingScope.Ui }.toSet()
         val accountKeys = keys.filter { key ->
@@ -340,11 +340,9 @@ class AccountStore private constructor(private val context: Context) {
                 val account = readAccounts().firstOrNull { parseAccountId(it.userData[userAccountId]) == id }
                     ?: return@withContext null
                 val text = storedPreference(id) ?: return@withContext null
-                val settings = try {
-                    overlayAccountFields(decodeSettings(text), account.userData)
-                } catch (_: org.dlang.liveimap.settings.SettingsDocumentException) {
-                    overlayAccountFields(org.dlang.liveimap.settings.Settings(), account.userData)
-                }
+                val settings = overlayAccountFields(
+                    org.dlang.liveimap.settings.loadStoredSettings(context, text).settings, account.userData,
+                )
                 val slot = account.passwordSlot
                 val password = if (slot.isNullOrEmpty()) {
                     null
@@ -395,16 +393,13 @@ class AccountStore private constructor(private val context: Context) {
                 readAccounts().mapNotNull { account ->
                     val id = parseAccountId(account.userData[userAccountId]) ?: return@mapNotNull null
                     val stored = storedPreference(id) ?: return@mapNotNull null
-                    if (runCatching { decodeSettings(stored) }.isFailure) {
-                        AccountChoice(id = id, name = account.name, drawer = id == open, editing = false, corrupt = true)
-                    } else {
-                        AccountChoice(
-                            id = id,
-                            name = listedName(account),
-                            drawer = id == open,
-                            editing = false,
-                        )
-                    }
+                    val loaded = org.dlang.liveimap.settings.loadStoredSettings(context, stored)
+                    AccountChoice(
+                        id = id,
+                        name = if (loaded.damaged) account.name else listedName(account),
+                        drawer = id == open,
+                        editing = false,
+                    )
                 }
             }
         }
@@ -417,8 +412,9 @@ class AccountStore private constructor(private val context: Context) {
                 readAccounts().mapNotNull { account ->
                     val id = parseAccountId(account.userData[userAccountId]) ?: return@mapNotNull null
                     val stored = storedPreference(id) ?: return@mapNotNull null
-                    val decoded = runCatching { decodeSettings(stored) }.getOrNull()
-                    if (decoded == null) {
+                    val loaded = org.dlang.liveimap.settings.loadStoredSettings(context, stored)
+                    val decoded = loaded.settings
+                    if (loaded.damaged) {
                         DrawerAccount(
                             id = id,
                             name = account.name,
@@ -624,15 +620,17 @@ class AccountStore private constructor(private val context: Context) {
         val accountId = parseAccountId(account.userData[userAccountId]) ?: throw NoAccountSelected()
         org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
         val text = storedPreference(accountId) ?: throw NoAccountSelected()
-        val decoded = try {
-            decodeSettings(text)
-        } catch (error: org.dlang.liveimap.settings.SettingsDocumentException) {
-            org.dlang.liveimap.settings.SettingsHub.noteLoad(error.message ?: "settings document")
-            org.dlang.liveimap.settings.Settings()
-        }
+        val decoded = org.dlang.liveimap.settings.loadStoredSettings(context, text).settings
         return overlayAccountFields(decoded, account.userData).withUiOf(
             org.dlang.liveimap.settings.SettingsHub.uiNow(),
         )
+    }
+
+    suspend fun hasDamagedSettings(): Boolean = onAccount {
+        val account = pick(readAccounts()) ?: throw NoAccountSelected()
+        val id = parseAccountId(account.userData[userAccountId]) ?: throw NoAccountSelected()
+        val text = storedPreference(id) ?: return@onAccount true
+        org.dlang.liveimap.settings.loadStoredSettings(context, text).damaged
     }
 
     /** Save base. A missing blob uses the AccountManager record. [loadLocked] still throws, so a load stays a missing blob. */
@@ -646,8 +644,8 @@ class AccountStore private constructor(private val context: Context) {
                 org.dlang.liveimap.settings.SettingsHub.uiNow(),
             )
         }
-        org.dlang.liveimap.settings.SettingsHub.accountNow(accountId)?.let { return it }
-        return org.dlang.liveimap.settings.baseForListedSave(text, account.userData).withUiOf(
+        val decoded = org.dlang.liveimap.settings.loadStoredSettings(context, text).settings
+        return overlayAccountFields(decoded, account.userData).withUiOf(
             org.dlang.liveimap.settings.SettingsHub.uiNow(),
         )
     }
@@ -659,12 +657,12 @@ class AccountStore private constructor(private val context: Context) {
         val existing = requireWritable(readAccounts())
         val accountId = existing.userData[userAccountId]?.takeIf { it.isNotEmpty() } ?: throw NoAccountSelected()
         // F32/F87: a moved server never inherits the old server's password, pin or client certificate.
-        // A stored row that does not decode throws here, before any write.
+        // A rejected document is preserved before replacement; account identity still guards secret retargeting.
         val storedText = storedPreference(accountId)
         val previous = if (storedText == null) {
             null
         } else {
-            overlayAccountFields(decodeSettings(storedText), existing.userData)
+            overlayAccountFields(org.dlang.liveimap.settings.loadStoredSettings(context, storedText).settings, existing.userData)
         }
         val plan = planAccountSave(accountId, previous, settings, encoded, existing.passwordSlot ?: "")
         val name = nameFor(existing, plan.settings, accountId)

@@ -271,7 +271,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
                 val lines = listOfNotNull(review.tlsWarning?.let { S(it) }) +
                     (if (review.unreachable) listOf(S("Server not reachable")) else emptyList()) +
                     review.lines
-                val shown = if (saveFailure.isNullOrEmpty()) lines else lines + saveFailure
+                val shown = if (saveFailure.isNullOrEmpty()) lines else lines + org.dlang.liveimap.settings.settingsSaveErrorText()
                 Text(shown.joinToString("\n"))
             },
             confirmButton = {
@@ -289,7 +289,7 @@ internal fun ServerEditor(node: TreeNode.Group, depth: Int, walk: SettingsWalk) 
             onDismissRequest = {},
             properties = androidx.compose.ui.window.DialogProperties(dismissOnClickOutside = false, dismissOnBackPress = false),
             title = { Text(S("Unsaved server changes")) },
-            text = saveFailure?.takeIf { it.isNotEmpty() }?.let { failure -> { Text(failure) } },
+            text = saveFailure?.takeIf { it.isNotEmpty() }?.let { { Text(org.dlang.liveimap.settings.settingsSaveErrorText()) } },
             confirmButton = {
                 androidx.compose.material3.Button(onClick = {
                     confirmSettingsSave(editor, drafts, "unsaved")

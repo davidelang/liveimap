@@ -82,27 +82,17 @@ object SettingsHub {
         val store = AccountStore.shared(context)
         val blobs = store.storedBlobs()
         val uiText = readGlobalRecord(context)
-        val uiError = documentError(uiText)
-        val ui = if (uiError != null) Settings() else decodeSettings(uiText)
+        val ui = loadStoredSettings(context, uiText).settings
         val published = LinkedHashMap<String, Settings>()
-        val notices = ArrayList<String>()
-        if (uiError != null) notices.add(uiError)
         for ((id, text) in blobs) {
             val parsed = parseAccountId(id) ?: continue
-            val error = documentError(text)
-            val decoded = if (error != null) {
-                notices.add(error)
-                Settings()
-            } else {
-                decodeSettings(text)
-            }
+            val decoded = loadStoredSettings(context, text).settings
             val userData = store.accountFields(parsed) ?: emptyMap()
             published[parsed] = overlayAccountFields(decoded, userData).withUiOf(ui)
         }
         uiState.value = ui
         accountState.value = published
         openState.value = resolveOpen(published.keys, ui.defaultAccount)
-        if (notices.isNotEmpty()) noticeState.value = notices.joinToString("\n")
         ToolbarStore.install(ui)
         phase = 2
         }
@@ -135,7 +125,7 @@ object SettingsHub {
             if (ScopePicks.chosen.isNotEmpty()) settleScope(context)
             return
         }
-        var next = decodeSettings(readGlobalRecord(context))
+        var next = loadStoredSettings(context, readGlobalRecord(context)).settings
         for (key in keys) next = next.withSetting(key, SettingValue(draft.getSetting(key)))
         if (replaceUnknowns) next = next.copy(unknownSettings = draft.unknownSettings)
         val text = next.encodeUi()
