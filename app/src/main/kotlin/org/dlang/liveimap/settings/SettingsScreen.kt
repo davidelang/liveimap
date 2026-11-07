@@ -164,8 +164,10 @@ import org.dlang.liveimap.ui.toolbar.notePaneScroll
 internal val settingsSaveFailure = androidx.compose.runtime.mutableStateOf<String?>(null)
 
 @Composable
-internal fun settingsSaveErrorText(): String =
-    S("Settings could not be saved. Please try again.", name = "settings_save_error")
+internal fun settingsSaveErrorText(failure: String): String =
+    if (failure == settingsSaveEmptyWrite)
+        S("Settings could not be saved. Please try again.", name = "settings_save_error")
+    else failure
 
 internal fun logSettingsSave(control: String, accountId: String?, outcome: String) {
     android.util.Log.w("liveimap", settingsSaveReport(control, accountId, outcome))
@@ -1158,7 +1160,7 @@ fun SettingsTree(
     ) {
             val saveFailure = settingsSaveFailure.value
             if (saveFailure != null) {
-                Text(settingsSaveErrorText())
+                Text(settingsSaveErrorText(saveFailure))
             }
             PolicyDialog(editor)
             if (page == "account" && !accountId.isNullOrEmpty() && accountId != "_") {
