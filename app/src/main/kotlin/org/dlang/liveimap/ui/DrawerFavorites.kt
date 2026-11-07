@@ -16,8 +16,8 @@ internal fun accountDrawerRows(postponedMailbox: String): List<FolderFavorite> =
 )
 
 /**
- * Once per account ([alreadyAdded] is the stored marker): the account rows it lacks go in front, in drawer
- * order, so the drawer looks as before. Existing favorites keep their order, names and tags. After this the
+ * Once per account ([alreadyAdded] is the stored marker): the account rows it lacks are appended at the end, in drawer
+ * order. Existing favorites keep their order, names and tags. After this the
  * marker is set, so a row the user deletes stays deleted.
  */
 internal fun withAccountDrawerRows(favorites: List<FolderFavorite>, postponedMailbox: String, alreadyAdded: Boolean): List<FolderFavorite> {
@@ -25,5 +25,5 @@ internal fun withAccountDrawerRows(favorites: List<FolderFavorite>, postponedMai
     val missing = accountDrawerRows(postponedMailbox).filter { row ->
         favorites.none { it.node == row.node && it.mailbox == row.mailbox }
     }
-    return missing + favorites
+    return favorites + missing
 }

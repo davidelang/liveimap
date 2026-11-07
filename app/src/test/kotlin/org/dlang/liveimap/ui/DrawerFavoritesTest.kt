@@ -18,10 +18,10 @@ class DrawerFavoritesTest {
         assertEquals(listOf("node:", "box:INBOX", "box:Drafts"), keys(withAccountDrawerRows(emptyList(), "Drafts", false)))
     }
 
-    @Test fun anExistingAccountGetsOnlyWhatItLacksInFrontAndKeepsItsOwnFavoritesAsTheyWere() {
+    @Test fun anExistingAccountGetsOnlyWhatItLacksAtTheEndAndKeepsItsOwnFavoritesAsTheyWere() {
         val mine = listOf(work, FolderFavorite(false, "INBOX", '/', label = "Home mail"))
         val next = withAccountDrawerRows(mine, "Drafts", false)
-        assertEquals(listOf("node:", "box:Drafts", "box:Work=Job", "box:INBOX=Home mail"), keys(next))
+        assertEquals(listOf("box:Work=Job", "box:INBOX=Home mail", "node:", "box:Drafts"), keys(next))
     }
 
     @Test fun onceAddedADeletedRowIsNotAddedAgain() {
