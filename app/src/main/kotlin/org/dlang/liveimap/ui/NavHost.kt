@@ -62,10 +62,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import org.dlang.liveimap.ui.TextButton
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.rememberDrawerState
 import org.dlang.liveimap.settings.UnsavedEdits
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -447,11 +443,6 @@ private fun LiveImapNavHostReady() {
     fun openDrawerOverlay() {
         if (!drawerOverlayOpen(zoom)) toggleDrawerOverlay()
     }
-    // A swipe, a scrim tap, or Back closing the sheet clears the drawer zoom.
-    val drawerSheetState = rememberDrawerState(DrawerValue.Closed) { value ->
-        if (value == DrawerValue.Closed && drawerOverlayOpen(zoom)) zoom = null
-        true
-    }
     val drawerOverlay = drawerOverlayOpen(zoom)
     LaunchedEffect(zoom) {
         val z = zoom
@@ -459,7 +450,6 @@ private fun LiveImapNavHostReady() {
     }
     LaunchedEffect(drawerOverlay) {
         org.dlang.liveimap.engine.DebugLog.event("drawer") { if (drawerOverlay) "drawer open" else "drawer closed" }
-        if (drawerOverlay) drawerSheetState.open() else drawerSheetState.close()
     }
     val currentEntry by navController.currentBackStackEntryAsState()
     val route = currentEntry?.destination?.route
@@ -1704,22 +1694,14 @@ private fun LiveImapNavHostReady() {
         Box(
             Modifier.fillMaxSize().onGloballyPositioned { drawerAreaOrigin = it.positionInWindow() },
         ) {
-        ModalNavigationDrawer(
-            drawerContent = {
-                // A panel that already shows the drawer gets no second copy; toggleDrawer never opens over it.
-                val baseShowsDrawer = fill(record, mailStack, currentOffset()).slots.any {
-                    !it.collapsed && it.layer?.kind == WindowLayerKind.Drawer
-                }
-                if (!baseShowsDrawer) {
-                    ModalDrawerSheet(
-                        windowInsets = mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
-                        content = drawerSheet,
-                    )
-                }
-            },
+        // A panel that already shows the drawer gets no second copy; the menu never opens over it.
+        MailDrawerHost(
+            overlayOpen = drawerOverlay,
+            panelShowsDrawer = org.dlang.liveimap.window.drawerInPanel(baseFill),
+            onSheetClosed = { if (drawerOverlayOpen(zoom)) zoom = null },
+            sheetInsets = mailScreenInsets().only(WindowInsetsSides.Vertical + WindowInsetsSides.Start),
+            sheet = drawerSheet,
             modifier = Modifier.fillMaxSize(),
-            drawerState = drawerSheetState,
-            gesturesEnabled = drawerOverlay,
         ) {
         Box(Modifier.fillMaxSize()) {
         if (!mailRoute && !screenRoute) {
