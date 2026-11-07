@@ -138,7 +138,7 @@ object SettingsHub {
     suspend fun noteAccountWritten(context: Context, accountId: String, settings: Settings, first: Boolean) {
         val id = parseAccountId(accountId) ?: return
         if (first) {
-            var ui = decodeSettings(readGlobalRecord(context))
+            var ui = loadStoredSettings(context, readGlobalRecord(context)).settings
             ui = ui.withSetting("defaultAccount", SettingValue(id))
             writeGlobalRecord(context, ui.encodeUi())
             publishUi(ui)
@@ -152,7 +152,7 @@ object SettingsHub {
         val left = accountState.value - id
         accountState.value = left
         org.dlang.liveimap.engine.TrafficLog.close(id)
-        var ui = decodeSettings(readGlobalRecord(context))
+        var ui = loadStoredSettings(context, readGlobalRecord(context)).settings
         val wasDefault = ui.defaultAccount == id
         if (left.size == 1) {
             val only = left.keys.first()
