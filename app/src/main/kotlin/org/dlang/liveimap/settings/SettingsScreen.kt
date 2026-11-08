@@ -1935,6 +1935,11 @@ internal val LocalRowEnabled = compositionLocalOf { true }
 
 @Composable
 internal fun rowFor(leaf: TreeLeaf, walk: SettingsWalk) {
+    // The account section's hidden drawer-rows mark is where this account's "Add to favorites" button sits.
+    if (leaf.setting == "drawerRowsAdded") {
+        AddAccountFavoritesButton(walk.editor)
+        return
+    }
     if (leaf.hidden) return
     val settings = walk.editor.settings
     val read = { key: String -> settings.getSetting(key) }
@@ -3962,6 +3967,18 @@ internal fun row_hiddenCapabilities(walk: SettingsWalk) {
     HiddenOptionsEditor(walk.editor)
 }
 
+
+/** Appends this account's default rows (folder list, INBOX, Postponed) missing from the one list, at its end. */
+@Composable
+private fun AddAccountFavoritesButton(editor: SettingsEditor) {
+    val accountId = editor.editingId ?: return
+    TextButton(onClick = {
+        val now = editor.settings
+        editor.persist(now.copy(favorites = org.dlang.liveimap.ui.withAccountDrawerRows(now.favorites, accountId, now.postponedMailbox, false)))
+    }) {
+        Text(S("Add to favorites", name = "account_add_default_favorites"))
+    }
+}
 
 @Composable
 internal fun row_favorites(walk: SettingsWalk) {
