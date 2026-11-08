@@ -1271,7 +1271,7 @@ fun SettingsTree(
                 editor.persist(
                     editor.settings.copy(
                         favorites = editor.settings.favorites.map { item ->
-                            if (item.node == editing.node && item.mailbox == editing.mailbox) {
+                            if (item.sameEntry(editing)) {
                                 item.copy(label = trimmed)
                             } else {
                                 item
@@ -1288,14 +1288,14 @@ fun SettingsTree(
                 editor.persist(
                     editor.settings.copy(
                         favorites = editor.settings.favorites.filterNot {
-                            it.node == editing.node && it.mailbox == editing.mailbox
+                            it.sameEntry(editing)
                         },
                     ),
                 )
                 editingFavorite = null
             },
             onDismiss = { editingFavorite = null },
-            isDefaultView = editor.settings.favorites.any { it.defaultView && it.node == editing.node && it.mailbox == editing.mailbox },
+            isDefaultView = editor.settings.favorites.any { it.defaultView && it.sameEntry(editing) },
             onDefaultView = { on ->
                 editor.persist(editor.settings.copy(favorites = withDefaultView(editor.settings.favorites, editing, on)))
             },
@@ -1305,7 +1305,7 @@ fun SettingsTree(
 
 internal fun moveTreeFavorite(editor: SettingsEditor, current: FolderFavorite, delta: Int) {
     val list = editor.settings.favorites
-    val index = list.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
+    val index = list.indexOfFirst { it.sameEntry(current) }
     if (index < 0) return
     val target = index + delta
     if (target !in list.indices) return

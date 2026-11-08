@@ -50,7 +50,6 @@ import org.dlang.liveimap.settings.newAccountSettings
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.session.dropMailSession
 import org.dlang.liveimap.ui.contacts.forgetCompletionCaches
-import org.dlang.liveimap.settings.accountDrawerFolders
 import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
 
@@ -140,6 +139,7 @@ class AccountStore private constructor(private val context: Context) {
             onAccount {
                 val writePreferences = withContext(Dispatchers.IO) { stageSave(settings, encoded) }
                 writePreferences()
+                saveChangedUi(settings)
                 val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
                     ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
                 if (id != null) {
@@ -154,6 +154,15 @@ class AccountStore private constructor(private val context: Context) {
         } catch (missing: NoAccountSelected) {
             Log.w(logTag, "save dropped, no account selected", missing)
         }
+    }
+
+    /** Settings the tree puts in the all-accounts section go to the global record; encode() writes only the account's. */
+    private suspend fun saveChangedUi(next: org.dlang.liveimap.settings.Settings) {
+        val ui = org.dlang.liveimap.settings.SettingsHub.uiNow()
+        val keys = org.dlang.liveimap.settings.settingsRegistry.filter { (key, spec) ->
+            spec.scope == org.dlang.liveimap.settings.SettingScope.Ui && !spec.leaf.derived && next.getSetting(key) != ui.getSetting(key)
+        }.keys
+        if (keys.isNotEmpty()) org.dlang.liveimap.settings.SettingsHub.saveUiKeys(context, next, keys)
     }
 
     /** F55/F66: read-modify-write of the (target) account's settings in one step under the store lock. */
@@ -174,6 +183,7 @@ class AccountStore private constructor(private val context: Context) {
                     stageSave(updated, updated.encode())
                 }
                 writePreferences()
+                saveChangedUi(next)
                 val id = parseAccountId(coroutineContext[AccountTarget]?.accountId)
                     ?: parseAccountId(org.dlang.liveimap.settings.SettingsHub.openId.value)
                 if (id != null) org.dlang.liveimap.settings.SettingsHub.replaceAccount(id, next)
@@ -420,18 +430,15 @@ class AccountStore private constructor(private val context: Context) {
                             name = account.name,
                             chosen = id == open,
                             postponedMailbox = "",
-                            favorites = emptyList(),
                             corrupt = true,
                         )
                     } else {
-                        val folders = accountDrawerFolders(stored)
                         val friendly = decoded.friendlyName.takeIf { it.isNotEmpty() }
                         DrawerAccount(
                             id = id,
                             name = friendly ?: listedName(account),
                             chosen = id == open,
-                            postponedMailbox = folders.postponedMailbox,
-                            favorites = folders.favorites,
+                            postponedMailbox = decoded.postponedMailbox,
                         )
                     }
                 }

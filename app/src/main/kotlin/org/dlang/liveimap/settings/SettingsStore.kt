@@ -20,23 +20,8 @@ data class DrawerAccount(
     val name: String,
     val chosen: Boolean,
     val postponedMailbox: String,
-    val favorites: List<FolderFavorite>,
     val corrupt: Boolean = false,
 )
-
-data class AccountDrawerFolders(
-    val postponedMailbox: String,
-    val favorites: List<FolderFavorite>,
-)
-
-fun accountDrawerFolders(encoded: String?): AccountDrawerFolders {
-    if (encoded == null) return AccountDrawerFolders(postponedMailbox = "", favorites = emptyList())
-    val settings = decodeSettings(encoded)
-    return AccountDrawerFolders(
-        postponedMailbox = settings.postponedMailbox,
-        favorites = settings.favorites,
-    )
-}
 
 interface SettingsStore {
     suspend fun load(): Settings

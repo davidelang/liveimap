@@ -125,6 +125,7 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
 import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.FolderFavorite
+import org.dlang.liveimap.settings.sameEntry
 import org.dlang.liveimap.ui.ConnectionStatusStrip
 import org.dlang.liveimap.ui.DebugStatusIcon
 import org.dlang.liveimap.ui.compose.readCopies
@@ -464,7 +465,7 @@ private fun FolderListLoaded(
             postponedMailbox = settings.postponedMailbox
             spamMailbox = settings.spamMailbox
             addressBookMailbox = settings.alpineBooks().firstOrNull()?.first.orEmpty()
-            favorites = settings.favorites
+            favorites = settings.favorites.filter { it.account == accountId }
             showUnreadCounts = settings.showUnreadCounts
             folderBar = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderBar()
             toolbarRows = org.dlang.liveimap.ui.toolbar.ToolbarStore.folderRows()
@@ -586,14 +587,14 @@ private fun FolderListLoaded(
                     postSnack(error.message ?: "not connected")
                     return@turn
                 }
-                val favorite = FolderFavorite(node, row.mailbox, row.delimiter)
-                val nextFavorites = if (settings.favorites.any { it.node == node && it.mailbox == row.mailbox }) {
-                    settings.favorites.filterNot { it.node == node && it.mailbox == row.mailbox }
+                val favorite = FolderFavorite(node, row.mailbox, row.delimiter, account = accountId)
+                val nextFavorites = if (settings.favorites.any { it.sameEntry(favorite) }) {
+                    settings.favorites.filterNot { it.sameEntry(favorite) }
                 } else {
                     settings.favorites + favorite
                 }
                 store.update { it.copy(favorites = nextFavorites) }
-                favorites = nextFavorites
+                favorites = nextFavorites.filter { it.account == accountId }
             }
         }
     }

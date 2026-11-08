@@ -84,7 +84,11 @@ internal fun favoritesJson(values: List<FolderFavorite>): JsonValue = JsonValue.
         "name" to JsonValue.Str(favorite.label),
         "container" to JsonValue.Bool(favorite.node),
         "delimiter" to JsonValue.Str(favorite.delimiter.toString()),
-    ).also { if (favorite.defaultView) it["defaultView"] = JsonValue.Bool(true) }) // written only when tagged
+    ).also {
+        if (favorite.defaultView) it["defaultView"] = JsonValue.Bool(true) // written only when tagged
+        if (favorite.account.isNotEmpty()) it["account"] = JsonValue.Str(favorite.account)
+        if (favorite.special.isNotEmpty()) it["special"] = JsonValue.Str(favorite.special)
+    })
 })
 
 internal fun readFavorites(value: JsonValue): List<FolderFavorite> {
@@ -98,7 +102,9 @@ internal fun readFavorites(value: JsonValue): List<FolderFavorite> {
         if (delimiter.length != 1) throw IllegalArgumentException("favorites")
         // Absent in data written before the tag: untagged.
         val defaultView = (obj.fields["defaultView"] as? JsonValue.Bool)?.value == true
-        FolderFavorite(container, mailbox, delimiter[0], name, defaultView)
+        val account = (obj.fields["account"] as? JsonValue.Str)?.value.orEmpty()
+        val special = (obj.fields["special"] as? JsonValue.Str)?.value.orEmpty()
+        FolderFavorite(container, mailbox, delimiter[0], name, defaultView, account, special)
     })
 }
 

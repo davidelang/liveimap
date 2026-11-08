@@ -207,12 +207,28 @@ data class FolderFavorite(
     val label: String = "",
     /** The favorite the "first favorite" startup view opens. At most one per list; see [withDefaultView]. */
     val defaultView: Boolean = false,
+    /** The account the favorite opens in; favorites are one list for all accounts. */
+    val account: String = "",
+    /** A special folder, resolved at use time ("postponed": the account's postponed folder); [mailbox] is unused. */
+    val special: String = "",
 )
+
+const val FavoriteSpecialPostponed = "postponed"
+
+fun FolderFavorite.sameEntry(other: FolderFavorite): Boolean =
+    node == other.node && account == other.account && special == other.special && (special.isNotEmpty() || mailbox == other.mailbox)
+
+/** The folder to open now; null when a special folder is not set for the account. */
+fun FolderFavorite.resolvedMailbox(postponedMailbox: String): String? = when (special) {
+    "" -> mailbox
+    FavoriteSpecialPostponed -> postponedMailbox.ifEmpty { null }
+    else -> null
+}
 
 /** Tags [target] as the default view and untags the rest ([on] false just untags it). */
 fun withDefaultView(list: List<FolderFavorite>, target: FolderFavorite, on: Boolean): List<FolderFavorite> =
     list.map { item ->
-        val same = item.node == target.node && item.mailbox == target.mailbox
+        val same = item.sameEntry(target)
         item.copy(defaultView = on && same)
     }
 
@@ -224,7 +240,7 @@ fun normalizeDefaultView(list: List<FolderFavorite>): List<FolderFavorite> {
 
 /** Deleting [target] from [list] removes the default-view tag (startup then uses the first favorite). */
 fun deletesDefaultView(list: List<FolderFavorite>, target: FolderFavorite): Boolean =
-    list.any { it.defaultView && it.node == target.node && it.mailbox == target.mailbox }
+    list.any { it.defaultView && it.sameEntry(target) }
 
 /** Shown once after the tagged favorite is deleted. */
 fun deletedDefaultViewText(context: android.content.Context): String = org.dlang.liveimap.i18n.S(

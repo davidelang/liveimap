@@ -127,6 +127,8 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.DrawerAccount
 import org.dlang.liveimap.settings.editors.ExpandedFoldersScreen
 import org.dlang.liveimap.settings.FolderFavorite
+import org.dlang.liveimap.settings.resolvedMailbox
+import org.dlang.liveimap.settings.sameEntry
 import org.dlang.liveimap.settings.editors.FolderStartsScreen
 import org.dlang.liveimap.settings.editors.FolderViewsScreen
 import org.dlang.liveimap.settings.LayoutApply
@@ -545,7 +547,7 @@ private fun LiveImapNavHostReady() {
             if (stored.drawerRowsAdded) continue
             if (!org.dlang.liveimap.window.SettingsSession.allowWrite(uiContext)) continue
             accountStore.update {
-                it.copy(favorites = withAccountDrawerRows(it.favorites, it.postponedMailbox, it.drawerRowsAdded), drawerRowsAdded = true)
+                it.copy(favorites = withAccountDrawerRows(it.favorites, row.id, it.postponedMailbox, it.drawerRowsAdded), drawerRowsAdded = true)
             }
             org.dlang.liveimap.engine.DebugLog.event("settings") { "drawer rows added to favorites for account ${row.id}" }
             addedRows = true
@@ -561,11 +563,11 @@ private fun LiveImapNavHostReady() {
                 val ui = org.dlang.liveimap.settings.SettingsHub.uiNow()
                 val plan = org.dlang.liveimap.window.startupStack(
                     ui.startupView, ui.startupAccount, layoutAccountId, drawers.map { it.id }.toSet(), ui.startupFolder,
-                    // The startup account's favorites: the open account's, or the configured account's own.
-                    // The drawer list is read after the drawer rows were added, so it is the current favorites.
-                    drawers.firstOrNull { it.id == ui.startupAccount.ifEmpty { layoutAccountId } }?.favorites.orEmpty()
-                        .let { org.dlang.liveimap.settings.startupFavoriteOf(it) }
-                        ?.let { org.dlang.liveimap.window.StartupFavorite(it.node, it.mailbox) },
+                    // The one favorites list; a special folder resolves against its account now.
+                    org.dlang.liveimap.settings.startupFavoriteOf(ui.favorites)?.let { fav ->
+                        val postponed = drawers.firstOrNull { it.id == fav.account }?.postponedMailbox.orEmpty()
+                        org.dlang.liveimap.window.StartupFavorite(fav.node, fav.resolvedMailbox(postponed).orEmpty())
+                    },
                 )
                 startupProblem = plan.problem
                 org.dlang.liveimap.engine.DebugLog.event("stack") {
@@ -585,7 +587,7 @@ private fun LiveImapNavHostReady() {
         } else if (layoutAccountId.isNotEmpty()) {
             mailStack = withDrawerKey(mailStack, layoutAccountId)
         }
-        if (editingFavorite == null) favorites = drawers.firstOrNull { it.chosen }?.favorites ?: account.favorites
+        if (editingFavorite == null) favorites = org.dlang.liveimap.settings.SettingsHub.uiNow().favorites
         postponedMailbox = account.postponedMailbox
         NonAsciiText.active = account.nonAsciiDisplay
         accounts = store.listAccounts()
@@ -1344,14 +1346,14 @@ private fun LiveImapNavHostReady() {
 
     fun openFavoriteEditor(favorite: FolderFavorite, accountId: String? = null) {
         scope.launch {
-            val id = accountId ?: store.chosenAccountId() ?: return@launch
+            val id = favorite.account.ifEmpty { accountId ?: store.chosenAccountId() ?: return@launch }
             val settings = store.forAccount(id).load()
             editingAccountId = id
             editingFavorites = settings.favorites
             editingWhere = FavoriteWhere(
                 account = settings.email.ifBlank { settings.username },
                 server = settings.imapHost,
-                path = favorite.mailbox,
+                path = favorite.resolvedMailbox(settings.postponedMailbox).orEmpty(),
             )
             editingFavorite = favorite
             // Blank keeps the built-in name (the account name for its folder list).
@@ -1374,7 +1376,7 @@ private fun LiveImapNavHostReady() {
     fun moveEditingFavorite(delta: Int) {
         val current = editingFavorite ?: return
         val list = editingFavorites
-        val index = list.indexOfFirst { it.node == current.node && it.mailbox == current.mailbox }
+        val index = list.indexOfFirst { it.sameEntry(current) }
         if (index < 0) return
         val target = index + delta
         if (target !in list.indices) return
@@ -1389,7 +1391,7 @@ private fun LiveImapNavHostReady() {
         val current = editingFavorite ?: return
         val trimmed = favoriteDraft.trim()
         val next = editingFavorites.map { item ->
-            if (item.node == current.node && item.mailbox == current.mailbox) item.copy(label = trimmed) else item
+            if (item.sameEntry(current)) item.copy(label = trimmed) else item
         }
         persistEditingFavorites(next)
         editingFavorite = null
@@ -1400,7 +1402,7 @@ private fun LiveImapNavHostReady() {
         if (org.dlang.liveimap.settings.deletesDefaultView(editingFavorites, current)) {
             android.widget.Toast.makeText(uiContext, org.dlang.liveimap.settings.deletedDefaultViewText(uiContext), android.widget.Toast.LENGTH_LONG).show()
         }
-        persistEditingFavorites(editingFavorites.filterNot { it.node == current.node && it.mailbox == current.mailbox })
+        persistEditingFavorites(editingFavorites.filterNot { it.sameEntry(current) })
         editingFavorite = null
     }
 
@@ -1533,26 +1535,8 @@ private fun LiveImapNavHostReady() {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("drawer-scroll")) {
         DrawerSheetContent(
             header = header,
-            blocks = drawerBlocks(drawerAccounts),
-            postponedMailbox = postponedMailbox,
+            accounts = drawerAccounts,
             favorites = favorites,
-            onInbox = {
-                navigateFromDrawer {
-                    openDrawerMailbox("INBOX")
-                }
-            },
-            onAccountInbox = { account -> openIndexRow(account, "INBOX") },
-            onPostponed = { row ->
-                navigateFromDrawer {
-                    openDrawerMailbox(row)
-                }
-            },
-            onAccountPostponed = { account -> openIndexRow(account, account.postponedMailbox) },
-            onAllFolders = {
-                navigateFromDrawer {
-                    openSameAccountTree()
-                }
-            },
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
                 navigateFromDrawer {
@@ -1570,8 +1554,6 @@ private fun LiveImapNavHostReady() {
                     }
                 }
             },
-            onFavorite = { favorite -> openFavorite(favorite) },
-            onEditFavorite = { favorite -> openFavoriteEditor(favorite) },
             onAccountFavorite = { account, favorite -> openAccountFavorite(account, favorite) },
             onAccountEditFavorite = { account, favorite -> editAccountFavorite(account, favorite) },
             onSettings = {
@@ -1909,7 +1891,7 @@ private fun LiveImapNavHostReady() {
                 onSave = { saveEditingFavorite() },
                 onDelete = { deleteEditingFavorite() },
                 onDismiss = { editingFavorite = null },
-                isDefaultView = editingFavorites.any { it.defaultView && it.node == editingFavorite?.node && it.mailbox == editingFavorite?.mailbox },
+                isDefaultView = editingFavorites.any { editingFavorite?.let { e -> it.defaultView && it.sameEntry(e) } == true },
                 onDefaultView = { on ->
                     val current = editingFavorite
                     if (current != null) persistEditingFavorites(org.dlang.liveimap.settings.withDefaultView(editingFavorites, current, on))
@@ -2042,17 +2024,9 @@ private fun LiveImapNavHostReady() {
 @Composable
 private fun ColumnScope.DrawerSheetContent(
     header: String,
-    blocks: List<DrawerAccount>,
-    postponedMailbox: String,
+    accounts: List<DrawerAccount>,
     favorites: List<FolderFavorite>,
-    onInbox: () -> Unit,
-    onAccountInbox: (DrawerAccount) -> Unit,
-    onPostponed: (String) -> Unit,
-    onAccountPostponed: (DrawerAccount) -> Unit,
-    onAllFolders: () -> Unit,
     onAccountAllFolders: (DrawerAccount) -> Unit,
-    onFavorite: (FolderFavorite) -> Unit,
-    onEditFavorite: (FolderFavorite) -> Unit,
     onAccountFavorite: (DrawerAccount, FolderFavorite) -> Unit,
     onAccountEditFavorite: (DrawerAccount, FolderFavorite) -> Unit,
     onAddFilter: () -> Unit,
@@ -2064,65 +2038,47 @@ private fun ColumnScope.DrawerSheetContent(
     onHelp: () -> Unit,
     onAbout: () -> Unit,
 ) {
-    if (blocks.isEmpty()) {
-        // The drawer is the favorites list. The account's folder list (shown as its name), INBOX and Postponed are favorites too.
-        for (favorite in favorites) {
-            DrawerFavoriteRow(favorite, header, postponedMailbox,
-                onOpen = { if (isFolderListFavorite(favorite)) onAllFolders() else onFavorite(favorite) },
-                onEdit = { onEditFavorite(favorite) })
+    for (account in accounts.filter { it.corrupt }) {
+        // Its settings cannot be read, so the account name stays as a fixed way into its folder list.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { UnsavedEdits.guard { onAccountAllFolders(account) } }
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .testTag("drawer-account-name"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = account.name, modifier = Modifier.weight(1f))
+            Icon(Icons.Filled.ChevronRight, contentDescription = null)
         }
-        if (showFilters) {
-            NavigationDrawerItem(
-                label = { Text(S("Add filter")) },
-                selected = false,
-                onClick = { UnsavedEdits.guard(onAddFilter) },
-            )
-            NavigationDrawerItem(
-                label = { Text(S("Edit filters")) },
-                selected = false,
-                onClick = { UnsavedEdits.guard(onEditFilters) },
-            )
-        }
-    } else {
-        for (account in blocks) {
-            if (account.corrupt) {
-                // Its favorites cannot be read, so the account name stays as a fixed way into its folder list.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { UnsavedEdits.guard { onAccountAllFolders(account) } }
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .testTag("drawer-account-name"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(text = account.name, modifier = Modifier.weight(1f))
-                    Icon(Icons.Filled.ChevronRight, contentDescription = null)
-                }
-                Text(
-                    text = S("This account's settings could not be read."),
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .testTag("drawer-account-corrupt"),
-                )
-            }
-            for (favorite in account.favorites) {
-                DrawerFavoriteRow(favorite, account.name, account.postponedMailbox,
-                    onOpen = { if (isFolderListFavorite(favorite)) onAccountAllFolders(account) else onAccountFavorite(account, favorite) },
-                    onEdit = { onAccountEditFavorite(account, favorite) })
-            }
-        }
-        if (showFilters) {
-            NavigationDrawerItem(
-                label = { Text(S("Add filter")) },
-                selected = false,
-                onClick = { UnsavedEdits.guard(onAddFilter) },
-            )
-            NavigationDrawerItem(
-                label = { Text(S("Edit filters")) },
-                selected = false,
-                onClick = { UnsavedEdits.guard(onEditFilters) },
-            )
-        }
+        Text(
+            text = S("This account's settings could not be read."),
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .testTag("drawer-account-corrupt"),
+        )
+    }
+    // The drawer is the one favorites list. Each opens in its account (no account: the open one);
+    // a special folder resolves now and is hidden while the account has none.
+    for (favorite in favorites) {
+        val account = accounts.firstOrNull { it.id == favorite.account } ?: accounts.firstOrNull { it.chosen } ?: continue
+        if (account.corrupt) continue
+        val mailbox = favorite.resolvedMailbox(account.postponedMailbox) ?: continue
+        DrawerFavoriteRow(favorite, account.name.ifEmpty { header }, account.postponedMailbox,
+            onOpen = { if (isFolderListFavorite(favorite)) onAccountAllFolders(account) else onAccountFavorite(account, favorite.copy(mailbox = mailbox)) },
+            onEdit = { onAccountEditFavorite(account, favorite) })
+    }
+    if (showFilters) {
+        NavigationDrawerItem(
+            label = { Text(S("Add filter")) },
+            selected = false,
+            onClick = { UnsavedEdits.guard(onAddFilter) },
+        )
+        NavigationDrawerItem(
+            label = { Text(S("Edit filters")) },
+            selected = false,
+            onClick = { UnsavedEdits.guard(onEditFilters) },
+        )
     }
     HorizontalDivider()
     NavigationDrawerItem(
@@ -2163,7 +2119,7 @@ private fun DrawerFavoriteRow(
     onEdit: () -> Unit,
 ) {
     // Unnamed INBOX reads as the old row did, translated.
-    val shown = favoriteDrawerLabel(favorite, accountName, S("INBOX"))
+    val shown = if (favorite.special.isNotEmpty() && favorite.label.isBlank()) S("Postponed") else favoriteDrawerLabel(favorite, accountName, S("INBOX"))
     val described = if (favorite.label.isBlank() && !favorite.node && favorite.mailbox == postponedMailbox && postponedMailbox.isNotEmpty()) {
         S("Postponed")
     } else {
@@ -2445,11 +2401,6 @@ internal fun openDrawerOnNoAccount(route: String?, accounts: List<AccountChoice>
     if (showing == "settings" || showing.startsWith("settings/")) return false
     if (showing == "help" || showing == "about" || showing == "about/licenses") return false
     return true
-}
-
-internal fun drawerBlocks(rows: List<DrawerAccount>): List<DrawerAccount> {
-    if (rows.size < 2) return emptyList()
-    return rows
 }
 
 internal fun postponedDrawerMailbox(value: String): String? {
