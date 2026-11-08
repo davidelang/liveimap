@@ -2168,13 +2168,13 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
     // Export goes through the share sheet, so the file can be mailed as well as saved.
     fun shareExport() {
         val name = if (accountScope) "account-settings.json" else "ui-settings.json"
-        val body = exportSettingsDocument(
+        val body = withFavoriteAccountNames(exportSettingsDocument(
             if (accountScope) editor.settings.encode() else editor.settings.encodeUi(),
             includePasswords && accountScope,
             editor.password,
             editor.smtpPassword,
             editor.sievePassword,
-        )
+        ))
         val dir = java.io.File(context.cacheDir, "export")
         if (!dir.isDirectory && !dir.mkdirs()) {
             settingsSaveFailure.value = "export directory unavailable"
@@ -3983,6 +3983,26 @@ internal fun row_hiddenCapabilities(walk: SettingsWalk) {
 }
 
 
+/** The display name of the favorite's account, read at display time; empty when none or unknown. */
+internal fun favoriteAccountName(accountId: String): String {
+    if (accountId.isEmpty()) return ""
+    val account = SettingsHub.accountNow(accountId) ?: return ""
+    return account.friendlyName.ifEmpty { org.dlang.liveimap.accounts.accountVisibleName(account) }
+}
+
+/** Export only: each favorite gets a readable "accountName" next to its "account" id (import ignores it). */
+internal fun withFavoriteAccountNames(document: String): String {
+    val root = parseJson(document) as? JsonValue.Obj ?: return document
+    val list = root.fields["favorites"] as? JsonValue.Arr ?: return document
+    val named = JsonValue.Arr(list.items.map { item ->
+        val obj = item as? JsonValue.Obj ?: return@map item
+        val id = (obj.fields["account"] as? JsonValue.Str)?.value.orEmpty()
+        val name = favoriteAccountName(id)
+        if (name.isEmpty()) item else JsonValue.Obj(LinkedHashMap(obj.fields).also { it["accountName"] = JsonValue.Str(name) })
+    })
+    return encodeJson(JsonValue.Obj(LinkedHashMap(root.fields).also { it["favorites"] = named }))
+}
+
 /** Appends this account's default rows (folder list, INBOX, Postponed) missing from the one list, at its end. */
 @Composable
 private fun AddAccountFavoritesButton(editor: SettingsEditor) {
@@ -4016,11 +4036,15 @@ internal fun row_favorites(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     for (favorite in settings.favorites) {
-        val shown = if (favorite.label.isNotBlank()) {
-            favorite.label
-        } else {
-            favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
+        // The one list holds every account's favorites: name the account (from its id, now) on each row.
+        val accountName = favoriteAccountName(favorite.account)
+        val base = when {
+            favorite.label.isNotBlank() -> favorite.label
+            favorite.special == FavoriteSpecialPostponed -> S("Postponed")
+            org.dlang.liveimap.ui.isFolderListFavorite(favorite) -> S("All folders")
+            else -> favoriteLabel(favorite.node, favorite.mailbox, favorite.delimiter)
         }
+        val shown = if (accountName.isEmpty()) base else "$base · $accountName"
         ListItem(
             headlineContent = { Text(shown) },
             trailingContent = { Icon(Icons.Filled.ChevronRight, contentDescription = null) },
