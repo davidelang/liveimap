@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "Had iyo jeer ballaadhi"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Ha ballaadhin had iyo jeer"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Ku dar la jecel"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Ku dar kuwa la jecel yahay"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Ka saar la jecel"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Laab %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Ballaadhi %1$s"},

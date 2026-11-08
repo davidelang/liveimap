@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "Ehangwch bob amser"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Peidiwch â ehangu bob amser"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Ychwanegu ffefryn"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Ychwanegu at ffefrynnau"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Dileu hoff"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Crebachu %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Ehangu %1$s"},

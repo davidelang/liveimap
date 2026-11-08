@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "Секогаш проширувајте"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Не се шири секогаш"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Додадете омилен"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Додај во омилени"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Отстранете го омилениот"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Собери %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Проширете го %1$s"},

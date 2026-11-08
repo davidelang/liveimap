@@ -546,9 +546,13 @@ private fun LiveImapNavHostReady() {
             val stored = try { accountStore.load() } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) { continue }
             if (stored.drawerRowsAdded) continue
             if (!org.dlang.liveimap.window.SettingsSession.allowWrite(uiContext)) continue
-            accountStore.update {
-                it.copy(favorites = withAccountDrawerRows(it.favorites, row.id, it.postponedMailbox, it.drawerRowsAdded), drawerRowsAdded = true)
-            }
+            // Once per account: append its rows, and set the mark only after the list is saved with them in it.
+            // Rows deleted later stay deleted; the account's Settings page has "Add to favorites" to bring them back.
+            val rows = accountDrawerRows(row.id, stored.postponedMailbox)
+            accountStore.update { it.copy(favorites = withAccountDrawerRows(it.favorites, row.id, it.postponedMailbox, false)) }
+            val saved = org.dlang.liveimap.settings.SettingsHub.uiNow().favorites
+            if (rows.any { r -> saved.none { it.sameEntry(r) } }) continue
+            accountStore.update { it.copy(drawerRowsAdded = true) }
             org.dlang.liveimap.engine.DebugLog.event("settings") { "drawer rows added to favorites for account ${row.id}" }
             addedRows = true
         }

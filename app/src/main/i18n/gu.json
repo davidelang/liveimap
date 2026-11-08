@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "હંમેશા વિસ્તૃત કરો"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "હંમેશા વિસ્તૃત કરશો નહીં"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "મનપસંદ ઉમેરો"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "મનપસંદમાં ઉમેરો"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "મનપસંદ દૂર કરો"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s સંકુચિત કરો"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s ને વિસ્તૃત કરો"},

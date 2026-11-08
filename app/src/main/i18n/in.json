@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "Selalu berkembang"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Jangan selalu berkembang"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Tambahkan favorit"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Tambahkan ke favorit"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Hapus favorit"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Tutup %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Perluas %1$s"},

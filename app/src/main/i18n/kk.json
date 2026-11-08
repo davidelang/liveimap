@@ -109,6 +109,7 @@
 {"key": "folders_always_expand", "source": "Always expand", "text": "Әрқашан кеңейтіңіз"},
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Әрқашан кеңейтпеңіз"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Таңдаулыны қосыңыз"},
+{"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Таңдаулыларға қосу"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Таңдаулыны алып тастаңыз"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s жию"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s жаю"},

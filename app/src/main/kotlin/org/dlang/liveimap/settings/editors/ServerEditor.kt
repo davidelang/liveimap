@@ -551,6 +551,16 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
             }) {
                 Text(S("Export .pinerc…"))
             }
+            // Appends this account's default rows (folder list, INBOX, Postponed) the favorites list lacks, at the end.
+            val favoritesAccount = editor.editingId
+            if (favoritesAccount != null) {
+                TextButton(onClick = {
+                    val now = editor.settings
+                    editor.persist(now.copy(favorites = org.dlang.liveimap.ui.withAccountDrawerRows(now.favorites, favoritesAccount, now.postponedMailbox, false)))
+                }) {
+                    Text(S("Add to favorites", name = "account_add_default_favorites"))
+                }
+            }
     }
     if (sections == null) {
         PinercButtons()

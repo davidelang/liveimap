@@ -204,6 +204,7 @@ object TrafficLog {
         val days = org.dlang.liveimap.settings.SettingsHub.uiNow().trafficRetentionDays
         if (dir.isDirectory) sweep(dir, maxBytes, System.currentTimeMillis(), days, currentNames(accountId))
         writeOrdered(target, orderedRecords(dir))
+        appendDebugLogs(target, File(context.filesDir, "logs"))
         val uri = Uri.parse("content://$SHARE_AUTHORITY/${target.name}")
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -214,6 +215,16 @@ object TrafficLog {
         val chooser = Intent.createChooser(send, "Share traffic")
         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
+    }
+
+    /** The Debugging setting's logs (files/logs/debug-*.log) go out with the traffic log, oldest rotation first. */
+    internal fun appendDebugLogs(target: File, logsDir: File) {
+        val logs = logsDir.listFiles { f -> f.isFile && f.name.startsWith("debug-") && f.name.endsWith(".log") }.orEmpty()
+        fun rotation(f: File) = f.name.removeSuffix(".log").substringAfterLast('.', "0").toIntOrNull() ?: 0
+        for (log in logs.sortedWith(compareBy({ it.name.substringBefore('.') }, { -rotation(it) }))) {
+            target.appendText("\n===== ${log.name} =====\n")
+            target.appendBytes(log.readBytes())
+        }
     }
 
     private val actors = ConcurrentHashMap<String, AccountTrafficWriter>()
