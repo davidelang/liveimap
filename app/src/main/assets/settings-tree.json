@@ -1745,36 +1745,11 @@
           ]
         },
         {
-          "group": "favorites",
-          "title": "Favorites",
-          "label": "Favorites",
-          "header": "label",
-          "children": [
-            {
-              "setting": "favorites",
-              "type": "folder",
-              "default": [],
-              "title": "Favorites",
-              "pinerc": "incoming-folders",
-              "pinercFormat": "incoming",
-              "many": true,
-              "order": "user"
-            },
-            {
-              "setting": "drawerRowsAdded",
-              "type": "bool",
-              "default": false,
-              "title": "Account drawer rows added to favorites",
-              "hidden": true
-            }
-          ],
-          "summary": [
-            {
-              "value": {
-                "count": "favorites"
-              }
-            }
-          ]
+          "setting": "drawerRowsAdded",
+          "type": "bool",
+          "default": false,
+          "title": "Account drawer rows added to favorites",
+          "hidden": true
         },
         {
           "group": "advanced",
@@ -2192,6 +2167,31 @@
           "type": "text",
           "default": "INBOX",
           "title": "Startup folder"
+        },
+        {
+          "group": "favorites",
+          "title": "Favorites",
+          "label": "Favorites",
+          "header": "label",
+          "children": [
+            {
+              "setting": "favorites",
+              "type": "folder",
+              "default": [],
+              "title": "Favorites",
+              "pinerc": "incoming-folders",
+              "pinercFormat": "incoming",
+              "many": true,
+              "order": "user"
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "count": "favorites"
+              }
+            }
+          ]
         },
         {
           "setting": "debugLogging",
