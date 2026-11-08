@@ -551,7 +551,6 @@ internal fun PinercEditor(editor: SettingsEditor, sections: SectionOpen? = null,
             }) {
                 Text(S("Export .pinerc…"))
             }
-            }
     }
     if (sections == null) {
         PinercButtons()
