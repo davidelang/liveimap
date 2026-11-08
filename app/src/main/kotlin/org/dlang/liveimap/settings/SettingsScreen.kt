@@ -2165,8 +2165,9 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
     val accountScope = key == "accountSettingsFile"
     var includePasswords by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    // Export goes through the share sheet, so the file can be mailed as well as saved.
+    fun shareExport() {
+        val name = if (accountScope) "account-settings.json" else "ui-settings.json"
         val body = exportSettingsDocument(
             if (accountScope) editor.settings.encode() else editor.settings.encodeUi(),
             includePasswords && accountScope,
@@ -2174,7 +2175,21 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
             editor.smtpPassword,
             editor.sievePassword,
         )
-        context.contentResolver.openOutputStream(uri)?.use { it.write(body.toByteArray()) }
+        val dir = java.io.File(context.cacheDir, "export")
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            settingsSaveFailure.value = "export directory unavailable"
+            return
+        }
+        java.io.File(dir, name).writeBytes(body.toByteArray())
+        val uri = android.net.Uri.parse("content://${org.dlang.liveimap.engine.TrafficLog.SHARE_AUTHORITY}/$name")
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, name)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newRawUri(name, uri)
+        }
+        context.startActivity(android.content.Intent.createChooser(send, name))
     }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -2203,7 +2218,7 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
         TextButton(onClick = { import.launch(arrayOf("application/json", "text/*", "*/*")) }) {
             Text(S("Import"))
         }
-        TextButton(onClick = { export.launch(if (accountScope) "account-settings.json" else "ui-settings.json") }) {
+        TextButton(onClick = { shareExport() }) {
             Text(S("Export"))
         }
     }
@@ -3972,9 +3987,24 @@ internal fun row_hiddenCapabilities(walk: SettingsWalk) {
 @Composable
 private fun AddAccountFavoritesButton(editor: SettingsEditor) {
     val accountId = editor.editingId ?: return
+    val context = LocalContext.current
     TextButton(onClick = {
-        val now = editor.settings
-        editor.persist(now.copy(favorites = org.dlang.liveimap.ui.withAccountDrawerRows(now.favorites, accountId, now.postponedMailbox, false)))
+        // Start from the saved list: the editor's copy can be older than the drawer's.
+        val now = editor.settings.copy(favorites = SettingsHub.uiNow().favorites)
+        val next = org.dlang.liveimap.ui.withAccountDrawerRows(now.favorites, accountId, now.postponedMailbox, false)
+        val added = next.size - now.favorites.size
+        val outcome = when {
+            added == 0 -> "already present"
+            editor.persist(now.copy(favorites = next)) -> "added $added rows"
+            else -> "save failed"
+        }
+        org.dlang.liveimap.engine.DebugLog.event("settings") { "add account favorites $accountId: $outcome" }
+        val shown = when (outcome) {
+            "already present" -> S(context, "This account's rows are already in favorites.", name = "account_favorites_present")
+            "save failed" -> S(context, "Favorites were not saved.", name = "account_favorites_not_saved")
+            else -> null
+        }
+        if (shown != null) android.widget.Toast.makeText(context, shown, android.widget.Toast.LENGTH_LONG).show()
     }) {
         Text(S("Add to favorites", name = "account_add_default_favorites"))
     }

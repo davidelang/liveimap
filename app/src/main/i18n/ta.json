@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "எப்போதும் விரிவாக்க வேண்டாம்"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "பிடித்ததைச் சேர்க்கவும்"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "பிடித்தவையில் சேர்"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "இந்தக் கணக்கின் வரிசைகள் ஏற்கனவே பிடித்தவையில் உள்ளன."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "பிடித்தவை சேமிக்கப்படவில்லை."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "பிடித்ததை அகற்று"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$sஐச் சுருக்கு"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$sஐ விரிவாக்கு"},

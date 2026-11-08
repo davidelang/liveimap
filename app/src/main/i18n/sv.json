@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Expandera inte alltid"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Lägg till favorit"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Lägg till i favoriter"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Kontots rader finns redan i favoriter."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Favoriter sparades inte."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Ta bort favorit"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Komprimera %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Expandera %1$s"},

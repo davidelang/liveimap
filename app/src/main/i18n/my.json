@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "အမြဲတမ်းချဲ့ထွင်မနေပါနဲ့။"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "စိတ်ကြိုက်ထည့်ပါ။"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "အကြိုက်ဆုံးများထဲ ထည့်ရန်"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "ဤအကောင့်၏ အတန်းများ အကြိုက်ဆုံးများထဲတွင် ရှိပြီးဖြစ်သည်။"},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "အကြိုက်ဆုံးများကို မသိမ်းဆည်းခဲ့ပါ။"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "အကြိုက်ဆုံးကို ဖယ်ရှားပါ။"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s ကို ခေါက်သိမ်းပါ။"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s ကိုချဲ့ပါ။"},

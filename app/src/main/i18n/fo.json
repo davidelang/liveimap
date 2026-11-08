@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Ikki altíð víðka"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Legg yndis til"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Legg afturat yndisvalum"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Raðirnar hjá hesi kontuni eru longu í yndisvalum."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Yndisval vórðu ikki goymd."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Strika yndis"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Falla saman %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Víðka %1$s"},

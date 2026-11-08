@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Ne mindig bővítsd"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Kedvenc hozzáadása"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Hozzáadás a kedvencekhez"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "A fiók sorai már a kedvencek között vannak."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "A kedvencek nem lettek mentve."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Kedvenc eltávolítása"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s összecsukása"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Bontsa ki az %1$s elemet"},

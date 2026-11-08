@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Kada a faɗaɗa koyaushe"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Ƙara fiffiko"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Ƙara zuwa waɗanda aka fi so"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Layukan wannan asusu sun riga sun kasance cikin waɗanda aka fi so."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Ba a ajiye waɗanda aka fi so ba."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Cire fiffiko"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Rushe %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Faɗaɗa %1$s"},

@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Wreidzje net altyd út"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Foegje favoryt ta"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Tafoegje oan favoriten"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "De rigels fan dit akkount steane al yn de favoriten."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Favoriten binne net bewarre."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Favoriet fuortsmite"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s ynklappe"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s útwreidzje"},

@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Ärge alati laiendage"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Lisa lemmik"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Lisa lemmikutesse"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Selle konto read on juba lemmikutes."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Lemmikuid ei salvestatud."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Eemalda lemmik"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Ahenda %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Laiendage %1$s"},

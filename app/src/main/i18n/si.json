@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "සෑම විටම පුළුල් නොකරන්න"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "ප්රියතම එකතු කරන්න"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "ප්‍රියතමයන්ට එක් කරන්න"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "මෙම ගිණුමේ පේළි දැනටමත් ප්‍රියතමයන්හි ඇත."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "ප්‍රියතමයන් සුරැකුණේ නැත."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "ප්රියතම ඉවත් කරන්න"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s හකුළන්න"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s දිග හරින්න"},

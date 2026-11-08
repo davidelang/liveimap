@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Non sempre se expanda"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Engadir favorito"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Engadir a favoritos"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "As filas desta conta xa están en favoritos."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Non se gardaron os favoritos."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Eliminar favorito"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Contraer %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Expande %1$s"},

@@ -1526,6 +1526,9 @@ def json_expr(leaf):
     key = leaf["setting"]
     if key in JSON_EXPR:
         return JSON_EXPR[key]
+    if key == "clientSortCollation":
+        # The tree's choice words ("locale", "plain"), which the reader accepts; not the enum name.
+        return "JsonValue.Str(clientSortCollationWord(clientSortCollation))"
     typ = kt_type(leaf)
     if typ == "Boolean":
         return "JsonValue.Bool(%s)" % key
@@ -1577,7 +1580,8 @@ def special_decode(key):
     if key == "clientSortCollation":
         return "\n".join([
             'clientSortCollation = field("clientSortCollation", d.clientSortCollation) {',
-            "    val word = jsonString(it)",
+            "    // Builds before the word fix wrote the enum name (Locale, Plain); read those as the word.",
+            "    val word = jsonString(it).lowercase()",
             '    if (word != "locale" && word != "plain") throw IllegalArgumentException("clientSortCollation")',
             "    clientSortCollationOf(word)",
             "},",

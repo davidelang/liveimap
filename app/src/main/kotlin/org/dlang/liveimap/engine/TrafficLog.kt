@@ -443,7 +443,8 @@ class TrafficFileProvider : ContentProvider() {
         return cursor
     }
 
-    override fun getType(uri: Uri): String = "text/plain"
+    override fun getType(uri: Uri): String =
+        if (uri.lastPathSegment in exportNames) "application/json" else "text/plain"
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
@@ -462,8 +463,12 @@ class TrafficFileProvider : ContentProvider() {
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
+    private val exportNames = setOf("account-settings.json", "ui-settings.json")
+
     private fun cacheFile(uri: Uri): File? {
         val name = uri.lastPathSegment ?: return null
+        // Settings exports shared from Settings (Import/Export): cache/export/<fixed name>.
+        if (name in exportNames) return context?.cacheDir?.let { File(File(it, "export"), name) }
         if (!name.endsWith(".log")) return null
         val id = name.removeSuffix(".log")
         val dir = context?.cacheDir ?: return null

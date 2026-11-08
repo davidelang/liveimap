@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "ਹਮੇਸ਼ਾ ਵਿਸਤਾਰ ਨਾ ਕਰੋ"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "ਮਨਪਸੰਦ ਸ਼ਾਮਲ ਕਰੋ"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "ਮਨਪਸੰਦ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "ਇਸ ਖਾਤੇ ਦੀਆਂ ਕਤਾਰਾਂ ਪਹਿਲਾਂ ਹੀ ਮਨਪਸੰਦ ਵਿੱਚ ਹਨ।"},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "ਮਨਪਸੰਦ ਸੁਰੱਖਿਅਤ ਨਹੀਂ ਕੀਤੇ ਗਏ।"},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "ਮਨਪਸੰਦ ਨੂੰ ਹਟਾਓ"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "%1$s ਨੂੰ ਸਮੇਟੋ"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "%1$s ਦਾ ਵਿਸਤਾਰ ਕਰੋ"},

@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Ne širi se uvek"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Dodajte omiljeno"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Dodaj u omiljene"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Redovi ovog naloga su već u omiljenima."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Omiljeni nisu sačuvani."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Uklonite favorita"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Skupi %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Proširi %1$s"},

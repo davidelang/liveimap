@@ -110,6 +110,8 @@
 {"key": "folders_dont_always_expand", "source": "Don't always expand", "text": "Nu vă extindeți întotdeauna"},
 {"key": "folders_add_favorite", "source": "Add favorite", "text": "Adăugați favorit"},
 {"key": "account_add_default_favorites", "source": "Add to favorites", "text": "Adaugă la favorite"},
+{"key": "account_favorites_present", "source": "This account's rows are already in favorites.", "text": "Rândurile acestui cont sunt deja la favorite."},
+{"key": "account_favorites_not_saved", "source": "Favorites were not saved.", "text": "Favoritele nu au fost salvate."},
 {"key": "folders_remove_favorite", "source": "Remove favorite", "text": "Eliminați preferatul"},
 {"key": "folders_collapse", "source": "Collapse %1$s", "text": "Restrângeți %1$s"},
 {"key": "folders_expand", "source": "Expand %1$s", "text": "Extindeți %1$s"},

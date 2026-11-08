@@ -1534,13 +1534,15 @@ private fun LiveImapNavHostReady() {
     }
 
     var noFreeWindow by remember { mutableStateOf(false) }
+    val sharedUi by org.dlang.liveimap.settings.SettingsHub.ui.collectAsState()
     val drawerSheet: @Composable ColumnScope.() -> Unit = {
         // Scrolls: with several accounts, Settings/Help/About fall below the edge in landscape.
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("drawer-scroll")) {
         DrawerSheetContent(
             header = header,
             accounts = drawerAccounts,
-            favorites = favorites,
+            // The saved list, so a change made elsewhere (Settings "Add to favorites") shows at once.
+            favorites = sharedUi.favorites,
             onAccountAllFolders = { account -> openFoldersRow(account) },
             onAddFilter = {
                 navigateFromDrawer {
