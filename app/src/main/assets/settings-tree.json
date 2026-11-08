@@ -1684,32 +1684,6 @@
           "header": "label",
           "children": [
             {
-              "group": "custom_panel_layout",
-              "title": "Custom panel layout",
-              "label": "Custom panel layout",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "layoutCatalog",
-                  "type": "paneLayout",
-                  "default": "",
-                  "title": "Custom panel layout"
-                }
-              ],
-              "summary": [
-                {
-                  "when": {
-                    "setting": "layoutCatalog",
-                    "empty": true
-                  },
-                  "text": "Automatic"
-                },
-                {
-                  "text": "Custom panel layout"
-                }
-              ]
-            },
-            {
               "setting": "fullScreen",
               "type": "bool",
               "default": false,
@@ -2059,6 +2033,32 @@
         }
       ],
       "children": [
+        {
+          "group": "custom_panel_layout",
+          "title": "Custom panel layout",
+          "label": "Custom panel layout",
+          "header": "label",
+          "children": [
+            {
+              "setting": "layoutCatalog",
+              "type": "paneLayout",
+              "default": "",
+              "title": "Custom panel layout"
+            }
+          ],
+          "summary": [
+            {
+              "when": {
+                "setting": "layoutCatalog",
+                "empty": true
+              },
+              "text": "Automatic"
+            },
+            {
+              "text": "Custom panel layout"
+            }
+          ]
+        },
         {
           "setting": "appTextZoom",
           "type": "number",

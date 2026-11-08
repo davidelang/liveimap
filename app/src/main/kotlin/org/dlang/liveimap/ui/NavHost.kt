@@ -507,6 +507,7 @@ private fun LiveImapNavHostReady() {
     }
 
     suspend fun applyRunningLayout() {
+        // The open account's settings view (UI keys overlaid), so it reads right in either section.
         val account = try {
             store.load()
         } catch (_: org.dlang.liveimap.accounts.NoAccountSelected) {
@@ -601,7 +602,11 @@ private fun LiveImapNavHostReady() {
         applyOpenAccount()
     }
 
-    LaunchedEffect(LayoutApply.generation) {
+    // A saved layout change applies at once, wherever it was saved.
+    // Rotation needs nothing here: the layout resolves against windowSituation() on every recomposition.
+    val savedUi by org.dlang.liveimap.settings.SettingsHub.ui.collectAsState()
+    val savedAccounts by org.dlang.liveimap.settings.SettingsHub.accounts.collectAsState()
+    LaunchedEffect(LayoutApply.generation, savedUi, savedAccounts) {
         applyRunningLayout()
     }
 
