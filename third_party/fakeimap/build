@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Build fakeimap and cyrusprobe into src/. get-artifacts copies them to artifact/.
+# GOCACHE and GOTMPDIR stay under src/build, never /tmp; the tree is removed after the build.
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PIN="$DIR/libpin.toml"
+PLACEHOLDER="0000000000000000000000000000000000000000"
+
+sha="$(python3 - "$PIN" <<'PY'
+import sys
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib  # type: ignore
+from pathlib import Path
+data = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print((data.get("git_sha") or "").strip())
+PY
+)"
+
+if [[ -z "$sha" || "$sha" == "$PLACEHOLDER" || "$sha" == "UNSELECTED" ]]; then
+  echo "fakeimap pin: git_sha is not set (still UNSELECTED / $PLACEHOLDER)." >&2
+  echo "Lock a real commit in third_party/fakeimap/libpin.toml, then run:" >&2
+  echo "  ./third_party/fetch-deps ro fakeimap && ./third_party/fetch-deps build --record fakeimap" >&2
+  exit 1
+fi
+
+if [[ ! -d "$DIR/src" ]]; then
+  echo "fakeimap pin: no src/ — run ./third_party/fetch-deps ro fakeimap first." >&2
+  exit 1
+fi
+
+mkdir -p "$DIR/src/build"
+d="$(mktemp -d "$DIR/src/build/gocache.XXXXXX")"
+cleanup() { rm -rf "$d"; }
+trap cleanup EXIT
+
+(
+  cd "$DIR/src"
+  GOCACHE=$d GOTMPDIR=$d GOTOOLCHAIN=local CGO_ENABLED=0 GOPROXY=off \
+    go build -trimpath -buildvcs=false -ldflags '-s -w' -o fakeimap .
+  GOCACHE=$d GOTMPDIR=$d GOTOOLCHAIN=local CGO_ENABLED=0 GOPROXY=off \
+    go build -trimpath -buildvcs=false -ldflags '-s -w' -tags probe -o cyrusprobe .
+)

@@ -4271,3 +4271,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-07 - Drawer rows become favorites
 
 - Each account's former fixed drawer rows (folder list as the account name, INBOX, Postponed when set) are added once as real favorites (in front, in the old order; missing ones only; marker drawerRowsAdded so deletes stick). New accounts get them on first listing. The drawer renders only favorites plus controls (filters, New window, Settings, Manage addresses, Help, About); a corrupt account keeps its fixed name row. The folder-list favorite opens the folder list, so the default-favorite startup lands there for an untouched account.
+
+## 2026-11-12 - Pin fakeimap; remove the in-tree Python replay fake
+
+- Added third_party/fakeimap (libpin.toml, SOURCE.md, ./build) for davidelang/fakeimap. git_sha is the 40-zero placeholder so fetch-deps cannot fall back to the host repo HEAD. ./build and the lab runners fail loudly until a commit is locked and the binary is emerged. The pin is omitted from the default fetch-deps name set. The binary was not built.
+- Removed tools/test-servers/fake_imap.py, fake_line.py, and fake_model.py. fake_run.py, safety_run.py, client_sort_run.py, and esort_partial_run.py now start third_party/fakeimap/artifact/fakeimap with a config.json and the control socket (helper: fakeimap_pin.py). Gaps versus the old replay fake (recording replay, unexpected/never-hit logs, at_noop expunge/append, screenshot login-any-user) are documented and not filled in silently.
+
+## 2026-11-12 - Replace the Kotlin FakeImapServer with the pinned fakeimap binary
+
+- Removed the in-process FakeImapServer. FakeImapTest and FakeImapF40Test now start third_party/fakeimap/artifact/fakeimap through FakeimapPin.kt (same ready-check as fakeimap_pin.py: fail loudly while git_sha is UNSELECTED or the binary is missing; no host or PATH fallback). PersonalityCapabilityTest reads pinned src/personalities instead of recording-format JSON and lives under session.
+- Removed personality.py (replay-personality builder). fake_run.py keeps pick_recording for real-lab step comparison; screenshot_personality.py keeps a local shape() helper. ai-fake-smtp.py stays: it is the no-auth relay sink for regress/t4smtp against Docker lab servers, not fakeimap's authenticated smtp_listen. PlainSieveTransportTest, JmapCredentialsAfterTrustTest, and LabProxyTest stay: they are transport/TLS/proxy fixtures, not mail-server implementations.

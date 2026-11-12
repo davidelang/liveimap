@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """Write personalities/screenshot.json: a plaintext mailbox for the compact tablet.
 
-LOGIN takes any user. The password is not stored. Shapes follow personality.shape.
-The order array is not read by fake_imap.py.
+This file is still in the old replay-personality format (shapes are local (see shape()); LOGIN takes any user; the password is not stored). The
+in-tree Python replay fake that served it has been removed. It is not a
+fakeimap personality or dataset, and nothing starts it. Rewriting it as a
+fakeimap dataset (generated mailboxes plus a personality file; accounts
+must be listed, because fakeimap does not accept any login) is still open.
+The order array was only a comment for the old fake and is unused.
 """
-import datetime, json, os, sys
+import datetime, json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-from personality import shape
+
+def shape(cmd):
+    cmd = re.sub(r"\{\d+\+?\}$", "{L}", cmd.strip())
+    cmd = re.sub(r"\d+", "N", cmd)
+    return re.sub(r"\s+", " ", cmd).upper() if cmd.split(" ", 1)[0].upper() in ("LOGIN", "AUTHENTICATE") else re.sub(r"\s+", " ", cmd)
 
 OUT = os.path.join(HERE, "personalities", "screenshot.json")
 CAPABILITY = (

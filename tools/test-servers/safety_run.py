@@ -1,17 +1,31 @@
 #!/usr/bin/env python3
-"""Mail-safety suites on the strict fake in model mode, for every personality (no containers).
+"""Mail-safety suites on pinned fakeimap, for every lab-server personality (no containers).
 Usage: safety_run.py [--skip-install] SERVER... | --all
-Each case runs LabSafetyTest with one scenario and settings against fake_imap.py FAKE_MODEL, then judges
-the fake's command log:
-  - no unexpected command (BAD from the strict fake, incl. a command needing a capability not offered);
-  - no plain EXPUNGE ever, CLOSE only with Auto-expunge on, UID MOVE only for MoveMethod=ImapMove with MOVE
-    offered, UID EXPUNGE only for DeletePermanently with UIDPLUS, and only of the deleted UID;
-  - the messages that disappeared are exactly the ones the scenario and settings intend.
-Writes recordings/safety-<stamp>.tsv (one row per case) and prints it."""
-import json, os, re, socket, subprocess, sys, time
+
+Each case runs LabSafetyTest with one scenario and settings against fakeimap,
+then judges the command log and the mailbox (via the control socket):
+
+  - no plain EXPUNGE ever, CLOSE only with Auto-expunge on, UID MOVE only for
+    MoveMethod=ImapMove with MOVE offered, UID EXPUNGE only for DeletePermanently
+    with UIDPLUS, and only of the deleted UID;
+  - the messages that disappeared (list-mail before vs after) are exactly the
+    ones the scenario and settings intend.
+
+drop_caps is applied by writing a derived personality (fakeimap has no drop_caps
+control op). The "outside" case is recorded as unsupported: fakeimap can inject
+a message but has no expunge control op and no at_noop hook (see fakeimap_pin.py).
+The old unexpected-command log (BAD from the strict replay fake) has no
+equivalent; it is not treated as a pass.
+
+Fails if the pin version is still UNSELECTED or the binary has not been emerged.
+
+Writes recordings/safety-<stamp>.tsv (one row per case) and prints it.
+"""
+import json, os, re, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import lab, personality
+import lab
+import fakeimap_pin
 
 # name, scenario, settings, drop_caps
 CASES = [
@@ -31,7 +45,6 @@ CASES = [
     ("leave-noUNSELECT", "leave", {}, ["UNSELECT"]),
     ("outside", "outside", {}, []),
 ]
-SCRIPT = [{"at_noop": 1, "expunge_uid": 5}, {"at_noop": 2, "append": 1}]
 
 
 def intended(scenario, cfg, caps, uids):
@@ -39,8 +52,6 @@ def intended(scenario, cfg, caps, uids):
     auto = cfg.get("auto", False)
     if scenario == "delete":
         perm = cfg.get("policy") == "DeletePermanently" and "UIDPLUS" in caps
-        # The model offers a \\Trash mailbox only with SPECIAL-USE; without a known Trash the policy falls back
-        # to MarkDeleted (effectiveDeletePolicy).
         trash_move = (cfg.get("policy") == "MoveToTrash" and cfg.get("move") == "ImapMove" and "MOVE" in caps
                       and "SPECIAL-USE" in caps and "LIST-EXTENDED" in caps)
         return {uids[1]} if perm or trash_move or auto else set()
@@ -54,31 +65,38 @@ def intended(scenario, cfg, caps, uids):
     return set()
 
 
-def judge(ev, scenario, cfg, caps, uids):
+def caps_from_personality(path):
+    data = json.loads(open(path).read())
+    caps = set()
+    for key in ("greeting_capabilities", "pre_login_capabilities", "post_login_capabilities"):
+        for c in data.get(key) or []:
+            caps.add(c.upper())
+    return caps
+
+
+def list_uids(srv, mailbox):
+    items = srv.control({"op": "list-mail", "mailbox": mailbox}).get("messages") or []
+    return [int(it["uid"]) for it in items]
+
+
+def judge_commands(cmds, scenario, cfg, caps):
+    """Command text may be the IMAP command or a tagged line; accept both forms."""
     bad = []
     auto = cfg.get("auto", False)
-    for e in ev:
-        c = e.get("cmd", "").upper()
-        w = c.split()
-        verb = " ".join(w[:2]) if w[:1] == ["UID"] else (w[0] if w else "")
-        if e.get("unexpected"):
-            bad.append(f"unexpected: {e['cmd'][:60]} ({e.get('why') or 'not in personality'})")
-        if verb == "EXPUNGE":
+    for c in cmds:
+        u = c.upper()
+        if re.search(r"(^|\s)EXPUNGE\b", u) and not re.search(r"(^|\s)UID\s+EXPUNGE\b", u):
             bad.append("plain EXPUNGE")
-        if verb == "CLOSE" and not auto:
+        if re.search(r"(^|\s)CLOSE\b", u) and not auto:
             bad.append("CLOSE with Auto-expunge off")
-        if verb == "UID MOVE" and not (cfg.get("move") == "ImapMove" and "MOVE" in caps):
+        if re.search(r"(^|\s)UID\s+MOVE\b", u) and not (cfg.get("move") == "ImapMove" and "MOVE" in caps):
             bad.append("UID MOVE not asked for")
-        if verb == "UID EXPUNGE" and not (cfg.get("policy") == "DeletePermanently" and "UIDPLUS" in caps):
+        if re.search(r"(^|\s)UID\s+EXPUNGE\b", u) and not (cfg.get("policy") == "DeletePermanently" and "UIDPLUS" in caps):
             bad.append("UID EXPUNGE not asked for")
-    lost = {u for e in ev for (b, u, why) in e.get("expunged", []) if why != "outside" and b != "INBOX"}
-    want = intended(scenario, cfg, caps, uids)
-    if lost != want:
-        bad.append(f"removed {sorted(lost)} expected {sorted(want)}")
     return bad
 
-
 def main():
+    fakeimap_pin.require_ready()
     args = [a for a in sys.argv[1:] if a != "--skip-install"]
     names = [s["name"] for s in lab.servers()] if args == ["--all"] else args
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -93,74 +111,80 @@ def main():
             print(problem)
             sys.exit(1)
         s = next(x for x in lab.servers() if x["name"] == name)
-        src = personality.pick(name)
-        if not src:
-            out.write(f"{name}\t-\tno-recording\t\t\t\n"); continue
-        pj = os.path.join(lab.GEN, "personalities", f"{name}.json")
-        if not os.path.exists(pj):
-            json.dump(personality.build(src), open(pj, "w"), indent=1)
-        pcaps = set()
-        for vs in json.load(open(pj))["table"].values():
-            for v in vs:
-                for it in v["items"]:
-                    m = re.search(r"CAPABILITY ([^\]]*)", it.get("line", ""), re.I)
-                    if m:
-                        pcaps |= set(m.group(1).split())
+        pers = fakeimap_pin.PERSONALITIES / f"{name}.json"
+        if not pers.is_file():
+            out.write(f"{name}\t-\tno-personality\t\t\t\n"); out.flush()
+            print(name, "-", "no-personality", str(pers), flush=True)
+            continue
         folder = "LiveIMAP-Test"
-        seed = os.path.join(os.path.dirname(src), "seed.txt")
-        if os.path.exists(seed) and ": " in open(seed).read():
-            folder = open(seed).read().split(":", 1)[0].strip()
         dest = os.path.join(lab.REC, name, f"safety-{stamp}")
         os.makedirs(dest, exist_ok=True)
         for case, scenario, cfg, drop in CASES:
+            if scenario == "outside":
+                msg = "unsupported: fakeimap has no at_noop expunge/append control op"
+                out.write(f"{name}\t{case}\tunsupported\t\t\t{msg}\n"); out.flush()
+                print(name, case, "unsupported", msg, flush=True)
+                continue
             flog = os.path.join(dest, f"{case}.fake.jsonl")
-            model = {"folder": folder, "drop_caps": drop, "script": SCRIPT if scenario == "outside" else []}
-            sock = socket.socket(); sock.bind((lab.LAB_HOST, 0)); port = sock.getsockname()[1]; sock.close()
-            env = dict(os.environ, FAKE_MODEL=json.dumps(model))
-            fk = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_imap.py"), pj, lab.LAB_HOST, str(port), flog],
-                                  stdout=subprocess.DEVNULL, stderr=open(flog + ".err", "w"), env=env)
-            time.sleep(0.7)
+            pfile = pers
+            if drop:
+                pfile = fakeimap_pin.derive_personality(
+                    pers, os.path.join(dest, f"{case}.personality.json"), drop_caps=drop)
+            ds = fakeimap_pin.write_dataset(os.path.join(dest, f"{case}.dataset"), folder=folder,
+                                            user=lab.USER, password=lab.PASS)
+            control = os.path.join(dest, f"{case}.control.sock")
+            if os.path.exists(control):
+                os.remove(control)
+            cfgpath = fakeimap_pin.write_config(
+                os.path.join(dest, f"{case}.config.json"),
+                listen=f"{lab.LAB_HOST}:0",
+                personality=os.path.abspath(pfile),
+                dataset=os.path.abspath(ds),
+                control=os.path.abspath(control),
+                log_path=os.path.abspath(flog),
+            )
+            srv = fakeimap_pin.start(cfgpath, flog + ".err")
             run = f"{name}-safety-{case}"
             a = ["shell", "am", "instrument", "-w", "-r", "-e", "class", f"{lab.LAB_PKG}.LabSafetyTest#safety",
-                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(port), "-e", "labServer", name,
+                 "-e", "labHost", lab.EMU_HOST, "-e", "labPort", str(srv.port("listen")), "-e", "labServer", name,
                  "-e", "labRun", run, "-e", "labCommit", commit, "-e", "labFolder", folder,
                  "-e", "labScenario", scenario, "-e", "labAutoExpunge", "true" if cfg.get("auto") else "false",
                  "-e", "labMoveMethod", cfg.get("move", "CopyThenMarkDeleted"),
                  "-e", "labDeletePolicy", cfg.get("policy", "MarkDeleted"),
                  "-e", "labUser", lab.USER, "-e", "labPass", lab.PASS, lab.RUNNER]
+            before, after, passed, cmds = [], [], False, []
             try:
+                before = list_uids(srv, folder)
                 r = lab.adb(*a, timeout=300)
                 passed = "OK (1 test)" in r.stdout
+                after = list_uids(srv, folder)
             except subprocess.TimeoutExpired:
                 passed = False
             finally:
-                fk.terminate(); fk.wait()
+                cmds = fakeimap_pin.command_lines(flog)
+                srv.close()
             files = lab.pull(run, dest)
             st = [f for f in files if f.endswith(".steps.tsv")]
             rows = [l.split("\t") for l in open(st[0]).read().splitlines()[1:]] if st else []
             info = {r[0]: r for r in rows}
-            # Offered capabilities: the personality's (as the fake serves them) minus the dropped ones. The app's
-            # own "open" step detail is truncated, so it is not used here.
-            caps = {c.upper() for c in pcaps} - {d.upper() for d in drop}
-            uids = [int(x) for x in info.get("list", ["", "", ""])[2].split(",") if x.strip().isdigit()] if "list" in info else []
-            ev = [json.loads(l) for l in open(flog)] if os.path.exists(flog) else []
+            caps = caps_from_personality(pfile)
+            uids = before if len(before) >= 4 else (
+                [int(x) for x in info.get("list", ["", "", ""])[2].split(",") if x.strip().isdigit()] if "list" in info else [])
             problems = []
             if len(uids) < 4:
                 problems.append("could not list the test mailbox")
             else:
-                problems += judge(ev, scenario, cfg, caps, uids)
+                problems += judge_commands(cmds, scenario, cfg, caps)
+                lost = set(uids) - set(after)
+                want = intended(scenario, cfg, caps, uids)
+                if lost != want:
+                    problems.append(f"removed {sorted(lost)} expected {sorted(want)}")
             failed_steps = [r[0] + ":" + r[2][:80] for r in rows if len(r) > 2 and r[1] == "fail"]
             if not passed and not failed_steps:
                 failed_steps = ["test did not finish"]
-            if scenario == "outside" and "afterAppend" in info:
-                after = info["afterAppend"][2].split(",")
-                if "5" in after:
-                    problems.append("app still lists the UID expunged by another client")
-                if str(max(uids) + 1) not in after:
-                    problems.append("app missed the message added by another client")
             result = "pass" if not problems and not failed_steps else ("unsafe" if problems else "app-fail")
-            cmds = " ; ".join(e["cmd"][:40] for e in ev if e.get("model") or e.get("never"))
-            out.write(f"{name}\t{case}\t{result}\t{'; '.join(failed_steps)[:300]}\t{cmds[:400]}\t{'; '.join(problems)[:300]}\n")
+            cmdsum = " ; ".join(c[:40] for c in cmds)
+            out.write(f"{name}\t{case}\t{result}\t{'; '.join(failed_steps)[:300]}\t{cmdsum[:400]}\t{'; '.join(problems)[:300]}\n")
             out.flush()
             print(name, case, result, "; ".join(problems + failed_steps)[:200], flush=True)
     print(out.name)
