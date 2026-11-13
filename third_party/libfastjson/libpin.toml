@@ -10,10 +10,12 @@ consumer_note = "libfastjson v1.2609.0 static archives for arm64-v8a, armeabi-v7
 [[artifact]]
 path = "artifact/arm64-v8a/libfastjson.a"
 from = "src/android-prefix/arm64-v8a/lib/libfastjson.a"
+sha256 = "f7b85c4c129185acd4d7eff9506e05671fcbae316673d948f499cfeb00b2ba22"
 
 [[artifact]]
 path = "artifact/x86_64/libfastjson.a"
 from = "src/android-prefix/x86_64/lib/libfastjson.a"
+sha256 = "35013c2634ac4dcc946ea016114d7377a0fb9bcbd765bb732d36e1c7f85a8c67"
 
 [[artifact]]
 path = "artifact/armeabi-v7a/libfastjson.a"

@@ -10,42 +10,52 @@ consumer_note = "LibEtPan Android static archives (arm64-v8a and x86_64) plus Op
 [[artifact]]
 path = "artifact/arm64-v8a/libetpan.a"
 from = "src/out-libs/arm64-v8a/libetpan.a"
+sha256 = "b3d16883fde1e3e525427edfd89b276db96ee2e57d8ba57f5d019abf581d40ed"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libfastjson.a"
 from = "src/out-libs/arm64-v8a/libfastjson.a"
+sha256 = "f7b85c4c129185acd4d7eff9506e05671fcbae316673d948f499cfeb00b2ba22"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libssl.a"
 from = "src/out-libs/arm64-v8a/libssl.a"
+sha256 = "03c0a88adb1213f0aa6b925419d2d3e9a0559f7a19011d6063e85a089214ebb3"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libcrypto.a"
 from = "src/out-libs/arm64-v8a/libcrypto.a"
+sha256 = "e5b922eccb02eac510830490e316f8a0ef57b94aff2c4be3a46f995d59e68453"
 
 [[artifact]]
 path = "artifact/arm64-v8a/libsasl2.a"
 from = "src/out-libs/arm64-v8a/libsasl2.a"
+sha256 = "b6a7343150db603a42a802fd531779ca48184061befa6d61176246790ec76462"
 
 [[artifact]]
 path = "artifact/x86_64/libetpan.a"
 from = "src/out-libs/x86_64/libetpan.a"
+sha256 = "d78e097b7a7d2fc13b5316a0a11414d206409f909e7e3ee9d88b9181f9bc0197"
 
 [[artifact]]
 path = "artifact/x86_64/libfastjson.a"
 from = "src/out-libs/x86_64/libfastjson.a"
+sha256 = "35013c2634ac4dcc946ea016114d7377a0fb9bcbd765bb732d36e1c7f85a8c67"
 
 [[artifact]]
 path = "artifact/x86_64/libssl.a"
 from = "src/out-libs/x86_64/libssl.a"
+sha256 = "34019c0004714042dc0e01e525646276306c0c802da7c38a7a38fffa793ab93c"
 
 [[artifact]]
 path = "artifact/x86_64/libcrypto.a"
 from = "src/out-libs/x86_64/libcrypto.a"
+sha256 = "567f2cb7d52169193ffbdac795ebdbaca1711cc219e9d5a4549f45045260f77e"
 
 [[artifact]]
 path = "artifact/x86_64/libsasl2.a"
 from = "src/out-libs/x86_64/libsasl2.a"
+sha256 = "e4e481816a6d4d9ebf24951d19410f9393dce82df5ed5910454bf68cc78e2379"
 
 [[artifact]]
 path = "artifact/armeabi-v7a/libetpan.a"
