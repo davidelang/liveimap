@@ -109,16 +109,14 @@ def main():
         s = dict(s, folder=folder)
         ds = fakeimap_pin.write_dataset(os.path.join(dest, "dataset"), folder=folder,
                                         user=lab.USER, password=lab.PASS)
-        control = os.path.join(dest, "control.sock")
-        if os.path.exists(control):
-            os.remove(control)
+        control = fakeimap_pin.short_control_path(f"fr-{name}")
         flog = os.path.join(dest, "fake-log.jsonl")
         cfg = fakeimap_pin.write_config(
             os.path.join(dest, "config.json"),
             listen=f"{lab.LAB_HOST}:0",
             personality=os.path.abspath(pers),
             dataset=os.path.abspath(ds),
-            control=os.path.abspath(control),
+            control=str(control),
             log_path=os.path.abspath(flog),
             smtp_listen=f"{lab.LAB_HOST}:0",
             sieve_listen=f"{lab.LAB_HOST}:0",

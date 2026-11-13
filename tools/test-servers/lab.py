@@ -72,7 +72,26 @@ def adb(*a, **kw):
     return sh(["adb", "-s", SERIAL, *a], **kw)
 
 
+def _fakeimap_overlay():
+    """Ports written by fakeimap_backend when LAB_FAKEIMAP_PORTS is set. None otherwise."""
+    path = os.environ.get("LAB_FAKEIMAP_PORTS")
+    if not path:
+        return None
+    data = json.loads(open(path, encoding="utf-8").read())
+    return data.get("servers", data) if isinstance(data, dict) else data
+
+
 def servers():
+    overlay = _fakeimap_overlay()
+    if overlay:
+        out = []
+        for item in overlay:
+            s = {"name": item["name"], "container": item.get("container") or "", "imap": int(item["imap"])}
+            for kind in ("submission", "imaps", "managesieve", "http", "https", "smtp_tls"):
+                if item.get(kind):
+                    s[kind] = int(item[kind])
+            out.append(s)
+        return out
     by = collections.OrderedDict()
     skip = {"greenmail", "greenmail-16", "greenmail-214", "greenmail-dev"}
     for line in open(os.path.join(GEN, "local-ports.tsv")):
@@ -323,9 +342,12 @@ def smtp_args(s, tls):
     for line in open(path):
         f = line.rstrip("\n").split("\t")
         if len(f) == 3 and f[0] == s["name"] and f[1] == tls:
-            cport = ports.container_port(f[0], "submission")
-            out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
-            hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
+            if s.get("submission"):
+                hp = str(s["submission"])
+            else:
+                cport = ports.container_port(f[0], "submission")
+                out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
+                hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
             if hp:
                 return ["-e", "labSmtpPort", hp, "-e", "labRcpt", f"{USER.split('@')[0]}@{f[2]}"]
     return []
@@ -338,9 +360,12 @@ def sieve_args(s):
     for line in open(path):
         f = line.rstrip("\n").split("\t")
         if len(f) == 2 and f[0] == s["name"]:
-            cport = ports.container_port(f[0], "managesieve")
-            out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
-            hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
+            if s.get("managesieve"):
+                hp = str(s["managesieve"])
+            else:
+                cport = ports.container_port(f[0], "managesieve")
+                out = subprocess.run(["docker", "port", "liveimap-" + f[0], str(cport)], capture_output=True, text=True).stdout
+                hp = out.split("\n")[0].rsplit(":", 1)[-1].strip()
             if hp:
                 return ["-e", "labSievePort", hp, "-e", "labSieveTls", f[1]]
     return []
@@ -348,6 +373,8 @@ def sieve_args(s):
 
 def check_published(container):
     """Each servers.tsv listen port must be published on the local-ports.tsv host port for that service. A miss returns one string."""
+    if not container or os.environ.get("LAB_BACKEND") == "fakeimap" or _fakeimap_overlay() is not None:
+        return ""
     server = container.split("liveimap-", 1)[-1]
     servers_path = os.path.join(HERE, "servers.tsv")
     try:

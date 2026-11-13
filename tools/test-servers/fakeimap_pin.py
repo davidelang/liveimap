@@ -27,14 +27,15 @@ fake_model.py). These are not silently filled in:
     capabilities. Callers write a derived personality file (see
     derive_personality) and start with that, or call set-personality.
   - FAKE_MODEL script at_noop (expunge_uid / append on the Nth NOOP):
-    inject can append a message, but there is no expunge op and no
-    apply-on-command hook. The safety "outside" case cannot be driven yet.
+    expunge_mid with command NOOP covers the expunge. There is still no
+    command-triggered inject/append, so the safety "outside" case (expunge
+    on the first NOOP, append on the second) cannot be driven yet.
   - FAKE_MODEL esort_partial: depends on the personality honoring PARTIAL
     on ESORT (sort_partial_count_only must be false). There is no separate
     model flag.
-  - LOGIN accepts any user (screenshot personality): fakeimap only accepts
-    dataset accounts (accounts op can add one). The screenshot.json replay
-    personality is no longer served.
+  - Screenshot mailbox: tools/test-servers/screenshot_personality.py writes
+    a fakeimap personality plus datasets/screenshot. LOGIN is the fixture
+    account in that dataset (fakeimap does not accept an arbitrary user).
   - FAKE_DUMP (raw bytes per connection): no equivalent; use log_path
     (kind=command|reply). FAKE_DELAY_MS maps to arm-fault do=delay.
 """
@@ -188,6 +189,67 @@ def command_lines(log_path):
     return out
 
 
+
+def short_control_path(name):
+    """A short Unix-socket path under sandbox/t (the control socket has a ~108-byte cap)."""
+    root = REPO / "sandbox" / "t"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{name}-{os.getpid()}.sock"
+    if path.exists():
+        path.unlink()
+    return path
+
+
+# Fixture account for the SMTP sink dataset. smtp_auth_required is false, so
+# clients never send this password. It exists only because fakeimap requires
+# at least one dataset account and an IMAP listener.
+SMTP_SINK_USER = "smtp-sink"
+SMTP_SINK_PASSWORD = "smtp-sink"
+
+
+def start_smtp_sink(work_dir, smtp_listen, err_path, log_path=None, control_path=None,
+                    imap_listen="127.0.0.1:0", personality=None, timeout=5):
+    """Start pinned fakeimap as a no-auth SMTP sink (and a required IMAP listener).
+
+    smtp_listen is a host:port string, a {addr, dsn} object, or a list of those
+    (the same shapes as the fakeimap config key). Bind 0.0.0.0 when a container
+    or the emulator must reach the port. smtp_auth_required is false: EHLO
+    omits AUTH, and MAIL/RCPT/DATA are accepted and recorded on list-smtp.
+
+    There is no fallback to ai-fake-smtp.py.
+    """
+    require_ready()
+    work = Path(work_dir)
+    work.mkdir(parents=True, exist_ok=True)
+    ds = write_dataset(
+        work / "dataset",
+        folder="Sink",
+        count=0,
+        user=SMTP_SINK_USER,
+        password=SMTP_SINK_PASSWORD,
+        special_use_trash=False,
+    )
+    pers = Path(personality) if personality else personality_path("binary")
+    if control_path is None:
+        control_path = short_control_path("smtp-sink")
+    else:
+        control_path = Path(control_path)
+        if control_path.exists():
+            control_path.unlink()
+    keys = dict(
+        listen=imap_listen,
+        personality=str(Path(pers).resolve()),
+        dataset=str(Path(ds).resolve()),
+        control=str(Path(control_path).resolve()),
+        smtp_listen=smtp_listen,
+        smtp_auth_required=False,
+    )
+    if log_path:
+        keys["log_path"] = str(Path(log_path).resolve())
+    cfg = write_config(work / "config.json", **keys)
+    return start(cfg, err_path, timeout=timeout)
+
+
 class Server:
     def __init__(self, proc, bound, err_path):
         self.proc = proc
@@ -232,15 +294,19 @@ class Server:
                 self.proc.wait()
 
 
-def start(config_path, err_path, timeout=5):
+def start(config_path, err_path, timeout=5, binary=None):
     """Start artifact/fakeimap and return a Server after reading the bound-address line."""
-    require_ready()
+    exe = Path(binary) if binary else ARTIFACT
+    if not exe.is_file():
+        sys.exit(f"fakeimap pin: binary is missing: {exe}")
+    if binary is None:
+        require_ready()
     config_path = Path(config_path)
     err_path = Path(err_path)
     err_path.parent.mkdir(parents=True, exist_ok=True)
     err = open(err_path, "w")
     proc = subprocess.Popen(
-        [str(ARTIFACT), str(config_path)],
+        [str(exe), str(config_path)],
         stdout=subprocess.PIPE,
         stderr=err,
         text=True,

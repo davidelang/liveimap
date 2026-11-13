@@ -84,9 +84,15 @@ class FakeImapTest {
             val next = data.resolve("dataset-99")
             FakeimapPin.writeDataset(next, uidValidity = 99)
             server.control(mapOf("op" to "set-dataset", "path" to next.toAbsolutePath().toString()))
-            client.send("U1 SELECT INBOX")
-            val lines = readUntilTagged(client, "U1")
-            assertTrue(lines.joinToString("\n"), lines.any { it.contains("[UIDVALIDITY 99]") })
+            // set-dataset closes existing IMAP connections (dropIMAP) before the store is replaced.
+            LineClient(server.listenPort).use { c2 ->
+                val greet = c2.readLine()
+                assertTrue("expected * OK greeting after set-dataset, got $greet", greet != null && greet.startsWith("* OK"))
+                login(c2)
+                c2.send("U1 SELECT INBOX")
+                val lines = readUntilTagged(c2, "U1")
+                assertTrue(lines.joinToString("\n"), lines.any { it.contains("[UIDVALIDITY 99]") })
+            }
         }
     }
 

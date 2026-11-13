@@ -20,7 +20,7 @@ needles = (
 )
 assert needles[0] not in lab_py
 names = (
-    "lab.py", "acclab.py", "accsum.py", "ai-fake-smtp.py", "cysub.py",
+    "lab.py", "acclab.py", "accsum.py", "fakeimap_pin.py", "cysub.py",
     "jmapall.sh", "jmaplab.py", "jmaprun.py", "jmap.tsv", "s155.sh",
     "sess.py", "sj2.py", "stwfix.py", "seed_corpus.py", "cyrus_domain_user.py",
     "stalwart_republish.py", "smtp-extra.tsv", "test_lab_config.py",

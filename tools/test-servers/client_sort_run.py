@@ -34,15 +34,13 @@ def main():
     pfile = fakeimap_pin.derive_personality(pers, os.path.join(dest, "personality.json"), drop_caps=DROP)
     ds = fakeimap_pin.write_dataset(os.path.join(dest, "dataset"), folder=folder, count=count,
                                     user=lab.USER, password=lab.PASS)
-    control = os.path.join(dest, "control.sock")
-    if os.path.exists(control):
-        os.remove(control)
+    control = fakeimap_pin.short_control_path("cs")
     cfg = fakeimap_pin.write_config(
         os.path.join(dest, "config.json"),
         listen=f"{lab.LAB_HOST}:0",
         personality=os.path.abspath(pfile),
         dataset=os.path.abspath(ds),
-        control=os.path.abspath(control),
+        control=str(control),
         log_path=os.path.abspath(flog),
     )
     srv = fakeimap_pin.start(cfg, flog + ".err")

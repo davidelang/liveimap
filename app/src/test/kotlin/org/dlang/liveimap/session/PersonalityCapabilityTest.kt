@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 
 /**
@@ -58,7 +59,7 @@ class PersonalityCapabilityTest {
         val out = StringBuilder("server\tmove\tsearch\tsort\tresync\tpreview\tfetch\tidle\tfuzzy\n")
         var missing = mutableListOf<String>()
         for (f in files) {
-            val text = Files.readString(f)
+            val text = String(Files.readAllBytes(f), StandardCharsets.UTF_8)
             val caps = postLoginCaps(text)
             if (caps == null) {
                 missing += f.fileName.toString()

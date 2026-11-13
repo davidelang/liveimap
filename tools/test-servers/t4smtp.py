@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""One SMTP send to the lab fake SMTP sink (AcceptanceLabTest#smtpAccepts), IMAP open via dovecot-dev (None TLS). No build, no deploy. The commit is the first argument; it is not checked against a built-in sha."""
-import sys, subprocess, os, time
+"""One SMTP send to the lab fakeimap SMTP sink (AcceptanceLabTest#smtpAccepts), IMAP open via dovecot-dev (None TLS). No build, no deploy. The commit is the first argument; it is not checked against a built-in sha."""
+import json, sys, subprocess, os, time
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); import lab
+sys.path.insert(0, HERE); import lab, fakeimap_pin
 COMMIT = sys.argv[1]; RUN = COMMIT; NAME = "dovecot-dev"; PORT = "2525"
 LOGDIR = os.environ.get("LAB_LOG") or os.getcwd()
 os.makedirs(LOGDIR, exist_ok=True)
 log = open(os.path.join(LOGDIR, f"{RUN}.log"), "w", buffering=1)
 def say(*a): print(*a); log.write(" ".join(map(str, a)) + "\n")
 s = [x for x in lab.servers() if x["name"] == NAME][0]
-fake_log = os.path.join(LOGDIR, "ai-fake-smtp.log")
-child = os.environ.copy(); child["LAB_LOG"] = fake_log
-smtp = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), PORT], stdout=log, stderr=log, env=child)
+work = os.path.join(LOGDIR, f"{RUN}-fakesmtp")
+smtp = fakeimap_pin.start_smtp_sink(
+    work,
+    f"0.0.0.0:{PORT}",
+    os.path.join(work, "fakeimap.err"),
+    log_path=os.path.join(work, "fakeimap.log"),
+)
 lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     up = lab.greeting(s["imap"], False, timeout=300); say("greeting", up)
@@ -34,7 +38,10 @@ try:
     say("\n".join(l for l in r.stdout.splitlines() if "stack=" in l or "Exception" in l or "INSTRUMENTATION_STATUS: test" in l)[:1500])
 finally:
     subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
-    lab.adb("shell", "am", "force-stop", lab.PKG); smtp.terminate()
+    lab.adb("shell", "am", "force-stop", lab.PKG)
     try:
-        say("FAKESMTP", "".join(l for l in open(fake_log) if f'"port": {PORT}' in l)[-1500:])
-    except FileNotFoundError: say("FAKESMTP no log")
+        msgs = smtp.control({"op": "list-smtp"}).get("messages") or []
+        say("FAKESMTP", json.dumps(msgs)[:1500])
+    except Exception as e:
+        say("FAKESMTP no list-smtp", type(e).__name__)
+    smtp.close()

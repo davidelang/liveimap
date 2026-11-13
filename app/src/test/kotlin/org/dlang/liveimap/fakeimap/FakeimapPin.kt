@@ -5,7 +5,6 @@ import java.io.BufferedWriter
 import java.io.Closeable
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
-import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
@@ -50,7 +49,7 @@ object FakeimapPin {
     fun personalities(): Path = pinDir().resolve("src/personalities")
 
     fun gitSha(): String {
-        val text = Files.readString(pinFile())
+        val text = readUtf8(pinFile())
         val m = Regex("""(?m)^git_sha\s*=\s*"([^"]*)"""").find(text)
             ?: error("fakeimap pin: ${pinFile()} has no git_sha")
         return m.groupValues[1].trim()
@@ -100,6 +99,18 @@ object FakeimapPin {
         return Files.createTempDirectory(root, "$label-")
     }
 
+    // AF_UNIX sun_path is 108 bytes including the NUL. Paths under
+    // sandbox/tmp-rescue/fakeimap-jvm/<temp>/control.sock exceed that.
+    private val controlSeq = java.util.concurrent.atomic.AtomicInteger()
+
+    fun shortControlPath(): Path {
+        val root = repoRoot().resolve("sandbox/t")
+        Files.createDirectories(root)
+        val path = root.resolve("j${controlSeq.incrementAndGet()}.sock")
+        Files.deleteIfExists(path)
+        return path
+    }
+
     fun writeDataset(
         destDir: Path,
         user: String = "user",
@@ -109,7 +120,7 @@ object FakeimapPin {
     ): Path {
         Files.createDirectories(destDir)
         val eml = messageFile ?: destDir.resolve("1.eml").also {
-            Files.writeString(
+            writeUtf8(
                 it,
                 "From: Lab Sender <sender@lab.test>\r\n" +
                     "To: $user <user@lab.test>\r\n" +
@@ -134,7 +145,7 @@ object FakeimapPin {
               |  ]
               |}
               |""".trimMargin()
-        Files.writeString(destDir.resolve("dataset.json"), json)
+        writeUtf8(destDir.resolve("dataset.json"), json)
         return destDir
     }
 
@@ -162,7 +173,7 @@ object FakeimapPin {
             append("  \"logout_bye\": $logoutBye\n")
             append("}\n")
         }
-        Files.writeString(dest, json)
+        writeUtf8(dest, json)
         return dest
     }
 
@@ -232,8 +243,9 @@ class FakeimapServer(
     fun control(req: Map<String, Any?>, timeoutMs: Long = 5_000): Map<String, Any?> {
         val path = bound["control"] as? String
             ?: error("fakeimap pin: bound JSON has no control socket")
-        SocketChannel.open(StandardProtocolFamily.UNIX).use { ch ->
-            ch.connect(UnixDomainSocketAddress.of(path))
+        // open(SocketAddress) is on the unit-test android.jar; it creates a Unix
+        // channel when the address is a UnixDomainSocketAddress (JDK 17 at runtime).
+        SocketChannel.open(UnixDomainSocketAddress.of(path)).use { ch ->
             val writer = BufferedWriter(OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))
             val reader = BufferedReader(InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8))
             writer.write(FakeimapPin.jsonValue(req))
@@ -282,8 +294,7 @@ class FakeimapServer(
         ): FakeimapServer {
             FakeimapPin.requireReady()
             val work = FakeimapPin.scratchDir(label)
-            val control = work.resolve("control.sock")
-            Files.deleteIfExists(control)
+            val control = FakeimapPin.shortControlPath()
             val logPath = work.resolve("fakeimap.jsonl")
             val errPath = work.resolve("fakeimap.err")
             val cfg = work.resolve("config.json")
@@ -302,7 +313,7 @@ class FakeimapServer(
                 keys["cert_file"] = cert.toAbsolutePath().toString()
                 keys["key_file"] = key.toAbsolutePath().toString()
             }
-            Files.writeString(cfg, FakeimapPin.jsonValue(keys) + "\n")
+            writeUtf8(cfg, FakeimapPin.jsonValue(keys) + "\n")
             val pb = ProcessBuilder(FakeimapPin.artifact().toString(), cfg.toAbsolutePath().toString())
             pb.directory(FakeimapPin.repoRoot().toFile())
             pb.redirectError(errPath.toFile())
@@ -340,13 +351,22 @@ class FakeimapServer(
                 val rest = reader.readLine()
                 if (!rest.isNullOrBlank()) return rest.trim()
             }
-            val err = if (Files.isRegularFile(errPath)) Files.readString(errPath) else ""
+            val err = if (Files.isRegularFile(errPath)) readUtf8(errPath) else ""
             error(
                 "fakeimap pin: process wrote no bound-address JSON to stdout " +
                     "(alive=${proc.isAlive}, exit=${if (proc.isAlive) "n/a" else proc.exitValue()}, see $errPath): $err",
             )
         }
     }
+}
+
+
+private fun readUtf8(path: Path): String =
+    String(Files.readAllBytes(path), StandardCharsets.UTF_8)
+
+private fun writeUtf8(path: Path, text: String): Path {
+    Files.write(path, text.toByteArray(StandardCharsets.UTF_8))
+    return path
 }
 
 internal fun parseJsonObject(text: String): Map<String, Any?> {

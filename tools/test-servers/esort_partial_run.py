@@ -36,15 +36,13 @@ def main():
         add_caps=["ESORT", "PARTIAL"], sort_partial_count_only=False)
     ds = fakeimap_pin.write_dataset(os.path.join(dest, "dataset"), folder=folder, count=10,
                                     user=lab.USER, password=lab.PASS)
-    control = os.path.join(dest, "control.sock")
-    if os.path.exists(control):
-        os.remove(control)
+    control = fakeimap_pin.short_control_path("ep")
     cfg = fakeimap_pin.write_config(
         os.path.join(dest, "config.json"),
         listen=f"{lab.LAB_HOST}:0",
         personality=os.path.abspath(pfile),
         dataset=os.path.abspath(ds),
-        control=os.path.abspath(control),
+        control=str(control),
         log_path=os.path.abspath(flog),
     )
     srv = fakeimap_pin.start(cfg, flog + ".err")

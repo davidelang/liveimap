@@ -42,7 +42,11 @@ RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
 
 hold_lock = False
 cleaned = False
-fake_smtp = None  # ai-fake-smtp.py started by this run (relay sink for RELAY_SERVERS)
+fake_smtp = None  # pinned fakeimap SMTP sink started by this run (relay sink for RELAY_SERVERS)
+backend = "docker"  # --backend docker|fakeimap
+personality_override = ""  # --personality, else the lab server name
+fakeimap_server = None  # pinned fakeimap started for the current lab server
+fakeimap_overlay = ""  # path written for LAB_FAKEIMAP_PORTS
 # Servers whose submission relays to the lab fake SMTP sink (start.sh relay.conf; port = the
 # fake-smtp-sink row of generated/local-ports.tsv).
 RELAY_SERVERS = {"dovecot-245"}
@@ -169,16 +173,19 @@ def child_env(extra=None):
 
 
 def cleanup():
-    global cleaned, hold_lock
+    global cleaned, hold_lock, fakeimap_server
     if cleaned:
         return
     cleaned = True
-    if fake_smtp is not None and fake_smtp.poll() is None:
-        fake_smtp.terminate()
+    if fake_smtp is not None:
+        fake_smtp.close()
+        fake_smtp = None
+    if fakeimap_server is not None:
         try:
-            fake_smtp.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            fake_smtp.kill()
+            fakeimap_server.close()
+        except Exception:
+            pass
+        fakeimap_server = None
     # Force-stop only after a suite function has been entered. The lock is not that mark.
     if hold_lock and suites_started and not dry_run:
         try:
@@ -784,7 +791,9 @@ def setup_steps(used, by_name, suites):
     steps = []
     for name in used:
         s = by_name.get(name)
-        if s and s.get("container"):
+        if backend == "fakeimap" or (s and not s.get("container") and os.environ.get("LAB_BACKEND") == "fakeimap"):
+            steps += [(name, "start-fakeimap")]
+        elif s and s.get("container"):
             steps += [(name, "start"), (name, "check_published")]
         steps += [(name, "probe"), (name, "login"), (name, "entry-version")]
         if "imap" in suites:
@@ -1089,6 +1098,14 @@ def reset_for_suite(suite, name):
     earlier suite's writes (the imap suite's appends). Empty on success; servers without a container pass."""
     import lab
     s = lab_servers_by_name().get(name)
+    if backend == "fakeimap":
+        if name in fresh:
+            fresh.discard(name)
+            return ""
+        n = len([u for u in plan if u in done_units])
+        err = timed_step(f"{name} reset for {suite}", lambda: setup_fakeimap(name, s) or "",
+                         counter=f"reset ({n}/{len(plan)} done)")
+        return f"reset before {suite}: {err}" if err else ""
     if not s or not s.get("container"):
         return ""
     if name in fresh:
@@ -1174,9 +1191,27 @@ def stop_lab_container(s):
     subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True)
 
 
+def teardown_fakeimap():
+    """Stop the fakeimap process started for the current server. '' or why not."""
+    global fakeimap_server, fakeimap_overlay
+    err = ""
+    if fakeimap_server is not None:
+        try:
+            fakeimap_server.close()
+        except Exception as exc:
+            err = str(exc)
+        fakeimap_server = None
+    if fakeimap_overlay:
+        os.environ.pop("LAB_FAKEIMAP_PORTS", None)
+        fakeimap_overlay = ""
+    return err
+
+
 def teardown_server(s):
     """Stop and remove the server's copy-on-write container; the next setup or reset recreates it from its seed
     (start.sh --reset). '' or why not."""
+    if backend == "fakeimap" or not (s and s.get("container")):
+        return teardown_fakeimap()
     cont = s["container"]
     r = subprocess.run(["docker", "stop", "-t", "20", cont], capture_output=True, text=True, errors="replace")
     if r.returncode != 0:
@@ -1187,10 +1222,46 @@ def teardown_server(s):
     return ""
 
 
+def setup_fakeimap(name, s):
+    """Start pinned fakeimap with the matching personality and a seed-equivalent dataset."""
+    global fakeimap_server, fakeimap_overlay, by_name_holder
+    import fakeimap_backend
+    import lab
+    teardown_fakeimap()
+    pers = personality_override or name
+    work = os.path.join(REPO, "sandbox", "tmp-rescue", "fakeimap-regress", name)
+    overlay = os.path.join(work, "ports.json")
+    bind = os.environ.get("LAB_BIND") or "127.0.0.1"
+    srv, path, info = fakeimap_backend.start_lab_fakeimap(
+        name, personality=pers, work_dir=work, bind=bind, overlay_path=overlay,
+    )
+    fakeimap_server = srv
+    fakeimap_overlay = str(path)
+    os.environ["LAB_FAKEIMAP_PORTS"] = fakeimap_overlay
+    os.environ["LAB_BACKEND"] = "fakeimap"
+    # Refresh the server dict so later probes use the bound ports.
+    if s is not None:
+        s.clear()
+        s.update(lab.servers()[0] if lab.servers() else info["overlay"])
+        s["name"] = name
+        s["container"] = ""
+    return ""
+
+
 def setup_server(name, s, by_name, suites):
     """Create [name] from its seed, start it and check it. '' or the BLOCKED reason; drift notes go to drift_lines."""
     import lab
-    if s and s.get("container"):
+    if backend == "fakeimap":
+        err = timed_step(f"{name} start-fakeimap", lambda: setup_fakeimap(name, s))
+        if err:
+            return f"{name}: {err}"
+        # lab.servers() now comes from the overlay; refresh by_name for later suites.
+        for item in lab.servers():
+            by_name[item["name"]] = item
+        if name in by_name and s is not by_name[name]:
+            s.clear()
+            s.update(by_name[name])
+    elif s and s.get("container"):
         err = timed_step(f"{name} start", lambda: start_lab_container(s))
         if err:
             return f"{name}: {err}"
@@ -1290,8 +1361,9 @@ def relay_check(cont):
 
 
 def start_fake_smtp():
-    """Start ai-fake-smtp.py on the fake-smtp-sink port for this run. A port in use is an error, not a reuse."""
+    """Start pinned fakeimap as the no-auth SMTP sink on the fake-smtp-sink port. A port in use is an error, not a reuse."""
     global fake_smtp
+    import fakeimap_pin
     port, err = fake_smtp_port()
     if err:
         return err
@@ -1305,16 +1377,27 @@ def start_fake_smtp():
     finally:
         probe.close()
     os.makedirs(run_log, exist_ok=True)
-    fake_smtp = subprocess.Popen([sys.executable, os.path.join(HERE, "ai-fake-smtp.py"), str(port)],
-                                 env=child_env({"LAB_LOG": os.path.join(run_log, "fake-smtp.log")}),
-                                 stdout=subprocess.DEVNULL, stderr=open(os.path.join(run_log, "fake-smtp.err"), "w"))
+    work = os.path.join(run_log, "fake-smtp")
+    try:
+        fake_smtp = fakeimap_pin.start_smtp_sink(
+            work,
+            f"0.0.0.0:{port}",
+            os.path.join(run_log, "fake-smtp.err"),
+            log_path=os.path.join(run_log, "fake-smtp.log"),
+        )
+    except SystemExit as e:
+        return str(e.code if isinstance(e.code, str) else e) or "fakeimap SMTP sink failed to start"
     for _ in range(50):
-        if fake_smtp.poll() is not None:
-            return f"ai-fake-smtp.py exited {fake_smtp.returncode} (see {run_log}/fake-smtp.err)"
+        if fake_smtp.proc.poll() is not None:
+            fake_smtp.close()
+            fake_smtp = None
+            return f"fakeimap SMTP sink exited (see {run_log}/fake-smtp.err)"
         if not smtp_banner("127.0.0.1", port):
             return ""
         time.sleep(0.1)
-    return f"ai-fake-smtp.py gave no banner on {port} in 5s"
+    fake_smtp.close()
+    fake_smtp = None
+    return f"fakeimap SMTP sink gave no banner on {port} in 5s"
 
 
 def domain_login_reply(s, account):
@@ -1357,31 +1440,41 @@ def probe_servers(used, by_name):
             return f"{name}: {err}"
         if name in jmap:
             row = jmap[name]
-            cport = ports.container_port(name, row[1])
-            hp, derr = docker_port(s["container"], cport)
-            if derr:
-                return f"{name}: {derr}"
+            kind = "https" if row[1] == "https" else "http"
+            if s.get(kind) or s.get("https") or s.get("http"):
+                hp = s.get(kind) or s.get("https") or s.get("http")
+            else:
+                cport = ports.container_port(name, row[1])
+                hp, derr = docker_port(s["container"], cport)
+                if derr:
+                    return f"{name}: {derr}"
             err = jmap_session(host, hp, row[1])
             if err:
                 return f"{name}: {err}"
         for row in smtp.get(name, []):
-            cport = ports.container_port(name, "submission")
-            hp, derr = docker_port(s["container"], cport)
-            if derr:
-                return f"{name}: SMTP {row[1]} container port {cport}: {derr} (smtp.tsv row; the start script must publish it)"
+            if s.get("submission"):
+                hp = s["submission"]
+            else:
+                cport = ports.container_port(name, "submission")
+                hp, derr = docker_port(s["container"], cport)
+                if derr:
+                    return f"{name}: SMTP {row[1]} container port {cport}: {derr} (smtp.tsv row; the start script must publish it)"
             err = smtp_banner(host, hp)
             if err:
                 return f"{name}: SMTP {row[1]} port {hp}: {err}"
-        if name in RELAY_SERVERS:
+        if name in RELAY_SERVERS and s.get("container") and backend != "fakeimap":
             err = relay_check(s["container"])
             if err:
                 return f"{name}: {err}"
         if name in sieve:
             row = sieve[name]
-            cport = ports.container_port(name, "managesieve")
-            hp, derr = docker_port(s["container"], cport)
-            if derr:
-                return f"{name}: {derr}"
+            if s.get("managesieve"):
+                hp = s["managesieve"]
+            else:
+                cport = ports.container_port(name, "managesieve")
+                hp, derr = docker_port(s["container"], cport)
+                if derr:
+                    return f"{name}: {derr}"
             err = sieve_greeting(host, hp)
             if err:
                 return f"{name}: {err}"
@@ -1554,6 +1647,10 @@ def verify_one(s, skipped):
     for row in folders:
         if row["user"] not in users:
             users.append(row["user"])
+    if backend == "fakeimap":
+        # fakeimap has one shared mailbox store. Other seed accounts can log in
+        # but would see liveimap's INBOX; skip them rather than hide a count mismatch.
+        users = [u for u in users if u == "liveimap"] or users[:1]
     for user in users:
         password = accounts.get(user, "")
         login_user = user + "@zimbra.zcs-foss.test" if server == "zimbra-883" else user
@@ -2141,7 +2238,7 @@ def stop(msg, suites, servers, unseeded):
 
 
 def main():
-    global quiet, plan, run_t0
+    global quiet, plan, run_t0, backend, personality_override
     global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to, any_skip
     p = argparse.ArgumentParser(description="Run the lab suites, IDLE events, and per-mechanism login.")
     p.add_argument("--commit", required=True)
@@ -2152,9 +2249,17 @@ def main():
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--quiet", action="store_true", help="no progress on stderr; only FAIL lines and the final VERDICT")
+    p.add_argument("--backend", choices=["docker", "fakeimap"], default="docker",
+                   help="docker lab containers (default), or pinned fakeimap with the matching personality")
+    p.add_argument("--personality", default="",
+                   help="fakeimap personality name (default: the lab server name, e.g. cyrus-3137)")
     a = p.parse_args()
     dry_run = a.dry_run
     quiet = a.quiet
+    backend = a.backend
+    personality_override = a.personality
+    if backend == "fakeimap":
+        os.environ["LAB_BACKEND"] = "fakeimap"
     run_t0 = time.time()
     responding_to = a.responding_to or "none"
     commit = a.commit
@@ -2202,7 +2307,7 @@ def main():
             s = by_name.get(name)
             steps = ", ".join(step for _n, step in setup_steps([name], by_name, mine))
             seq = "; ".join(suite if j == 0 else f"reset, {suite}" for j, suite in enumerate(mine))
-            down = "stop, rm" if s and s.get("container") else "-"
+            down = "stop fakeimap" if backend == "fakeimap" else ("stop, rm" if s and s.get("container") else "-")
             print(f"plan {i}/{len(per_server)} {name}: setup ({steps}); {seq}; teardown ({down})")
     if not dry_run:
         try:
@@ -2228,7 +2333,7 @@ def main():
     if mb < 2048:
         stop(f"VERDICT BLOCKED MemAvailable {mb} MB is below 2048 MB", suites, names, [])
     err = ensure_dirs()
-    if not err:
+    if not err and backend != "fakeimap":
         bad = lab_mount_errors()
         if bad:
             err = "VERDICT BLOCKED lab container mounts: " + " | ".join(bad)

@@ -12,10 +12,10 @@ then judges the command log and the mailbox (via the control socket):
     ones the scenario and settings intend.
 
 drop_caps is applied by writing a derived personality (fakeimap has no drop_caps
-control op). The "outside" case is recorded as unsupported: fakeimap can inject
-a message but has no expunge control op and no at_noop hook (see fakeimap_pin.py).
-The old unexpected-command log (BAD from the strict replay fake) has no
-equivalent; it is not treated as a pass.
+control op). The "outside" case is recorded as unsupported: expunge_mid can
+expunge on the first NOOP, but fakeimap has no command-triggered inject/append
+for the second NOOP (see fakeimap_pin.py). The old unexpected-command log (BAD
+from the strict replay fake) has no equivalent; it is not treated as a pass.
 
 Fails if the pin version is still UNSELECTED or the binary has not been emerged.
 
@@ -121,7 +121,7 @@ def main():
         os.makedirs(dest, exist_ok=True)
         for case, scenario, cfg, drop in CASES:
             if scenario == "outside":
-                msg = "unsupported: fakeimap has no at_noop expunge/append control op"
+                msg = "unsupported: fakeimap has no command-triggered inject/append on NOOP"
                 out.write(f"{name}\t{case}\tunsupported\t\t\t{msg}\n"); out.flush()
                 print(name, case, "unsupported", msg, flush=True)
                 continue
@@ -132,15 +132,13 @@ def main():
                     pers, os.path.join(dest, f"{case}.personality.json"), drop_caps=drop)
             ds = fakeimap_pin.write_dataset(os.path.join(dest, f"{case}.dataset"), folder=folder,
                                             user=lab.USER, password=lab.PASS)
-            control = os.path.join(dest, f"{case}.control.sock")
-            if os.path.exists(control):
-                os.remove(control)
+            control = fakeimap_pin.short_control_path(f"sf-{case}")
             cfgpath = fakeimap_pin.write_config(
                 os.path.join(dest, f"{case}.config.json"),
                 listen=f"{lab.LAB_HOST}:0",
                 personality=os.path.abspath(pfile),
                 dataset=os.path.abspath(ds),
-                control=os.path.abspath(control),
+                control=str(control),
                 log_path=os.path.abspath(flog),
             )
             srv = fakeimap_pin.start(cfgpath, flog + ".err")

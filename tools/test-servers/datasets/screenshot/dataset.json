@@ -1,0 +1,612 @@
+{
+ "accounts": [
+  {
+   "username": "me@example.test",
+   "password": "screenshot"
+  }
+ ],
+ "mailboxes": [
+  {
+   "name": "INBOX",
+   "uid_validity": 1,
+   "generated": {
+    "count": 18392,
+    "seed": "screenshot-INBOX",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "05-May-1976 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Sent",
+   "uid_validity": 2,
+   "special_use": [
+    "\\Sent"
+   ],
+   "generated": {
+    "count": 4161,
+    "seed": "screenshot-Sent",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "22-Apr-2015 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Drafts",
+   "uid_validity": 3,
+   "special_use": [
+    "\\Drafts"
+   ],
+   "messages": [
+    {
+     "file": "s33.eml",
+     "flags": [],
+     "internal_date": "15-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s34.eml",
+     "flags": [],
+     "internal_date": "16-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s35.eml",
+     "flags": [],
+     "internal_date": "17-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s36.eml",
+     "flags": [],
+     "internal_date": "18-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s37.eml",
+     "flags": [],
+     "internal_date": "19-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s38.eml",
+     "flags": [],
+     "internal_date": "20-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s39.eml",
+     "flags": [],
+     "internal_date": "21-Oct-2026 09:00:00 +0000"
+    }
+   ]
+  },
+  {
+   "name": "Trash",
+   "uid_validity": 4,
+   "special_use": [
+    "\\Trash"
+   ],
+   "generated": {
+    "count": 863,
+    "seed": "screenshot-Trash",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "02-May-2024 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Junk",
+   "uid_validity": 5,
+   "special_use": [
+    "\\Junk"
+   ],
+   "generated": {
+    "count": 1526,
+    "seed": "screenshot-Junk",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "09-Jul-2022 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Archive",
+   "uid_validity": 6,
+   "special_use": [
+    "\\Archive"
+   ],
+   "generated": {
+    "count": 27610,
+    "seed": "screenshot-Archive",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "08-Feb-1951 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Receipts",
+   "uid_validity": 7,
+   "generated": {
+    "count": 802,
+    "seed": "screenshot-Receipts",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "02-Jul-2024 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Travel",
+   "uid_validity": 8,
+   "generated": {
+    "count": 86,
+    "seed": "screenshot-Travel",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "18-Jun-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Family",
+   "uid_validity": 9,
+   "generated": {
+    "count": 2064,
+    "seed": "screenshot-Family",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "17-Jan-2021 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Work",
+   "uid_validity": 10,
+   "generated": {
+    "count": 9290,
+    "seed": "screenshot-Work",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "06-Apr-2001 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Bills",
+   "uid_validity": 11,
+   "generated": {
+    "count": 378,
+    "seed": "screenshot-Bills",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "30-Aug-2025 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Newsletters",
+   "uid_validity": 12,
+   "generated": {
+    "count": 12004,
+    "seed": "screenshot-Newsletters",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "31-Oct-1993 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Orders",
+   "uid_validity": 13,
+   "generated": {
+    "count": 2637,
+    "seed": "screenshot-Orders",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "24-Jun-2019 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Lists",
+   "uid_validity": 14,
+   "generated": {
+    "count": 15850,
+    "seed": "screenshot-Lists",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "21-Apr-1983 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "School",
+   "uid_validity": 15,
+   "generated": {
+    "count": 56,
+    "seed": "screenshot-School",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "18-Jul-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Photos",
+   "uid_validity": 16,
+   "messages": [
+    {
+     "file": "s26.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "08-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s27.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "09-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s28.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "10-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s29.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "11-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s30.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "12-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s31.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "13-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s32.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "14-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s33.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "15-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s34.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "16-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s35.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "17-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s36.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "18-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s37.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "19-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s38.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "20-Oct-2026 09:00:00 +0000"
+    },
+    {
+     "file": "s39.eml",
+     "flags": [
+      "\\Seen"
+     ],
+     "internal_date": "21-Oct-2026 09:00:00 +0000"
+    }
+   ]
+  },
+  {
+   "name": "Projects",
+   "uid_validity": 17,
+   "generated": {
+    "count": 3462,
+    "seed": "screenshot-Projects",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "21-Mar-2017 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Clients",
+   "uid_validity": 18,
+   "generated": {
+    "count": 7804,
+    "seed": "screenshot-Clients",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "01-May-2005 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Taxes",
+   "uid_validity": 19,
+   "generated": {
+    "count": 191,
+    "seed": "screenshot-Taxes",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "05-Mar-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Health",
+   "uid_validity": 20,
+   "generated": {
+    "count": 48,
+    "seed": "screenshot-Health",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "26-Jul-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Meetings",
+   "uid_validity": 21,
+   "generated": {
+    "count": 600,
+    "seed": "screenshot-Meetings",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "20-Jan-2025 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Personal",
+   "uid_validity": 22,
+   "generated": {
+    "count": 1480,
+    "seed": "screenshot-Personal",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "24-Aug-2022 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "2023",
+   "uid_validity": 23,
+   "generated": {
+    "count": 4062,
+    "seed": "screenshot-2023",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "30-Jul-2015 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "2024",
+   "uid_validity": 24,
+   "generated": {
+    "count": 8861,
+    "seed": "screenshot-2024",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "09-Jun-2002 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "2025",
+   "uid_validity": 25,
+   "generated": {
+    "count": 6193,
+    "seed": "screenshot-2025",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "28-Sep-2009 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "2026",
+   "uid_validity": 26,
+   "generated": {
+    "count": 1864,
+    "seed": "screenshot-2026",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "05-Aug-2021 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Vendors",
+   "uid_validity": 27,
+   "generated": {
+    "count": 693,
+    "seed": "screenshot-Vendors",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "19-Oct-2024 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Support",
+   "uid_validity": 28,
+   "generated": {
+    "count": 2448,
+    "seed": "screenshot-Support",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "30-Dec-2019 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Legal",
+   "uid_validity": 29,
+   "generated": {
+    "count": 17,
+    "seed": "screenshot-Legal",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "26-Aug-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "HR",
+   "uid_validity": 30,
+   "generated": {
+    "count": 124,
+    "seed": "screenshot-HR",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "11-May-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Shipping",
+   "uid_validity": 31,
+   "generated": {
+    "count": 3070,
+    "seed": "screenshot-Shipping",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "17-Apr-2018 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Ideas",
+   "uid_validity": 32,
+   "generated": {
+    "count": 3,
+    "seed": "screenshot-Ideas",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "09-Sep-2026 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Read-later",
+   "uid_validity": 33,
+   "generated": {
+    "count": 472,
+    "seed": "screenshot-Read-later",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "28-May-2025 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Notifications",
+   "uid_validity": 34,
+   "generated": {
+    "count": 21978,
+    "seed": "screenshot-Notifications",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "11-Jul-1966 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Social",
+   "uid_validity": 35,
+   "generated": {
+    "count": 6715,
+    "seed": "screenshot-Social",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "24-Apr-2008 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  },
+  {
+   "name": "Finance",
+   "uid_validity": 36,
+   "generated": {
+    "count": 950,
+    "seed": "screenshot-Finance",
+    "from": "Earlier Mail <earlier@example.test>",
+    "to": "Me <me@example.test>",
+    "subject": "Earlier",
+    "start": "05-Feb-2024 09:00:00 +0000",
+    "step_seconds": 86400
+   }
+  }
+ ]
+}

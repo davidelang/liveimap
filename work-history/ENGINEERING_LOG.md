@@ -4286,3 +4286,25 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Pinned third_party/fakeimap to 8cb6482580da3b78465fbc7ac442d979501134b5 (git_describe 8cb6482). The 18-item test-gap list is implemented and documented in upstream docs/guide.md and docs/facts/imap-server.md, with Go tests (item 13 has no SMTP-only config, which is accepted). default is now true and the name is in the default fetch-deps set; both were off only while git_sha was UNSELECTED.
 - Emerged artifact/fakeimap and artifact/cyrusprobe. Host worktree add of this pin hits a manage-configs smudge filter on the fakeimap host clone, so src/ was materialized from git_https. This checkout's get-artifacts has no --record; hashes were written after ./build and verified with get-artifacts.
+
+## 2026-11-12 - LiveIMAP tests use only pinned fakeimap
+
+- Retired tools/test-servers/ai-fake-smtp.py. t4smtp.py and regress start third_party/fakeimap/artifact/fakeimap with smtp_auth_required false and at least one IMAP listener (David: no SMTP-only config). list-smtp replaces the old JSON log. A new test_fakeimap_smtp_sink.py checks two listeners (DSN on and off) and unauthenticated MAIL/DATA.
+- Rewrote personalities/screenshot.json as a fakeimap personality and added datasets/screenshot (fixture account me@example.test). start_server injects the 40 visible subjects (INTERNALDATE via freeze-clock) and STOREs \\Seen so STATUS matches the old folder counts. Generated fillers cannot carry per-message subjects or flags, and dataset messages are loaded before generated ones, so a static dataset alone cannot place those 40 at the end.
+- FakeimapPin and the Python runners put the control socket under sandbox/t (AF_UNIX path cap). FakeImapTest reconnects after set-dataset, which drops IMAP connections. Files.readString/writeString and SocketChannel.open(ProtocolFamily) are not on the unit-test android.jar; the helper uses readAllBytes and open(UnixDomainSocketAddress).
+- The safety "outside" case stays unsupported: expunge_mid covers the first NOOP, but fakeimap has no command-triggered inject/append for the second.
+
+## 2026-11-12 - FakeIMAP regress parity (docker vs personality)
+
+- Added `tools/test-servers/fakeimap_seed.py`, `fakeimap_backend.py`, and `fakeimap_parity.py`, plus `regress --backend fakeimap` and a `LAB_FAKEIMAP_PORTS` overlay in `lab.py`. Each lab docker server is paired with the fakeimap personality of the same name and a corpus-v1 + suite-fixture dataset.
+- Host-side probe of all 19 local `liveimap-*` containers (started/stopped one at a time, not removed) vs fakeimap: 51 classified diffs. IMAP LOGIN matched on 18/19; zimbra-883 docker never greeted (slapd segfault). Biggest fakeimap issues to hand to Grok Build: UW-IMAP `#mhinbox` prefix glued onto every mailbox; Stalwart JMAP session 401 vs docker 200; no per-account mailbox stores. Report: `/workspace/worklogs/fakeimap-regress-parity.md`.
+- No emulator install. Commit only via `sandbox/tmp-rescue/build_app-fakeimap-testing.sh` (includes the still-uncommitted step-1 files).
+
+## 2026-11-12 - fakeimap protocol parity refresh (not yet committed)
+
+- Protocol-level `tools/test-servers/fakeimap_parity.py` rerun against docker lab servers vs fakeimap personalities, with `--reset` and `--skip-servers zimbra-883`.
+- Seed: selectable empty Deep parent only where docker LISTs one as selectable (Stalwart, cyrus-3124, cyrus-3137, cyrus-36); Stalwart display mailboxes Sent Items / Deleted Items / Junk Mail; UW uses the first personal NAMESPACE (`""` / `/`) so `#mhinbox` is not prepended.
+- Classifier: unimplemented docker tokens are bug/gap; deliberate stay-off tokens ignored; implied `\Noselect` Deep parents are bug/gap; pre and post CAPABILITY compared so AUTH=OAUTH* is not hidden; LOGINDISABLED after a successful Cyrus LOGIN ignored.
+- zimbra-883 skipped: no IMAP greeting within a few minutes (`zmslapd` / getaddrinfo). All liveimap containers left stopped.
+- Diff counts: first run 51 (11 bug, 18 personality, 21 dataset, 1 harness) → after 25 (25 bug, 0 personality, 0 dataset, 0 harness) on 18 servers.
+- fakeimap/master commit `1a988e5393ef56632655da46315ac10bed0d937d` (LOGINDISABLED removed from cyrus-3137 personality only). Not re-pinned here. Gap items filed in `/workspace/worklogs/fakeimap-grokbuild-gaps2-prompt.md`.

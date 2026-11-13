@@ -1,31 +1,48 @@
 #!/usr/bin/env python3
-"""Write personalities/screenshot.json: a plaintext mailbox for the compact tablet.
+"""Write the screenshot mailbox as a fakeimap personality plus dataset.
 
-This file is still in the old replay-personality format (shapes are local (see shape()); LOGIN takes any user; the password is not stored). The
-in-tree Python replay fake that served it has been removed. It is not a
-fakeimap personality or dataset, and nothing starts it. Rewriting it as a
-fakeimap dataset (generated mailboxes plus a personality file; accounts
-must be listed, because fakeimap does not accept any login) is still open.
-The order array was only a comment for the old fake and is unused.
+The old replay-personality table (LOGIN accepted any user; exact FETCH lines
+were canned) is gone. This script writes:
+
+  personalities/screenshot.json     fakeimap personality
+  datasets/screenshot/dataset.json  accounts, folders, generated fillers
+  datasets/screenshot/sNN.eml       the 40 visible subjects
+
+fakeimap only accepts listed dataset accounts. The fixture account is
+me@example.test / screenshot (a committed test password, not a live secret).
+
+Generated messages cannot carry per-message subjects or flags, and explicit
+dataset messages are loaded before generated ones, so they would be the
+oldest. start_server() therefore injects the 40 visible messages at the end
+of each large folder (freeze-clock sets INTERNALDATE) and STOREs \\Seen on
+the leading messages so STATUS UNSEEN matches. Small folders (count <= 40)
+are stored entirely as .eml messages in the dataset.
+
+Usage:
+  ./screenshot_personality.py              # rewrite the fixture files
+  ./screenshot_personality.py --start      # start fakeimap and print bound JSON
 """
-import datetime, json, os, re, sys
+import argparse, datetime, json, os, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import fakeimap_pin
 
-def shape(cmd):
-    cmd = re.sub(r"\{\d+\+?\}$", "{L}", cmd.strip())
-    cmd = re.sub(r"\d+", "N", cmd)
-    return re.sub(r"\s+", " ", cmd).upper() if cmd.split(" ", 1)[0].upper() in ("LOGIN", "AUTHENTICATE") else re.sub(r"\s+", " ", cmd)
-
-OUT = os.path.join(HERE, "personalities", "screenshot.json")
-CAPABILITY = (
-    "IMAP4rev1 CHILDREN NAMESPACE UIDPLUS LIST-EXTENDED LIST-STATUS "
-    "SPECIAL-USE IDLE LITERAL+"
-)
-FETCH_ATTS = "UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODYSTRUCTURE"
-LIST_MESSAGES = 'LIST "" "%" RETURN (CHILDREN SPECIAL-USE STATUS (MESSAGES))'
-LIST_UNSEEN = 'LIST "" "%" RETURN (CHILDREN SPECIAL-USE STATUS (MESSAGES UNSEEN))'
+OUT_PERSONALITY = os.path.join(HERE, "personalities", "screenshot.json")
+OUT_DATASET = os.path.join(HERE, "datasets", "screenshot")
+SCREENSHOT_USER = "me@example.test"
+SCREENSHOT_PASSWORD = "screenshot"
+CAPABILITY = [
+    "IMAP4rev1", "CHILDREN", "NAMESPACE", "UIDPLUS", "LIST-EXTENDED",
+    "LIST-STATUS", "SPECIAL-USE", "IDLE", "LITERAL+", "AUTH=PLAIN", "AUTH=LOGIN",
+]
+FETCH_ITEM_ORDER = [
+    "FLAGS", "UID", "INTERNALDATE", "RFC822.SIZE", "ENVELOPE", "BODY",
+    "BODYSTRUCTURE", "RFC822", "RFC822.HEADER", "RFC822.TEXT", "BODY[]", "BODY.PEEK[]",
+]
+SELECT_ORDER = ["EXISTS", "RECENT", "FLAGS", "PERMANENTFLAGS", "UNSEEN", "UIDVALIDITY", "UIDNEXT"]
 NEWEST = datetime.date(2026, 10, 21)
+VISIBLE = 40
 
 # name, messages, unseen, SPECIAL-USE attribute (already with the backslash)
 FOLDERS = [
@@ -112,115 +129,230 @@ SUBJECTS = [
 ]
 
 
-def fetch_command(count):
-    first = count - 119 if count > 120 else 1
-    return f"FETCH {first}:{count} ({FETCH_ATTS})"
-
-
-def render(doc):
-    return json.dumps(doc, indent=1) + "\n"
-
-
 def _day(index):
     return NEWEST - datetime.timedelta(days=(len(SUBJECTS) - 1 - index))
 
 
-def _fetch_lines(count, unseen):
-    shown = min(count, len(SUBJECTS))
-    base = len(SUBJECTS) - shown
-    start = count - shown + 1
-    lines = []
-    for offset in range(shown):
-        index = base + offset
-        seq = start + offset
-        subject, name, local = SUBJECTS[index]
-        day = _day(index)
-        internal = f"{day.day:02d}-{day.strftime('%b')}-{day.year} 09:00:00 +0000"
-        envelope_date = f"{day.strftime('%a')}, {day.day} {day.strftime('%b')} {day.year} 09:00:00 +0000"
-        size = 640 + ((index * 251) % 7200)
-        lines_n = 1 + size // 78
-        flags = "()" if seq > count - unseen else "(\\Seen)"
-        addr = f'(("{name}" NIL "{local}" "example.test"))'
-        envelope = (
-            f'("{envelope_date}" "{subject}" {addr} {addr} {addr} '
-            f'((NIL NIL "me" "example.test")) NIL NIL NIL "<s{index}@screenshot.test>")'
-        )
-        structure = (
-            f'("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" {size} {lines_n} NIL NIL NIL NIL)'
-        )
-        lines.append(
-            f"* {seq} FETCH (UID {seq} FLAGS {flags} INTERNALDATE \"{internal}\" "
-            f"RFC822.SIZE {size} ENVELOPE {envelope} BODYSTRUCTURE {structure})"
-        )
-    lines.append("{TAG} OK FETCH completed")
-    return lines
+def _internal(index):
+    day = _day(index)
+    return f"{day.day:02d}-{day.strftime('%b')}-{day.year} 09:00:00 +0000"
 
 
-def _list_lines(with_unseen):
-    lines = []
-    for name, messages, unseen, attr in FOLDERS:
-        flags = "\\HasNoChildren" + (f" {attr}" if attr else "")
-        lines.append(f'* LIST ({flags}) "/" {name}')
-        if with_unseen:
-            lines.append(f"* STATUS {name} (MESSAGES {messages} UNSEEN {unseen})")
-        else:
-            lines.append(f"* STATUS {name} (MESSAGES {messages})")
-    lines.append("{TAG} OK LIST completed")
-    return lines
+def _rfc2822(index):
+    day = _day(index)
+    return f"{day.strftime('%a')}, {day.day} {day.strftime('%b')} {day.year} 09:00:00 +0000"
 
 
-def _select_lines(count, examine):
-    word = "EXAMINE" if examine else "SELECT"
-    mode = "READ-ONLY" if examine else "READ-WRITE"
-    return [
-        f"* {count} EXISTS",
-        "* 0 RECENT",
-        "* OK [UIDVALIDITY 1] UIDs valid",
-        f"* OK [UIDNEXT {count + 1}] Predicted next UID",
-        "{TAG} OK [" + mode + "] " + word + " completed",
-    ]
+def _rfc3339(index):
+    day = _day(index)
+    return f"{day.isoformat()}T09:00:00Z"
 
 
-def _add(table, order, cmd, lines, auth):
-    key = "LOGIN" if cmd.split(" ", 1)[0].upper() in ("LOGIN", "AUTHENTICATE") else shape(cmd)
-    table.setdefault(key, []).append(
-        {"auth": auth, "cmd": cmd, "items": [{"line": line} for line in lines]}
+def _size(index):
+    return 640 + ((index * 251) % 7200)
+
+
+def eml_name(index):
+    return f"s{index:02d}.eml"
+
+
+def render_eml(index):
+    subject, name, local = SUBJECTS[index]
+    size = _size(index)
+    header = (
+        f"From: {name} <{local}@example.test>\r\n"
+        f"To: Me <{SCREENSHOT_USER}>\r\n"
+        f"Subject: {subject}\r\n"
+        f"Date: {_rfc2822(index)}\r\n"
+        f"Message-ID: <s{index}@screenshot.test>\r\n"
+        "MIME-Version: 1.0\r\n"
+        'Content-Type: text/plain; charset=UTF-8\r\n'
+        "Content-Transfer-Encoding: 7bit\r\n"
+        "\r\n"
     )
-    order.append(key)
+    pad = size - len(header)
+    if pad < 1:
+        pad = 1
+    return header + ("x" * pad) + "\r\n"
 
 
-def build():
-    if len(SUBJECTS) != 40:
-        raise SystemExit(f"expected 40 subjects, got {len(SUBJECTS)}")
-    if len(FOLDERS) != 36:
-        raise SystemExit(f"expected 36 folders, got {len(FOLDERS)}")
-    table, order = {}, []
-    caps = [f"* CAPABILITY {CAPABILITY}", "{TAG} OK CAPABILITY completed"]
-    _add(table, order, "CAPABILITY", caps, False)
-    _add(table, order, "CAPABILITY", caps, True)
-    _add(table, order, "LOGIN", ["{TAG} OK LOGIN completed"], False)
-    _add(table, order, "NAMESPACE", ['* NAMESPACE (("" "/")) NIL NIL', "{TAG} OK NAMESPACE completed"], True)
-    _add(table, order, LIST_MESSAGES, _list_lines(False), True)
-    _add(table, order, LIST_UNSEEN, _list_lines(True), True)
-    for name, messages, unseen, _attr in FOLDERS:
-        _add(table, order, f"SELECT {name}", _select_lines(messages, False), True)
-        _add(table, order, f"EXAMINE {name}", _select_lines(messages, True), True)
-        _add(table, order, fetch_command(messages), _fetch_lines(messages, unseen), True)
+def build_personality():
+    caps = list(CAPABILITY)
     return {
-        "server": "screenshot",
-        "source": "screenshot_personality.py",
-        "greeting": f"* OK [CAPABILITY {CAPABILITY}] Screenshot ready",
-        "table": table,
-        "order": order,
+        "greeting": "Screenshot ready",
+        "delimiter": "/",
+        "greeting_capabilities": caps,
+        "pre_login_capabilities": caps,
+        "post_login_capabilities": [c for c in caps if not c.startswith("AUTH=")],
+        "logout_bye": True,
+        "select_flags": "\\Answered \\Flagged \\Draft \\Deleted \\Seen",
+        "permanent_flags": "\\Answered \\Flagged \\Draft \\Deleted \\Seen \\*",
+        "select_order": SELECT_ORDER,
+        "flag_order": ["\\Recent", "\\Answered", "\\Flagged", "\\Draft", "\\Deleted", "\\Seen"],
+        "fetch_peek_body": True,
+        "fetch_seen_flags": True,
+        "move_copyuid_untagged": True,
+        "sort_partial_count_only": False,
+        "fetch_item_order": FETCH_ITEM_ORDER,
     }
 
 
+def _visible_slice(count):
+    shown = min(count, VISIBLE)
+    return list(range(len(SUBJECTS) - shown, len(SUBJECTS)))
+
+
+def build_dataset():
+    mailboxes = []
+    for uidv, (name, count, unseen, attr) in enumerate(FOLDERS, start=1):
+        mb = {"name": name, "uid_validity": uidv}
+        if attr:
+            mb["special_use"] = [attr]
+        if count <= VISIBLE:
+            shown = _visible_slice(count)
+            messages = []
+            start = count - len(shown) + 1
+            for offset, index in enumerate(shown):
+                seq = start + offset
+                flags = [] if seq > count - unseen else ["\\Seen"]
+                messages.append({
+                    "file": eml_name(index),
+                    "flags": flags,
+                    "internal_date": _internal(index),
+                })
+            mb["messages"] = messages
+        else:
+            # Fillers end the day before the first visible subject.
+            first_visible = _day(len(SUBJECTS) - VISIBLE)
+            fillers = count - VISIBLE
+            start = first_visible - datetime.timedelta(days=fillers)
+            mb["generated"] = {
+                "count": fillers,
+                "seed": f"screenshot-{name}",
+                "from": "Earlier Mail <earlier@example.test>",
+                "to": f"Me <{SCREENSHOT_USER}>",
+                "subject": "Earlier",
+                "start": f"{start.day:02d}-{start.strftime('%b')}-{start.year} 09:00:00 +0000",
+                "step_seconds": 86400,
+            }
+        mailboxes.append(mb)
+    return {
+        "accounts": [{"username": SCREENSHOT_USER, "password": SCREENSHOT_PASSWORD}],
+        "mailboxes": mailboxes,
+    }
+
+
+def mailbox_count(mb):
+    if mb.get("generated"):
+        return mb["generated"]["count"] + VISIBLE
+    return len(mb.get("messages") or [])
+
+
+def render_json(doc):
+    return json.dumps(doc, indent=1) + "\n"
+
+
+def write_fixture(personality_path=None, dataset_dir=None):
+    if len(SUBJECTS) != VISIBLE:
+        raise SystemExit(f"expected {VISIBLE} subjects, got {len(SUBJECTS)}")
+    if len(FOLDERS) != 36:
+        raise SystemExit(f"expected 36 folders, got {len(FOLDERS)}")
+    personality_path = personality_path or OUT_PERSONALITY
+    dataset_dir = dataset_dir or OUT_DATASET
+    os.makedirs(os.path.dirname(personality_path), exist_ok=True)
+    os.makedirs(dataset_dir, exist_ok=True)
+    pers = render_json(build_personality())
+    if not os.path.exists(personality_path) or open(personality_path).read() != pers:
+        open(personality_path, "w").write(pers)
+    for i in range(VISIBLE):
+        path = os.path.join(dataset_dir, eml_name(i))
+        data = render_eml(i)
+        if not os.path.exists(path) or open(path, "rb").read() != data.encode("ascii"):
+            open(path, "wb").write(data.encode("ascii"))
+    ds = render_json(build_dataset())
+    ds_path = os.path.join(dataset_dir, "dataset.json")
+    if not os.path.exists(ds_path) or open(ds_path).read() != ds:
+        open(ds_path, "w").write(ds)
+    return personality_path, dataset_dir
+
+
+def start_server(personality_path=None, dataset_dir=None, work_dir=None, listen="127.0.0.1:0"):
+    """Start pinned fakeimap on the screenshot fixture and finish the visible tail.
+
+    For every folder larger than 40 messages, injects the 40 visible subjects
+    (INTERNALDATE via freeze-clock) and STOREs \\Seen so UNSEEN matches FOLDERS.
+    """
+    fakeimap_pin.require_ready()
+    personality_path, dataset_dir = write_fixture(personality_path, dataset_dir)
+    work = work_dir or os.path.join(os.path.abspath(os.path.join(HERE, "..", "..", "sandbox", "tmp-rescue")), "screenshot-run")
+    os.makedirs(work, exist_ok=True)
+    control = fakeimap_pin.short_control_path("screenshot")
+    cfg = fakeimap_pin.write_config(
+        os.path.join(work, "config.json"),
+        listen=listen,
+        personality=os.path.abspath(personality_path),
+        dataset=os.path.abspath(dataset_dir),
+        control=str(control),
+        log_path=os.path.abspath(os.path.join(work, "fakeimap.log")),
+    )
+    srv = fakeimap_pin.start(cfg, os.path.join(work, "fakeimap.err"), timeout=30)
+    try:
+        _finish_visible(srv)
+    except Exception:
+        srv.close()
+        raise
+    return srv
+
+
+def _finish_visible(srv):
+    import imaplib
+    host, port_s = srv.bound["listen"].rsplit(":", 1)
+    port = int(port_s)
+    for name, count, unseen, _attr in FOLDERS:
+        if count <= VISIBLE:
+            continue
+        shown = _visible_slice(count)
+        for index in shown:
+            srv.control({"op": "freeze-clock", "time": _rfc3339(index)})
+            srv.control({"op": "inject", "mailbox": name, "raw": render_eml(index).replace("\r\n", "\n")})
+        srv.control({"op": "thaw-clock"})
+    # STORE \\Seen on the leading messages of every folder.
+    mail = imaplib.IMAP4(host, port, timeout=30)
+    try:
+        typ, _ = mail.login(SCREENSHOT_USER, SCREENSHOT_PASSWORD)
+        if typ != "OK":
+            raise RuntimeError("screenshot login failed")
+        for name, count, unseen, _attr in FOLDERS:
+            typ, _ = mail.select(name)
+            if typ != "OK":
+                raise RuntimeError(f"SELECT {name} failed")
+            seen_until = count - unseen
+            if seen_until > 0:
+                typ, _ = mail.store(f"1:{seen_until}", "+FLAGS", r"(\Seen)")
+                if typ != "OK":
+                    raise RuntimeError(f"STORE \\Seen on {name} failed")
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+
+
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else OUT
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = render(build())
-    if not os.path.exists(path) or open(path).read() != data:
-        open(path, "w").write(data)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--start", action="store_true", help="start fakeimap and print the bound-address JSON")
+    args = parser.parse_args()
+    write_fixture()
+    if args.start:
+        srv = start_server()
+        print(json.dumps(srv.bound, indent=1))
+        try:
+            while srv.proc.poll() is None:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            srv.close()
 
 
 if __name__ == "__main__":
