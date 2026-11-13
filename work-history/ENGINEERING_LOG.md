@@ -4281,3 +4281,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Removed the in-process FakeImapServer. FakeImapTest and FakeImapF40Test now start third_party/fakeimap/artifact/fakeimap through FakeimapPin.kt (same ready-check as fakeimap_pin.py: fail loudly while git_sha is UNSELECTED or the binary is missing; no host or PATH fallback). PersonalityCapabilityTest reads pinned src/personalities instead of recording-format JSON and lives under session.
 - Removed personality.py (replay-personality builder). fake_run.py keeps pick_recording for real-lab step comparison; screenshot_personality.py keeps a local shape() helper. ai-fake-smtp.py stays: it is the no-auth relay sink for regress/t4smtp against Docker lab servers, not fakeimap's authenticated smtp_listen. PlainSieveTransportTest, JmapCredentialsAfterTrustTest, and LabProxyTest stay: they are transport/TLS/proxy fixtures, not mail-server implementations.
+
+## 2026-11-12 - Lock and emerge fakeimap 8cb6482
+
+- Pinned third_party/fakeimap to 8cb6482580da3b78465fbc7ac442d979501134b5 (git_describe 8cb6482). The 18-item test-gap list is implemented and documented in upstream docs/guide.md and docs/facts/imap-server.md, with Go tests (item 13 has no SMTP-only config, which is accepted). default is now true and the name is in the default fetch-deps set; both were off only while git_sha was UNSELECTED.
+- Emerged artifact/fakeimap and artifact/cyrusprobe. Host worktree add of this pin hits a manage-configs smudge filter on the fakeimap host clone, so src/ was materialized from git_https. This checkout's get-artifacts has no --record; hashes were written after ./build and verified with get-artifacts.

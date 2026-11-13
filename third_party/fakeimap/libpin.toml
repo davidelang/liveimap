@@ -1,30 +1,26 @@
 # fakeimap pin.
 #
-# git_sha is UNSELECTED. Do not materialize or emerge this pin until a real
-# commit is locked (planned for later today). The value must stay a 40-hex
-# placeholder: a missing or non-hex git_sha makes this checkout's fetch-deps
-# fall back to the host repo's current HEAD, which is a silent fallback and
-# is not allowed. 40 zeros is not a commit in fakeimap; fetch-deps ro/build
-# of this pin must fail until this field is replaced.
+# Locked to 8cb6482580da3b78465fbc7ac442d979501134b5 (git_describe 8cb6482).
+# Artifact sha256 values are the emerged binaries (verified with get-artifacts).
 name = "fakeimap"
 git_https = "https://github.com/davidelang/fakeimap.git"
 git_ssh = "git@github.com:davidelang/fakeimap.git"
-git_sha = "0000000000000000000000000000000000000000"
-git_describe = "UNSELECTED"
+git_sha = "8cb6482580da3b78465fbc7ac442d979501134b5"
+git_describe = "8cb6482"
 track_branch = "master"
 reproducible = true
 build_time = "minutes"
 requires_writable_src = false
-default = false
+default = true
 build = ["./build"]
-consumer_note = "Go IMAP/SMTP/JMAP/ManageSieve test server. git_sha is UNSELECTED: do not emerge until a version is locked. After emerge, run artifact/fakeimap; personalities and datasets come from a fetch-deps ro checkout of src/."
+consumer_note = "Go IMAP/SMTP/JMAP/ManageSieve test server. After emerge, run artifact/fakeimap; personalities and datasets come from a fetch-deps ro checkout of src/."
 
 [[artifact]]
 path = "artifact/fakeimap"
 from = "src/fakeimap"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "7b5d0566132958bc102dda7376fc56ac7c0ab2c60aafee0d9169f8a11acf5357"
 
 [[artifact]]
 path = "artifact/cyrusprobe"
 from = "src/cyrusprobe"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8c5a6a2b9109ac40ec7ea4ba574dbf889daa4e51ee6acc19b9b61365c09eeed1"

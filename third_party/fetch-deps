@@ -199,10 +199,8 @@ if [[ "$CMD" != "status" && "$CMD" != "upgrade" && ${#NAMES[@]} -eq 0 ]]; then
   for d in "$ROOT"/*/; do
     [[ -f "${d}libpin.toml" ]] || continue
     base="$(basename "$d")"
-    # fakeimap is a test pin, omitted from the default set like example. Its
-    # git_sha is also UNSELECTED until a version is locked; including it in the
-    # default set would fail every bare fetch-deps ro/build.
-    [[ "$base" == "rclone" || "$base" == "paddle" || "$base" == "example" || "$base" == "fakeimap" ]] && continue
+    # rclone, paddle, and example are omitted from the default name set.
+    [[ "$base" == "rclone" || "$base" == "paddle" || "$base" == "example" ]] && continue
     NAMES+=("$base")
   done
 fi
