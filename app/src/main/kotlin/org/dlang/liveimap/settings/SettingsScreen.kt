@@ -2998,7 +2998,7 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
     val settings = editor.settings
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
     BoolField(
-        S("Same as IMAP login", name = "settings_smtp_same_as_imap"),
+        S("Same as IMAP login"),
         settings.smtpSameAsImap,
         enabled = !authOn,
     ) {

@@ -73,7 +73,7 @@
   "group:watched_folders:title": "settings_group_watched_folders_title",
   "leaf:acceptInvalidCert:title": "settings_accept_invalid_cert",
   "leaf:accountAuth:choice:oauth2": "leaf_accountauth_choice_oauth2",
-  "leaf:accountAuth:choice:password": "leaf_accountauth_choice_password_2",
+  "leaf:accountAuth:choice:password": "leaf_accountauth_choice_password",
   "leaf:accountAuth:title": "leaf_accountauth_title",
   "leaf:accountSettingsFile:title": "leaf_accountsettingsfile_title",
   "leaf:addressBookHistory:title": "settings_history_label",
