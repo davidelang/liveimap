@@ -360,6 +360,7 @@ val generateSettingsTree = tasks.register<liveimap.GenerateSettingsTreeTask>("ge
     treeFile.set(file("src/main/assets/settings-tree.json"))
     scriptFile.set(file("gen-settings-tree.py"))
     templateFile.set(file("gen-account-template.kt"))
+    bindingFile.set(file("settings-display-bindings.json"))
     ktOut.set(layout.buildDirectory.dir("generated/settingsTree"))
 }
 

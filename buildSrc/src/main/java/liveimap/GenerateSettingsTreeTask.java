@@ -21,6 +21,10 @@ public abstract class GenerateSettingsTreeTask extends DefaultTask {
     @InputFile
     public abstract RegularFileProperty getTemplateFile();
 
+    /** Display names live here. The script reads this file; the task must rerun when it changes. */
+    @InputFile
+    public abstract RegularFileProperty getBindingFile();
+
     @OutputDirectory
     public abstract DirectoryProperty getKtOut();
 
