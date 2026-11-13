@@ -155,6 +155,8 @@ sealed class MailboxChange {
     data object UidValidityReset : MailboxChange()
     data object WatchLost : MailboxChange()
     data object Reconnected : MailboxChange()
+    /** The bearer was rejected twice. [text] asks the user to sign in again. */
+    data class SignInAgain(val text: String) : MailboxChange()
 }
 
 @Keep

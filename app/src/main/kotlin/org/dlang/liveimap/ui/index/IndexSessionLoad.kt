@@ -567,6 +567,7 @@ internal class IndexLoadHost {
                 MailboxChange.Reconnected -> scope.launch { watchRecovery.onRefresh() }
                 // Called on the watch take coroutine: hop to the screen scope first (F25).
                 MailboxChange.WatchLost -> scope.launch { watchRecovery.onWatchLost(scope, session) }
+                is MailboxChange.SignInAgain -> scope.launch { postSnack(change.text) }
                 else -> enqueueModel {
                     when (change) {
                         is MailboxChange.Exists -> folderExists = change.exists

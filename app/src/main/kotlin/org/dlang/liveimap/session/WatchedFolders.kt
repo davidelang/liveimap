@@ -148,6 +148,7 @@ fun folderMessageCount(current: Int?, change: MailboxChange): Int? = when (chang
     MailboxChange.UidValidityReset,
     MailboxChange.WatchLost,
     MailboxChange.Reconnected,
+    is MailboxChange.SignInAgain,
     -> current
 }
 

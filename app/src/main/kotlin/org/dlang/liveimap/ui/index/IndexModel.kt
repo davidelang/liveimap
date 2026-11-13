@@ -1801,6 +1801,7 @@ class IndexModel(
             MailboxChange.ShownFlags -> Unit
             MailboxChange.WatchLost,
             MailboxChange.Reconnected,
+            is MailboxChange.SignInAgain,
             -> Unit
         }
         return heldRows

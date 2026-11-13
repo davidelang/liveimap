@@ -692,8 +692,9 @@ class JmapMailSession(
     /**
      * Watch [mailbox] through the server's event source: one request at a time with closeafter=state, so each
      * StateChange ends the response. A new Email state is turned into the IMAP-style changes the index expects:
-     * Flags for known messages whose keywords changed, then Exists/Expunge from the folder's new total. Any failure
-     * (network, trust, redirect, off-host URL, bad data) ends the watch with WatchLost; the caller restarts it.
+     * Flags for known messages whose keywords changed, then Exists/Expunge from the folder's new total. An
+     * authentication failure refreshes once. A second one marks the tokens unusable and asks the user to sign in
+     * again. Any other failure ends the watch with WatchLost; the caller restarts it.
      */
     override suspend fun watch(mailbox: String, onChange: (MailboxChange) -> Unit) {
         startWatch(mailbox, onChange, fromResume = false)
@@ -738,25 +739,28 @@ class JmapMailSession(
                     val events = try {
                         readStream(run, url, host, auth, streamPin)
                     } catch (failure: JmapFailure) {
-                        if (useBearer && org.dlang.liveimap.oauth.oauthAuthenticationFailed(failure.text)) {
-                            val acct = account
-                            if (!pushRetried && acct != null) {
-                                val next = onBearerRejected?.invoke(acct, password)
-                                if (next != null) {
-                                    password = next
-                                    authorization = jmapAuthorization(acct.username, next, true)
-                                    auth = authorization
-                                    pushRetried = true
-                                    readStream(run, url, host, auth, streamPin)
-                                } else {
-                                    throw failure
-                                }
-                            } else {
-                                account?.let { onBearerRejected?.invoke(it, password) }
-                                throw failure
-                            }
-                        } else {
+                        if (!(useBearer && org.dlang.liveimap.oauth.oauthAuthenticationFailed(failure.text))) {
                             throw failure
+                        }
+                        val acct = account
+                        if (pushRetried || acct == null) {
+                            account?.let { onBearerRejected?.invoke(it, password) }
+                            throw MailFailure("Sign in again")
+                        }
+                        val next = onBearerRejected?.invoke(acct, password)
+                        if (next == null) throw MailFailure("Sign in again")
+                        password = next
+                        authorization = jmapAuthorization(acct.username, next, true)
+                        auth = authorization
+                        pushRetried = true
+                        try {
+                            readStream(run, url, host, auth, streamPin)
+                        } catch (again: JmapFailure) {
+                            if (org.dlang.liveimap.oauth.oauthAuthenticationFailed(again.text)) {
+                                onBearerRejected?.invoke(acct, password)
+                                throw MailFailure("Sign in again")
+                            }
+                            throw again
                         }
                     }
                     if (pushRetried && useBearer) onBearerAccepted?.invoke()
@@ -773,6 +777,12 @@ class JmapMailSession(
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (failure: MailFailure) {
+                if (failure.text == "Sign in again") {
+                    if (isActive) onChange(MailboxChange.SignInAgain(failure.text))
+                } else if (isActive) {
+                    onChange(MailboxChange.WatchLost)
+                }
             } catch (_: Exception) {
                 if (isActive) onChange(MailboxChange.WatchLost)
             }

@@ -64,33 +64,15 @@ class OauthFakeimapPinTest {
         capability: String,
     ) {
         check(capability.contains("AUTH=OAUTHBEARER") && capability.contains("AUTH=XOAUTH2"))
-        val saslIr = capability.uppercase().contains("SASL-IR")
+        check(capability.uppercase().contains("SASL-IR")) { "server advertises OAuth but not SASL-IR" }
         val probe = org.dlang.liveimap.session.oauthBearerInitial("user", server.listenHost, server.listenPort, "probe")
-        val authLine = if (saslIr) {
-            "A2 AUTHENTICATE OAUTHBEARER $probe\r\n"
-        } else {
-            "A2 AUTHENTICATE OAUTHBEARER\r\n"
-        }
-        writer.write(authLine)
-        writer.flush()
-        var reply = reader.readLine() ?: error("server closed during OAUTHBEARER")
-        if (!saslIr) {
-            check(reply.startsWith("+")) { reply }
-            writer.write("$probe\r\n")
-            writer.flush()
-            reply = reader.readLine() ?: error("server closed after the OAUTHBEARER initial response")
-        }
-        if (reply.startsWith("+")) {
-            check(OAUTH_BEARER_ERROR_REPLY == "AQ==")
-            writer.write("AQ==\r\n")
-            writer.flush()
-            reply = reader.readLine() ?: error("server closed after AQ==")
-        }
+        val reply = authenticateBearer(reader, writer, "A2", probe, challenge = true)
         check(reply.startsWith("A2 ")) { reply }
-        val logged = server.commandLog().any { it.contains("AUTHENTICATE") && it.contains("OAUTHBEARER") }
-        check(logged) { "server did not record AUTHENTICATE OAUTHBEARER" }
+        val logged = server.commandLog()
+        check(logged.any { it.contains("AUTHENTICATE") && it.contains("OAUTHBEARER") && it.contains(probe) }) {
+            "server did not record SASL-IR OAUTHBEARER"
+        }
 
-        val issuedOnServer = exposedBearer(capability) ?: exposedBearer(reply)
         val issuer = Regex("""https://\S+""").find(capability)?.value?.trimEnd('>', ']', ')')
             ?: error("server advertises OAuth but exposes no https provider")
         OauthLoopback.clear()
@@ -104,6 +86,7 @@ class OauthFakeimapPinTest {
             smtpSameAsImap = true,
         )
         val found = discoverOauth(settings.oauthIssuer, transport)
+        check(found.authorization.isNotBlank() && found.token.isNotBlank()) { "discovery returned no endpoints" }
         var pending: OauthPending? = null
         val url = prepareBrowserSignIn(
             settings.copy(
@@ -114,60 +97,115 @@ class OauthFakeimapPinTest {
             { pending = it },
             { null },
         )
-        check(url.contains("code_challenge_method=S256"))
+        check(url.contains("code_challenge=") && url.contains("code_challenge_method=S256"))
         check(pending != null)
-        val code = exposedBearer(capability)?.let { "server-code" }
-            ?: Regex("""(?:^|\s)code=([^\s&]+)""").find(capability)?.groupValues?.get(1)
-            ?: "server-code"
+        val code = Regex("""(?:^|[?&\s])code=([^\s&]+)""").find(capability)?.groupValues?.get(1)
+            ?: error("server advertises OAuth but exposes no authorization code")
         val ready = settings.copy(
             oauthAuthorizationEndpoint = found.authorization,
             oauthTokenEndpoint = found.token,
             oauthRevocationEndpoint = found.revocation.orEmpty(),
         )
-        val publicGrant = postGrant(found.token, authorizationCodeBody(ready, code, pending!!.verifier, null), transport, "token exchange")
+        val publicBody = authorizationCodeBody(ready, code, pending!!.verifier, null)
+        check(!publicBody.contains("client_secret"))
+        val publicGrant = postGrant(found.token, publicBody, transport, "token exchange")
+        check(publicGrant.error == null && publicGrant.access.isNotEmpty()) {
+            "public client was not issued a token (${publicGrant.error})"
+        }
         val confidentialBody = authorizationCodeBody(ready, code, pending.verifier, "secret")
         check(confidentialBody.contains("client_secret=secret"))
         val confidentialGrant = postGrant(found.token, confidentialBody, transport, "token exchange")
-        val issued = issuedOnServer
-            ?: publicGrant.access.takeIf { it.isNotEmpty() }
-            ?: confidentialGrant.access.takeIf { it.isNotEmpty() }
-            ?: error("server advertises OAuth but issued no bearer")
-        var state = applyGrant(
-            OauthTokenState(),
-            (if (publicGrant.access.isNotEmpty()) publicGrant else confidentialGrant).copy(
-                access = issued,
-                refresh = publicGrant.refresh ?: confidentialGrant.refresh ?: "refresh",
-            ),
-            0,
-        )
-        if (state.expiresAtMs != null) check(state.needsProactiveRefresh(state.expiresAtMs!!))
-        val rotated = refreshLocked(state, ready, null, 0, transport)
-        if (rotated.refresh != state.refresh) check(rotated.refresh.isNotEmpty())
-        val kept = refreshLocked(state, ready, "secret", 0, transport)
-        check(kept.refresh.isNotEmpty() || kept.refreshUnusable)
-        if (!rotated.refreshUnusable && rotated.refresh.isNotEmpty() && ready.oauthRevocationEndpoint.isNotBlank()) {
-            oauthCall(
-                OauthHttpRequest(
-                    ready.oauthRevocationEndpoint,
-                    "POST",
-                    "application/x-www-form-urlencoded",
-                    revocationBody(ready, rotated.refresh, "secret"),
-                ),
-                transport,
-                "revocation",
-            )
+        check(confidentialGrant.error == null && confidentialGrant.access.isNotEmpty()) {
+            "confidential client was not issued a token (${confidentialGrant.error})"
         }
-        val denied = onAuthFailure("pin", rotated, ready, "secret", 0, transport) {}
-        check(denied.accessUnusable && denied.refreshUnusable)
+        val issued = exposedBearer(capability) ?: exposedBearer(reply) ?: publicGrant.access
+        check(issued.isNotEmpty()) { "server advertises OAuth but issued no bearer without a browser" }
+        val refresh = publicGrant.refresh ?: confidentialGrant.refresh
+            ?: error("server advertises OAuth but issued no refresh token")
+        val state = OauthTokenState(access = issued, refresh = refresh, expiresAtMs = 0)
+        val expiredInitial = org.dlang.liveimap.session.oauthBearerInitial(
+            "user",
+            server.listenHost,
+            server.listenPort,
+            state.access,
+        )
+        authenticateBearer(reader, writer, "A3", expiredInitial, challenge = false)
+        check(server.commandLog().any { it.contains(expiredInitial) }) {
+            "expired access token was not presented"
+        }
+        var saved: OauthTokenState? = null
+        val renewed = accessForLogin("pin", state, ready, "secret", 0, transport) { saved = it }
+        check(renewed.isNotEmpty() && renewed != state.access) { "expired access token was not refreshed" }
+        check(saved != null && saved!!.access == renewed && !saved!!.accessUnusable)
+
+        val rotatedGrant = postGrant(found.token, refreshBody(ready, refresh, null), transport, "refresh")
+        check(rotatedGrant.error == null && rotatedGrant.access.isNotEmpty()) { "refresh failed (${rotatedGrant.error})" }
+        check(rotatedGrant.refresh != null && rotatedGrant.refresh != refresh) {
+            "refresh did not replace the refresh token"
+        }
+        val rotated = applyGrant(state, rotatedGrant, 0)
+        val keptGrant = postGrant(found.token, refreshBody(ready, rotated.refresh, "secret"), transport, "refresh")
+        check(keptGrant.error == null && keptGrant.access.isNotEmpty()) { "refresh without a new refresh token failed" }
+        check(keptGrant.refresh == null) { "refresh was required to omit refresh_token" }
+        val kept = applyGrant(rotated, keptGrant, 0)
+        check(kept.refresh == rotated.refresh && !kept.refreshUnusable && !kept.accessUnusable)
+
+        check(ready.oauthRevocationEndpoint.isNotBlank()) {
+            "server advertises OAuth but exposes no revocation endpoint"
+        }
+        oauthCall(
+            OauthHttpRequest(
+                ready.oauthRevocationEndpoint,
+                "POST",
+                "application/x-www-form-urlencoded",
+                revocationBody(ready, kept.refresh, "secret"),
+            ),
+            transport,
+            "revocation",
+        )
+        var refreshPosts = 0
+        val counting = OauthTransport { request ->
+            if (request.body.orEmpty().contains("grant_type=refresh_token")) refreshPosts++
+            transport.exchange(request)
+        }
+        val denied = onAuthFailure("pin", kept, ready, "secret", 0, counting) {}
+        check(refreshPosts == 1) { "invalid_grant refreshed $refreshPosts times" }
+        check(denied.accessUnusable && denied.refreshUnusable) {
+            "invalid_grant left the tokens usable"
+        }
+        val signIn = if (denied.access.isEmpty() || denied.accessUnusable) "Sign in again" else denied.access
+        check(signIn == "Sign in again")
 
         val smtp = server.bound["smtp"] as? String ?: error("server advertises OAuth but exposes no SMTP listener")
-        speakSmtp(smtp, issued, sameAsImap = true)
-        speakSmtp(smtp, issued, sameAsImap = false)
+        speakSmtp(smtp, renewed, sameAsImap = true)
+        speakSmtp(smtp, renewed, sameAsImap = false)
         val jmap = (server.bound["jmap"] as? String) ?: (server.bound["jmap_tls"] as? String)
             ?: error("server advertises OAuth but exposes no JMAP listener")
-        val off = ready.copy(smtpSameAsImap = false)
-        check(!off.smtpSameAsImap)
-        submitJmap(jmap, issued)
+        check(!ready.copy(smtpSameAsImap = false).smtpSameAsImap)
+        submitJmap(jmap, renewed)
+    }
+
+    /** Sends AUTHENTICATE OAUTHBEARER with SASL-IR. [challenge] requires an error challenge answered by AQ==. */
+    private fun authenticateBearer(
+        reader: BufferedReader,
+        writer: BufferedWriter,
+        tag: String,
+        initial: String,
+        challenge: Boolean,
+    ): String {
+        writer.write("$tag AUTHENTICATE OAUTHBEARER $initial\r\n")
+        writer.flush()
+        var reply = reader.readLine() ?: error("server closed during OAUTHBEARER")
+        if (challenge) {
+            check(reply.startsWith("+")) { "server did not challenge OAUTHBEARER; AQ== was not sent ($reply)" }
+        }
+        if (reply.startsWith("+")) {
+            check(OAUTH_BEARER_ERROR_REPLY == "AQ==")
+            writer.write("AQ==\r\n")
+            writer.flush()
+            reply = reader.readLine() ?: error("server closed after AQ==")
+        }
+        return reply
     }
 
     private fun allowLoopback(url: String) {
@@ -201,15 +239,21 @@ class OauthFakeimapPinTest {
                 if (line.length >= 4 && line[3] == ' ') break
             }
             val offered = ehlo.joinToString(" ")
+            check(offered.uppercase().contains("AUTH")) { "smtp did not advertise AUTH" }
             if (sameAsImap) {
-                val saslIr = offered.uppercase().contains("SASL-IR")
+                check(offered.uppercase().contains("OAUTHBEARER")) { "smtp does not advertise OAUTHBEARER" }
                 val initial = org.dlang.liveimap.session.oauthBearerInitial("user", host, port, bearer)
-                if (saslIr) writer.write("AUTH OAUTHBEARER $initial\r\n") else writer.write("AUTH OAUTHBEARER\r\n")
+                val saslIr = offered.uppercase().contains("SASL-IR")
+                val sent = if (saslIr) "AUTH OAUTHBEARER $initial" else "AUTH OAUTHBEARER"
+                writer.write("$sent\r\n")
                 writer.flush()
                 var line = reader.readLine() ?: error("smtp closed during AUTH")
-                if (!saslIr && line.startsWith("334")) {
+                var sentBearer = sent.contains(initial)
+                if (!saslIr) {
+                    check(line.startsWith("334")) { line }
                     writer.write("$initial\r\n")
                     writer.flush()
+                    sentBearer = true
                     line = reader.readLine() ?: error("smtp closed after the bearer")
                 }
                 if (line.startsWith("334")) {
@@ -217,12 +261,21 @@ class OauthFakeimapPinTest {
                     writer.flush()
                     line = reader.readLine() ?: error("smtp closed after AQ==")
                 }
-                check(line.startsWith("2") || line.startsWith("5") || line.startsWith("4")) { line }
+                check(sentBearer) { "smtpSameAsImap did not send the bearer" }
+                check(line.startsWith("235")) { "smtpSameAsImap did not accept the bearer ($line)" }
             } else {
-                writer.write("QUIT\r\n")
+                val plain = java.util.Base64.getEncoder().encodeToString("\u0000user\u0000secret".toByteArray(StandardCharsets.UTF_8))
+                check(!plain.contains(bearer))
+                writer.write("AUTH PLAIN $plain\r\n")
                 writer.flush()
-                val line = reader.readLine()
-                check(line == null || !line.contains(bearer))
+                var line = reader.readLine() ?: error("smtp closed during password AUTH")
+                if (line.startsWith("334")) {
+                    writer.write("$plain\r\n")
+                    writer.flush()
+                    line = reader.readLine() ?: error("smtp closed after the password")
+                }
+                check(!line.contains(bearer) && !line.contains("OAUTHBEARER"))
+                check(line.startsWith("235")) { "smtp password login was not accepted ($line)" }
             }
         }
     }
@@ -246,7 +299,13 @@ class OauthFakeimapPinTest {
             socket.getOutputStream().write(request.toByteArray(StandardCharsets.UTF_8))
             socket.shutdownOutput()
             val response = socket.getInputStream().readBytes().toString(StandardCharsets.UTF_8)
-            check(response.startsWith("HTTP/")) { response.take(80) }
+            check(response.startsWith("HTTP/1.1 200") || response.startsWith("HTTP/1.0 200")) {
+                "EmailSubmission was not accepted (${response.take(80)})"
+            }
+            check(response.contains("EmailSubmission/set") && response.contains("\"created\"")) {
+                "EmailSubmission/set did not create a submission"
+            }
+            check(!response.contains("\"notCreated\"")) { "EmailSubmission/set rejected the message" }
         }
     }
 }
