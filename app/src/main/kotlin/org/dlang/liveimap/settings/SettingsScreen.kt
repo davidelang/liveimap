@@ -212,6 +212,7 @@ internal class SaveCapture(
     val smtp: String?,
     val sieve: String?,
     val creating: Boolean,
+    val oauthSecret: String? = null,
 )
 
 internal class SettingsEditor(
@@ -233,9 +234,11 @@ internal class SettingsEditor(
     private var passwordDirty = false
     private var smtpDirty = false
     private var sieveDirty = false
+    private var oauthDirty = false
     private var baselinePassword = ""
     private var baselineSmtp = ""
     private var baselineSieve = ""
+    private var baselineOauth = ""
     val passwordState = mutableStateOf("")
     val smtpPasswordState = mutableStateOf("")
     val accountsState = mutableStateOf<List<AccountChoice>>(emptyList())
@@ -244,6 +247,7 @@ internal class SettingsEditor(
     var passwordMissing by mutableStateOf(false)
     var smtpMissing by mutableStateOf(false)
     var sievePassword by mutableStateOf("")
+    var oauthSecret by mutableStateOf("")
     var policy by mutableStateOf<List<PolicyLine>>(emptyList())
 
     fun noteSievePassword(value: String) {
@@ -251,6 +255,13 @@ internal class SettingsEditor(
         sieveDirty = true
         pageDirty = true
         if (creating) org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = value
+    }
+
+    fun noteOauthSecret(value: String) {
+        oauthSecret = value
+        oauthDirty = true
+        pageDirty = true
+        if (creating) org.dlang.liveimap.settings.editors.PendingNewAccount.oauthSecret = value
     }
     var deleteName by mutableStateOf<String?>(null)
     var deleteStep by mutableStateOf<Int?>(null)
@@ -301,6 +312,7 @@ internal class SettingsEditor(
             org.dlang.liveimap.settings.editors.PendingNewAccount.password = password
             org.dlang.liveimap.settings.editors.PendingNewAccount.smtpPassword = smtpPassword
             org.dlang.liveimap.settings.editors.PendingNewAccount.sievePassword = sievePassword
+            org.dlang.liveimap.settings.editors.PendingNewAccount.oauthSecret = oauthSecret
             pageDirty = true
             return true
         }
@@ -369,7 +381,7 @@ internal class SettingsEditor(
         settings = settings.copy(appTextZoom = clamped)
         dirtyKeys.updateAndGet { it - "appTextZoom" }
         baselineMirror.set(baselineMirror.get().copy(appTextZoom = clamped))
-        pageDirty = dirtyKeys.get().isNotEmpty() || passwordDirty || smtpDirty || sieveDirty
+        pageDirty = dirtyKeys.get().isNotEmpty() || passwordDirty || smtpDirty || sieveDirty || oauthDirty
         if (creating) {
             org.dlang.liveimap.settings.editors.PendingNewAccount.settings = settings
         }
@@ -390,6 +402,7 @@ internal class SettingsEditor(
         password = pending.password
         smtpPassword = pending.smtpPassword
         sievePassword = pending.sievePassword
+        oauthSecret = pending.oauthSecret
         passwordMissing = false
         smtpMissing = false
         ready = true
@@ -401,10 +414,18 @@ internal class SettingsEditor(
         val savingPassword = password
         val savingSmtp = smtpPassword
         val savingSieve = sievePassword
+        val savingOauth = oauthSecret
         settingsIo.launch {
             val id = store.createAccount(savingSettings, savingPassword, savingSmtp)
             if (savingSieve.isNotEmpty()) {
                 org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, savingSieve)
+            }
+            if (savingOauth.isNotEmpty()) {
+                org.dlang.liveimap.accounts.AccountStore.shared(appContext).setOauthPlain(
+                    id,
+                    org.dlang.liveimap.accounts.oauthClientSecretSlot,
+                    savingOauth,
+                )
             }
             val created = org.dlang.liveimap.settings.editors.PendingNewAccount.onCreated
             org.dlang.liveimap.settings.editors.PendingNewAccount.clear()
@@ -576,9 +597,11 @@ internal class SettingsEditor(
             passwordDirty = false
             smtpDirty = false
             sieveDirty = false
+            oauthDirty = false
             baselinePassword = loaded.password
             baselineSmtp = loaded.smtpPassword
             baselineSieve = ""
+            baselineOauth = ""
         }
         ready = true
     }
@@ -605,6 +628,10 @@ internal class SettingsEditor(
             sievePassword = baselineSieve
             sieveDirty = false
         }
+        if (oauthDirty) {
+            oauthSecret = baselineOauth
+            oauthDirty = false
+        }
     }
 
     fun commitPage(): Boolean = runBlocking { commitPageAwait() }
@@ -617,6 +644,7 @@ internal class SettingsEditor(
         smtp = smtp ?: if (smtpDirty) smtpPassword else null,
         sieve = if (sieveDirty) sievePassword else null,
         creating = creating,
+        oauthSecret = if (oauthDirty) oauthSecret else null,
     )
 
     suspend fun commitPageAwait(requireWrite: Boolean = false, captured: SaveCapture? = null): Boolean {
@@ -635,6 +663,7 @@ internal class SettingsEditor(
                 smtp = if (smtpDirty) smtpPassword else null,
                 sieve = if (sieveDirty) sievePassword else null,
                 creating = creating,
+                oauthSecret = if (oauthDirty) oauthSecret else null,
             )
             if (attempt.creating) {
                 if (captured != null && !persist(attempt.screen)) {
@@ -647,6 +676,10 @@ internal class SettingsEditor(
                     attempt.sieve?.let {
                         sievePassword = it
                         sieveDirty = true
+                    }
+                    attempt.oauthSecret?.let {
+                        oauthSecret = it
+                        oauthDirty = true
                     }
                 }
                 settingsSaveFailure.value = null
@@ -664,6 +697,7 @@ internal class SettingsEditor(
             val writePassword = attempt.password
             val writeSmtp = attempt.smtp
             val writeSieve = attempt.sieve
+            val writeOauth = attempt.oauthSecret
             val rejected = null
             val preview = settingsSaveVerdict(
                 rejected = rejected,
@@ -686,14 +720,14 @@ internal class SettingsEditor(
             val id = attempt.accountId
             val storeTarget = id?.let { store.forAccount(it) }
             if (storeTarget == null) {
-                if (keys.any { settingsRegistry[it]?.scope != SettingScope.Ui } || writePassword != null || writeSmtp != null || writeSieve != null) {
+                if (keys.any { settingsRegistry[it]?.scope != SettingScope.Ui } || writePassword != null || writeSmtp != null || writeSieve != null || writeOauth != null) {
                     if (settingsSaveFailure.value.isNullOrEmpty()) settingsSaveFailure.value = settingsSaveEmptyWrite
                     return false
                 }
                 settingsSaveFailure.value = null
                 SettingsHub.saveUiKeys(appContext, saving, keys, replaceUnknowns = unknownsChanged)
                 if (captured == null || editingMirror.get() == id) {
-                    markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, replaceSettings = captured != null)
+                    markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, writeOauth, replaceSettings = captured != null)
                 }
                 return true
             }
@@ -703,6 +737,13 @@ internal class SettingsEditor(
             if (writeSmtp != null) storeTarget.setSmtpPassword(writeSmtp)
             if (writeSieve != null) {
                 org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, writeSieve.ifEmpty { null })
+            }
+            if (writeOauth != null) {
+                org.dlang.liveimap.accounts.AccountStore.shared(appContext).setOauthPlain(
+                    id,
+                    org.dlang.liveimap.accounts.oauthClientSecretSlot,
+                    writeOauth.ifEmpty { null },
+                )
             }
             val recorded = settingsSaveVerdict(
                 rejected = null,
@@ -724,7 +765,7 @@ internal class SettingsEditor(
                 return false
             }
             if (captured == null || editingMirror.get() == id) {
-                markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, replaceSettings = captured != null)
+                markAttemptStored(id, saving, writePassword, writeSmtp, writeSieve, writeOauth, replaceSettings = captured != null)
             }
             return true
         } catch (error: kotlinx.coroutines.CancellationException) {
@@ -743,6 +784,7 @@ internal class SettingsEditor(
         writePassword: String?,
         writeSmtp: String?,
         writeSieve: String?,
+        writeOauth: String?,
         replaceSettings: Boolean,
     ) {
         if (replaceSettings) {
@@ -770,6 +812,7 @@ internal class SettingsEditor(
             }
             if (writeSieve != null) sievePassword = writeSieve
             else if (retarget.dropSievePassword) sievePassword = ""
+            if (writeOauth != null) oauthSecret = writeOauth
         }
         baselineMirror.set(if (replaceSettings) saving else settingsMirror.get())
         dirtyKeys.set(emptySet())
@@ -777,9 +820,11 @@ internal class SettingsEditor(
         passwordDirty = false
         smtpDirty = false
         sieveDirty = false
+        oauthDirty = false
         baselinePassword = password
         baselineSmtp = smtpPassword
         baselineSieve = sievePassword
+        baselineOauth = oauthSecret
         SettingsRevision.bump()
     }
 
@@ -797,7 +842,7 @@ internal class SettingsEditor(
             val scopePick = ScopePicks.chosen.isNotEmpty()
             val id = editingMirror.get()
             val storeTarget = id?.let { store.forAccount(it) }
-            if (storeTarget != null && (keys.isNotEmpty() || unknownsChanged || scopePick || passwordDirty || smtpDirty || sieveDirty)) {
+            if (storeTarget != null && (keys.isNotEmpty() || unknownsChanged || scopePick || passwordDirty || smtpDirty || sieveDirty || oauthDirty)) {
                 if (keys.isNotEmpty() || unknownsChanged || scopePick) {
                     storeTarget.commitKeys(draft, keys, writeUnknowns = unknownsChanged)
                 }
@@ -806,6 +851,13 @@ internal class SettingsEditor(
                 val sieve = sievePassword
                 if (sieveDirty) {
                     org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, sieve.ifEmpty { null })
+                }
+                if (oauthDirty) {
+                    org.dlang.liveimap.accounts.AccountStore.shared(appContext).setOauthPlain(
+                        id,
+                        org.dlang.liveimap.accounts.oauthClientSecretSlot,
+                        oauthSecret.ifEmpty { null },
+                    )
                 }
             } else if (storeTarget == null && (keys.isNotEmpty() || unknownsChanged || scopePick)) {
                 SettingsHub.saveUiKeys(appContext, draft, keys, replaceUnknowns = unknownsChanged)
@@ -816,9 +868,11 @@ internal class SettingsEditor(
             passwordDirty = false
             smtpDirty = false
             sieveDirty = false
+            oauthDirty = false
             baselinePassword = password
             baselineSmtp = smtpPassword
             baselineSieve = sievePassword
+            baselineOauth = oauthSecret
             SettingsRevision.bump()
             return true
         } catch (error: kotlinx.coroutines.CancellationException) {
@@ -836,9 +890,17 @@ internal class SettingsEditor(
         val savingPassword = password
         val savingSmtp = smtpPassword
         val savingSieve = sievePassword
+        val savingOauth = oauthSecret
         val id = store.createAccount(savingSettings, savingPassword, savingSmtp)
         if (savingSieve.isNotEmpty()) {
             org.dlang.liveimap.accounts.AccountStore.shared(appContext).setSievePassword(id, savingSieve)
+        }
+        if (savingOauth.isNotEmpty()) {
+            org.dlang.liveimap.accounts.AccountStore.shared(appContext).setOauthPlain(
+                id,
+                org.dlang.liveimap.accounts.oauthClientSecretSlot,
+                savingOauth,
+            )
         }
         val created = org.dlang.liveimap.settings.editors.PendingNewAccount.onCreated
         org.dlang.liveimap.settings.editors.PendingNewAccount.clear()
@@ -848,6 +910,7 @@ internal class SettingsEditor(
         passwordDirty = false
         smtpDirty = false
         sieveDirty = false
+        oauthDirty = false
         created?.invoke(id)
         val epoch = captureEpochs()
         store.onAccount(publish = { loaded: EditorLoad ->
@@ -1797,7 +1860,7 @@ internal fun SmtpPasswordDraftField(editor: SettingsEditor, drafts: ServerDrafts
     if (editor.smtpMissing && drafts.smtpPasswordDraft == null && editor.smtpPassword.isEmpty()) {
         Text(S("Password missing"))
     }
-    Text(S("Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP password\" is ticked."))
+    Text(S("Used when SMTP login is required. The IMAP password is used only when \"Same as IMAP login\" is ticked."))
     LineField(
         stringResource(SettingsTreeGenerated.resource("settings_smtp_password")),
         drafts.smtpPasswordDraft ?: editor.smtpPassword,
@@ -2115,6 +2178,15 @@ internal fun PasswordRow(key: String, walk: SettingsWalk) {
                 ready = editor.ready,
             ) { editor.noteSievePassword(it) }
         }
+        "oauthClientSecret" -> {
+            LineField(
+                stringResource(SettingsTreeGenerated.regTitle(key)),
+                editor.oauthSecret,
+                KeyboardType.Password,
+                password = true,
+                ready = editor.ready,
+            ) { editor.noteOauthSecret(it) }
+        }
     }
 }
 
@@ -2122,18 +2194,34 @@ internal fun PasswordRow(key: String, walk: SettingsWalk) {
 internal fun CheckServerRow(walk: SettingsWalk) {
     val editor = walk.editor
     val drafts = walk.drafts
+    val context = androidx.compose.ui.platform.LocalContext.current
     TextButton(onClick = {
         val chosen = drafts?.serverDraft ?: editor.settings
         val candidate = drafts?.savedServer(editor, chosen) ?: chosen
+        val accountId = editor.editingId
         editor.ui.launch {
-            val report = try {
+            val lines = try {
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    org.dlang.liveimap.engine.LibetpanMailSession.checkServerSettings(candidate)
+                    val signedIn = candidate.accountAuth == "oauth2" && accountId != null &&
+                        org.dlang.liveimap.oauth.OauthBridge.isSignedIn(context, accountId)
+                    val report = org.dlang.liveimap.engine.LibetpanMailSession.checkServerSettings(candidate, signedIn)
+                    val found = report.conflicts + report.notes
+                    if (candidate.accountAuth != "oauth2" || !signedIn || accountId == null) {
+                        found
+                    } else {
+                        val session = org.dlang.liveimap.session.SerialMailSession(
+                            org.dlang.liveimap.engine.LibetpanMailSession(context, accountId),
+                        )
+                        try {
+                            found + org.dlang.liveimap.engine.probeServer(session, candidate)
+                        } finally {
+                            session.close()
+                        }
+                    }
                 }
             } catch (error: Exception) {
-                null
+                listOf(error.message ?: "server not reachable")
             }
-            val lines = if (report == null) listOf("server not reachable") else report.conflicts + report.notes
             settingsSaveFailure.value = lines.joinToString("\n").ifEmpty { "ok" }
         }
     }) { Text(stringResource(SettingsTreeGenerated.regTitle("checkServer"))) }
@@ -2168,12 +2256,27 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
     // Export goes through the share sheet, so the file can be mailed as well as saved.
     fun shareExport() {
         val name = if (accountScope) "account-settings.json" else "ui-settings.json"
+        val accountId = editor.editingId
+        val storedOauth = if (includePasswords && accountScope && accountId != null) {
+            kotlinx.coroutines.runBlocking {
+                val accounts = org.dlang.liveimap.accounts.AccountStore.shared(context)
+                val secret = editor.oauthSecret.ifEmpty {
+                    accounts.oauthPlain(accountId, org.dlang.liveimap.accounts.oauthClientSecretSlot).orEmpty()
+                }
+                val token = accounts.oauthPlain(accountId, org.dlang.liveimap.accounts.oauthTokenSlot).orEmpty()
+                secret to token
+            }
+        } else {
+            "" to ""
+        }
         val body = withFavoriteAccountNames(exportSettingsDocument(
             if (accountScope) editor.settings.encode() else editor.settings.encodeUi(),
             includePasswords && accountScope,
             editor.password,
             editor.smtpPassword,
             editor.sievePassword,
+            storedOauth.first,
+            storedOauth.second,
         ))
         val dir = java.io.File(context.cacheDir, "export")
         if (!dir.isDirectory && !dir.mkdirs()) {
@@ -2208,6 +2311,18 @@ internal fun SettingsFileRow(key: String, walk: SettingsWalk) {
             (root.fields["imapPassword"] as? JsonValue.Str)?.value?.let { editor.persistPassword(it) }
             (root.fields["smtpPassword"] as? JsonValue.Str)?.value?.let { editor.persistSmtpPassword(it) }
             (root.fields["sievePassword"] as? JsonValue.Str)?.value?.let { editor.noteSievePassword(it) }
+            (root.fields["oauthClientSecret"] as? JsonValue.Str)?.value?.let { editor.noteOauthSecret(it) }
+            val token = (root.fields["oauthToken"] as? JsonValue.Str)?.value
+            val id = editor.editingId
+            if (token != null && id != null) {
+                editor.ui.launch {
+                    org.dlang.liveimap.accounts.AccountStore.shared(context).setOauthPlain(
+                        id,
+                        org.dlang.liveimap.accounts.oauthTokenSlot,
+                        token,
+                    )
+                }
+            }
         }
     }
     Text(stringResource(SettingsTreeGenerated.regTitle(key)))
@@ -2250,7 +2365,28 @@ internal fun ChoiceRow(key: String, walk: SettingsWalk) {
         "settingsOpensOn" -> row_settingsOpensOn(walk)
         "startupView" -> row_startupView(walk)
         "debugLogging" -> row_debugLogging(walk)
-        else -> Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+        else -> {
+            val leaf = installedLeaf(key)
+            val choices = leaf?.choices.orEmpty()
+            if (choices.isEmpty()) {
+                Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+            } else {
+                val editor = walk.editor
+                val current = editor.settings.getSetting(key).ifEmpty { choices.first() }
+                ChoiceField(
+                    stringResource(SettingsTreeGenerated.regTitle(key)),
+                    choices,
+                    if (current in choices) current else choices.first(),
+                    { choice ->
+                        val titled = leaf?.choiceTitles?.get(choice).orEmpty()
+                        val id = if (titled.isEmpty()) 0 else SettingsTreeGenerated.resource(titled)
+                        if (id != 0) stringResource(id) else titled.ifEmpty { choice }
+                    },
+                ) { choice ->
+                    editor.persist(editor.settings.withSetting(key, SettingValue(choice)))
+                }
+            }
+        }
     }
 }
 
@@ -2330,6 +2466,67 @@ internal fun TextRow(key: String, walk: SettingsWalk) {
         "defaultView" -> row_defaultView(key, walk)
         "folderViews" -> row_folderViews(walk)
         "folderStarts" -> row_folderStarts(walk)
+        "oauthRedirectUri" -> {
+            Text(stringResource(SettingsTreeGenerated.regTitle(key)))
+            Text(org.dlang.liveimap.oauth.OAUTH_REDIRECT_URI)
+        }
+        "oauthIssuer" -> {
+            val editor = walk.editor
+            LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(text)))
+            }
+            TextButton(onClick = {
+                editor.ui.launch {
+                    val found = try {
+                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            org.dlang.liveimap.oauth.OauthBridge.discover(editor.settings)
+                        }
+                    } catch (error: Exception) {
+                        settingsSaveFailure.value = error.message ?: "discovery: no authorization server document"
+                        null
+                    }
+                    if (found != null) editor.persist(found)
+                }
+            }) { Text(S("Discover")) }
+        }
+        "oauthClientId" -> {
+            val editor = walk.editor
+            Text(S("Register this app as a client with your mail provider or organization, then enter the client ID they issued."))
+            LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
+                editor.persist(editor.settings.withSetting(key, SettingValue(text)))
+            }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Row {
+                TextButton(onClick = {
+                    val id = editor.editingId
+                    if (id == null) {
+                        settingsSaveFailure.value = "browser sign-in: save the account first"
+                        return@TextButton
+                    }
+                    editor.ui.launch {
+                        val url = try {
+                            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                org.dlang.liveimap.oauth.OauthBridge.beginBrowserSignIn(context, id, editor.settings)
+                            }
+                        } catch (error: Exception) {
+                            settingsSaveFailure.value = error.message ?: "browser sign-in: failed"
+                            null
+                        }
+                        if (url != null) org.dlang.liveimap.oauth.openOauthBrowser(context, url)
+                    }
+                }) { Text(S("Sign in with browser")) }
+                TextButton(onClick = {
+                    val id = editor.editingId ?: return@TextButton
+                    editor.ui.launch {
+                        try {
+                            org.dlang.liveimap.oauth.OauthBridge.signOut(context, id, editor.settings)
+                        } catch (error: Exception) {
+                            settingsSaveFailure.value = error.message ?: "Sign in again"
+                        }
+                    }
+                }) { Text(S("Sign out")) }
+            }
+        }
         else -> {
             val editor = walk.editor
             LineField(stringResource(SettingsTreeGenerated.regTitle(key)), editor.settings.getSetting(key), ready = editor.ready) { text ->
@@ -2801,7 +2998,7 @@ internal fun row_smtpSameAsImap(walk: SettingsWalk) {
     val settings = editor.settings
     val authOn = settings.smtpNoAuth == SmtpNoAuth.On
     BoolField(
-        S("Same as IMAP password", name = "settings_smtp_same_as_imap"),
+        S("Same as IMAP login", name = "settings_smtp_same_as_imap"),
         settings.smtpSameAsImap,
         enabled = !authOn,
     ) {
@@ -2835,6 +3032,9 @@ internal fun row_smtpNoAuth(key: String, walk: SettingsWalk) {
 internal fun row_sieveSameAsInbound(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
+    if (settings.accountAuth == "oauth2") {
+        Text(S("This copies the server and username. The Sieve password is the Sieve password row."))
+    }
     BoolField(stringResource(SettingsTreeGenerated.resource("settings_sieve_same_as_inbound")), settings.sieveSameAsInbound) {
         editor.persist(editor.settings.copy(sieveSameAsInbound = it))
     }

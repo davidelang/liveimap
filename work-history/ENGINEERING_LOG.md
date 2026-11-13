@@ -4308,3 +4308,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - zimbra-883 skipped: no IMAP greeting within a few minutes (`zmslapd` / getaddrinfo). All liveimap containers left stopped.
 - Diff counts: first run 51 (11 bug, 18 personality, 21 dataset, 1 harness) → after 25 (25 bug, 0 personality, 0 dataset, 0 harness) on 18 servers.
 - fakeimap/master commit `1a988e5393ef56632655da46315ac10bed0d937d` (LOGINDISABLED removed from cyrus-3137 personality only). Not re-pinned here. Gap items filed in `/workspace/worklogs/fakeimap-grokbuild-gaps2-prompt.md`.
+
+## 2026-11-13 - Bring-your-own OAuth client
+
+- Account login is password or OAuth 2 with a client ID the user registers and pastes.
+- Authorization Code plus PKCE in the browser. Tokens sit in AccountManager slots and are presented to IMAP, SMTP when Same as IMAP login is on, and JMAP.
+- Sieve stays on its own password. No vendor client ID is added.

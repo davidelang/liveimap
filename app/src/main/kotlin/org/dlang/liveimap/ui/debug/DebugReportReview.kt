@@ -60,7 +60,7 @@ fun DebugReportReview(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(S("Debug report"), style = MaterialTheme.typography.titleLarge)
-                Text(S("Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data is replaced by its length, but a password typed into any other field is included. Share it only with someone you trust to see that mail."), color = MaterialTheme.colorScheme.error)
+                Text(S("Warning: this contains the full text of every message that was read or sent while logging was on, including bodies and attachments. Login data and OAuth tokens are replaced by their length, but a password typed into any other field is included. Share it only with someone you trust to see that mail."), color = MaterialTheme.colorScheme.error)
                 Column(
                     modifier = Modifier
                         .weight(1f)

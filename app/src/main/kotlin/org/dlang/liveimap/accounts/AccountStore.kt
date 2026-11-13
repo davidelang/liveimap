@@ -321,6 +321,16 @@ class AccountStore private constructor(private val context: Context) {
         return onAccount { withContext(Dispatchers.IO) { readSecretSlot(accountId, userSievePasswordSlot) } }
     }
 
+    suspend fun oauthPlain(accountId: String, key: String): String? =
+        onAccount { withContext(Dispatchers.IO) { readSecretSlot(accountId, key) } }
+
+    suspend fun setOauthPlain(accountId: String, key: String, value: String?) {
+        onAccount {
+            withContext(Dispatchers.IO) { writeSecretSlot(accountId, key, value) }
+            withContext(Dispatchers.IO) { refreshBackup(accountId, null) }
+        }
+    }
+
     suspend fun setSievePassword(accountId: String, value: String?) {
         onAccount {
             withContext(Dispatchers.IO) { writeSecretSlot(accountId, userSievePasswordSlot, value) }
@@ -571,6 +581,8 @@ class AccountStore private constructor(private val context: Context) {
         imapPassword: String?,
         smtpPassword: String?,
         sievePassword: String?,
+        oauthClientSecret: String? = null,
+        oauthToken: String? = null,
     ) {
         onAccount {
             withContext(Dispatchers.IO) {
@@ -583,6 +595,8 @@ class AccountStore private constructor(private val context: Context) {
                     }
                     if (smtpPassword != null) writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
                     if (sievePassword != null) writeSecretSlot(accountId, userSievePasswordSlot, sievePassword)
+                    if (oauthClientSecret != null) writeSecretSlot(accountId, oauthClientSecretSlot, oauthClientSecret)
+                    if (oauthToken != null) writeSecretSlot(accountId, oauthTokenSlot, oauthToken)
                     writePreference(accountId, settings.encode())
                     return@withContext
                 }
@@ -596,6 +610,8 @@ class AccountStore private constructor(private val context: Context) {
                 )
                 if (smtpPassword != null) writeSecretSlot(accountId, userSmtpPasswordSlot, smtpPassword)
                 if (sievePassword != null) writeSecretSlot(accountId, userSievePasswordSlot, sievePassword)
+                if (oauthClientSecret != null) writeSecretSlot(accountId, oauthClientSecretSlot, oauthClientSecret)
+                if (oauthToken != null) writeSecretSlot(accountId, oauthTokenSlot, oauthToken)
                 if (storedPreference(accountId) == null) writePreference(accountId, settings.encode())
                 if (accounts.isEmpty()) {
                     org.dlang.liveimap.settings.SettingsHub.noteAccountWritten(context, accountId, settings, true)
@@ -677,6 +693,8 @@ class AccountStore private constructor(private val context: Context) {
         writeAccount(name, plan.userData, plan.passwordSlot)
         if (plan.dropSmtpPassword) writeSecretSlot(accountId, userSmtpPasswordSlot, null)
         if (plan.dropSievePassword) writeSecretSlot(accountId, userSievePasswordSlot, null)
+        if (plan.dropOauthToken) writeSecretSlot(accountId, oauthTokenSlot, null)
+        if (plan.dropOauthPending) writeSecretSlot(accountId, oauthPendingSlot, null)
         val previousChoice = previous?.passwordStorage?.name
         return {
             writePreference(accountId, plan.text)
@@ -698,6 +716,9 @@ class AccountStore private constructor(private val context: Context) {
         val passwordSlot: String,
         val smtpSlot: String?,
         val sieveSlot: String?,
+        val oauthSecretSlot: String?,
+        val oauthTokenSlotRaw: String?,
+        val oauthPendingSlotRaw: String?,
         val preference: String?,
     )
 
@@ -711,6 +732,9 @@ class AccountStore private constructor(private val context: Context) {
             account.passwordSlot.orEmpty(),
             rawUserData(accountId, userSmtpPasswordSlot),
             rawUserData(accountId, userSievePasswordSlot),
+            rawUserData(accountId, oauthClientSecretSlot),
+            rawUserData(accountId, oauthTokenSlot),
+            rawUserData(accountId, oauthPendingSlot),
             storedPreference(accountId),
         )
     }
@@ -721,6 +745,9 @@ class AccountStore private constructor(private val context: Context) {
         writeAccount(saved.name, saved.userData, saved.passwordSlot)
         putRawUserData(accountId, userSmtpPasswordSlot, saved.smtpSlot)
         putRawUserData(accountId, userSievePasswordSlot, saved.sieveSlot)
+        putRawUserData(accountId, oauthClientSecretSlot, saved.oauthSecretSlot)
+        putRawUserData(accountId, oauthTokenSlot, saved.oauthTokenSlotRaw)
+        putRawUserData(accountId, oauthPendingSlot, saved.oauthPendingSlotRaw)
         context.accountSettingsDataStore.edit { prefs ->
             val key = stringPreferencesKey(accountId)
             val preference = saved.preference
@@ -756,11 +783,13 @@ class AccountStore private constructor(private val context: Context) {
         val imapPlain = imap ?: imapPasswordFor(accountId) ?: return
         val smtp = readSecretSlot(accountId, userSmtpPasswordSlot).orEmpty()
         val sieve = readSecretSlot(accountId, userSievePasswordSlot).orEmpty()
+        val oauthSecret = readSecretSlot(accountId, oauthClientSecretSlot).orEmpty()
+        val oauthToken = readSecretSlot(accountId, oauthTokenSlot).orEmpty()
         PasswordStorage.refresh(
             context,
             accountId,
             settings.passwordStorage.name,
-            encodeBackupRecord(settings, imapPlain, smtp, sieve),
+            encodeBackupRecord(settings, imapPlain, smtp, sieve, oauthSecret, oauthToken),
         )
     }
 

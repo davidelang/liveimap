@@ -18,9 +18,24 @@ import org.dlang.liveimap.ui.toolbar.defaultReaderToolbar
 import org.dlang.liveimap.ui.toolbar.defaultSelectionBar
 
 /** Keys that belong in an export, never in the stored document. */
-val documentSecretKeys = setOf("imapPassword", "smtpPassword", "sievePassword", "includePasswords")
+val documentSecretKeys = setOf(
+    "imapPassword",
+    "smtpPassword",
+    "sievePassword",
+    "includePasswords",
+    "oauthClientSecret",
+    "oauthToken",
+)
 
-fun exportSettingsDocument(encoded: String, includePasswords: Boolean, imap: String, smtp: String, sieve: String): String {
+fun exportSettingsDocument(
+    encoded: String,
+    includePasswords: Boolean,
+    imap: String,
+    smtp: String,
+    sieve: String,
+    oauthClientSecret: String = "",
+    oauthToken: String = "",
+): String {
     if (!includePasswords) return encoded
     val root = parseJson(encoded) as? JsonValue.Obj ?: return encoded
     val fields = LinkedHashMap(root.fields)
@@ -28,6 +43,8 @@ fun exportSettingsDocument(encoded: String, includePasswords: Boolean, imap: Str
     fields["imapPassword"] = JsonValue.Str(imap)
     fields["smtpPassword"] = JsonValue.Str(smtp)
     fields["sievePassword"] = JsonValue.Str(sieve)
+    fields["oauthClientSecret"] = JsonValue.Str(oauthClientSecret)
+    fields["oauthToken"] = JsonValue.Str(oauthToken)
     return encodeJson(JsonValue.Obj(fields))
 }
 

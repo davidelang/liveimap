@@ -3899,6 +3899,230 @@ bool wireOk(const char * text) {
     return true;
 }
 
+extern "C" int mailimap_oauth2_authenticate(mailimap * session, const char * auth_user, const char * access_token);
+extern "C" int mailsmtp_oauth2_authenticate(mailsmtp * session, const char * auth_user, const char * access_token);
+extern "C" int mailimap_continue_req_parse(mailstream * fd, MMAPString * buffer,
+    struct mailimap_parser_context * parser_ctx, size_t * indx, struct mailimap_continue_req ** result,
+    size_t progr_rate, progress_function * progr_fun);
+extern "C" void mailimap_continue_req_free(struct mailimap_continue_req * cont_req);
+
+static std::string b64Encode(const std::string & raw) {
+    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    const auto * data = reinterpret_cast<const unsigned char *>(raw.data());
+    size_t n = raw.size();
+    out.reserve(((n + 2) / 3) * 4);
+    for (size_t i = 0; i < n; i += 3) {
+        unsigned int v = static_cast<unsigned int>(data[i]) << 16;
+        if (i + 1 < n) v |= static_cast<unsigned int>(data[i + 1]) << 8;
+        if (i + 2 < n) v |= static_cast<unsigned int>(data[i + 2]);
+        out.push_back(table[(v >> 18) & 63]);
+        out.push_back(table[(v >> 12) & 63]);
+        out.push_back(i + 1 < n ? table[(v >> 6) & 63] : '=');
+        out.push_back(i + 2 < n ? table[v & 63] : '=');
+    }
+    return out;
+}
+
+static std::string upperSpaced(const std::string & line) {
+    std::string words = " " + line + " ";
+    for (auto & ch : words) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    return words;
+}
+
+static std::string oauthRawBearer(const char * user, const char * host, int port, const char * token) {
+    std::string raw = "n,a=";
+    raw += user != nullptr ? user : "";
+    raw += ",";
+    raw.push_back('\x01');
+    raw += "host=";
+    raw += host != nullptr ? host : "";
+    raw.push_back('\x01');
+    raw += "port=";
+    raw += std::to_string(port);
+    raw.push_back('\x01');
+    raw += "auth=Bearer ";
+    raw += token != nullptr ? token : "";
+    raw.push_back('\x01');
+    raw.push_back('\x01');
+    return raw;
+}
+
+static std::string oauthRawXoauth(const char * user, const char * token) {
+    std::string raw = "user=";
+    raw += user != nullptr ? user : "";
+    raw.push_back('\x01');
+    raw += "auth=Bearer ";
+    raw += token != nullptr ? token : "";
+    raw.push_back('\x01');
+    raw.push_back('\x01');
+    return raw;
+}
+
+static int sendPrivateImapToken(mailimap * imap, const std::string & token) {
+    mailstream_set_privacy(imap->imap_stream, 0);
+    int r = mailimap_token_send(imap->imap_stream, token.c_str());
+    if (r == MAILIMAP_NO_ERROR) r = mailimap_crlf_send(imap->imap_stream);
+    if (r == MAILIMAP_NO_ERROR && mailstream_flush(imap->imap_stream) == -1) r = MAILIMAP_ERROR_STREAM;
+    mailstream_set_privacy(imap->imap_stream, 1);
+    return r;
+}
+
+static int readImapContinued(mailimap * imap, bool * continued) {
+    *continued = false;
+    if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    struct mailimap_parser_context * parser = mailimap_parser_context_new(imap);
+    if (parser == nullptr) return MAILIMAP_ERROR_MEMORY;
+    size_t indx = 0;
+    struct mailimap_continue_req * cont = nullptr;
+    int r = mailimap_continue_req_parse(imap->imap_stream, imap->imap_stream_buffer, parser,
+        &indx, &cont, imap->imap_progr_rate, imap->imap_progr_fun);
+    mailimap_parser_context_free(parser);
+    if (r == MAILIMAP_NO_ERROR) {
+        mailimap_continue_req_free(cont);
+        *continued = true;
+        return MAILIMAP_NO_ERROR;
+    }
+    if (r == MAILIMAP_ERROR_PARSE) return MAILIMAP_NO_ERROR;
+    return r;
+}
+
+static int finishImapTagged(mailimap * imap) {
+    struct mailimap_response * response = nullptr;
+    int r = mailimap_parse_response(imap, &response);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    bool ok = taggedOk(response);
+    mailimap_response_free(response);
+    if (!ok) return MAILIMAP_ERROR_LOGIN;
+    imap->imap_state = MAILIMAP_STATE_AUTHENTICATED;
+    return MAILIMAP_NO_ERROR;
+}
+
+static int answerImapChallenge(mailimap * imap, const char * reply) {
+    mailstream_set_privacy(imap->imap_stream, 0);
+    int r = MAILIMAP_NO_ERROR;
+    if (reply != nullptr && reply[0] != 0) r = mailimap_token_send(imap->imap_stream, reply);
+    if (r == MAILIMAP_NO_ERROR) r = mailimap_crlf_send(imap->imap_stream);
+    if (r == MAILIMAP_NO_ERROR && mailstream_flush(imap->imap_stream) == -1) r = MAILIMAP_ERROR_STREAM;
+    mailstream_set_privacy(imap->imap_stream, 1);
+    if (r != MAILIMAP_NO_ERROR) return r;
+    if (mailimap_read_line(imap) == nullptr) return MAILIMAP_ERROR_STREAM;
+    return finishImapTagged(imap);
+}
+
+// OAUTH: prefix is handled here, before a forced AUTH= name would be looked up.
+bool loginImapOauth(mailimap * imap, const char * host, int port, const char * user, const char * password,
+    const std::string & address, std::string * error, bool tls, const std::string & forced, const std::string & caps) {
+    if (!tls) {
+        *error = "OAuth login is sent only on TLS";
+        return false;
+    }
+    if (password == nullptr || password[0] == 0) {
+        *error = "Sign in again";
+        return false;
+    }
+    std::string mode = forced.size() > 6 ? forced.substr(6) : std::string();
+    std::string words = upperSpaced(caps);
+    bool hasBearer = words.find(" AUTH=OAUTHBEARER ") != std::string::npos;
+    bool hasXoauth = words.find(" AUTH=XOAUTH2 ") != std::string::npos;
+    std::string offered;
+    if (hasBearer) offered += "OAUTHBEARER";
+    if (hasXoauth) {
+        if (!offered.empty()) offered += " ";
+        offered += "XOAUTH2";
+    }
+    if (offered.empty()) offered = "none";
+    std::string mech;
+    if (mode == "OAUTHBEARER") {
+        if (!hasBearer) {
+            *error = "server does not advertise OAUTHBEARER (server offers: " + offered + ")";
+            return false;
+        }
+        mech = "OAUTHBEARER";
+    } else if (mode == "XOAUTH2") {
+        if (!hasXoauth) {
+            *error = "server does not advertise XOAUTH2 (server offers: " + offered + ")";
+            return false;
+        }
+        mech = "XOAUTH2";
+    } else if (hasBearer) {
+        mech = "OAUTHBEARER";
+    } else if (hasXoauth) {
+        mech = "XOAUTH2";
+    } else {
+        *error = "server does not advertise OAUTHBEARER or XOAUTH2 (server offers: " + offered + ")";
+        return false;
+    }
+    const char * name = user != nullptr ? user : "";
+    if (mech == "OAUTHBEARER") {
+        for (const char * p = name; *p != 0; ++p) {
+            if (*p == ',' || *p == '\x01') {
+                *error = "username cannot be used with OAUTHBEARER";
+                return false;
+            }
+        }
+    }
+    bool ir = words.find(" SASL-IR ") != std::string::npos;
+    std::string token(password);
+    SecretWipe tokenWipe{token};
+    int r = MAILIMAP_NO_ERROR;
+    if (mech == "XOAUTH2" && ir) {
+        mailstream_set_privacy(imap->imap_stream, 0);
+        r = mailimap_oauth2_authenticate(imap, name, token.c_str());
+        mailstream_set_privacy(imap->imap_stream, 1);
+    } else {
+        std::string raw = mech == "OAUTHBEARER"
+            ? oauthRawBearer(name, host, port, token.c_str())
+            : oauthRawXoauth(name, token.c_str());
+        std::string encoded = b64Encode(raw);
+        SecretWipe rawWipe{raw};
+        SecretWipe encWipe{encoded};
+        r = mailimap_send_current_tag(imap);
+        if (r == MAILIMAP_NO_ERROR) r = mailimap_token_send(imap->imap_stream, "AUTHENTICATE");
+        if (r == MAILIMAP_NO_ERROR) r = mailimap_space_send(imap->imap_stream);
+        if (r == MAILIMAP_NO_ERROR) r = mailimap_token_send(imap->imap_stream, mech.c_str());
+        if (r != MAILIMAP_NO_ERROR) {
+            *error = "server rejected " + mech;
+            return false;
+        }
+        if (ir) {
+            if (r == MAILIMAP_NO_ERROR) r = mailimap_space_send(imap->imap_stream);
+            if (r == MAILIMAP_NO_ERROR) r = sendPrivateImapToken(imap, encoded);
+            bool continued = false;
+            if (r == MAILIMAP_NO_ERROR) r = readImapContinued(imap, &continued);
+            if (r == MAILIMAP_NO_ERROR && continued) {
+                const char * reply = mech == "OAUTHBEARER" ? "AQ==" : "";
+                r = answerImapChallenge(imap, reply);
+            } else if (r == MAILIMAP_NO_ERROR) {
+                r = finishImapTagged(imap);
+            }
+        } else {
+            if (r == MAILIMAP_NO_ERROR) r = mailimap_crlf_send(imap->imap_stream);
+            if (r == MAILIMAP_NO_ERROR && mailstream_flush(imap->imap_stream) == -1) r = MAILIMAP_ERROR_STREAM;
+            bool continued = false;
+            if (r == MAILIMAP_NO_ERROR) r = readImapContinued(imap, &continued);
+            if (r == MAILIMAP_NO_ERROR && !continued) r = finishImapTagged(imap);
+            if (r == MAILIMAP_NO_ERROR && continued) {
+                r = sendPrivateImapToken(imap, encoded);
+                bool again = false;
+                if (r == MAILIMAP_NO_ERROR) r = readImapContinued(imap, &again);
+                if (r == MAILIMAP_NO_ERROR && again) {
+                    const char * reply = mech == "OAUTHBEARER" ? "AQ==" : "";
+                    r = answerImapChallenge(imap, reply);
+                } else if (r == MAILIMAP_NO_ERROR) {
+                    r = finishImapTagged(imap);
+                }
+            }
+        }
+    }
+    if (r != MAILIMAP_NO_ERROR) {
+        *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + std::string(name)
+            + ": login failed: server rejected " + mech;
+        return false;
+    }
+    return true;
+}
+
 bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const char * user,
     const char * password, const std::string & address, std::string * error, bool tls, bool plaintextOk,
     const std::string & forced, bool * authRejected = nullptr, std::string * tlsOut = nullptr) {
@@ -3919,6 +4143,9 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
     if (tls) {
         fillTlsChannelBinding(imap->imap_stream, binding, &bindingLen, &bindingName);
         if (tlsOut != nullptr) *tlsOut = negotiatedTls(imap->imap_stream, bindingName);
+    }
+    if (forced.size() >= 6 && forced.compare(0, 6, "OAUTH:") == 0) {
+        return loginImapOauth(imap, host, port, user, password, address, error, tls, forced, line);
     }
     if (gJni.imapAuth == nullptr || gJni.imapAuthOrder == nullptr) {
         *error = "auth choice failed";
@@ -10586,9 +10813,93 @@ void freeSmtp(LiveSession * session, mailsmtp * smtp) {
     if (owned >= 0) close(owned);
 }
 
+static int smtpSendPrivate(mailsmtp * smtp, std::string command) {
+    SecretWipe wipe{command};
+    mailstream_set_privacy(smtp->stream, 0);
+    int r = mailsmtp_send_command(smtp, command.data());
+    mailstream_set_privacy(smtp->stream, 1);
+    return r;
+}
+
+static std::string smtpChallenge(mailsmtp * smtp, const std::string & mech, int code) {
+    if (code == 235) return "";
+    if (code != 334) return "server rejected " + mech;
+    std::string reply = mech == "OAUTHBEARER" ? std::string("AQ==\r\n") : std::string("\r\n");
+    if (smtpSendPrivate(smtp, std::move(reply)) == -1) return "server rejected " + mech;
+    if (mailsmtp_read_response(smtp) == 235) return "";
+    return "server rejected " + mech;
+}
+
+// One OAuth mechanism. Ignores the password SASL chooser. Empty string means the server accepted it.
+static std::string smtpOauthLogin(mailsmtp * smtp, const char * host, int port, const std::string & user,
+    std::string & token, const std::string & forced, const std::string & offeredAuth, const char * ehlo) {
+    if (token.empty()) return "Sign in again";
+    std::string mode = forced.size() > 6 ? forced.substr(6) : std::string();
+    std::string words = upperSpaced(offeredAuth);
+    bool hasBearer = words.find(" AUTH=OAUTHBEARER ") != std::string::npos;
+    bool hasXoauth = words.find(" AUTH=XOAUTH2 ") != std::string::npos;
+    std::string offered;
+    if (hasBearer) offered += "OAUTHBEARER";
+    if (hasXoauth) {
+        if (!offered.empty()) offered += " ";
+        offered += "XOAUTH2";
+    }
+    if (offered.empty()) offered = "none";
+    std::string mech;
+    if (mode == "OAUTHBEARER") {
+        if (!hasBearer) return "server does not advertise OAUTHBEARER (server offers: " + offered + ")";
+        mech = "OAUTHBEARER";
+    } else if (mode == "XOAUTH2") {
+        if (!hasXoauth) return "server does not advertise XOAUTH2 (server offers: " + offered + ")";
+        mech = "XOAUTH2";
+    } else if (hasBearer) {
+        mech = "OAUTHBEARER";
+    } else if (hasXoauth) {
+        mech = "XOAUTH2";
+    } else {
+        return "server does not advertise OAUTHBEARER or XOAUTH2 (server offers: " + offered + ")";
+    }
+    if (mech == "OAUTHBEARER") {
+        for (char c : user) {
+            if (c == ',' || c == '\x01') return "username cannot be used with OAUTHBEARER";
+        }
+    }
+    bool ir = ehlo != nullptr && smtpOffers(ehlo, "SASL-IR");
+    if (mech == "XOAUTH2" && ir) {
+        mailstream_set_privacy(smtp->stream, 0);
+        int r = mailsmtp_oauth2_authenticate(smtp, user.c_str(), token.c_str());
+        mailstream_set_privacy(smtp->stream, 1);
+        if (r != MAILSMTP_NO_ERROR) return "server rejected XOAUTH2";
+        return "";
+    }
+    std::string raw = mech == "OAUTHBEARER"
+        ? oauthRawBearer(user.c_str(), host, port, token.c_str())
+        : oauthRawXoauth(user.c_str(), token.c_str());
+    std::string encoded = b64Encode(raw);
+    SecretWipe rawWipe{raw};
+    SecretWipe encWipe{encoded};
+    if (ir) {
+        if (smtpSendPrivate(smtp, "AUTH " + mech + " " + encoded + "\r\n") == -1) return "server rejected " + mech;
+        return smtpChallenge(smtp, mech, mailsmtp_read_response(smtp));
+    }
+    std::string hello = "AUTH " + mech + "\r\n";
+    if (mailsmtp_send_command(smtp, hello.data()) == -1) return "server rejected " + mech;
+    if (mailsmtp_read_response(smtp) != 334) return "server rejected " + mech;
+    if (smtpSendPrivate(smtp, encoded + "\r\n") == -1) return "server rejected " + mech;
+    return smtpChallenge(smtp, mech, mailsmtp_read_response(smtp));
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobject, jlong handle,
-    jstring message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom) {
+    jstring message, jobjectArray recipients, jstring smtpUsername, jstring smtpPassword, jint dsnNotify, jstring envelopeFrom,
+    jstring oauthMode) {
+    std::string oauthModeText;
+    if (oauthMode != nullptr) {
+        auto modeGot = utf8FromJava(env, oauthMode);
+        if (!modeGot) return 0;
+        oauthModeText = std::move(*modeGot);
+        for (auto & ch : oauthModeText) ch = static_cast<char>(toupper(static_cast<unsigned char>(ch)));
+    }
     jstring g_message = message != nullptr ? static_cast<jstring>(env->NewGlobalRef(message)) : nullptr;
     jobjectArray g_recipients = recipients != nullptr ? static_cast<jobjectArray>(env->NewGlobalRef(recipients)) : nullptr;
     jstring g_smtpUsername = smtpUsername != nullptr ? static_cast<jstring>(env->NewGlobalRef(smtpUsername)) : nullptr;
@@ -10884,7 +11195,22 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
         fillTlsChannelBinding(smtp->stream, binding, &bindingLen, &bindingName);
     }
     std::string mechanism;
-    if (!chooseSmtpAuth(env, offeredAuth, smtpTls, allowPlaintextAuth,
+    bool authOk = false;
+    const bool oauthLogin = oauthModeText.size() >= 6 && oauthModeText.compare(0, 6, "OAUTH:") == 0;
+    if (oauthLogin) {
+        if (!smtpTls) {
+            freeSmtp(session, smtp);
+            throwFailure(env, "OAuth login is sent only on TLS");
+            return 0;
+        }
+        std::string why = smtpOauthLogin(smtp, host, port, authUser, authPass, oauthModeText, offeredAuth, smtp->response);
+        if (!why.empty()) {
+            freeSmtp(session, smtp);
+            throwFailure(env, why);
+            return 0;
+        }
+        authOk = true;
+    } else if (!chooseSmtpAuth(env, offeredAuth, smtpTls, allowPlaintextAuth,
             bindingLen > 0, gClientCertLoaded, &mechanism)) {
         freeSmtp(session, smtp);
         throwFailure(env, "auth choice failed");
@@ -10906,8 +11232,9 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     } else {
         mailsmtp_set_channel_binding(smtp, nullptr, nullptr, 0);
     }
-    bool authOk = false;
-    if (mechanism == "EXTERNAL") {
+    if (oauthLogin) {
+        // Bearer login already finished. The password chooser does not run.
+    } else if (mechanism == "EXTERNAL") {
         r = smtpAuthExternal(smtp);
         if (r != MAILSMTP_NO_ERROR) {
             std::string why = smtpDetail("SMTP AUTH EXTERNAL", r, smtp->response);
@@ -11024,7 +11351,7 @@ Java_org_dlang_liveimap_engine_LibetpanMailSession_nativeSmtp(JNIEnv * env, jobj
     if (r != MAILSMTP_NO_ERROR) {
         std::string why = where + smtpDetail("MAIL FROM", r, smtp->response);
         if (noCredentials && !offeredAuth.empty()) {
-            why += " (no SMTP password is set: set it in Settings, or tick \"Same as IMAP password\")";
+            why += " (no SMTP password is set: set it in Settings, or tick \"Same as IMAP login\")";
         }
         freeSmtp(session, smtp);
         throwFailure(env, why);

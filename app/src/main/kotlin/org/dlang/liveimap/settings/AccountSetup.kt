@@ -173,13 +173,22 @@ fun testAccountProbes(
                     val policy = candidate.tlsPolicy()
                     val context = app ?: error("no application")
                     val traffic = org.dlang.liveimap.engine.TrafficLog.writer(context.cacheDir, accountId)
-                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy, probeKey, traffic), accountKey = probeKey, traffic = traffic, authorization = org.dlang.liveimap.jmap.jmapBasicAuthorization(candidate.username, password))
+                    val (secret, bearer) = org.dlang.liveimap.jmap.jmapPresented(
+                        candidate.accountAuth,
+                        password,
+                        if (candidate.accountAuth == "oauth2") {
+                            org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, candidate)
+                        } else {
+                            null
+                        },
+                    )
+                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy, probeKey, traffic), accountKey = probeKey, traffic = traffic, authorization = org.dlang.liveimap.jmap.jmapAuthorization(candidate.username, secret, bearer))
                     if (offer !is JmapOffer.Mail) {
                         throw IllegalStateException(
                             if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
                         )
                     }
-                    jmapMailboxLevel(offer.session, null, candidate.username, password, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, probeKey, traffic, policy), policy = policy, accountKey = probeKey)
+                    jmapMailboxLevel(offer.session, null, candidate.username, secret, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, probeKey, traffic, policy), policy = policy, accountKey = probeKey, bearer = bearer)
                 } finally {
                     JmapPlainHttp.drop(probeKey)
                 }

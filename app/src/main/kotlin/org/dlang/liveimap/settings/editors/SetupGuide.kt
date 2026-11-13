@@ -40,6 +40,7 @@ internal object PendingNewAccount {
     var password: String = ""
     var smtpPassword: String = ""
     var sievePassword: String = ""
+    var oauthSecret: String = ""
     var onCreated: ((String) -> Unit)? = null
 
     fun clear() {
@@ -48,6 +49,7 @@ internal object PendingNewAccount {
         password = ""
         smtpPassword = ""
         sievePassword = ""
+        oauthSecret = ""
         onCreated = null
     }
 }
@@ -164,7 +166,7 @@ fun SetupGuide(
             Text(S("Sending server"))
             androidx.compose.material3.OutlinedTextField(smtpHost, { smtpHost = it }, Modifier.fillMaxWidth(), singleLine = true)
             androidx.compose.material3.OutlinedTextField(smtpPort, { smtpPort = it }, Modifier.fillMaxWidth(), singleLine = true)
-            TextButton(onClick = { smtpSame = !smtpSame }) { Text(S("Same as IMAP password", name = "settings_smtp_same_as_imap")) }
+            TextButton(onClick = { smtpSame = !smtpSame }) { Text(S("Same as IMAP login", name = "settings_smtp_same_as_imap")) }
         }
         if (report.isNotEmpty()) Text(report)
         if (busy) Text(S("Testing…", name = "setup_testing"))

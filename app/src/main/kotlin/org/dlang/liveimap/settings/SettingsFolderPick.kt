@@ -45,7 +45,8 @@ import org.dlang.liveimap.jmap.JmapHttpExchange
 import org.dlang.liveimap.jmap.JmapOffer
 import org.dlang.liveimap.jmap.JmapPlainHttp
 import org.dlang.liveimap.jmap.JmapSession
-import org.dlang.liveimap.jmap.jmapBasicAuthorization
+import org.dlang.liveimap.jmap.jmapAuthorization
+import org.dlang.liveimap.jmap.jmapPresented
 import org.dlang.liveimap.jmap.jmapFolderLevel
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
@@ -185,6 +186,7 @@ private class JmapFolderSource(
     private val post: (String, String, String) -> JmapHttpExchange,
     private val policy: TlsPolicy,
     private val probeKey: String,
+    private val bearer: Boolean = false,
 ) : FolderSource {
     private val ids = HashMap<String, String>()
 
@@ -203,7 +205,7 @@ private class JmapFolderSource(
             ids[parentPath] ?: throw MailFailure("folder is not listed")
         }
         val rows = withContext(Dispatchers.IO) {
-            jmapFolderLevel(session, parentId, username, password, pin, post, policy = policy, accountKey = probeKey)
+            jmapFolderLevel(session, parentId, username, password, pin, post, policy = policy, accountKey = probeKey, bearer = bearer)
         }
         return rows.map { row -> nodeOf(parentPath, row) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.leaf })
@@ -261,12 +263,22 @@ private suspend fun openJmapFolderSource(
         return withContext(Dispatchers.IO) {
             val policy = settings.tlsPolicy()
             val traffic = TrafficLog.writer(cacheDir, accountId)
+            val app = LiveImapApplication.context ?: throw IllegalStateException("no application")
+            val (secret, bearer) = jmapPresented(
+                settings.accountAuth,
+                password,
+                if (settings.accountAuth == "oauth2") {
+                    org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(app, accountId, settings)
+                } else {
+                    null
+                },
+            )
             val offer = offerForAccount(
                 settings,
                 platformJmapExchange(settings.jmapCertPin, policy, probeKey, traffic),
                 accountKey = probeKey,
                 traffic = traffic,
-                authorization = jmapBasicAuthorization(settings.username, password),
+                authorization = jmapAuthorization(settings.username, secret, bearer),
             )
             if (offer !is JmapOffer.Mail) {
                 throw IllegalStateException(
@@ -276,11 +288,12 @@ private suspend fun openJmapFolderSource(
             JmapFolderSource(
                 offer.session,
                 settings.username,
-                password,
+                secret,
                 settings.jmapCertPin,
                 pinnedJmapPost(settings.jmapCertPin, probeKey, traffic, policy),
                 policy,
                 probeKey,
+                bearer,
             )
         }
     } catch (error: Throwable) {

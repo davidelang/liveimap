@@ -17,6 +17,25 @@ fun jmapBasicAuthorization(username: String, password: String): String {
     return "Basic $token"
 }
 
+/**
+ * Password mode keeps the IMAP password as Basic. oauth2 presents [accessToken] and does not use a null IMAP password.
+ */
+fun jmapPresented(accountAuth: String, imapPassword: String?, accessToken: String?): Pair<String, Boolean> {
+    if (accountAuth == "oauth2") {
+        if (accessToken.isNullOrEmpty()) throw org.dlang.liveimap.session.MailFailure("Sign in again")
+        return accessToken to true
+    }
+    if (imapPassword == null) throw org.dlang.liveimap.session.MailFailure("password missing")
+    return imapPassword to false
+}
+
+/** Password mode is Basic. oauth2 sends the access token as a bearer and does not read the IMAP password. */
+fun jmapAuthorization(username: String, secret: String, bearer: Boolean = false): String {
+    if (!bearer) return jmapBasicAuthorization(username, secret)
+    if (secret.isBlank()) throw JmapFailure("Sign in again")
+    return "Bearer $secret"
+}
+
 fun jmapCall(
     apiUrl: String,
     body: String,
@@ -52,11 +71,12 @@ fun jmapMailboxLevel(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     policy: TlsPolicy = TlsPolicy(),
     accountKey: String = "",
+    bearer: Boolean = false,
 ): List<JmapMailbox> {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapMailboxLevelRequest(accountId, parentId)
-    val authorization = jmapBasicAuthorization(username, password)
+    val authorization = jmapAuthorization(username, password, bearer)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy, accountKey)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     return parseJmapMailboxes(result.body)
@@ -72,12 +92,13 @@ fun jmapMailboxChildren(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     policy: TlsPolicy = TlsPolicy(),
     accountKey: String = "",
+    bearer: Boolean = false,
 ): Set<String> {
     if (mailboxIds.isEmpty()) throw JmapFailure("jmap mailbox ids are empty")
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
     val request = jmapMailboxChildProbe(accountId, mailboxIds)
-    val authorization = jmapBasicAuthorization(username, password)
+    val authorization = jmapAuthorization(username, password, bearer)
     val result = jmapCall(session.apiUrl, request, authorization, pin, post, trust, policy, accountKey)
     if (result.status != 200) throw JmapFailure("jmap api status ${result.status}")
     val root = try {

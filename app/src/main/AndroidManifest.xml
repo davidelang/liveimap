@@ -137,6 +137,18 @@
         </service>
 
         <activity
+            android:name="org.dlang.liveimap.oauth.OauthRedirectActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.davidlang.liveimap" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name="org.dlang.liveimap.accounts.AccountSetupActivity"
             android:excludeFromRecents="true"
             android:exported="true" />

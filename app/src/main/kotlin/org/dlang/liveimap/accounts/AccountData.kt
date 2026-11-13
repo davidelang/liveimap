@@ -15,6 +15,9 @@ internal fun parseAccountId(raw: String?): String? {
 }
 internal const val userSmtpPasswordSlot: String = "smtpPasswordSlot"
 internal const val userSievePasswordSlot: String = "sievePasswordSlot"
+internal const val oauthClientSecretSlot: String = "oauthClientSecretSlot"
+internal const val oauthTokenSlot: String = "oauthTokenSlot"
+internal const val oauthPendingSlot: String = "oauthPendingSlot"
 
 class NoAccountSelected : Exception("no account selected")
 
@@ -110,6 +113,8 @@ internal data class Retarget(
     val dropImapPassword: Boolean,
     val dropSmtpPassword: Boolean,
     val dropSievePassword: Boolean,
+    val dropOauthToken: Boolean = false,
+    val dropOauthPending: Boolean = false,
 )
 
 /**
@@ -123,6 +128,9 @@ internal fun retargetCredentials(previous: Settings?, next: Settings): Retarget 
     val imapMoved = moved(previous.imapHost, next.imapHost)
     val smtpMoved = moved(previous.smtpHost, next.smtpHost)
     val sieveMoved = moved(previous.sieveHost, next.sieveHost)
+    val oauthIdentity = previous.accountAuth != next.accountAuth ||
+        previous.oauthIssuer != next.oauthIssuer ||
+        previous.oauthClientId != next.oauthClientId
     var settings = next
     if (imapMoved) {
         settings = settings.copy(
@@ -139,6 +147,8 @@ internal fun retargetCredentials(previous: Settings?, next: Settings): Retarget 
         dropImapPassword = imapMoved,
         dropSmtpPassword = smtpMoved || (imapMoved && settings.smtpSameAsImap),
         dropSievePassword = sieveMoved,
+        dropOauthToken = imapMoved || oauthIdentity,
+        dropOauthPending = imapMoved || oauthIdentity,
     )
 }
 
@@ -150,6 +160,8 @@ internal data class AccountSavePlan(
     val passwordSlot: String,
     val dropSmtpPassword: Boolean,
     val dropSievePassword: Boolean,
+    val dropOauthToken: Boolean = false,
+    val dropOauthPending: Boolean = false,
 )
 
 internal fun planAccountSave(
@@ -168,5 +180,7 @@ internal fun planAccountSave(
         passwordSlot = if (retarget.dropImapPassword) "" else passwordSlot,
         dropSmtpPassword = retarget.dropSmtpPassword,
         dropSievePassword = retarget.dropSievePassword,
+        dropOauthToken = retarget.dropOauthToken,
+        dropOauthPending = retarget.dropOauthPending,
     )
 }

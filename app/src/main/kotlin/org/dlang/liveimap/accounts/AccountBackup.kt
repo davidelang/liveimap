@@ -9,6 +9,8 @@ internal class BackupRecord(
     val imapPassword: String?,
     val smtpPassword: String?,
     val sievePassword: String?,
+    val oauthClientSecret: String? = null,
+    val oauthToken: String? = null,
 )
 
 internal fun encodeBackupRecord(
@@ -16,10 +18,12 @@ internal fun encodeBackupRecord(
     imapPassword: String,
     smtpPassword: String,
     sievePassword: String,
+    oauthClientSecret: String = "",
+    oauthToken: String = "",
 ): ByteArray {
     fun esc(value: String) = value.replace("\\", "\\\\").replace("\n", "\\n")
     val text = listOf(
-        "v=1",
+        "v=2",
         "email=${esc(settings.email)}",
         "username=${esc(settings.username)}",
         "inbound=${if (settings.jmapFolders) "jmap" else "imap"}",
@@ -31,6 +35,8 @@ internal fun encodeBackupRecord(
         "imapPassword=${esc(imapPassword)}",
         "smtpPassword=${esc(smtpPassword)}",
         "sievePassword=${esc(sievePassword)}",
+        "oauthClientSecret=${esc(oauthClientSecret)}",
+        "oauthToken=${esc(oauthToken)}",
     ).joinToString("\n")
     return text.toByteArray(Charsets.UTF_8)
 }
@@ -43,7 +49,8 @@ internal fun decodeBackupRecord(bytes: ByteArray): BackupRecord? {
         if (eq <= 0) continue
         values[line.substring(0, eq)] = line.substring(eq + 1).replace("\\n", "\n").replace("\\\\", "\\")
     }
-    if (values["v"] != "1") return null
+    val version = values["v"]
+    if (version != "1" && version != "2") return null
     val tls = runCatching { TlsMode.valueOf(values["tls"].orEmpty()) }.getOrDefault(TlsMode.None)
     val settings = newAccountSettings().copy(
         email = values["email"].orEmpty(),
@@ -56,5 +63,7 @@ internal fun decodeBackupRecord(bytes: ByteArray): BackupRecord? {
         smtpPort = values["smtpPort"]?.toIntOrNull() ?: 587,
     )
     fun present(key: String): String? = if (key in values) values.getValue(key) else null
-    return BackupRecord(settings, present("imapPassword"), present("smtpPassword"), present("sievePassword"))
+    val oauthSecret = if (version == "2") present("oauthClientSecret") else null
+    val oauthToken = if (version == "2") present("oauthToken") else null
+    return BackupRecord(settings, present("imapPassword"), present("smtpPassword"), present("sievePassword"), oauthSecret, oauthToken)
 }

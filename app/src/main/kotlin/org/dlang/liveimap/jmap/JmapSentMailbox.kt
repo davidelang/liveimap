@@ -22,11 +22,12 @@ fun jmapFindSentMailbox(
     sentName: String = "",
     policy: TlsPolicy = TlsPolicy(),
     accountKey: String = "",
+    bearer: Boolean = false,
 ): String? {
     if (sentName.isBlank()) return null
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
-    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapBasicAuthorization(username, password), pin, post, trust, policy, accountKey)
+    val named = jmapCall(session.apiUrl, jmapMailboxNamesRequest(accountId), jmapAuthorization(username, password, bearer), pin, post, trust, policy, accountKey)
     if (named.status != 200) throw JmapFailure("jmap api status ${named.status}")
     return jmapMailboxIdByPath(named.body, sentName) ?: throw JmapSentFolderMissing(sentName)
 }

@@ -485,13 +485,32 @@ class LibetpanMailSession(
     }
 
     private fun sessionPassword(): String {
+        val acct = account
+        if (acct?.accountAuth == "oauth2") {
+            return try {
+                org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, acct)
+            } catch (error: Exception) {
+                throw MailFailure(error.message ?: "Sign in again")
+            }
+        }
         credentials?.let { return it.password ?: throw MailFailure("password missing") }
         return runBlocking { ownStore().password() } ?: throw MailFailure("password missing")
     }
 
-    private fun loginOnce(account: Settings, knownPassword: String? = null): OpenResult {
+    private fun loginOnce(account: Settings, knownPassword: String? = null, oauthRetried: Boolean = false): OpenResult {
         namespaceList = null
-        val password = if (knownPassword != null) {
+        val oauth = account.accountAuth == "oauth2"
+        val password = if (oauth) {
+            if (knownPassword != null) {
+                knownPassword
+            } else {
+                try {
+                    org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, account)
+                } catch (error: Exception) {
+                    return OpenResult.Failed(error.message ?: "Sign in again")
+                }
+            }
+        } else if (knownPassword != null) {
             knownPassword
         } else if (credentials != null) {
             credentials!!.password ?: return OpenResult.Failed("password missing")
@@ -502,6 +521,7 @@ class LibetpanMailSession(
                 return OpenResult.Failed(error.message ?: "keystore unavailable")
             }
         }
+        val authMechanism = if (oauth) org.dlang.liveimap.oauth.oauthWireMode(account) else account.authMechanism
         val from = if (account.email.isNotEmpty()) account.email else account.username
         if (account.logImapTraffic) {
             statusNote(account, "Connecting")
@@ -525,7 +545,7 @@ class LibetpanMailSession(
                 account.allowPlaintextAuth,
                 account.acceptInvalidCert,
                 account.allowOldTls,
-                account.authMechanism,
+                authMechanism,
                 keyChain?.chain,
                 keyChain?.key,
             )
@@ -545,7 +565,7 @@ class LibetpanMailSession(
                 account.allowPlaintextAuth,
                 account.acceptInvalidCert,
                 account.allowOldTls,
-                account.authMechanism,
+                authMechanism,
                 keyChain?.chain,
                 keyChain?.key,
             )
@@ -593,7 +613,18 @@ class LibetpanMailSession(
             val text = connected.error
             if (account.logImapTraffic) statusNote(account, "Error $text")
             TrafficRecorder.event("main", "error", text)
-            if (connected.authRejected) return OpenResult.AuthRejected(text)
+            if (connected.authRejected) {
+                if (oauth && !oauthRetried) {
+                    val refreshed = try {
+                        org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(context, accountId, account)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (refreshed != null) return loginOnce(account, refreshed, oauthRetried = true)
+                    return OpenResult.Failed("Sign in again")
+                }
+                return OpenResult.AuthRejected(text)
+            }
             return OpenResult.Failed(text)
         }
         val line = nativeCapabilityLine(connected.handle)
@@ -611,6 +642,7 @@ class LibetpanMailSession(
         when (featureCaps.resyncKind()) {
             "Qresync", "Condstore" -> nativeEnable(connected.handle, enableForResync(featureCaps.resyncKind()))
         }
+        if (oauth) org.dlang.liveimap.oauth.OauthBridge.noteAuthSuccess(context, accountId)
         utf8Names = false
         if (featureCaps.utf8Accept) {
             nativeEnable(connected.handle, "UTF8=ACCEPT")
@@ -2131,16 +2163,8 @@ class LibetpanMailSession(
         if (key != null) throw MailFailure("account settings need attention: $key")
         val acct = account ?: throw MailFailure("no account")
         val ownSmtpPassword = if (credentials != null) credentials!!.smtpPassword else runBlocking { ownStore().smtpPassword() }
-        // Same-as-IMAP uses the IMAP password. On sends no password. Off sends the resolved password.
         val imapPassword = loggedInPassword ?: credentials?.password
-        val same = acct.smtpSameAsImap
-        val mode = acct.smtpNoAuth
-        if (same && imapPassword == null && mode != SmtpNoAuth.On) throw MailFailure("password missing")
-        if (!same && ownSmtpPassword == null && mode != SmtpNoAuth.On) throw MailFailure("password missing")
-        val resolvedImap = imapPassword.orEmpty()
-        if (same && resolvedImap.isEmpty() && mode != SmtpNoAuth.On) throw MailFailure("needs-password")
-        val smtpPassword = smtpPasswordFor(same, ownSmtpPassword.orEmpty(), resolvedImap, mode)
-        if (mode == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
+        val (smtpPassword, oauthMode) = smtpSecret(acct, ownSmtpPassword, imapPassword)
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         return keeper.write("send") {
             forgetSelected()
@@ -2152,6 +2176,7 @@ class LibetpanMailSession(
                 smtpPassword,
                 dsnNotify,
                 envelopeFrom,
+                oauthMode,
             )
         }
     }
@@ -2170,24 +2195,13 @@ class LibetpanMailSession(
         if (preserved != null) throw MailFailure("FAIL account settings need attention: $preserved")
         val imapPassword = probe?.password ?: loggedInPassword ?: credentials?.password
         val ownSmtpPassword = if (probe != null) probe.smtpPassword else credentials?.smtpPassword
-        if (acct.smtpSameAsImap && imapPassword == null && acct.smtpNoAuth != SmtpNoAuth.On) {
-            throw MailFailure("password missing")
-        }
-        if (!acct.smtpSameAsImap && ownSmtpPassword == null && acct.smtpNoAuth != SmtpNoAuth.On) {
-            throw MailFailure("password missing")
-        }
-        val resolvedImap = imapPassword.orEmpty()
-        if (acct.smtpSameAsImap && resolvedImap.isEmpty() && acct.smtpNoAuth != SmtpNoAuth.On) {
-            throw MailFailure("needs-password")
-        }
-        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword.orEmpty(), resolvedImap, acct.smtpNoAuth)
-        if (acct.smtpNoAuth == SmtpNoAuth.Off && smtpPassword.isEmpty()) throw MailFailure("needs-password")
+        val (smtpPassword, oauthMode) = smtpSecret(acct, ownSmtpPassword, imapPassword)
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         // A staged session has no IMAP handle and does not dial imapHost.
-        val staged = stageSmtp(acct, resolvedImap)
+        val staged = stageSmtp(acct, imapPassword.orEmpty())
         if (staged.handle == 0L) throw MailFailure(staged.error)
         try {
-            val code = nativeSmtp(staged.handle, null, emptyArray(), smtpUser, smtpPassword, 0, "")
+            val code = nativeSmtp(staged.handle, null, emptyArray(), smtpUser, smtpPassword, 0, "", oauthMode)
             return when (code) {
                 2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
                 3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
@@ -2716,7 +2730,33 @@ class LibetpanMailSession(
         smtpPassword: String,
         dsnNotify: Int,
         envelopeFrom: String,
+        oauthMode: String,
     ): Int
+
+    private fun smtpSecret(acct: Settings, ownSmtpPassword: String?, imapPassword: String?): Pair<String, String> {
+        if (acct.smtpNoAuth == SmtpNoAuth.On) return "" to ""
+        if (acct.accountAuth == "oauth2" && acct.smtpSameAsImap) {
+            val token = try {
+                org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, acct)
+            } catch (error: Exception) {
+                throw MailFailure(error.message ?: "Sign in again")
+            }
+            if (token.isEmpty()) throw MailFailure("Sign in again")
+            return token to org.dlang.liveimap.oauth.oauthWireMode(acct)
+        }
+        if (acct.accountAuth == "oauth2") {
+            if (ownSmtpPassword == null) throw MailFailure("password missing")
+            if (ownSmtpPassword.isEmpty()) throw MailFailure("needs-password")
+            return ownSmtpPassword to ""
+        }
+        if (acct.smtpSameAsImap && imapPassword == null) throw MailFailure("password missing")
+        if (!acct.smtpSameAsImap && ownSmtpPassword == null) throw MailFailure("password missing")
+        val resolvedImap = imapPassword.orEmpty()
+        if (acct.smtpSameAsImap && resolvedImap.isEmpty()) throw MailFailure("needs-password")
+        val smtpPassword = smtpPasswordFor(acct.smtpSameAsImap, ownSmtpPassword.orEmpty(), resolvedImap, acct.smtpNoAuth)
+        if (smtpPassword.isEmpty()) throw MailFailure("needs-password")
+        return smtpPassword to ""
+    }
 
     companion object {
         init {
@@ -2745,7 +2785,7 @@ class LibetpanMailSession(
          * the certificate, and never logs in. A TLS failure with old TLS off is retried once with it on, to tell
          * the user the server needs that setting. Blocking; call off the main thread.
          */
-        fun checkServerSettings(account: Settings): ServerCheck {
+        fun checkServerSettings(account: Settings, oauthSignedIn: Boolean = false): ServerCheck {
             fun run(oldTls: Boolean) = ServerProbe.parse(
                 nativeProbe(
                     account.imapHost,
@@ -2758,7 +2798,7 @@ class LibetpanMailSession(
             )
             val probe = run(account.allowOldTls)
             val oldTlsWorks = if (probe.tls.isNotEmpty() && !account.allowOldTls) run(true).tls.isEmpty() else null
-            return checkServer(account, probe, oldTlsWorks)
+            return checkServer(account, probe, oldTlsWorks, oauthSignedIn)
         }
     }
 }

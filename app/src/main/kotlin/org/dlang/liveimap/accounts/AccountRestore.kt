@@ -80,6 +80,8 @@ private suspend fun restoreSavedAccounts(context: Context) {
             record?.imapPassword,
             record?.smtpPassword,
             record?.sievePassword,
+            record?.oauthClientSecret,
+            record?.oauthToken,
         )
         restored += 1
     }
@@ -89,7 +91,15 @@ private suspend fun restoreSavedAccounts(context: Context) {
         if (id in pending) continue
         if (prefs[stringPreferencesKey(id)] != null) continue
         val record = decodeBackupRecord(value) ?: continue
-        store.restoreAccountEntry(id, record.settings, record.imapPassword, record.smtpPassword, record.sievePassword)
+        store.restoreAccountEntry(
+            id,
+            record.settings,
+            record.imapPassword,
+            record.smtpPassword,
+            record.sievePassword,
+            record.oauthClientSecret,
+            record.oauthToken,
+        )
         restored += 1
     }
     val fresh = context.accountSettingsDataStore.data.first()

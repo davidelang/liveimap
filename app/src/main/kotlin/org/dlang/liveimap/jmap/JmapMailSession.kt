@@ -69,6 +69,7 @@ class JmapMailSession(
     private val savePin: suspend (String) -> Unit,
 ) : MailSession {
     @Volatile private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
+    @Volatile private var useBearer: Boolean = false
 
     override fun setCertConfirmer(confirm: (suspend (CertPrompt) -> Boolean)?) {
         certConfirmer = confirm
@@ -256,8 +257,9 @@ class JmapMailSession(
         if (key != null) return@onSession OpenResult.Failed("account settings need attention: $key")
         try {
             var trusted = account
+            useBearer = account.accountAuth == "oauth2"
             val loginPassword = passwordOf(account)
-            val loginAuthorization = jmapBasicAuthorization(account.username, loginPassword)
+            val loginAuthorization = jmapAuthorization(account.username, loginPassword, useBearer)
             val offer = try {
                 io { JmapResponseCap.use(account.maxJmapResponseBytes.toInt()) { discover(account, loginAuthorization) } }
             } catch (pinOffer: JmapPinOffer) {
@@ -320,7 +322,7 @@ class JmapMailSession(
             val s = need()
             val parentId = if (parentMailbox == null) null else idOfLocked(parentMailbox)
             val policy = accountPolicy()
-            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, pinnedJmapPost(pin, accountKey, traffic, policy), PeerTrust::check, policy, accountKey) }
+            val rows = jmap { jmapFolderLevel(s, parentId, accountName(), password, pin, pinnedJmapPost(pin, accountKey, traffic, policy), PeerTrust::check, policy, accountKey, useBearer) }
             return rows.map { row ->
                 val path = if (parentMailbox == null) row.name else parentMailbox + DELIMITER + row.name
                 ids[path] = row.id
@@ -530,7 +532,7 @@ class JmapMailSession(
         val keywords = flags.map { keywordOf(it) }.distinct().joinToString(",", "{", "}") { q(it) + ":true" }
         val s = need()
         val policy = accountPolicy()
-        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, pinnedJmapUpload(pin, accountKey, traffic, policy), PeerTrust::check, policy, accountKey) }
+        val blob = jmap { jmapUpload(s, rfc822, accountName(), password, pin, pinnedJmapUpload(pin, accountKey, traffic, policy), PeerTrust::check, policy, accountKey, useBearer) }
         val body = """{"using":$USING,"methodCalls":[["Email/import",{"accountId":${q(accountId())},"emails":{"k1":{"blobId":${q(blob)},"mailboxIds":{${q(mailboxId)}:true},"keywords":$keywords}}},"0"]]}"""
         val created = call(body) { root -> importedId(root) }
         uids.getOrPut(mailboxId) { Uids() }.uid(created)
@@ -572,6 +574,7 @@ class JmapMailSession(
                 PeerTrust::check,
                 policy,
                 accountKey,
+                useBearer,
             )
         }
         val body = """{"using":$USING,"methodCalls":[["Email/import",{"accountId":${q(accountId())},"emails":{"k1":{"blobId":${q(blob)},"mailboxIds":{${q(mailboxId)}:true},"keywords":$keywords}}},"0"]]}"""
@@ -621,6 +624,7 @@ class JmapMailSession(
                 },
                 policy = policy,
                 accountKey = accountKey,
+                bearer = useBearer,
             )
         }
         return -1
@@ -1370,9 +1374,13 @@ fun platformJmapMailSession(context: android.content.Context, accountId: String)
                 authorization = auth,
             )
         },
-        passwordOf = { _ ->
-            org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).password()
-                ?: throw org.dlang.liveimap.session.MailFailure("password missing")
+        passwordOf = { account ->
+            if (account.accountAuth == "oauth2") {
+                org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, account)
+            } else {
+                org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).password()
+                    ?: throw org.dlang.liveimap.session.MailFailure("password missing")
+            }
         },
         savePin = { pin ->
             org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).update { it.copy(jmapCertPin = pin) }

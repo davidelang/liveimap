@@ -203,13 +203,134 @@
                       }
                     },
                     {
+                      "setting": "accountAuth",
+                      "type": "choice",
+                      "default": "password",
+                      "title": "Account login",
+                      "choices": [
+                        "password",
+                        "oauth2"
+                      ],
+                      "choiceTitles": {
+                        "password": "Password",
+                        "oauth2": "OAuth 2 (bring your own client ID)"
+                      }
+                    },
+                    {
+                      "setting": "oauthIssuer",
+                      "type": "text",
+                      "default": "",
+                      "title": "OAuth issuer",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthAuthorizationEndpoint",
+                      "type": "text",
+                      "default": "",
+                      "title": "Authorization endpoint",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthTokenEndpoint",
+                      "type": "text",
+                      "default": "",
+                      "title": "Token endpoint",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthRevocationEndpoint",
+                      "type": "text",
+                      "default": "",
+                      "title": "Revocation endpoint",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthClientId",
+                      "type": "text",
+                      "default": "",
+                      "title": "OAuth client ID",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthClientSecret",
+                      "type": "password",
+                      "title": "OAuth client secret",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthScopes",
+                      "type": "text",
+                      "default": "",
+                      "title": "OAuth scopes",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthRedirectUri",
+                      "type": "text",
+                      "default": "com.davidlang.liveimap:/oauth2redirect",
+                      "title": "OAuth redirect URI",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
+                      "setting": "oauthMechanism",
+                      "type": "choice",
+                      "default": "auto",
+                      "title": "OAuth mechanism",
+                      "choices": [
+                        "auto",
+                        "OAUTHBEARER",
+                        "XOAUTH2"
+                      ],
+                      "choiceTitles": {
+                        "auto": "Automatic",
+                        "OAUTHBEARER": "OAUTHBEARER",
+                        "XOAUTH2": "XOAUTH2"
+                      },
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "oauth2"
+                      }
+                    },
+                    {
                       "setting": "authMechanism",
                       "type": "text",
                       "default": "",
                       "title": "Authentication mechanism",
                       "visibleWhen": {
-                        "setting": "jmapFolders",
-                        "equals": false
+                        "all": [
+                          {
+                            "setting": "accountAuth",
+                            "equals": "password"
+                          },
+                          {
+                            "setting": "jmapFolders",
+                            "equals": false
+                          }
+                        ]
                       }
                     },
                     {
@@ -249,12 +370,36 @@
                     {
                       "setting": "imapPassword",
                       "type": "password",
-                      "title": "IMAP password"
+                      "title": "IMAP password",
+                      "visibleWhen": {
+                        "setting": "accountAuth",
+                        "equals": "password"
+                      }
                     },
                     {
                       "setting": "smtpPassword",
                       "type": "password",
-                      "title": "SMTP password"
+                      "title": "SMTP password",
+                      "visibleWhen": {
+                        "any": [
+                          {
+                            "setting": "accountAuth",
+                            "equals": "password"
+                          },
+                          {
+                            "all": [
+                              {
+                                "setting": "accountAuth",
+                                "equals": "oauth2"
+                              },
+                              {
+                                "setting": "smtpSameAsImap",
+                                "equals": false
+                              }
+                            ]
+                          }
+                        ]
+                      }
                     },
                     {
                       "setting": "sievePassword",
@@ -367,7 +512,7 @@
                   "setting": "smtpSameAsImap",
                   "type": "bool",
                   "default": false,
-                  "title": "Same as IMAP password",
+                  "title": "Same as IMAP login",
                   "visibleWhen": {
                     "setting": "emailSubmission",
                     "equals": false

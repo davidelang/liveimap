@@ -1,6 +1,7 @@
 package org.dlang.liveimap.engine
 
 import org.dlang.liveimap.session.imapAuthOrder
+import org.dlang.liveimap.session.oauthAdvertised
 import org.dlang.liveimap.settings.DeletePolicy
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.TlsMode
@@ -49,7 +50,7 @@ data class ServerCheck(
  * Judges a probe against the account's settings. oldTlsWorks is the result of a second probe with
  * allowOldTls on, made only when the first TLS attempt failed with the setting off (null when not tried).
  */
-fun checkServer(settings: Settings, probe: ServerProbe, oldTlsWorks: Boolean? = null): ServerCheck {
+fun checkServer(settings: Settings, probe: ServerProbe, oldTlsWorks: Boolean? = null, oauthSignedIn: Boolean = false): ServerCheck {
     if (probe.error.isNotEmpty()) {
         return ServerCheck(reachable = false, conflicts = listOf("server not reachable: ${probe.error}"))
     }
@@ -76,6 +77,14 @@ fun checkServer(settings: Settings, probe: ServerProbe, oldTlsWorks: Boolean? = 
     }
     val caps = probe.post.ifEmpty { probe.pre }
     if (caps.isEmpty()) return ServerCheck(reachable = true, conflicts = conflicts, notes = notes)
+    if (settings.accountAuth == "oauth2") {
+        val offered = oauthAdvertised(caps)
+        if ("OAUTHBEARER" in offered) notes.add("server advertises AUTH=OAUTHBEARER")
+        if ("XOAUTH2" in offered) notes.add("server advertises AUTH=XOAUTH2")
+        if (offered.isEmpty()) conflicts.add("server does not advertise OAUTHBEARER or XOAUTH2")
+        if (!oauthSignedIn) notes.add("Not signed in")
+        return ServerCheck(reachable = true, conflicts = conflicts, notes = notes)
+    }
     val words = caps.split(' ').filter { it.isNotEmpty() }.map { it.uppercase() }.toSet()
     if ("IMAP4REV1" !in words && "IMAP4REV2" !in words) conflicts.add("server does not advertise IMAP4rev1")
     val mechanisms = words.filter { it.startsWith("AUTH=") }.map { it.removePrefix("AUTH=") }.toSet()

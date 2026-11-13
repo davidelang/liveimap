@@ -21,6 +21,22 @@ fun chooseImapAuth(
     clientCert: Boolean = false,
 ): String? = imapAuthOrder(capabilities, tls, plaintextOk, channelBinding, clientMechanisms, clientCert).firstOrNull()
 
+/** Password SMTP uses [chooseImapAuth]. An OAuth mode picks one bearer mechanism and nothing else. */
+fun chooseSmtpAuthMechanism(
+    capabilities: String,
+    tls: Boolean,
+    plaintextOk: Boolean,
+    channelBinding: Boolean,
+    clientCert: Boolean,
+    oauthMode: String = "",
+): String? {
+    if (oauthMode.isNotEmpty()) {
+        if (!tls) return null
+        return chooseOauthMechanism(capabilities, oauthMode)
+    }
+    return chooseImapAuth(capabilities, tls, plaintextOk, channelBinding, "", clientCert)
+}
+
 /** For the native login: [imapAuthOrder] as one space-separated line. C calls [ImapAuthNative]. */
 fun imapAuthOrderLine(
     capabilities: String,
@@ -46,7 +62,12 @@ fun imapAuthOrder(
     channelBinding: Boolean,
     clientMechanisms: String = "",
     clientCert: Boolean = false,
+    oauthMode: String = "",
 ): List<String> {
+    if (oauthMode.isNotEmpty()) {
+        val one = chooseOauthMechanism(capabilities, oauthMode)
+        return if (one == null) emptyList() else listOf(one)
+    }
     // Only mechanisms the local SASL library has; blank means unknown (no filter). X-PLUS comes with X.
     val client = clientMechanisms.uppercase().split(imapTokenSplit).filter { it.isNotEmpty() }.toSet()
     fun clientHas(name: String) = client.isEmpty() || name in client || name.removeSuffix("-PLUS") in client

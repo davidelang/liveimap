@@ -467,7 +467,7 @@ fun sieveTarget(settings: Settings, inboundPassword: String?, sievePassword: Str
     }
     if (!same && settings.sieveHost.isBlank()) throw SieveTargetException("host")
     if (host.isBlank()) throw SieveTargetException("host")
-    val password = if (same) inboundPassword else sievePassword
+    val password = if (same && settings.accountAuth != "oauth2") inboundPassword else sievePassword
     if (password == null) throw SieveTargetException("password")
     val username = if (same) settings.username else settings.sieveUsername
     return SieveLogin(host, settings.sievePort, username, password)

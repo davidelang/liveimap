@@ -45,6 +45,7 @@ fun jmapUpload(
     trust: (String, List<ByteArray>, String) -> String,
     policy: TlsPolicy,
     accountKey: String = "",
+    bearer: Boolean = false,
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
@@ -52,7 +53,7 @@ fun jmapUpload(
     if (bytes.isEmpty()) throw JmapFailure("jmap upload is empty")
     val url = jmapUploadUrl(session.uploadUrl, accountId)
     if (!jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap upload url is not https")
-    val authorization = jmapBasicAuthorization(username, password)
+    val authorization = jmapAuthorization(username, password, bearer)
     val exchange = jmapNet { post(url, bytes, "message/rfc822", authorization) }
     try {
         val host = uploadHost(url)
@@ -78,6 +79,7 @@ fun jmapUpload(
     trust: (String, List<ByteArray>, String) -> String = PeerTrust::check,
     policy: TlsPolicy = TlsPolicy(),
     accountKey: String = "",
+    bearer: Boolean = false,
 ): String {
     val accountId = session.primaryMailAccountId
     if (accountId.isNullOrBlank()) throw JmapFailure("jmap account id is empty")
@@ -85,7 +87,7 @@ fun jmapUpload(
     if (!file.isFile || file.length() == 0L) throw JmapFailure("jmap upload is empty")
     val url = jmapUploadUrl(session.uploadUrl, accountId)
     if (!jmapUrlAllowed(accountKey, url)) throw JmapFailure("jmap upload url is not https")
-    val authorization = jmapBasicAuthorization(username, password)
+    val authorization = jmapAuthorization(username, password, bearer)
     val exchange = jmapNet { post(url, file, "message/rfc822", authorization) }
     try {
         val host = uploadHost(url)
