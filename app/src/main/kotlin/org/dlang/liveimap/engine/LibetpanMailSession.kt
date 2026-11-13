@@ -613,18 +613,17 @@ class LibetpanMailSession(
             val text = connected.error
             if (account.logImapTraffic) statusNote(account, "Error $text")
             TrafficRecorder.event("main", "error", text)
-            if (connected.authRejected) {
-                if (oauth && !oauthRetried) {
-                    val refreshed = try {
-                        org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(context, accountId, account)
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (refreshed != null) return loginOnce(account, refreshed, oauthRetried = true)
-                    return OpenResult.Failed("Sign in again")
+            if (connected.authRejected && oauth) {
+                val refreshed = try {
+                    org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(context, accountId, account, password)
+                } catch (error: Exception) {
+                    if (error is java.util.concurrent.CancellationException) throw error
+                    null
                 }
-                return OpenResult.AuthRejected(text)
+                if (!oauthRetried && refreshed != null) return loginOnce(account, refreshed, oauthRetried = true)
+                return OpenResult.Failed("Sign in again")
             }
+            if (connected.authRejected) return OpenResult.AuthRejected(text)
             return OpenResult.Failed(text)
         }
         val line = nativeCapabilityLine(connected.handle)
@@ -2168,16 +2167,18 @@ class LibetpanMailSession(
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         return keeper.write("send") {
             forgetSelected()
-            nativeSmtp(
-                requireHandle(),
-                file.absolutePath,
-                recipients.toTypedArray(),
-                smtpUser,
-                smtpPassword,
-                dsnNotify,
-                envelopeFrom,
-                oauthMode,
-            )
+            smtpAuthed(acct, smtpPassword, oauthMode) { password, mode ->
+                nativeSmtp(
+                    requireHandle(),
+                    file.absolutePath,
+                    recipients.toTypedArray(),
+                    smtpUser,
+                    password,
+                    dsnNotify,
+                    envelopeFrom,
+                    mode,
+                )
+            }
         }
     }
 
@@ -2201,7 +2202,9 @@ class LibetpanMailSession(
         val staged = stageSmtp(acct, imapPassword.orEmpty())
         if (staged.handle == 0L) throw MailFailure(staged.error)
         try {
-            val code = nativeSmtp(staged.handle, null, emptyArray(), smtpUser, smtpPassword, 0, "", oauthMode)
+            val code = smtpAuthed(acct, smtpPassword, oauthMode) { password, mode ->
+                nativeSmtp(staged.handle, null, emptyArray(), smtpUser, password, 0, "", mode)
+            }
             return when (code) {
                 2 -> org.dlang.liveimap.session.SmtpLoginCheck.LoggedIn
                 3 -> org.dlang.liveimap.session.SmtpLoginCheck.NoAuthOffered
@@ -2732,6 +2735,23 @@ class LibetpanMailSession(
         envelopeFrom: String,
         oauthMode: String,
     ): Int
+
+    private fun smtpAuthed(acct: Settings, password: String, mode: String, send: (String, String) -> Int): Int {
+        if (!mode.startsWith("OAUTH:")) return send(password, mode)
+        return org.dlang.liveimap.oauth.attemptBearer(
+            token = password,
+            refresh = { rejected ->
+                try {
+                    org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(context, accountId, acct, rejected)
+                } catch (error: Exception) {
+                    if (error is java.util.concurrent.CancellationException) throw error
+                    null
+                }
+            },
+            success = { org.dlang.liveimap.oauth.OauthBridge.noteAuthSuccess(context, accountId) },
+            rejected = { org.dlang.liveimap.oauth.oauthAuthenticationFailed(it) },
+        ) { token -> send(token, mode) }
+    }
 
     private fun smtpSecret(acct: Settings, ownSmtpPassword: String?, imapPassword: String?): Pair<String, String> {
         if (acct.smtpNoAuth == SmtpNoAuth.On) return "" to ""

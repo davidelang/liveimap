@@ -1505,7 +1505,7 @@ private fun ComposeForm(
                 var leftOver: String? = null
                 var deleteFailed: String? = null
                 try {
-                    val (secret, bearer) = jmapComposeSecret(appContext, accountId, account, password)
+                    runJmapCompose(appContext, accountId, account, password) { secret, bearer ->
                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapAuthorization(account.username, secret, bearer))
                     keepCopyUntilSubmitted(copy, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }, { error ->
                         deleteFailed = joinedNotice(deleteFailed, deleteFailedText(error, copy.id))
@@ -1526,6 +1526,7 @@ private fun ComposeForm(
                         onNotice = { leftOver = S(appContext, "The staging copy %1\$s could not be removed", it) },
                         policy = account.tlsPolicy(), accountKey = accountId, bearer = bearer,
                     ) }
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: DeviceCopyNotSaved) {
@@ -1991,7 +1992,7 @@ private fun ComposeForm(
                         var leftOver: String? = null
                         var deleteFailed: String? = null
                         try {
-                            val (secret, bearer) = jmapComposeSecret(appContext, accountId, account, password)
+                            runJmapCompose(appContext, accountId, account, password) { secret, bearer ->
                             val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapAuthorization(account.username, secret, bearer))
                             keepCopyUntilSubmitted(sending, { writeCopy(appContext, it, accountId, account.unlabeledCharset) }, { deleteCopy(appContext, it, accountId) }, { error ->
                                 deleteFailed = joinedNotice(deleteFailed, deleteFailedText(error, sending.id))
@@ -2012,6 +2013,7 @@ private fun ComposeForm(
                                 policy = account.tlsPolicy(), accountKey = accountId, bearer = bearer,
                             ) }
                             deleteFailed = joinedNotice(deleteFailed, applyAttachmentLife(composeAttachmentLife(shownCopyOrigin(), ComposeCopyAction.SendSuccess, sending.id, unsentId, assembledCopyId, false)))
+                            }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (_: DeviceCopyNotSaved) {
@@ -2441,7 +2443,7 @@ private fun ComposeForm(
                                 }
                                 val bouncing = seededCopy(id, false, savedMailbox, recipients, file)
                                 try {
-                                    val (secret, bearer) = jmapComposeSecret(appContext, accountId, account, password)
+                                    runJmapCompose(appContext, accountId, account, password) { secret, bearer ->
                                     val offer = offerForAccount(account, platformJmapExchange(account.jmapCertPin, account.tlsPolicy(), accountId, org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId)), accountKey = accountId, traffic = org.dlang.liveimap.engine.TrafficLog.writer(appContext.cacheDir, accountId), authorization = jmapAuthorization(account.username, secret, bearer))
                                     keepCopyUntilSubmitted(
                                         bouncing,
@@ -2468,6 +2470,7 @@ private fun ComposeForm(
                                     deleteFailed = joinedNotice(deleteFailed, clearShownCopy(id))
                                     storeAcceptedFlags(listOf(uid))
                                     addBounceAccepted(uid)
+                                    }
                                     continue
                                 } catch (error: CancellationException) {
                                     throw error
@@ -2910,6 +2913,53 @@ private fun commitSuggestion(stored: String, suggestion: AddressSuggestion): Str
  */
 internal fun viaFccMailbox(ownSent: String, ruleFcc: String, viaSent: String): String =
     if (ruleFcc == ownSent) viaSent else ruleFcc
+
+internal suspend fun <T> runJmapCompose(
+    appContext: android.content.Context,
+    accountId: String,
+    account: Settings,
+    imapPassword: String?,
+    block: suspend (secret: String, bearer: Boolean) -> T,
+): T {
+    val (secret, bearer) = jmapComposeSecret(appContext, accountId, account, imapPassword)
+    if (!bearer) return block(secret, false)
+    fun textOf(error: Throwable) = when (error) {
+        is MailFailure -> error.text
+        is org.dlang.liveimap.jmap.JmapFailure -> error.text
+        else -> error.message.orEmpty()
+    }
+    try {
+        val value = block(secret, true)
+        org.dlang.liveimap.oauth.OauthBridge.noteAuthSuccess(appContext, accountId)
+        return value
+    } catch (error: Exception) {
+        if (error is CancellationException || !org.dlang.liveimap.oauth.oauthAuthenticationFailed(textOf(error))) throw error
+        val next = try {
+            org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(appContext, accountId, account, secret)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: throw MailFailure("Sign in again")
+        try {
+            val value = block(next, true)
+            org.dlang.liveimap.oauth.OauthBridge.noteAuthSuccess(appContext, accountId)
+            return value
+        } catch (again: Exception) {
+            if (again is CancellationException) throw again
+            if (org.dlang.liveimap.oauth.oauthAuthenticationFailed(textOf(again))) {
+                try {
+                    org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(appContext, accountId, account, next)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                }
+                throw MailFailure("Sign in again")
+            }
+            throw again
+        }
+    }
+}
 
 internal fun jmapComposeSecret(
     appContext: android.content.Context,

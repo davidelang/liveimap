@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.accounts.AccountStore
 import org.dlang.liveimap.accounts.oauthClientSecretSlot
@@ -35,10 +36,17 @@ object OauthBridge {
         store(context).oauthPlain(accountId, oauthClientSecretSlot)
     }
 
+    private fun arm(context: Context) {
+        val dir = File(context.applicationContext.filesDir, "oauth-refresh")
+        if (!dir.isDirectory) dir.mkdirs()
+        OauthRefreshLocks.directory = dir
+    }
+
     fun isSignedIn(context: Context, accountId: String, now: Long = System.currentTimeMillis()): Boolean =
         readState(context, accountId)?.signedIn(now) == true
 
     fun accessOrThrow(context: Context, accountId: String, settings: Settings): String {
+        arm(context)
         val now = System.currentTimeMillis()
         return withRefreshLock(accountId) {
             val secret = secret(context, accountId)
@@ -54,23 +62,30 @@ object OauthBridge {
         }
     }
 
-    fun onAuthRejected(context: Context, accountId: String, settings: Settings): String? {
+    fun onAuthRejected(context: Context, accountId: String, settings: Settings, rejectedAccess: String? = null): String? {
+        arm(context)
         val now = System.currentTimeMillis()
         val next = onAuthFailure(
             accountId,
-            readState(context, accountId),
+            null,
             settings,
             secret(context, accountId),
             now,
             transport,
+            rejectedAccess,
+            reread = { readState(context, accountId) },
         ) { updated -> writeState(context, accountId, updated) }
         if (next.access.isEmpty() || next.accessUnusable) return null
         return next.access
     }
 
     fun noteAuthSuccess(context: Context, accountId: String) {
-        val current = readState(context, accountId) ?: return
-        writeState(context, accountId, onAuthSuccess(current))
+        arm(context)
+        withRefreshLock(accountId) {
+            val current = readState(context, accountId) ?: return@withRefreshLock
+            if (current.streak == 0 && !current.accessUnusable) return@withRefreshLock
+            writeState(context, accountId, onAuthSuccess(current))
+        }
     }
 
     fun discover(settings: Settings): Settings {
@@ -94,20 +109,23 @@ object OauthBridge {
         )
 
     suspend fun signOut(context: Context, accountId: String, settings: Settings) {
+        arm(context)
         val accounts = store(context)
-        val state = readState(context, accountId)
-        val secret = secret(context, accountId)
-        signOutOrder(
-            state,
-            settings,
-            secret,
-            transport,
-            dropSession = { runBlocking { dropMailSession(accountId) } },
-            clearToken = { writeState(context, accountId, null) },
-            clearPending = {
-                runBlocking { accounts.setOauthPlain(accountId, oauthPendingSlot, null) }
-            },
-        )
+        withRefreshLock(accountId) {
+            val state = readState(context, accountId)
+            val secret = secret(context, accountId)
+            signOutOrder(
+                state,
+                settings,
+                secret,
+                transport,
+                dropSession = { runBlocking { dropMailSession(accountId) } },
+                clearToken = { writeState(context, accountId, null) },
+                clearPending = {
+                    runBlocking { accounts.setOauthPlain(accountId, oauthPendingSlot, null) }
+                },
+            )
+        }
     }
 
     fun completeBrowserRedirect(context: Context, query: Map<String, String>): RedirectResult = runBlocking {

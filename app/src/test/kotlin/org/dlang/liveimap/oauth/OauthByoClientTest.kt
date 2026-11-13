@@ -146,9 +146,86 @@ class OauthByoClientTest {
         }) { saved = it }
         assertTrue(again.accessUnusable && again.refreshUnusable)
         assertEquals(0, onAuthSuccess(fresh.copy(streak = 1, accessUnusable = true)).streak)
+        var shared = fresh
+        val waiterTransport = OauthTransport {
+            OauthHttpResponse(200, """{"access_token":"rotated","refresh_token":"once","expires_in":3600}""")
+        }
+        val holder = onAuthFailure("acct", shared, settings, "sec", 0, waiterTransport, rejectedAccess = "a", reread = { shared }) {
+            shared = it
+        }
+        assertEquals("rotated", holder.access)
+        assertEquals(1, holder.streak)
+        val waited = onAuthFailure(
+            "acct",
+            shared,
+            settings,
+            "sec",
+            0,
+            OauthTransport { throw AssertionError("waiter refreshed") },
+            rejectedAccess = "a",
+            reread = { shared },
+        ) { throw AssertionError("waiter saved") }
+        assertEquals("rotated", waited.access)
+        assertFalse(waited.accessUnusable)
+        val secondUse = onAuthFailure(
+            "acct",
+            shared,
+            settings,
+            "sec",
+            0,
+            OauthTransport { throw AssertionError("second refresh") },
+            rejectedAccess = "rotated",
+            reread = { shared },
+        ) { shared = it }
+        assertTrue(secondUse.accessUnusable && secondUse.refreshUnusable)
         withRefreshLock("same") {
             withRefreshLock("same") { assertTrue(true) }
         }
+        val dir = java.nio.file.Files.createTempDirectory("oauth-lock")
+        OauthRefreshLocks.directory = dir.toFile()
+        try {
+            withRefreshLock("acct-file") {
+                withRefreshLock("acct-file") {
+                    val file = OauthRefreshLocks.file("acct-file")
+                    assertTrue(file != null && file.isFile)
+                    java.io.RandomAccessFile(file, "rw").use { raf ->
+                        try {
+                            raf.channel.tryLock()
+                            throw AssertionError("refresh lock was not held")
+                        } catch (_: java.nio.channels.OverlappingFileLockException) {
+                        }
+                    }
+                }
+            }
+        } finally {
+            OauthRefreshLocks.directory = null
+        }
+        var presented = 0
+        val sent = attemptBearer(
+            token = "old",
+            refresh = { _ -> "new" },
+            success = {},
+            rejected = ::oauthAuthenticationFailed,
+        ) { token ->
+            presented++
+            if (presented == 1) throw MailFailure("server rejected OAUTHBEARER")
+            token
+        }
+        assertEquals("new", sent)
+        assertEquals(2, presented)
+        var marks = 0
+        try {
+            attemptBearer(
+                token = "old",
+                refresh = { _ -> marks++; if (marks == 1) "new" else null },
+                success = {},
+                rejected = ::oauthAuthenticationFailed,
+            ) { throw MailFailure("jmap api status 401") }
+            throw AssertionError("second auth failure")
+        } catch (error: MailFailure) {
+            assertEquals("Sign in again", error.text)
+        }
+        assertEquals(2, marks)
     }
 
     @Test

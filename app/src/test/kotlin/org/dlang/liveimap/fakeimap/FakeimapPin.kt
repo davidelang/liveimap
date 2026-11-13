@@ -291,6 +291,7 @@ class FakeimapServer(
             implicitTls: Boolean = false,
             cert: Path? = null,
             key: Path? = null,
+            extra: Map<String, Any?> = emptyMap(),
         ): FakeimapServer {
             FakeimapPin.requireReady()
             val work = FakeimapPin.scratchDir(label)
@@ -313,6 +314,7 @@ class FakeimapServer(
                 keys["cert_file"] = cert.toAbsolutePath().toString()
                 keys["key_file"] = key.toAbsolutePath().toString()
             }
+            for ((name, value) in extra) keys[name] = value
             writeUtf8(cfg, FakeimapPin.jsonValue(keys) + "\n")
             val pb = ProcessBuilder(FakeimapPin.artifact().toString(), cfg.toAbsolutePath().toString())
             pb.directory(FakeimapPin.repoRoot().toFile())

@@ -15,8 +15,13 @@ import org.dlang.liveimap.accounts.AccountCredentials
 import org.dlang.liveimap.engine.LibetpanMailSession
 import org.dlang.liveimap.jmap.JmapOffer
 import org.dlang.liveimap.jmap.JmapPlainHttp
+import org.dlang.liveimap.jmap.jmapAuthorization
 import org.dlang.liveimap.jmap.jmapMailboxLevel
+import org.dlang.liveimap.jmap.jmapPresented
 import org.dlang.liveimap.jmap.offerForAccount
+import org.dlang.liveimap.oauth.OauthBridge
+import org.dlang.liveimap.oauth.attemptBearer
+import org.dlang.liveimap.oauth.oauthAuthenticationFailed
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.platformJmapExchange
 import org.dlang.liveimap.session.MailFailure
@@ -173,22 +178,41 @@ fun testAccountProbes(
                     val policy = candidate.tlsPolicy()
                     val context = app ?: error("no application")
                     val traffic = org.dlang.liveimap.engine.TrafficLog.writer(context.cacheDir, accountId)
-                    val (secret, bearer) = org.dlang.liveimap.jmap.jmapPresented(
+                    val (secret, bearer) = jmapPresented(
                         candidate.accountAuth,
                         password,
                         if (candidate.accountAuth == "oauth2") {
-                            org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(context, accountId, candidate)
+                            OauthBridge.accessOrThrow(context, accountId, candidate)
                         } else {
                             null
                         },
                     )
-                    val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy, probeKey, traffic), accountKey = probeKey, traffic = traffic, authorization = org.dlang.liveimap.jmap.jmapAuthorization(candidate.username, secret, bearer))
-                    if (offer !is JmapOffer.Mail) {
-                        throw IllegalStateException(
-                            if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
-                        )
+                    fun login(token: String, presentedBearer: Boolean) {
+                        val offer = offerForAccount(candidate, platformJmapExchange(candidate.jmapCertPin, policy, probeKey, traffic), accountKey = probeKey, traffic = traffic, authorization = jmapAuthorization(candidate.username, token, presentedBearer))
+                        if (offer !is JmapOffer.Mail) {
+                            throw IllegalStateException(
+                                if (candidate.jmapFolders) "no JMAP service found" else "no JMAP service found at ${candidate.imapHost}",
+                            )
+                        }
+                        jmapMailboxLevel(offer.session, null, candidate.username, token, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, probeKey, traffic, policy), policy = policy, accountKey = probeKey, bearer = presentedBearer)
                     }
-                    jmapMailboxLevel(offer.session, null, candidate.username, secret, candidate.jmapCertPin, pinnedJmapPost(candidate.jmapCertPin, probeKey, traffic, policy), policy = policy, accountKey = probeKey, bearer = bearer)
+                    if (!bearer) {
+                        login(secret, false)
+                    } else {
+                        attemptBearer(
+                            token = secret,
+                            refresh = { rejected ->
+                                try {
+                                    OauthBridge.onAuthRejected(context, accountId, candidate, rejected)
+                                } catch (error: Exception) {
+                                    if (error is CancellationException) throw error
+                                    null
+                                }
+                            },
+                            success = { OauthBridge.noteAuthSuccess(context, accountId) },
+                            rejected = ::oauthAuthenticationFailed,
+                        ) { token -> login(token, true) }
+                    }
                 } finally {
                     JmapPlainHttp.drop(probeKey)
                 }

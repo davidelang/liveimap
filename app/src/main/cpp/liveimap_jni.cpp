@@ -4011,8 +4011,10 @@ static int answerImapChallenge(mailimap * imap, const char * reply) {
 }
 
 // OAUTH: prefix is handled here, before a forced AUTH= name would be looked up.
+// authRejected is set only after the server rejects the mechanism, not on a local refusal.
 bool loginImapOauth(mailimap * imap, const char * host, int port, const char * user, const char * password,
-    const std::string & address, std::string * error, bool tls, const std::string & forced, const std::string & caps) {
+    const std::string & address, std::string * error, bool tls, const std::string & forced, const std::string & caps,
+    bool * authRejected) {
     if (!tls) {
         *error = "OAuth login is sent only on TLS";
         return false;
@@ -4116,6 +4118,7 @@ bool loginImapOauth(mailimap * imap, const char * host, int port, const char * u
         }
     }
     if (r != MAILIMAP_NO_ERROR) {
+        if (authRejected != nullptr) *authRejected = true;
         *error = serviceLabel("IMAP", host, port) + " (" + address + ") user " + std::string(name)
             + ": login failed: server rejected " + mech;
         return false;
@@ -4145,7 +4148,7 @@ bool loginImap(JNIEnv * env, mailimap * imap, const char * host, int port, const
         if (tlsOut != nullptr) *tlsOut = negotiatedTls(imap->imap_stream, bindingName);
     }
     if (forced.size() >= 6 && forced.compare(0, 6, "OAUTH:") == 0) {
-        return loginImapOauth(imap, host, port, user, password, address, error, tls, forced, line);
+        return loginImapOauth(imap, host, port, user, password, address, error, tls, forced, line, authRejected);
     }
     if (gJni.imapAuth == nullptr || gJni.imapAuthOrder == nullptr) {
         *error = "auth choice failed";

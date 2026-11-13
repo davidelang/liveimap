@@ -48,6 +48,9 @@ import org.dlang.liveimap.jmap.JmapSession
 import org.dlang.liveimap.jmap.jmapAuthorization
 import org.dlang.liveimap.jmap.jmapPresented
 import org.dlang.liveimap.jmap.jmapFolderLevel
+import org.dlang.liveimap.oauth.OauthBridge
+import org.dlang.liveimap.oauth.attemptBearer
+import org.dlang.liveimap.oauth.oauthAuthenticationFailed
 import org.dlang.liveimap.jmap.offerForAccount
 import org.dlang.liveimap.jmap.pinnedJmapPost
 import org.dlang.liveimap.jmap.platformJmapExchange
@@ -268,33 +271,52 @@ private suspend fun openJmapFolderSource(
                 settings.accountAuth,
                 password,
                 if (settings.accountAuth == "oauth2") {
-                    org.dlang.liveimap.oauth.OauthBridge.accessOrThrow(app, accountId, settings)
+                    OauthBridge.accessOrThrow(app, accountId, settings)
                 } else {
                     null
                 },
             )
-            val offer = offerForAccount(
-                settings,
-                platformJmapExchange(settings.jmapCertPin, policy, probeKey, traffic),
-                accountKey = probeKey,
-                traffic = traffic,
-                authorization = jmapAuthorization(settings.username, secret, bearer),
-            )
-            if (offer !is JmapOffer.Mail) {
-                throw IllegalStateException(
-                    if (settings.jmapFolders) "no JMAP service found" else "no JMAP service found at ${settings.imapHost}",
+            fun source(token: String, presentedBearer: Boolean): FolderSource {
+                val offer = offerForAccount(
+                    settings,
+                    platformJmapExchange(settings.jmapCertPin, policy, probeKey, traffic),
+                    accountKey = probeKey,
+                    traffic = traffic,
+                    authorization = jmapAuthorization(settings.username, token, presentedBearer),
+                )
+                if (offer !is JmapOffer.Mail) {
+                    throw IllegalStateException(
+                        if (settings.jmapFolders) "no JMAP service found" else "no JMAP service found at ${settings.imapHost}",
+                    )
+                }
+                return JmapFolderSource(
+                    offer.session,
+                    settings.username,
+                    token,
+                    settings.jmapCertPin,
+                    pinnedJmapPost(settings.jmapCertPin, probeKey, traffic, policy),
+                    policy,
+                    probeKey,
+                    presentedBearer,
                 )
             }
-            JmapFolderSource(
-                offer.session,
-                settings.username,
-                secret,
-                settings.jmapCertPin,
-                pinnedJmapPost(settings.jmapCertPin, probeKey, traffic, policy),
-                policy,
-                probeKey,
-                bearer,
-            )
+            if (!bearer) {
+                source(secret, false)
+            } else {
+                attemptBearer(
+                    token = secret,
+                    refresh = { rejected ->
+                        try {
+                            OauthBridge.onAuthRejected(app, accountId, settings, rejected)
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            null
+                        }
+                    },
+                    success = { OauthBridge.noteAuthSuccess(app, accountId) },
+                    rejected = ::oauthAuthenticationFailed,
+                ) { token -> source(token, true) }
+            }
         }
     } catch (error: Throwable) {
         withContext(NonCancellable + Dispatchers.IO) { JmapPlainHttp.drop(probeKey) }

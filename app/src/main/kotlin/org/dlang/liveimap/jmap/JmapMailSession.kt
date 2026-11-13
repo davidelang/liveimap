@@ -67,6 +67,10 @@ class JmapMailSession(
     private val passwordOf: suspend (Settings) -> String,
     /** Stores a confirmed JMAP pin on the account (field-level update, F75). */
     private val savePin: suspend (String) -> Unit,
+    /** One auth failure refreshes the bearer. Null on a session that has no token store. */
+    private val onBearerRejected: ((Settings, String) -> String?)? = null,
+    /** Clears the auth-failure streak after the bearer is accepted. */
+    private val onBearerAccepted: (() -> Unit)? = null,
 ) : MailSession {
     @Volatile private var certConfirmer: (suspend (CertPrompt) -> Boolean)? = null
     @Volatile private var useBearer: Boolean = false
@@ -255,42 +259,60 @@ class JmapMailSession(
     override suspend fun open(account: Settings): OpenResult = onSession {
         val key = account.preservedSecurityKey()
         if (key != null) return@onSession OpenResult.Failed("account settings need attention: $key")
-        try {
-            var trusted = account
-            useBearer = account.accountAuth == "oauth2"
-            val loginPassword = passwordOf(account)
+        var trusted = account
+        useBearer = account.accountAuth == "oauth2"
+        var loginPassword = passwordOf(account)
+        var retriedAuth = false
+        while (true) {
             val loginAuthorization = jmapAuthorization(account.username, loginPassword, useBearer)
-            val offer = try {
-                io { JmapResponseCap.use(account.maxJmapResponseBytes.toInt()) { discover(account, loginAuthorization) } }
-            } catch (pinOffer: JmapPinOffer) {
-                // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
-                val shown = PeerTrust.offer(pinOffer.ders)
-                val confirm = certConfirmer
-                if (shown == null || shown.size != 5 || confirm == null) throw pinOffer
-                val prompt = CertPrompt(pinOffer.text, shown[0], shown[1], shown[2], shown[3], shown[4], pinOffer.host, runCatching { jmapServerTarget(account.imapHost).port }.getOrDefault(443))
-                if (!confirm(prompt)) throw pinOffer
-                savePin(prompt.fingerprint)
-                trusted = account.copy(jmapCertPin = prompt.fingerprint)
-                try {
-                    io { JmapResponseCap.use(trusted.maxJmapResponseBytes.toInt()) { discover(trusted, loginAuthorization) } }
-                } catch (again: JmapPinOffer) {
-                    throw JmapFailure(again.text)
+            try {
+                val offer = try {
+                    io { JmapResponseCap.use(account.maxJmapResponseBytes.toInt()) { discover(account, loginAuthorization) } }
+                } catch (pinOffer: JmapPinOffer) {
+                    // As IMAP (F64): show the certificate, and on yes pin it as the JMAP pin (F63) and retry once.
+                    val shown = PeerTrust.offer(pinOffer.ders)
+                    val confirm = certConfirmer
+                    if (shown == null || shown.size != 5 || confirm == null) throw pinOffer
+                    val prompt = CertPrompt(pinOffer.text, shown[0], shown[1], shown[2], shown[3], shown[4], pinOffer.host, runCatching { jmapServerTarget(account.imapHost).port }.getOrDefault(443))
+                    if (!confirm(prompt)) throw pinOffer
+                    savePin(prompt.fingerprint)
+                    trusted = account.copy(jmapCertPin = prompt.fingerprint)
+                    try {
+                        io { JmapResponseCap.use(trusted.maxJmapResponseBytes.toInt()) { discover(trusted, loginAuthorization) } }
+                    } catch (again: JmapPinOffer) {
+                        throw JmapFailure(again.text)
+                    }
                 }
+                val mail = offer as? JmapOffer.Mail ?: return@onSession OpenResult.Failed("server offers no JMAP mail")
+                if (mail.session.primaryMailAccountId.isNullOrBlank()) return@onSession OpenResult.Failed("jmap account id is empty")
+                this.account = trusted
+                session = mail.session
+                pin = trusted.jmapCertPin
+                password = loginPassword
+                authorization = loginAuthorization
+                epoch = (System.currentTimeMillis() / 1000).coerceAtLeast(1L) and 0x7fffffffL
+                ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
+                openEmailId = null
+                if (useBearer) onBearerAccepted?.invoke()
+                return@onSession OpenResult.Connected
+            } catch (failure: JmapFailure) {
+                if (useBearer && org.dlang.liveimap.oauth.oauthAuthenticationFailed(failure.text)) {
+                    if (!retriedAuth) {
+                        val next = onBearerRejected?.invoke(account, loginPassword)
+                        if (next != null) {
+                            retriedAuth = true
+                            loginPassword = next
+                            continue
+                        }
+                    } else {
+                        onBearerRejected?.invoke(account, loginPassword)
+                    }
+                    return@onSession OpenResult.Failed("Sign in again")
+                }
+                return@onSession OpenResult.Failed(failure.text)
             }
-            val mail = offer as? JmapOffer.Mail ?: return@onSession OpenResult.Failed("server offers no JMAP mail")
-            if (mail.session.primaryMailAccountId.isNullOrBlank()) return@onSession OpenResult.Failed("jmap account id is empty")
-            this.account = trusted
-            session = mail.session
-            pin = trusted.jmapCertPin
-            password = loginPassword
-            authorization = loginAuthorization
-            epoch = (System.currentTimeMillis() / 1000).coerceAtLeast(1L) and 0x7fffffffL
-            ids.clear(); roles.clear(); uids.clear(); totals.clear(); parts.clear(); selectedPath = null
-            openEmailId = null
-            OpenResult.Connected
-        } catch (failure: JmapFailure) {
-            OpenResult.Failed(failure.text)
         }
+        return@onSession OpenResult.Failed("Sign in again")
     }
 
     override suspend fun namespaces(): List<Namespace> = listOf(Namespace("", DELIMITER, NamespaceKind.Personal))
@@ -701,9 +723,10 @@ class JmapMailSession(
         val url = try { jmapEventSourceUrl(s.eventSourceUrl, accountKey) } catch (e: JmapFailure) { throw MailFailure(e.text) }
         val host = hostOf(url, accountKey) ?: throw MailFailure("jmap event source url is not https")
         if (!host.equals(hostOf(s.apiUrl, accountKey), ignoreCase = true)) throw MailFailure("jmap event source is on another host")
-        val auth = authorization
+        var auth = authorization
         val streamPin = pin
         val accountId = accountId()
+        var pushRetried = false
         val run = WatchRun()
         // Lazy so the snapshot publishes this job before the body runs. start() is after that publish.
         val job = watchScope.launch(start = CoroutineStart.LAZY) {
@@ -712,7 +735,32 @@ class JmapMailSession(
             var total = startTotal
             try {
                 while (isActive && !run.stopped) {
-                    val events = readStream(run, url, host, auth, streamPin)
+                    val events = try {
+                        readStream(run, url, host, auth, streamPin)
+                    } catch (failure: JmapFailure) {
+                        if (useBearer && org.dlang.liveimap.oauth.oauthAuthenticationFailed(failure.text)) {
+                            val acct = account
+                            if (!pushRetried && acct != null) {
+                                val next = onBearerRejected?.invoke(acct, password)
+                                if (next != null) {
+                                    password = next
+                                    authorization = jmapAuthorization(acct.username, next, true)
+                                    auth = authorization
+                                    pushRetried = true
+                                    readStream(run, url, host, auth, streamPin)
+                                } else {
+                                    throw failure
+                                }
+                            } else {
+                                account?.let { onBearerRejected?.invoke(it, password) }
+                                throw failure
+                            }
+                        } else {
+                            throw failure
+                        }
+                    }
+                    if (pushRetried && useBearer) onBearerAccepted?.invoke()
+                    pushRetried = false
                     if (!isActive) break
                     val next = events.firstNotNullOfOrNull { jmapPushEmailState(it.data, accountId) } ?: continue
                     if (next == state) continue
@@ -890,6 +938,15 @@ class JmapMailSession(
 
     // ---- internals (call on the session command) ----
 
+    private fun refreshStoredBearer(): String? {
+        if (!useBearer) return null
+        val acct = account ?: return null
+        val next = onBearerRejected?.invoke(acct, password) ?: return null
+        password = next
+        authorization = jmapAuthorization(acct.username, next, true)
+        return next
+    }
+
     private fun need(): JmapSession = session ?: throw MailFailure("not connected")
     private fun accountId(): String = need().primaryMailAccountId ?: throw MailFailure("jmap account id is empty")
     private fun accountName(): String = account?.username ?: throw MailFailure("not connected")
@@ -1059,7 +1116,18 @@ class JmapMailSession(
     private suspend fun <T> call(body: String, parse: (Json.Obj) -> T): T {
         val s = need()
         val policy = accountPolicy()
+        var retriedAuth = false
+        while (true) {
         val result = jmap { jmapCall(s.apiUrl, body, authorization, pin, pinnedJmapPost(pin, accountKey, traffic, policy), PeerTrust::check, policy, accountKey) }
+        if ((result.status == 401 || result.status == 403) && useBearer) {
+            if (!retriedAuth) {
+                retriedAuth = true
+                if (refreshStoredBearer() != null) continue
+            } else {
+                refreshStoredBearer()
+            }
+            throw MailFailure("Sign in again")
+        }
         if (result.status != 200) throw MailFailure("jmap api status ${result.status}")
         val root = try {
             JsonParser(result.body).parseDocument()
@@ -1068,14 +1136,30 @@ class JmapMailSession(
         }
         if (root !is Json.Obj) throw MailFailure("jmap response is not an object")
         methodError(root)?.let { throw MailFailure("jmap error: $it") }
+        if (retriedAuth && useBearer) onBearerAccepted?.invoke()
         return parse(root)
+        }
     }
 
     private suspend fun <T> jmap(block: () -> T): T = io {
         try {
             JmapResponseCap.use(account?.maxJmapResponseBytes?.toInt() ?: JmapMaxBody, block)
         } catch (failure: JmapFailure) {
-            throw MailFailure(failure.text)
+            if (!(useBearer && org.dlang.liveimap.oauth.oauthAuthenticationFailed(failure.text))) {
+                throw MailFailure(failure.text)
+            }
+            if (refreshStoredBearer() == null) throw MailFailure("Sign in again")
+            try {
+                val value = JmapResponseCap.use(account?.maxJmapResponseBytes?.toInt() ?: JmapMaxBody, block)
+                onBearerAccepted?.invoke()
+                value
+            } catch (again: JmapFailure) {
+                if (org.dlang.liveimap.oauth.oauthAuthenticationFailed(again.text)) {
+                    refreshStoredBearer()
+                    throw MailFailure("Sign in again")
+                }
+                throw MailFailure(again.text)
+            }
         }
     }
 
@@ -1384,6 +1468,18 @@ fun platformJmapMailSession(context: android.content.Context, accountId: String)
         },
         savePin = { pin ->
             org.dlang.liveimap.settings.DataStoreSettingsStore(context, accountId).update { it.copy(jmapCertPin = pin) }
+        },
+        onBearerRejected = { account, rejected ->
+            if (account.accountAuth != "oauth2") null
+            else try {
+                org.dlang.liveimap.oauth.OauthBridge.onAuthRejected(context, accountId, account, rejected)
+            } catch (error: Exception) {
+                if (error is java.util.concurrent.CancellationException) throw error
+                null
+            }
+        },
+        onBearerAccepted = {
+            org.dlang.liveimap.oauth.OauthBridge.noteAuthSuccess(context, accountId)
         },
     )
 }

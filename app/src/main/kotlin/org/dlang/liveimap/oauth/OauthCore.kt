@@ -1,6 +1,9 @@
 package org.dlang.liveimap.oauth
 
+import org.dlang.liveimap.session.MailFailure
 import org.dlang.liveimap.settings.Settings
+import java.io.File
+import java.io.RandomAccessFile
 import java.net.URI
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -441,11 +444,111 @@ fun revocationBody(settings: Settings, refresh: String, secret: String?): String
 
 object OauthRefreshLocks {
     private val locks = ConcurrentHashMap<String, Any>()
+    private val depth = ConcurrentHashMap<String, Int>()
+
+    /** Shared app files directory. Window processes :w0 through :w7 use the same path. */
+    @Volatile
+    var directory: File? = null
+
     fun lock(accountId: String): Any = locks.computeIfAbsent(accountId) { Any() }
+
+    fun file(accountId: String): File? {
+        val dir = directory ?: return null
+        val safe = buildString {
+            accountId.forEach { ch ->
+                append(if (ch.isLetterOrDigit() || ch == '-' || ch == '_') ch else '_')
+            }
+        }.take(64)
+        val hash = accountId.hashCode().toUInt().toString(16)
+        return File(dir, "$safe-$hash.lock")
+    }
+
+    fun enter(accountId: String): Int {
+        val next = (depth[accountId] ?: 0) + 1
+        depth[accountId] = next
+        return next
+    }
+
+    fun leave(accountId: String) {
+        val next = (depth[accountId] ?: 1) - 1
+        if (next <= 0) depth.remove(accountId) else depth[accountId] = next
+    }
 }
 
-fun <T> withRefreshLock(accountId: String, block: () -> T): T =
-    synchronized(OauthRefreshLocks.lock(accountId)) { block() }
+/**
+ * One lock per account. The in-process monitor is reentrant. When [OauthRefreshLocks.directory]
+ * is set, the outermost hold also takes a file lock so :w0 through :w7 cannot refresh together.
+ */
+fun <T> withRefreshLock(accountId: String, block: () -> T): T {
+    val monitor = OauthRefreshLocks.lock(accountId)
+    synchronized(monitor) {
+        val nest = OauthRefreshLocks.enter(accountId)
+        try {
+            if (nest > 1) return block()
+            val file = OauthRefreshLocks.file(accountId) ?: return block()
+            file.parentFile?.mkdirs()
+            return RandomAccessFile(file, "rw").use { raf ->
+                val held = raf.channel.lock()
+                try {
+                    block()
+                } finally {
+                    held.release()
+                }
+            }
+        } finally {
+            OauthRefreshLocks.leave(accountId)
+        }
+    }
+}
+
+/** Server rejected the bearer. A missing mechanism or an empty token is not this. */
+fun oauthAuthenticationFailed(text: String): Boolean {
+    if (text.contains("server rejected OAUTHBEARER") || text.contains("server rejected XOAUTH2")) return true
+    if (text.contains("jmap login refused (status 401)") || text.contains("jmap login refused (status 403)")) return true
+    if (text.contains("jmap api status 401") || text.contains("jmap api status 403")) return true
+    if (text.contains("jmap upload status 401") || text.contains("jmap upload status 403")) return true
+    if (text.contains("jmap download status 401") || text.contains("jmap download status 403")) return true
+    if (text.contains("jmap push status 401") || text.contains("jmap push status 403")) return true
+    return false
+}
+
+/**
+ * Runs [block] with the access token. An authentication failure refreshes once and retries.
+ * A second failure calls [refresh] again so the tokens are marked unusable.
+ */
+fun <T> attemptBearer(
+    token: String,
+    refresh: (rejectedAccess: String) -> String?,
+    success: () -> Unit,
+    rejected: (String) -> Boolean,
+    block: (String) -> T,
+): T {
+    fun textOf(error: Throwable): String = when (error) {
+        is MailFailure -> error.text
+        else -> error.message.orEmpty()
+    }
+    fun cancelled(error: Throwable) = error is java.util.concurrent.CancellationException
+    try {
+        val value = block(token)
+        success()
+        return value
+    } catch (error: Exception) {
+        if (cancelled(error) || !rejected(textOf(error))) throw error
+        val next = refresh(token) ?: throw MailFailure("Sign in again")
+        try {
+            val value = block(next)
+            success()
+            return value
+        } catch (again: Exception) {
+            if (cancelled(again)) throw again
+            if (rejected(textOf(again))) {
+                refresh(next)
+                throw MailFailure("Sign in again")
+            }
+            throw again
+        }
+    }
+}
 
 fun postGrant(url: String, body: String, transport: OauthTransport, step: String): TokenGrant {
     val response = oauthCall(
@@ -515,9 +618,20 @@ fun onAuthFailure(
     secret: String?,
     now: Long,
     transport: OauthTransport,
+    rejectedAccess: String? = null,
+    reread: (() -> OauthTokenState?)? = null,
     save: (OauthTokenState) -> Unit,
 ): OauthTokenState = withRefreshLock(accountId) {
-    val current = state ?: OauthTokenState(accessUnusable = true, refreshUnusable = true)
+    val current = reread?.invoke() ?: state ?: OauthTokenState(accessUnusable = true, refreshUnusable = true)
+    // Another process refreshed while this one waited. Use that access token.
+    if (
+        rejectedAccess != null &&
+        current.access.isNotEmpty() &&
+        !current.accessUnusable &&
+        current.access != rejectedAccess
+    ) {
+        return@withRefreshLock current
+    }
     if (current.streak >= 1 || current.refresh.isEmpty() || current.refreshUnusable) {
         val marked = current.copy(accessUnusable = true, refreshUnusable = true)
         save(marked)
