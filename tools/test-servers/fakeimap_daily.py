@@ -157,6 +157,7 @@ def run_faults(work):
         "greeting_capabilities": ["IMAP4rev1", "AUTH=PLAIN"],
         "pre_login_capabilities": ["IMAP4rev1", "AUTH=PLAIN"],
         "post_login_capabilities": ["IMAP4rev1", "AUTH=PLAIN"],
+        "fetch_item_order": ["FLAGS", "UID", "RFC822.SIZE", "RFC822"],
     }, indent=1) + "\n", encoding="utf-8")
     log_path = str(Path(work) / "fakeimap.jsonl")
     srv = start_server(work, pers, ds, {}, log_path)
