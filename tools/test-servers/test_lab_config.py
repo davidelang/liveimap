@@ -119,6 +119,32 @@ try:
     assert "mail_domain" in missing_domain, missing_domain
 finally:
     lab.HOSTENV = saved_hostenv
+
+# stalwart-0155 image build: missing domain names mail_domain; empty LAB_BIND stays the LAB_HOST line.
+_pub_src = open(os.path.join(HERE, "build-seed-image"), encoding="utf-8").read()
+_pub_at = _pub_src.find("python3 - \"$DIR\" > \"$work/stalwart-public-url\" <<'PY' || exit 1\n")
+assert _pub_at != -1
+_pub_script = _pub_src[_pub_at:].split("<<'PY' || exit 1\n", 1)[1].split("\nPY\n", 1)[0]
+assert "mail_domain" in _pub_script
+
+def _stalwart_public(bind, domain=None, drop_domain=False):
+    env = os.environ.copy()
+    env["LAB_BIND"] = bind
+    if drop_domain:
+        env.pop("LAB_MAIL_DOMAIN", None)
+    else:
+        env["LAB_MAIL_DOMAIN"] = domain
+    return subprocess.run(
+        [sys.executable, "-", HERE], input=_pub_script, capture_output=True, text=True, env=env,
+    )
+
+_missing_domain_image = _stalwart_public("192.0.2.10", drop_domain=True)
+assert _missing_domain_image.returncode != 0, _missing_domain_image.stdout
+assert "mail_domain" in _missing_domain_image.stderr, _missing_domain_image.stderr
+assert "LAB_HOST is empty" not in _missing_domain_image.stderr, _missing_domain_image.stderr
+_empty_host_image = _stalwart_public("", "example.test")
+assert _empty_host_image.returncode != 0
+assert "stalwart-0155: LAB_HOST is empty in host.env\n" in _empty_host_image.stderr, _empty_host_image.stderr
 banned = ("user" + "_for", "LAB_" + "ZIMBRA" + "_USER")
 banned_files = (
     "lab.py", "acclab.py", "jmaplab.py", "jmaprun.py", "safety_run.py",

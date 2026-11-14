@@ -1001,13 +1001,18 @@ user = "admin"
 secret = "${token}"
 EOF
     # Same [http] url the entrypoint writes from STALWART_PUBLIC_URL. Empty LAB_HOST stops this image.
+    # A missing domain is that SystemExit; the line names mail_domain instead of an empty LAB_HOST.
     python3 - "$DIR" > "$work/stalwart-public-url" <<'PY' || exit 1
 import os, subprocess, sys
 sys.path.insert(0, sys.argv[1])
 try:
     import lab
-except SystemExit:
-    sys.stderr.write("stalwart-0155: LAB_HOST is empty in host.env\n")
+except SystemExit as err:
+    text = str(err)
+    if "mail_domain" in text:
+        sys.stderr.write("stalwart-0155: %s\n" % text)
+    else:
+        sys.stderr.write("stalwart-0155: LAB_HOST is empty in host.env\n")
     sys.exit(1)
 if not lab.LAB_HOST:
     sys.stderr.write("stalwart-0155: LAB_HOST is empty in host.env\n")
