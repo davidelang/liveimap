@@ -4314,3 +4314,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 - Account login is password or OAuth 2 with a client ID the user registers and pastes.
 - Authorization Code plus PKCE in the browser. Tokens sit in AccountManager slots and are presented to IMAP, SMTP when Same as IMAP login is on, and JMAP.
 - Sieve stays on its own password. No vendor client ID is added.
+
+## 2026-10-26 - Regress requires the reply path.
+
+- A real regress run keeps the --responding-to path it was given and writes that path in the results body.
+- A missing or empty path exits 1 before a results body. It does not write none.
+- --dry-run may omit the path and does not substitute none.

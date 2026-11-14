@@ -62,7 +62,7 @@ unit_rows = {}      # (server, suite) -> result lines reported so far
 fresh = set()       # servers setup_server just created from their seed: the first suite skips the reset
 run_t0 = 0.0
 suites_started = False
-responding_to = "none"
+responding_to = ""
 secrets = []
 rows = []
 run_id = ""
@@ -2261,7 +2261,10 @@ def main():
     if backend == "fakeimap":
         os.environ["LAB_BACKEND"] = "fakeimap"
     run_t0 = time.time()
-    responding_to = a.responding_to or "none"
+    responding_to = a.responding_to
+    if not dry_run and not responding_to:
+        print("--responding-to is required")
+        sys.exit(1)
     commit = a.commit
     sha8 = commit[:8]
     run_id = time.strftime("%Y%m%d-%H%M%S") + "-" + sha8
