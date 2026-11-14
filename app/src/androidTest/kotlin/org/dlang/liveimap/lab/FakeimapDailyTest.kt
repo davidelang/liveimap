@@ -72,14 +72,16 @@ class FakeimapDailyTest {
         try {
             val before = uids(box)
             assertTrue(before.isNotEmpty())
-            control(mapOf("op" to "arm-fault", "do" to "close", "command" to "SELECT", "times" to 1))
+            // select() sends EXAMINE. A dropped connection is retried once, so close stays armed.
+            control(mapOf("op" to "arm-fault", "do" to "close", "command" to "EXAMINE", "times" to 0))
             assertTrue(attempt(ctx, labId, account, box).startsWith("fail"))
             assertEquals(before, uids(box))
             control(mapOf("op" to "clear-faults"))
             assertTrue(attempt(ctx, labId, account, box).startsWith("ok"))
 
             val rst = openSelect(ctx, labId, account, box)
-            control(mapOf("op" to "arm-fault", "do" to "rst", "command" to "FETCH", "times" to 1))
+            // The fetch retry is a second FETCH. times 0 keeps the reset armed until clear-faults.
+            control(mapOf("op" to "arm-fault", "do" to "rst", "command" to "FETCH", "times" to 0))
             val fetched = try {
                 rst.session.fetchRfc822(before.first().toLong())
                 "ok"
@@ -93,7 +95,7 @@ class FakeimapDailyTest {
             assertTrue(attempt(ctx, labId, account, box).startsWith("ok"))
 
             control(mapOf(
-                "op" to "arm-fault", "do" to "reply", "command" to "SELECT",
+                "op" to "arm-fault", "do" to "reply", "command" to "EXAMINE",
                 "status" to "NO", "text" to "no", "times" to 1,
             ))
             assertTrue(attempt(ctx, labId, account, box).startsWith("fail"))
