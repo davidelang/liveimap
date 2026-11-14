@@ -40,11 +40,15 @@ EMU_HOST = LAB_HOST
 
 
 def mail_domain():
-    # Reads HOSTENV at call time. Missing or empty is the lab default. Never empty.
+    # Reads HOSTENV at call time. Missing or empty fails; the message names this function.
+    # A set value is returned unchanged.
     domain = HOSTENV.get("LAB_MAIL_DOMAIN") or ""
-    if domain:
-        return domain
-    return "lab.liveimap.test"
+    if not domain.strip():
+        raise SystemExit("mail_domain: LAB_MAIL_DOMAIN is missing or empty")
+    return domain
+
+
+mail_domain()  # missing domain fails here; regress reports that SystemExit before any suite
 
 
 def up_commands():
@@ -485,7 +489,15 @@ def source_address():
 
 
 def cert_problem():
-    """Returns "" or one string naming lab-ca.sh or client-cert.sh."""
+    """Returns "" or one string naming mail_domain, lab-ca.sh, or client-cert.sh."""
+    # First, so a dry-run stops on a missing domain before any certificate check.
+    try:
+        mail_domain()
+    except SystemExit as err:
+        text = str(err)
+        if "mail_domain" not in text:
+            text = "mail_domain: LAB_MAIL_DOMAIN is missing or empty"
+        return text
     ca = os.path.join(GEN, "ca")
     crt = os.path.join(ca, "server.crt")
     if not os.path.isfile(crt):

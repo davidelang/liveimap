@@ -426,24 +426,6 @@ fun rfc822Date(): String {
     return ZonedDateTime.now().format(format)
 }
 
-fun looksLikeBase64(bytes: ByteArray): Boolean {
-    if (bytes.isEmpty()) return false
-    var count = 0
-    for (byte in bytes) {
-        val c = byte.toInt() and 0xFF
-        if (c == '\r'.code || c == '\n'.code || c == ' '.code || c == '\t'.code) continue
-        val ok = c in 'A'.code..'Z'.code ||
-            c in 'a'.code..'z'.code ||
-            c in '0'.code..'9'.code ||
-            c == '+'.code ||
-            c == '/'.code ||
-            c == '='.code
-        if (!ok) return false
-        count++
-    }
-    return count > 0 && count % 4 == 0
-}
-
 /** Break plain text on spaces at the column. Column 0 leaves the body unchanged. */
 internal fun wrapPlain(body: String, column: Int): String {
     if (column <= 0) return body

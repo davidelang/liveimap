@@ -318,6 +318,19 @@ class AccountSettingsTest {
     }
 
     @Test
+    fun ipAddressHostKeepsImplicitTls() {
+        val start = Settings(imapHost = "192.0.2.10").withTlsMode(TlsMode.StartTls)
+        assertEquals("192.0.2.10", start.imapHost)
+        assertEquals(143, start.imapPort)
+        val implicit = start.withTlsMode(TlsMode.Implicit)
+        assertEquals("192.0.2.10", implicit.imapHost)
+        assertEquals(TlsMode.Implicit, implicit.tlsMode)
+        assertEquals(993, implicit.imapPort)
+        assertEquals(465, implicit.smtpPort)
+        assertEquals(implicit, decodeSettings(implicit.encode()))
+    }
+
+    @Test
     fun tlsModeMovesOnlyDefaultPorts() {
         val implicit = Settings().withTlsMode(TlsMode.Implicit)
         assertEquals(993, implicit.imapPort)

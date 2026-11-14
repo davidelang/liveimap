@@ -4,6 +4,9 @@ Run from the repo root: python3 tools/test-servers/test_lab_config.py"""
 import os, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+# lab.py requires a domain at import. This file then proves a missing one fails.
+if not (os.environ.get("LAB_MAIL_DOMAIN") or "").strip():
+    os.environ["LAB_MAIL_DOMAIN"] = "example.test"
 import lab
 
 lab_py = open(os.path.join(HERE, "lab.py"), encoding="utf-8").read()
@@ -94,13 +97,26 @@ assert "requires" in example
 values = [line.split("=", 1)[1] for line in example.splitlines() if line.startswith("LAB_MAIL_DOMAIN=")]
 assert values and values[0].strip().strip('"') == ""
 saved_hostenv = lab.HOSTENV
+def domain_refused(env):
+    lab.HOSTENV = env
+    try:
+        lab.mail_domain()
+    except SystemExit as err:
+        assert "mail_domain" in str(err), err
+        return
+    raise AssertionError("mail_domain returned")
+
 try:
-    lab.HOSTENV = {}
-    assert lab.mail_domain() == "lab.liveimap.test"
-    lab.HOSTENV = {"LAB_MAIL_DOMAIN": ""}
-    assert lab.mail_domain() == "lab.liveimap.test"
+    domain_refused({})
+    domain_refused({"LAB_MAIL_DOMAIN": ""})
+    domain_refused({"LAB_MAIL_DOMAIN": "   "})
     lab.HOSTENV = {"LAB_MAIL_DOMAIN": "example.test"}
     assert lab.mail_domain() == "example.test"
+    lab.HOSTENV = {"LAB_MAIL_DOMAIN": " example.test "}
+    assert lab.mail_domain() == " example.test "
+    lab.HOSTENV = {}
+    missing_domain = lab.cert_problem()
+    assert "mail_domain" in missing_domain, missing_domain
 finally:
     lab.HOSTENV = saved_hostenv
 banned = ("user" + "_for", "LAB_" + "ZIMBRA" + "_USER")
@@ -366,6 +382,8 @@ assert lab.mount_problems(["liveimap-dovecot-245"], {"liveimap-dovecot-245": []}
 for name in ("check_published", "mount_problems", "cert_problem", "port_problems", "seed_problem"):
     body = py_function(lab_py, name)
     assert "sys.exit" not in body, name
+cert_body = py_function(lab_py, "cert_problem")
+assert cert_body.find("mail_domain") < cert_body.find("server.crt")
 dry_fn = py_function(regress, "dry_run_problems")
 assert dry_fn.find("cert_problem") < dry_fn.find("port_problems") < dry_fn.find("seed_problem")
 assert "lab_mount_errors" in dry_fn[dry_fn.find("seed_problem"):]
@@ -547,7 +565,9 @@ ep_end = builder.find("\nEOF\n", ep_at)
 ep = builder[ep_at:ep_end]
 assert "exec /usr/local/bin/stalwart" in ep
 assert "/opt/stalwart/stalwart-mail" not in ep
-assert "/usr/local/bin/stalwart --init /opt/stalwart" in ep
+assert "stalwart --init" not in ep
+assert '[ ! -f /opt/stalwart/etc/config.toml ]' in ep
+assert "config.toml missing" in ep
 assert "config=/opt/stalwart/etc/config.toml" in ep and '--config "$config"' in ep
 assert 'if [ -n "${STALWART_PUBLIC_URL:-}" ]' in ep and "[http]" in ep
 assert "stalwart-provision" not in ep
@@ -683,7 +703,14 @@ assert "LOGIN-DOMAIN" not in lab.mechanisms("IMAP4rev1 AUTH=PLAIN", "uwimap")
 assert "LOGIN-DOMAIN" not in lab.mechanisms("IMAP4rev1 LOGINDISABLED AUTH=PLAIN", "dovecot-245")
 assert lab.login_user("dovecot-245", "LOGIN-CMD") == lab.USER
 assert lab.login_user("stalwart", "LOGIN-DOMAIN") == lab.USER.split("@")[0] + "@localhost.local"
-assert lab.login_user("cyrus-22", "LOGIN-DOMAIN") == lab.USER.split("@")[0] + "@" + lab.mail_domain()
+cyrus_env = dict(lab.HOSTENV)
+if not (cyrus_env.get("LAB_MAIL_DOMAIN") or "").strip():
+    cyrus_env["LAB_MAIL_DOMAIN"] = "example.test"
+lab.HOSTENV = cyrus_env
+try:
+    assert lab.login_user("cyrus-22", "LOGIN-DOMAIN") == lab.USER.split("@")[0] + "@" + lab.mail_domain()
+finally:
+    lab.HOSTENV = saved_hostenv
 try:
     lab.login_policy("no-such-server")
     raise AssertionError("login_policy default")
@@ -1027,6 +1054,17 @@ s15_end = builder.find("\n      ;;\n", s15_at)
 s15 = builder[s15_at:s15_end]
 assert "command -v curl" in s15
 assert "apt-get install -y --no-install-recommends curl" in s15
+assert "COPY config.toml /opt/stalwart/etc/config.toml" in s15
+tls_install = open(os.path.join(HERE, "tls-install.sh"), encoding="utf-8").read()
+assert tls_install.count("mv /etc/lab-new /etc/lab") == 1
+assert 'docker cp "$stage/."' not in tls_install
+replace_at = tls_install.find("mv /etc/lab-new /etc/lab")
+replace_line = tls_install[tls_install.rfind("\n", 0, replace_at) + 1:tls_install.find("\n", replace_at)]
+assert "2>/dev/null" not in replace_line, replace_line
+chmod_at = tls_install.find("chmod 755 /etc/lab && chmod 644 /etc/lab/*")
+assert chmod_at != -1
+chmod_line = tls_install[tls_install.rfind("\n", 0, chmod_at) + 1:tls_install.find("\n", chmod_at)]
+assert "2>/dev/null" not in chmod_line and "|| true" not in chmod_line, chmod_line
 assert 'bind = "0.0.0.0:{ports.container_port(server, service)}"' in open(os.path.join(HERE, "stalwart_015_toml.py"), encoding="utf-8").read()
 pkg = builder.split("FROM $base_image\n", 1)[1].split("COPY certs/", 1)[0]
 assert "timeout 120" not in pkg

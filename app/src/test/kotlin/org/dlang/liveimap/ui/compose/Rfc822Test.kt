@@ -52,6 +52,14 @@ class Rfc822Test {
     }
 
     @Test
+    fun quotedPrintableForwardKeepsThatEncoding() {
+        assertEquals("quoted-printable", outgoingPartEncoding("quoted-printable", false))
+        assertEquals("quoted-printable", outgoingPartEncoding("Quoted-Printable", true))
+        assertEquals("auto", outgoingPartEncoding("", false))
+        assertEquals("raw", outgoingPartEncoding(null, false))
+    }
+
+    @Test
     fun flowedLineThatFitsKeepsSpacesAndTabs() {
         assertEquals("    keep  me", flowPlain("    keep  me", 72))
         assertEquals("one\ttwo", flowPlain("one\ttwo", 72))

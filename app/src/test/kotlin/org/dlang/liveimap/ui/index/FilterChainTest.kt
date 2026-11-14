@@ -38,6 +38,19 @@ class FilterChainTest {
     }
 
     @Test
+    fun nestedGroupKeepsKeywordAndAge() {
+        val inner = encodeAdvancedQuery(
+            AdvancedCombiner.Or,
+            listOf(AdvancedStep(false, "Keyword", "liveimap"), AdvancedStep(false, "Age", "7")),
+        )!!
+        val chain = filterChainGroup(listOf(AppliedFilter("inner", inner, "Advanced")))!!
+        assertEquals(
+            "And\nYes\tGroup\tOr\u001eYes\u001fKeyword\u001fliveimap\u001eYes\u001fAge\u001f7",
+            chain,
+        )
+    }
+
+    @Test
     fun uidSetsCollapseRuns() {
         assertEquals("1,3:5,9", uidSetText(listOf(9L, 4L, 1L, 3L, 5L, 4L)))
         assertEquals("", uidSetText(emptyList()))

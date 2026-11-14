@@ -10,9 +10,9 @@ stage=$(mktemp -d)
 for f in server.crt server.key server.pem chain.crt ca.crt; do cp "$CA/$f" "$stage/$f"; done
 chmod 755 "$stage"; chmod 644 "$stage"/*
 docker cp "$stage" "$c:/etc/lab-new" >/dev/null
-docker exec "$c" sh -c 'rm -rf /etc/lab 2>/dev/null; mv /etc/lab-new /etc/lab 2>/dev/null' || docker cp "$stage/." "$c:/etc/lab" >/dev/null
+docker exec "$c" sh -c 'rm -rf /etc/lab && mv /etc/lab-new /etc/lab'
 rm -rf "$stage"
-docker exec "$c" sh -c 'chmod 755 /etc/lab; chmod 644 /etc/lab/*' 2>/dev/null || true
+docker exec "$c" sh -c 'chmod 755 /etc/lab && chmod 644 /etc/lab/*'
 up=$(awk -F '\t' -v c="$c" '$1 == c { print $2 }' "$DIR/up.tsv")
 setkv() { # file key value separator: replace or append "key<sep>value"
   docker exec "$c" sh -c "f=$1; k='$2'; v='$3'; s='$4'; if grep -q \"^[#[:space:]]*\$k[[:space:]]*\$s\" \$f; then sed -i \"s|^[#[:space:]]*\$k[[:space:]]*\$s.*|\$k\$s\$v|\" \$f; else echo \"\$k\$s\$v\" >> \$f; fi"
