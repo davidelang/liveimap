@@ -277,11 +277,9 @@ def _deep_messages(dest_dir, rows):
 def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
     """Write dest_dir/dataset.json and suite .eml files. Returns the dest Path.
 
-    Mailboxes for every folders.tsv user are included, but fakeimap has a
-    single shared store: every account sees the same mailbox set. Only
-    primary_user's folders keep their corpus (including INBOX). Other users
-    are present so LOGIN succeeds; their folder rows are omitted to avoid
-    colliding INBOX counts. That limitation is a fakeimap gap, not hidden.
+    Each seed user's folders are tagged with that user (`account`). Fakeimap
+    keeps a separate mailbox tree per account. Suite boxes and the marker
+    stay on primary_user. Docker images are not rewritten.
     """
     import lab
     dest = Path(dest_dir)
@@ -289,16 +287,21 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
     delim, prefix = personality_layout(personality)
     kinds = [fields[0] for fields in lab.fixture_fields("kind")]
     accounts = read_accounts()
+    known = {a["username"] for a in accounts}
     mailboxes = []
     uidv = 1
     seen_names = set()
 
-    def add_mb(mb):
+    def add_mb(mb, account):
         nonlocal uidv
-        name = mb["name"]
-        if name in seen_names:
+        if account not in known:
             return
-        seen_names.add(name)
+        name = mb["name"]
+        key = (account, name)
+        if key in seen_names:
+            return
+        seen_names.add(key)
+        mb["account"] = account
         if "uid_validity" not in mb:
             mb["uid_validity"] = uidv
         uidv = max(uidv, int(mb.get("uid_validity") or uidv)) + 1
@@ -306,8 +309,6 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
 
     # Parents with count 0 still need a mailbox object (Archive, Lists, Empty, ...).
     for row in read_folders():
-        if row["user"] != primary_user:
-            continue
         folder = row["folder"]
         mb = _mailbox_from_corpus(row["user"], folder, delim, prefix, uidv)
         special = _special_use(row.get("special"))
@@ -315,14 +316,16 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
             mb["special_use"] = special
         if not mb["messages"] and int(row.get("count") or "0") == 0:
             mb["messages"] = []
-        add_mb(mb)
+        add_mb(mb, row["user"])
 
     if personality in STALWART_SERVERS:
         # Docker lists Sent/Trash/Junk without special-use flags, and also
         # "Sent Items" (\Sent), "Deleted Items" (\Trash), "Junk Mail" (\Junk).
-        # A special-use flag may be on only one mailbox.
+        # A special-use flag may be on only one mailbox of an account.
         uses = {"Sent": ["\\Sent"], "Trash": ["\\Trash"], "Junk": ["\\Junk"]}
         for mb in mailboxes:
+            if mb.get("account") != primary_user:
+                continue
             base = mb["name"].rsplit(delim, 1)[-1]
             if base in uses and mb.get("special_use") == uses[base]:
                 del mb["special_use"]
@@ -332,11 +335,12 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
             "Junk Mail": ["\\Junk"],
         }
         for name, flags in display_flags.items():
-            add_mb({"name": wire_folder(name, delim, prefix), "special_use": flags, "messages": []})
+            add_mb({"name": wire_folder(name, delim, prefix), "special_use": flags, "messages": []}, primary_user)
 
     if personality in SELECTABLE_DEEP_PARENT_SERVERS:
-        if not any(m["name"] == wire_folder("Deep", delim, prefix) for m in mailboxes):
-            add_mb({"name": wire_folder("Deep", delim, prefix), "messages": []})
+        deep_name = wire_folder("Deep", delim, prefix)
+        if not any(m["name"] == deep_name and m.get("account") == primary_user for m in mailboxes):
+            add_mb({"name": deep_name, "messages": []}, primary_user)
 
     boxes, marker = suite_wire_names(delim, prefix)
     # boxes: LiveIMAP-Test, Sub, Trash, Tëst-Ünï, Deep, Spoof
@@ -350,7 +354,7 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
             msgs = []
         else:
             msgs = _suite_messages(dest, label.replace(" ", "_"), count, kinds)
-        add_mb({"name": decode_mutf7(wire), "messages": msgs})
+        add_mb({"name": decode_mutf7(wire), "messages": msgs}, primary_user)
 
     version = lab.required_fixture_version()
     marker_name = "marker.eml"
@@ -364,7 +368,7 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
             "flags": [],
             "internal_date": SUITE_DATE.strftime("%d-%b-%Y %H:%M:%S %z"),
         }],
-    })
+    }, primary_user)
 
     data = {"accounts": accounts, "mailboxes": mailboxes}
     (dest / "dataset.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
@@ -374,7 +378,7 @@ def write_seed_dataset(dest_dir, personality, primary_user="liveimap"):
         "delimiter": delim,
         "personal_prefix": prefix,
         "accounts": [a["username"] for a in accounts],
-        "mailboxes": [{"name": m["name"], "count": len(m.get("messages") or [])} for m in mailboxes],
+        "mailboxes": [{"name": m["name"], "account": m.get("account", ""), "count": len(m.get("messages") or [])} for m in mailboxes],
         "primary_user": primary_user,
     }
     (dest / "dataset.summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")

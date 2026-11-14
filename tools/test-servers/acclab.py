@@ -3,9 +3,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); import lab, ports
 name, tls, run = sys.argv[1], sys.argv[2], sys.argv[3]
 s = [x for x in lab.servers() if x["name"] == name][0]
-lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
-upcmd = lab.up_commands().get(s["container"])  # older images idle in a sleep loop: up.tsv starts the daemons (as lab.py run)
-if upcmd: subprocess.run(["docker", "exec", s["container"], "sh", "-c", upcmd], capture_output=True)
+owned = lab.uses_fakeimap_overlay(s)
+if not owned:
+    lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
+    upcmd = lab.up_commands().get(s["container"])  # older images idle in a sleep loop: up.tsv starts the daemons (as lab.py run)
+    if upcmd: subprocess.run(["docker", "exec", s["container"], "sh", "-c", upcmd], capture_output=True)
 try:
     time.sleep(int(os.environ.get("ACC_WAIT", "0"))); up = lab.greeting(s["imap"], False, timeout=900 if s["container"] in lab.ALONE else int(os.environ.get("ACC_UP", "300"))); print("greeting", up)
     if not up:
@@ -48,5 +50,6 @@ try:
     if not ok:
         print("\n".join(l for l in r.stdout.splitlines() if "stack=" in l or "Exception" in l)[:1500])
 finally:
-    subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
+    if not owned and s.get("container"):
+        subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
     lab.adb("shell", "am", "force-stop", lab.PKG)

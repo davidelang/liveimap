@@ -103,12 +103,11 @@ def start_lab_fakeimap(name, personality=None, work_dir=None, bind="127.0.0.1",
     )
     if "imaps" in services:
         keys["implicit_tls_listen"] = addr
-    if want["smtp_modes"]:
-        keys["smtp_listen"] = addr
-        if any(m == "Implicit" for m in want["smtp_modes"]):
-            keys["smtp_tls_listen"] = addr
-        # Lab submission authenticates as the seed account.
-        keys["smtp_auth_required"] = True
+    # Submission is this process. The dovecot-245 relay sink stays on --backend docker.
+    keys["smtp_listen"] = addr
+    keys["smtp_auth_required"] = True
+    if any(m == "Implicit" for m in want["smtp_modes"]):
+        keys["smtp_tls_listen"] = addr
     if want["sieve"]:
         keys["sieve_listen"] = addr
     if want["jmap"]:

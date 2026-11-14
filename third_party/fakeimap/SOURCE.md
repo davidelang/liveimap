@@ -10,7 +10,7 @@ are in the upstream `docs/guide.md`.
 | **Upstream** | `davidelang/fakeimap` (`git_https` / `git_ssh` in `libpin.toml`) |
 | **Host clone** | `/home/dlang/git/fakeimap` (worktree `master`) |
 | **Profile** | Source plus one build step: `go build` of `fakeimap` and `cyrusprobe` (static, stdlib only, reproducible). Personalities and datasets stay in materialized `src/` (not artifact rows). |
-| **Version** | Locked to `8cb6482580da3b78465fbc7ac442d979501134b5` (`git_describe` `8cb6482`). |
+| **Version** | Locked to `579fe5cccb9e9cf5e049cf788f1074f28f1361b4` (`git_describe` `579fe5c`). |
 
 This pin is in the default fetch-deps name set (`default = true`). While
 `git_sha` was UNSELECTED it was omitted (hardcoded skip, and `default =

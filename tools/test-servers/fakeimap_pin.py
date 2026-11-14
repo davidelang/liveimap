@@ -27,9 +27,9 @@ fake_model.py). These are not silently filled in:
     capabilities. Callers write a derived personality file (see
     derive_personality) and start with that, or call set-personality.
   - FAKE_MODEL script at_noop (expunge_uid / append on the Nth NOOP):
-    expunge_mid with command NOOP covers the expunge. There is still no
-    command-triggered inject/append, so the safety "outside" case (expunge
-    on the first NOOP, append on the second) cannot be driven yet.
+    expunge_mid with command NOOP covers the expunge. arm-inject with
+    command NOOP and times 2 appends on the second NOOP. safety_run uses
+    both for the outside case.
   - FAKE_MODEL esort_partial: depends on the personality honoring PARTIAL
     on ESORT (sort_partial_count_only must be false). There is no separate
     model flag.

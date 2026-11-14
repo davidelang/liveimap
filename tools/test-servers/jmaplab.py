@@ -4,7 +4,9 @@ sys.path.insert(0, HERE); import lab
 name, field_tmpl, run = sys.argv[1], sys.argv[2], sys.argv[3]
 s = [x for x in lab.servers() if x["name"] == name][0]
 field = field_tmpl.format(host=lab.LAB_HOST, **{k: v for k, v in s.items() if k not in ("host",)})
-lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
+owned = lab.uses_fakeimap_overlay(s)
+if not owned:
+    lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     lab.greeting(s["imap"], "None"); time.sleep(5)
     problem = lab.entry_version_problem(name, s["imap"])
@@ -22,5 +24,6 @@ try:
     if "OK (1 test)" not in r.stdout:
         print("\n".join(l for l in r.stdout.splitlines() if "stack=" in l or "Exception" in l)[:1500])
 finally:
-    subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
+    if not owned and s.get("container"):
+        subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
     lab.adb("shell", "am", "force-stop", lab.PKG)

@@ -4335,3 +4335,8 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Plan: sandbox/plans/stalwart-domain-message-20261113-2253-plan.md
 - stalwart-0155 image build: a SystemExit from import lab that names mail_domain is written as that failure. An empty LAB_BIND still writes stalwart-0155: LAB_HOST is empty in host.env. mail_domain() is unchanged.
+
+## 2026-11-14 - Fakeimap daily backend
+
+- Plan sandbox/plans/fakeimap-daily-20261113-2141-plan.md. Pinned fakeimap at 579fe5c. regress defaults to that process, resets it between suites on the same server, and starts a new process when the server changes. Docker still starts the container, checks the image label, and runs the dovecot-245 relay sink.
+- Removed the private-socket FakeImap tests. OauthFakeimapPinTest talks to the stalwart-oauth listener. FakeimapDailyTest covers a mailbox larger than the seed, fault and referral cases, and a bearer from control issue through the app.

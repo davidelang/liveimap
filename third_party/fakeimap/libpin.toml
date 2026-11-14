@@ -1,12 +1,12 @@
 # fakeimap pin.
 #
-# Locked to 8cb6482580da3b78465fbc7ac442d979501134b5 (git_describe 8cb6482).
+# Locked to 579fe5cccb9e9cf5e049cf788f1074f28f1361b4 (git_describe 579fe5c).
 # Artifact sha256 values are the emerged binaries (verified with get-artifacts).
 name = "fakeimap"
 git_https = "https://github.com/davidelang/fakeimap.git"
 git_ssh = "git@github.com:davidelang/fakeimap.git"
-git_sha = "8cb6482580da3b78465fbc7ac442d979501134b5"
-git_describe = "8cb6482"
+git_sha = "579fe5cccb9e9cf5e049cf788f1074f28f1361b4"
+git_describe = "579fe5c"
 track_branch = "master"
 reproducible = true
 build_time = "minutes"
@@ -18,9 +18,9 @@ consumer_note = "Go IMAP/SMTP/JMAP/ManageSieve test server. After emerge, run ar
 [[artifact]]
 path = "artifact/fakeimap"
 from = "src/fakeimap"
-sha256 = "7b5d0566132958bc102dda7376fc56ac7c0ab2c60aafee0d9169f8a11acf5357"
+sha256 = "8b929018a10e61b9b96e57f0cb54738f63cac36245ec8a4f9a79559f1256e483"
 
 [[artifact]]
 path = "artifact/cyrusprobe"
 from = "src/cyrusprobe"
-sha256 = "8c5a6a2b9109ac40ec7ea4ba574dbf889daa4e51ee6acc19b9b61365c09eeed1"
+sha256 = "b4308a57c03dc75488f691a0c0e2ffbf5d244b97d19558959c205f7ebab97892"

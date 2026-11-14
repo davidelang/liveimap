@@ -12,10 +12,9 @@ then judges the command log and the mailbox (via the control socket):
     ones the scenario and settings intend.
 
 drop_caps is applied by writing a derived personality (fakeimap has no drop_caps
-control op). The "outside" case is recorded as unsupported: expunge_mid can
-expunge on the first NOOP, but fakeimap has no command-triggered inject/append
-for the second NOOP (see fakeimap_pin.py). The old unexpected-command log (BAD
-from the strict replay fake) has no equivalent; it is not treated as a pass.
+control op). The outside case arms expunge_mid on the first NOOP and arm-inject
+on the second NOOP, then LabSafetyTest judges the mailbox. The old unexpected-command
+log (BAD from the strict replay fake) has no equivalent; it is not treated as a pass.
 
 Fails if the pin version is still UNSELECTED or the binary has not been emerged.
 
@@ -61,7 +60,12 @@ def intended(scenario, cfg, caps, uids):
     if scenario == "leave":
         return {uids[3]} if auto else set()
     if scenario == "outside":
-        return {uids[1]} if auto else set()
+        # expunge_mid removes UID 5 on the first NOOP. arm-inject adds one message; that is not a loss.
+        # Auto-expunge can also remove the user-deleted UID. LabSafetyTest judges the mailbox steps.
+        gone = {5} if 5 in uids else set()
+        if auto:
+            gone.add(uids[1])
+        return gone
     return set()
 
 
@@ -120,11 +124,6 @@ def main():
         dest = os.path.join(lab.REC, name, f"safety-{stamp}")
         os.makedirs(dest, exist_ok=True)
         for case, scenario, cfg, drop in CASES:
-            if scenario == "outside":
-                msg = "unsupported: fakeimap has no command-triggered inject/append on NOOP"
-                out.write(f"{name}\t{case}\tunsupported\t\t\t{msg}\n"); out.flush()
-                print(name, case, "unsupported", msg, flush=True)
-                continue
             flog = os.path.join(dest, f"{case}.fake.jsonl")
             pfile = pers
             if drop:
@@ -153,6 +152,23 @@ def main():
             before, after, passed, cmds = [], [], False, []
             try:
                 before = list_uids(srv, folder)
+                if scenario == "outside":
+                    raw = (
+                        "From: Lab <lab@lab.test>\r\n"
+                        "To: Lab <lab@lab.test>\r\n"
+                        "Subject: outside\r\n"
+                        "Message-ID: <outside-inject@lab.test>\r\n"
+                        "\r\n"
+                        "outside\r\n"
+                    )
+                    srv.control({
+                        "op": "arm-fault", "do": "expunge_mid", "command": "NOOP",
+                        "uid": 5, "times": 1,
+                    })
+                    srv.control({
+                        "op": "arm-inject", "command": "NOOP", "times": 2,
+                        "mailbox": folder, "raw": raw, "user": lab.USER,
+                    })
                 r = lab.adb(*a, timeout=300)
                 passed = "OK (1 test)" in r.stdout
                 after = list_uids(srv, folder)

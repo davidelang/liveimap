@@ -993,12 +993,47 @@ def _read_marker(port):
         _close_imap(client)
 
 
+def uses_fakeimap_overlay(s):
+    """True when this server is the fakeimap process regress started, not a container."""
+    return os.environ.get("LAB_BACKEND") == "fakeimap" and not (s or {}).get("container")
+
+
+def marker_fixture_problem(s):
+    """'' or one string. The fakeimap fixture is the marker mailbox. Does not call Docker."""
+    port = s.get("imap") if isinstance(s, dict) else None
+    if type(port) is not int:
+        return "marker missing"
+    try:
+        required = required_fixture_version()
+    except FixtureInputMissing as exc:
+        return exc.path
+    marker = _read_marker(port)
+    got = _version_int(marker)
+    need = _version_int(required)
+    if got is not None and need is not None and got >= need:
+        return ""
+    return "marker %s need %s" % ("" if not marker else marker, "" if required is None else required)
+
+
 def entry_version_problem(server, imap_port):
-    """'' or one string. An int port also reads the marker mailbox. Does not create or append."""
+    """'' or one string. An int port also reads the marker mailbox. Does not create or append.
+
+    Docker compares the image label with the marker. Fakeimap has no image: the marker is the fixture.
+    """
     try:
         required = required_fixture_version()
     except FixtureInputMissing as exc:
         return exc.path + " " + server + " tools/test-servers/build-seed-image " + server
+    if os.environ.get("LAB_BACKEND") == "fakeimap":
+        if type(imap_port) is not int:
+            return "%s marker missing tools/test-servers/build-seed-image %s" % (server, server)
+        marker = _read_marker(imap_port)
+        got = _version_int(marker)
+        need = _version_int(required)
+        if got is not None and need is not None and got >= need:
+            return ""
+        return "%s marker %s need %s tools/test-servers/build-seed-image %s" % (
+            server, "" if not marker else marker, "" if required is None else required, server)
     label = _image_label(server)
     shown = "" if label is None else label
     if type(imap_port) is not int:
@@ -1169,14 +1204,17 @@ def fixture_check(s):
 
 def run_one(s, commit, stamp, out):
     name, cont = s["name"], s["container"]
-    only_one(cont)
+    owned = uses_fakeimap_overlay(s)
+    if not owned:
+        only_one(cont)
     dest = os.path.join(REC, name, stamp)
     os.makedirs(dest, exist_ok=True)
     t0 = time.time()
-    sh(["docker", "start", cont])
-    up = up_commands().get(cont)
-    if up:
-        sh(["docker", "exec", cont, "sh", "-c", up])
+    if not owned:
+        sh(["docker", "start", cont])
+        up = up_commands().get(cont)
+        if up:
+            sh(["docker", "exec", cont, "sh", "-c", up])
     try:
         if not greeting(s["imap"], False, 900 if cont in ALONE else 240):
             out.write(f"{name}\timap\t-\tfail\tno greeting\t{int(time.time()-t0)}\t{dest}\n")
@@ -1256,7 +1294,8 @@ def run_one(s, commit, stamp, out):
             out.write(f"{name}\timap{('/' + mech) if mech else ''}\t{tls}\t{res}\t{(msg + ' ' + steps).strip()}\t{int(time.time()-t1)}\t{dest}\n")
             out.flush()
     finally:
-        sh(["docker", "stop", "-t", "20", cont])
+        if not owned and cont:
+            sh(["docker", "stop", "-t", "20", cont])
 
 
 def main():
@@ -1296,7 +1335,8 @@ def main():
             except Exception as e:  # one broken server must not end the run
                 out.write(f"{s['name']}\timap\t-\tfail\trunner error: {type(e).__name__}: {str(e)[:120]}\t0\t-\n")
                 out.flush()
-                sh(["docker", "stop", "-t", "20", s["container"]])
+                if not uses_fakeimap_overlay(s) and s.get("container"):
+                    sh(["docker", "stop", "-t", "20", s["container"]])
     print(summ)
 
 

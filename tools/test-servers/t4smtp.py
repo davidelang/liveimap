@@ -9,14 +9,22 @@ os.makedirs(LOGDIR, exist_ok=True)
 log = open(os.path.join(LOGDIR, f"{RUN}.log"), "w", buffering=1)
 def say(*a): print(*a); log.write(" ".join(map(str, a)) + "\n")
 s = [x for x in lab.servers() if x["name"] == NAME][0]
+owned = lab.uses_fakeimap_overlay(s)
 work = os.path.join(LOGDIR, f"{RUN}-fakesmtp")
-smtp = fakeimap_pin.start_smtp_sink(
-    work,
-    f"0.0.0.0:{PORT}",
-    os.path.join(work, "fakeimap.err"),
-    log_path=os.path.join(work, "fakeimap.log"),
-)
-lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
+smtp = None
+if owned:
+    PORT = str(s.get("submission") or "")
+    if not PORT:
+        say("no submission listener on the fakeimap overlay")
+        sys.exit(1)
+else:
+    smtp = fakeimap_pin.start_smtp_sink(
+        work,
+        f"0.0.0.0:{PORT}",
+        os.path.join(work, "fakeimap.err"),
+        log_path=os.path.join(work, "fakeimap.log"),
+    )
+    lab.only_one(s["container"]); subprocess.run(["docker", "start", s["container"]], capture_output=True)
 try:
     up = lab.greeting(s["imap"], False, timeout=300); say("greeting", up)
     if not up:
@@ -37,11 +45,13 @@ try:
     say("OK" if "OK (1 test)" in r.stdout else "FAIL")
     say("\n".join(l for l in r.stdout.splitlines() if "stack=" in l or "Exception" in l or "INSTRUMENTATION_STATUS: test" in l)[:1500])
 finally:
-    subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
+    if not owned and s.get("container"):
+        subprocess.run(["docker", "stop", "-t", "20", s["container"]], capture_output=True)
     lab.adb("shell", "am", "force-stop", lab.PKG)
-    try:
-        msgs = smtp.control({"op": "list-smtp"}).get("messages") or []
-        say("FAKESMTP", json.dumps(msgs)[:1500])
-    except Exception as e:
-        say("FAKESMTP no list-smtp", type(e).__name__)
-    smtp.close()
+    if smtp is not None:
+        try:
+            msgs = smtp.control({"op": "list-smtp"}).get("messages") or []
+            say("FAKESMTP", json.dumps(msgs)[:1500])
+        except Exception as e:
+            say("FAKESMTP no list-smtp", type(e).__name__)
+        smtp.close()

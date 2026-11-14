@@ -43,10 +43,11 @@ RANK = {"FAIL": 5, "unexpected pass": 4, "KNOWN": 3, "PASS": 2, "SKIP": 1}
 hold_lock = False
 cleaned = False
 fake_smtp = None  # pinned fakeimap SMTP sink started by this run (relay sink for RELAY_SERVERS)
-backend = "docker"  # --backend docker|fakeimap
+backend = "fakeimap"  # --backend docker|fakeimap; default fakeimap. Docker does not set LAB_BACKEND.
 personality_override = ""  # --personality, else the lab server name
 fakeimap_server = None  # pinned fakeimap started for the current lab server
 fakeimap_overlay = ""  # path written for LAB_FAKEIMAP_PORTS
+fakeimap_key = None  # (server, personality) of the running process
 # Servers whose submission relays to the lab fake SMTP sink (start.sh relay.conf; port = the
 # fake-smtp-sink row of generated/local-ports.tsv).
 RELAY_SERVERS = {"dovecot-245"}
@@ -705,7 +706,7 @@ def plan_units(suites, names, sieve=None):
             units.append(("dovecot-dev", suite))
         elif suite == "sieve":
             units += [(n, suite) for n in sieve]
-        elif suite == "contacts" and "dovecot-245" in names:
+        elif suite == "contacts" and "dovecot-245" in names and backend != "fakeimap":
             units.append(("dovecot-245", suite))
     return units
 
@@ -853,6 +854,16 @@ def add_row(server, suite, variant, counts, result, failing, error, duration):
         "first_error": redact(error)[:300],
         "duration_s": int(duration),
     })
+
+
+def record_backend_skips(suites):
+    """Fakeimap has no CardDAV server and no UI server. Docker still runs those suites."""
+    if backend != "fakeimap":
+        return
+    if "contacts" in suites:
+        add_row("dovecot-245", "contacts", "alpineBook", counts_for("SKIP"), "SKIP", "contacts", "no CardDAV", 0)
+    if "ui" in suites:
+        add_row("ui", "ui", "ui", counts_for("SKIP"), "SKIP", "ui", "no server", 0)
 
 
 def counts_for(status):
@@ -1060,7 +1071,7 @@ def servers_used(names, suites):
     if "sieve" in suites:
         for row in read_tsv_rows(os.path.join(HERE, "sieve.tsv"), 2):
             add(row[0])
-    if "contacts" in suites:
+    if "contacts" in suites and backend != "fakeimap":
         add("dovecot-245")
     return used
 
@@ -1102,9 +1113,22 @@ def reset_for_suite(suite, name):
         if name in fresh:
             fresh.discard(name)
             return ""
+        key = (name, personality_override or name)
+        same = (fakeimap_server is not None and fakeimap_key == key
+                and fakeimap_server.proc.poll() is None)
         n = len([u for u in plan if u in done_units])
-        err = timed_step(f"{name} reset for {suite}", lambda: setup_fakeimap(name, s) or "",
-                         counter=f"reset ({n}/{len(plan)} done)")
+        if same:
+            def do_reset():
+                try:
+                    fakeimap_server.control({"op": "reset"})
+                except SystemExit as exc:
+                    return str(exc.code or exc) or "reset failed"
+                return ""
+            err = timed_step(f"{name} reset for {suite}", do_reset,
+                             counter=f"reset ({n}/{len(plan)} done)")
+        else:
+            err = timed_step(f"{name} reset for {suite}", lambda: setup_fakeimap(name, s) or "",
+                             counter=f"reset ({n}/{len(plan)} done)")
         return f"reset before {suite}: {err}" if err else ""
     if not s or not s.get("container"):
         return ""
@@ -1193,7 +1217,7 @@ def stop_lab_container(s):
 
 def teardown_fakeimap():
     """Stop the fakeimap process started for the current server. '' or why not."""
-    global fakeimap_server, fakeimap_overlay
+    global fakeimap_server, fakeimap_overlay, fakeimap_key
     err = ""
     if fakeimap_server is not None:
         try:
@@ -1201,6 +1225,7 @@ def teardown_fakeimap():
         except Exception as exc:
             err = str(exc)
         fakeimap_server = None
+    fakeimap_key = None
     if fakeimap_overlay:
         os.environ.pop("LAB_FAKEIMAP_PORTS", None)
         fakeimap_overlay = ""
@@ -1224,7 +1249,7 @@ def teardown_server(s):
 
 def setup_fakeimap(name, s):
     """Start pinned fakeimap with the matching personality and a seed-equivalent dataset."""
-    global fakeimap_server, fakeimap_overlay, by_name_holder
+    global fakeimap_server, fakeimap_overlay, fakeimap_key, by_name_holder
     import fakeimap_backend
     import lab
     teardown_fakeimap()
@@ -1236,6 +1261,7 @@ def setup_fakeimap(name, s):
         name, personality=pers, work_dir=work, bind=bind, overlay_path=overlay,
     )
     fakeimap_server = srv
+    fakeimap_key = (name, pers)
     fakeimap_overlay = str(path)
     os.environ["LAB_FAKEIMAP_PORTS"] = fakeimap_overlay
     os.environ["LAB_BACKEND"] = "fakeimap"
@@ -1279,7 +1305,8 @@ def setup_server(name, s, by_name, suites):
     if problem:
         return problem
     if "imap" in suites:
-        problem = timed_step(f"{name} fixture", lambda: lab.fixture_check(s))
+        check = lab.marker_fixture_problem if backend == "fakeimap" else lab.fixture_check
+        problem = timed_step(f"{name} fixture", lambda: check(s))
         if problem:
             return f"{name} {problem} tools/test-servers/build-seed-image {name}"
     blocked, drifted = timed_step(f"{name} verify-seed", lambda: verify_one(s, False), failed=lambda r: bool(r[0]))
@@ -1647,10 +1674,6 @@ def verify_one(s, skipped):
     for row in folders:
         if row["user"] not in users:
             users.append(row["user"])
-    if backend == "fakeimap":
-        # fakeimap has one shared mailbox store. Other seed accounts can log in
-        # but would see liveimap's INBOX; skip them rather than hide a count mismatch.
-        users = [u for u in users if u == "liveimap"] or users[:1]
     for user in users:
         password = accounts.get(user, "")
         login_user = user + "@zimbra.zcs-foss.test" if server == "zimbra-883" else user
@@ -1695,7 +1718,8 @@ def verify_one(s, skipped):
                 mail.logout()
             except Exception:
                 pass
-    suite = lab.fixture_check(s)  # the suite boxes (LiveIMAP-Test, Sub, Trash, Deep, Spoof) are part of the seed too
+    # Docker checks the suite boxes. Fakeimap's fixture is the marker mailbox.
+    suite = lab.marker_fixture_problem(s) if backend == "fakeimap" else lab.fixture_check(s)
     if suite:
         problems.append(f"{server} {suite}")
     if skipped:
@@ -2119,7 +2143,7 @@ def write_outputs(verdict, blocked_reason, unseeded, suites, servers):
         "failing_checks": [redact(n) for n in fails],
         "unseeded_servers": unseeded,
         "drift": drift_lines,
-        "untested": [{"name": name, "reason": "no instrumented test"} for name in (UNTESTED if "ui" in suites else [])],
+        "untested": [{"name": name, "reason": "no instrumented test"} for name in (UNTESTED if "ui" in suites and backend != "fakeimap" else [])],
     }
     try:
         os.makedirs(run_rec, exist_ok=True)
@@ -2249,8 +2273,8 @@ def main():
     p.add_argument("--force", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--quiet", action="store_true", help="no progress on stderr; only FAIL lines and the final VERDICT")
-    p.add_argument("--backend", choices=["docker", "fakeimap"], default="docker",
-                   help="docker lab containers (default), or pinned fakeimap with the matching personality")
+    p.add_argument("--backend", choices=["docker", "fakeimap"], default="fakeimap",
+                   help="pinned fakeimap (default), or docker lab containers")
     p.add_argument("--personality", default="",
                    help="fakeimap personality name (default: the lab server name, e.g. cyrus-3137)")
     a = p.parse_args()
@@ -2260,6 +2284,10 @@ def main():
     personality_override = a.personality
     if backend == "fakeimap":
         os.environ["LAB_BACKEND"] = "fakeimap"
+    else:
+        # Docker is unchanged and must not inherit a fakeimap overlay from the environment.
+        os.environ.pop("LAB_BACKEND", None)
+        os.environ.pop("LAB_FAKEIMAP_PORTS", None)
     run_t0 = time.time()
     responding_to = a.responding_to
     if not dry_run and not responding_to:
@@ -2342,7 +2370,7 @@ def main():
             err = "VERDICT BLOCKED lab container mounts: " + " | ".join(bad)
     if err:
         stop(err, suites, names, [])
-    if any(n in RELAY_SERVERS for n, _mine in per_server):
+    if backend != "fakeimap" and any(n in RELAY_SERVERS for n, _mine in per_server):
         err = start_fake_smtp()
         if err:
             stop(f"VERDICT BLOCKED {err}", suites, names, [])
@@ -2380,14 +2408,16 @@ def main():
                 done_units.add((name, suite))
         finally:
             fresh.discard(name)
-            if s and s.get("container"):
+            if backend == "fakeimap" or (s and s.get("container")):
                 current_unit[:] = [name, "teardown"]
                 n = len([u for u in plan if u in done_units])
-                err = timed_step(f"{name} teardown (stop, rm)", lambda: teardown_server(s),
+                label = "stop fakeimap" if backend == "fakeimap" else "stop, rm"
+                err = timed_step(f"{name} teardown ({label})", lambda: teardown_server(s),
                                  counter=f"teardown ({n}/{len(plan)} done)")
-                if err and container_running(s["container"]):
+                if err and s and s.get("container") and container_running(s["container"]):
                     stop(f"VERDICT BLOCKED {name} still running after teardown: {err}", suites, names, [])
             current_unit[:] = ["", ""]
+    record_backend_skips(suites)
     if not any_skip:
         save_cache()
     verdict = "FAIL" if any(row["result"] in ("FAIL", "BLOCKED") for row in rows) else "PASS"
