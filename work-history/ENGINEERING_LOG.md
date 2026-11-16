@@ -4361,3 +4361,8 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 
 - Pin bounce answers DATA 250 after appending a failure report to the sender's INBOX. smtpSend throws MailFailure with that report's Action line, which does not start with smtp-uncertain and is not a success return.
 - Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md
+
+## 2026-11-16 - bounce report scan removed from send
+
+- smtpSend no longer selects INBOX or throws after a successful nativeSmtp because a delivery-status message arrived. The pin's bounce still answers DATA 250 2.0.0 OK, so the SMTP transaction itself does not fail.
+- Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md

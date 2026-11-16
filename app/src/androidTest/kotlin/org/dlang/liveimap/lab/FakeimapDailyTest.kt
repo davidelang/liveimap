@@ -643,9 +643,6 @@ class FakeimapDailyTest {
             assertTrue("smtp returned $code text=$text", code == null || code != 0)
             if (uncertain) assertTrue(text, text.startsWith("smtp-uncertain:"))
             else assertFalse(text, text.startsWith("smtp-uncertain:"))
-            if (fault == "bounce") {
-                assertTrue("smtp returned $code text=$text", code == null && text.contains("failed"))
-            }
         } finally {
             runCatching { session.close() }
             clearFaults()

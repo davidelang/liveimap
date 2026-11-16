@@ -2166,10 +2166,8 @@ class LibetpanMailSession(
         val (smtpPassword, oauthMode) = smtpSecret(acct, ownSmtpPassword, imapPassword)
         val smtpUser = acct.smtpUsername.ifEmpty { acct.username }
         return keeper.write("send") {
-            // Pin bounce answers DATA 250 and has already appended a failure report to INBOX.
-            val before = try { inboxMark() } catch (_: Throwable) { null }
             forgetSelected()
-            val code = smtpAuthed(acct, smtpPassword, oauthMode) { password, mode ->
+            smtpAuthed(acct, smtpPassword, oauthMode) { password, mode ->
                 nativeSmtp(
                     requireHandle(),
                     file.absolutePath,
@@ -2181,41 +2179,7 @@ class LibetpanMailSession(
                     mode,
                 )
             }
-            if (before != null) {
-                val bounce = try { bounceTextSince(before) } catch (_: Throwable) { null }
-                if (bounce != null) throw MailFailure(bounce)
-            }
-            forgetSelected()
-            code
         }
-    }
-
-    private data class InboxMark(val uidValidity: Long, val uidNext: Long)
-
-    /** uidNext of INBOX, or null when it cannot be read. Does not update the selected-folder record. */
-    private fun inboxMark(): InboxMark? {
-        val result = nativeSelect(requireHandle(), wire("INBOX"), false) ?: return null
-        if (result.uidNext <= 0L) return null
-        return InboxMark(result.uidValidity, result.uidNext)
-    }
-
-    /** Action line of a failure DSN appended at [mark], or null. */
-    private fun bounceTextSince(mark: InboxMark): String? {
-        val result = nativeSelect(requireHandle(), wire("INBOX"), false) ?: return null
-        if (result.uidValidity != mark.uidValidity || result.uidNext <= mark.uidNext) return null
-        var uid = mark.uidNext
-        val end = minOf(result.uidNext, mark.uidNext + 8)
-        while (uid < end) {
-            val raw = nativeFetchRfc822(requireHandle(), uid)
-            if (raw != null) {
-                val text = raw.toString(Charsets.UTF_8)
-                if (text.contains("message/delivery-status") && text.contains("Action: failed")) {
-                    return text.lineSequence().firstOrNull { it.startsWith("Action:") } ?: "Action: failed"
-                }
-            }
-            uid++
-        }
-        return null
     }
 
     /**
