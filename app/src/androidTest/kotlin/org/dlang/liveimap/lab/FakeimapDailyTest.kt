@@ -630,6 +630,7 @@ class FakeimapDailyTest {
         try {
             val opened = session.open(smtp)
             assertTrue("open: $opened", opened is OpenResult.Connected)
+            val inboxBefore = if (fault == "bounce") uids("INBOX") else emptyList()
             arm(mapOf("do" to fault, "proto" to "smtp", "command" to command, "times" to 1))
             val msg = "From: ${smtp.email}\r\nTo: ${smtp.email}\r\nSubject: $fault\r\n\r\n$fault\r\n"
                 .toByteArray(StandardCharsets.UTF_8)
@@ -640,9 +641,22 @@ class FakeimapDailyTest {
             } catch (e: MailFailure) {
                 text = e.text
             }
-            assertTrue("smtp returned $code text=$text", code == null || code != 0)
-            if (uncertain) assertTrue(text, text.startsWith("smtp-uncertain:"))
-            else assertFalse(text, text.startsWith("smtp-uncertain:"))
+            if (fault == "bounce") {
+                // DATA 250 is a finished send. The pin stores the report; this call does not read INBOX.
+                assertTrue("smtp returned $code text=$text", code == 0)
+                assertFalse(text, text.startsWith("smtp-uncertain:"))
+                val added = uids("INBOX").filter { it !in inboxBefore }
+                assertTrue("INBOX $inboxBefore gained nothing", added.isNotEmpty())
+                val report = added.joinToString("\n") { messageText("INBOX", it) }
+                assertTrue(
+                    report,
+                    report.contains("message/delivery-status") && report.contains("Action: failed"),
+                )
+            } else {
+                assertTrue("smtp returned $code text=$text", code == null || code != 0)
+                if (uncertain) assertTrue(text, text.startsWith("smtp-uncertain:"))
+                else assertFalse(text, text.startsWith("smtp-uncertain:"))
+            }
         } finally {
             runCatching { session.close() }
             clearFaults()
@@ -821,6 +835,18 @@ class FakeimapDailyTest {
         assertTrue(reply.toString(), reply.optBoolean("ok"))
         val messages = reply.optJSONArray("messages") ?: return emptyList()
         return (0 until messages.length()).map { messages.getJSONObject(it).getInt("uid") }
+    }
+
+    private fun messageText(box: String, uid: Int): String {
+        val reply = control(mapOf(
+            "op" to "fetch-mail",
+            "mailbox" to box,
+            "uid" to uid,
+            "user" to arg("labUser"),
+        ))
+        assertTrue(reply.toString(), reply.optBoolean("ok"))
+        val raw = Base64.decode(reply.getString("rfc822"), Base64.DEFAULT)
+        return String(raw, StandardCharsets.UTF_8)
     }
 
     private fun control(fields: Map<String, Any?>): JSONObject {
