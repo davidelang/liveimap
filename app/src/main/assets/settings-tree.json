@@ -144,6 +144,15 @@
                   "pinercFormat": "text"
                 },
                 {
+                  "setting": "imapPassword",
+                  "type": "password",
+                  "title": "IMAP password",
+                  "visibleWhen": {
+                    "setting": "accountAuth",
+                    "equals": "password"
+                  }
+                },
+                {
                   "group": "imapSecurity",
                   "title": "Imap Security",
                   "children": [
@@ -366,56 +375,9 @@
                       "setting": "checkServer",
                       "type": "checkServer",
                       "title": "Check server"
-                    },
-                    {
-                      "setting": "imapPassword",
-                      "type": "password",
-                      "title": "IMAP password",
-                      "visibleWhen": {
-                        "setting": "accountAuth",
-                        "equals": "password"
-                      }
-                    },
-                    {
-                      "setting": "smtpPassword",
-                      "type": "password",
-                      "title": "SMTP password",
-                      "visibleWhen": {
-                        "any": [
-                          {
-                            "setting": "accountAuth",
-                            "equals": "password"
-                          },
-                          {
-                            "all": [
-                              {
-                                "setting": "accountAuth",
-                                "equals": "oauth2"
-                              },
-                              {
-                                "setting": "smtpSameAsImap",
-                                "equals": false
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "setting": "sievePassword",
-                      "type": "password",
-                      "title": "Sieve password"
                     }
                   ]
-                }
-              ]
-            },
-            {
-              "group": "sending",
-              "title": "Sending",
-              "label": "Sending",
-              "header": "label",
-              "children": [
+                },
                 {
                   "setting": "emailSubmission",
                   "type": "bool",
@@ -523,6 +485,31 @@
                   }
                 },
                 {
+                  "setting": "smtpPassword",
+                  "type": "password",
+                  "title": "SMTP password",
+                  "visibleWhen": {
+                    "any": [
+                      {
+                        "setting": "accountAuth",
+                        "equals": "password"
+                      },
+                      {
+                        "all": [
+                          {
+                            "setting": "accountAuth",
+                            "equals": "oauth2"
+                          },
+                          {
+                            "setting": "smtpSameAsImap",
+                            "equals": false
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
                   "setting": "sieveSameAsInbound",
                   "type": "bool",
                   "default": true,
@@ -552,6 +539,11 @@
                     "setting": "sieveSameAsInbound",
                     "equals": false
                   }
+                },
+                {
+                  "setting": "sievePassword",
+                  "type": "password",
+                  "title": "Sieve password"
                 },
                 {
                   "setting": "passwordStorage",
@@ -617,30 +609,81 @@
                   "title": "Sieve read timeout",
                   "server": true
                 }
+              ]
+            },
+            {
+              "setting": "accountSettingsFile",
+              "type": "settingsFile",
+              "title": "Import or export this account"
+            }
+          ],
+          "summary": [
+            {
+              "when": {
+                "setting": "imapHost",
+                "empty": true
+              },
+              "text": "No server"
+            },
+            {
+              "value": {
+                "setting": "imapHost"
+              }
+            }
+          ]
+        },
+        {
+          "group": "folders",
+          "title": "Folders",
+          "label": "Folders",
+          "header": "label",
+          "children": [
+            {
+              "group": "special_use",
+              "title": "Special-use",
+              "label": "Special-use",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "sentMailbox",
+                  "type": "mailbox",
+                  "default": "",
+                  "title": "Sent mailbox",
+                  "pinerc": "default-fcc",
+                  "pinercFormat": "folder"
+                },
+                {
+                  "setting": "postponedMailbox",
+                  "type": "mailbox",
+                  "default": "",
+                  "title": "Postponed mailbox",
+                  "pinerc": "postponed-folder",
+                  "pinercFormat": "folder"
+                },
+                {
+                  "setting": "spamMailbox",
+                  "type": "mailbox",
+                  "default": "",
+                  "title": "Spam mailbox"
+                },
+                {
+                  "setting": "trashMailbox",
+                  "type": "mailbox",
+                  "default": "",
+                  "title": "Trash mailbox"
+                }
               ],
               "summary": [
                 {
-                  "when": {
-                    "setting": "emailSubmission",
-                    "equals": true
-                  },
-                  "text": "Send over JMAP"
-                },
-                {
-                  "when": {
-                    "setting": "smtpHost",
-                    "empty": true
-                  },
-                  "text": "No SMTP server"
-                },
-                {
-                  "text": "%1$s:%2$d",
+                  "text": "%1$d of 4 set",
                   "args": [
                     {
-                      "setting": "smtpHost"
-                    },
-                    {
-                      "setting": "smtpPort"
+                      "countSet": [
+                        "sentMailbox",
+                        "postponedMailbox",
+                        "spamMailbox",
+                        "trashMailbox"
+                      ]
                     }
                   ]
                 }
@@ -803,107 +846,6 @@
                 }
               ]
             },
-            {
-              "setting": "accountSettingsFile",
-              "type": "settingsFile",
-              "title": "Import or export this account"
-            }
-          ],
-          "summary": [
-            {
-              "when": {
-                "setting": "imapHost",
-                "empty": true
-              },
-              "text": "No server"
-            },
-            {
-              "value": {
-                "setting": "imapHost"
-              }
-            }
-          ]
-        },
-        {
-          "group": "mailboxes",
-          "title": "Mailboxes",
-          "label": "Mailboxes",
-          "header": "label",
-          "children": [
-            {
-              "group": "special_use",
-              "title": "Special-use",
-              "label": "Special-use",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "sentMailbox",
-                  "type": "mailbox",
-                  "default": "",
-                  "title": "Sent mailbox",
-                  "pinerc": "default-fcc",
-                  "pinercFormat": "folder"
-                },
-                {
-                  "setting": "postponedMailbox",
-                  "type": "mailbox",
-                  "default": "",
-                  "title": "Postponed mailbox",
-                  "pinerc": "postponed-folder",
-                  "pinercFormat": "folder"
-                },
-                {
-                  "setting": "spamMailbox",
-                  "type": "mailbox",
-                  "default": "",
-                  "title": "Spam mailbox"
-                },
-                {
-                  "setting": "trashMailbox",
-                  "type": "mailbox",
-                  "default": "",
-                  "title": "Trash mailbox"
-                }
-              ],
-              "summary": [
-                {
-                  "text": "%1$d of 4 set",
-                  "args": [
-                    {
-                      "countSet": [
-                        "sentMailbox",
-                        "postponedMailbox",
-                        "spamMailbox",
-                        "trashMailbox"
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
-          "summary": [
-            {
-              "text": "%1$d of 4 set",
-              "args": [
-                {
-                  "countSet": [
-                    "sentMailbox",
-                    "postponedMailbox",
-                    "spamMailbox",
-                    "trashMailbox"
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "group": "folders",
-          "title": "Folders",
-          "label": "Folders",
-          "header": "label",
-          "children": [
             {
               "group": "folder_list",
               "title": "Folder list",
