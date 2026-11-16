@@ -4350,3 +4350,9 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 ## 2026-11-15 - real-session faults landed
 
 Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, and putScript. Replaced stand-ins: FakeLink throw/block cases, ManageSieve ListTransport BYE and bare NO, and the source scans in AppendReadWriteTest, CloseOnlyOnLeaveTest, and Pass5GuardTest. Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md.
+
+## 2026-11-16 - bounce and dropped event source fail the session
+
+- Pin bounce answers DATA 250 and stores a failure report. smtpBounce asks for FAILURE notification, so smtpSend returns -1, and the report's Action line is the failure text.
+- An empty JMAP event-source body is a closed stream. The watch ends with WatchLost instead of opening the stream again.
+- Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md

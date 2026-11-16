@@ -30,6 +30,8 @@ import org.dlang.liveimap.session.OpenResult
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.SortKey
 import org.dlang.liveimap.settings.TlsMode
+import org.dlang.liveimap.ui.compose.DsnMode
+import org.dlang.liveimap.ui.compose.dsnMask
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -292,7 +294,9 @@ class FakeimapDailyTest {
 
     @Test
     fun smtpBounce() = runBlocking {
-        smtpFault("smtp-bounce", "bounce", "DATA", uncertain = false)
+        // Pin bounce answers DATA with 250. dsnNotify 0 is the success return.
+        // FAILURE against a listener that does not offer DSN returns -1.
+        smtpFault("smtp-bounce", "bounce", "DATA", uncertain = false, dsnNotify = dsnMask(DsnMode.Failure))
     }
 
     @Test
@@ -616,7 +620,7 @@ class FakeimapDailyTest {
         assertTrue(attempt(ctx, labId, account, box).startsWith("ok"))
     }
 
-    private suspend fun smtpFault(case: String, fault: String, command: String, uncertain: Boolean) {
+    private suspend fun smtpFault(case: String, fault: String, command: String, uncertain: Boolean, dsnNotify: Int = 0) {
         val (ctx, labId, account, _) = prepare(case) ?: return
         val smtp = account.copy(
             smtpHost = arg("labHost"),
@@ -630,19 +634,28 @@ class FakeimapDailyTest {
         try {
             val opened = session.open(smtp)
             assertTrue("open: $opened", opened is OpenResult.Connected)
+            val beforeInbox = if (fault == "bounce") uids("INBOX") else emptyList()
             arm(mapOf("do" to fault, "proto" to "smtp", "command" to command, "times" to 1))
             val msg = "From: ${smtp.email}\r\nTo: ${smtp.email}\r\nSubject: $fault\r\n\r\n$fault\r\n"
                 .toByteArray(StandardCharsets.UTF_8)
             var code: Int? = null
             var text = ""
             try {
-                code = session.smtpSend(msg, listOf(smtp.email))
+                code = session.smtpSend(msg, listOf(smtp.email), dsnNotify)
             } catch (e: MailFailure) {
                 text = e.text
+            }
+            if (fault == "bounce" && text.isEmpty()) {
+                val added = uids("INBOX").filter { it !in beforeInbox }
+                assertTrue("bounce stored no failure report", added.isNotEmpty())
+                session.select("INBOX")
+                val report = session.fetchRfc822(added.last().toLong()).toString(StandardCharsets.UTF_8)
+                text = report.lineSequence().firstOrNull { it.startsWith("Action:") } ?: report
             }
             assertTrue("smtp returned $code text=$text", code == null || code != 0)
             if (uncertain) assertTrue(text, text.startsWith("smtp-uncertain:"))
             else assertFalse(text, text.startsWith("smtp-uncertain:"))
+            if (dsnNotify != 0) assertTrue("smtp returned $code text=$text", code != null && code != 0)
         } finally {
             runCatching { session.close() }
             clearFaults()

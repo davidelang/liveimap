@@ -884,7 +884,8 @@ class JmapMailSession(
             val status = jmapNet { exchange.status }
             if (status != 200) throw JmapFailure("jmap push status $status")
             val body = jmapNet { JmapResponseCap.use(account?.maxJmapResponseBytes?.toInt() ?: JmapMaxBody) { exchange.body() } }
-            return if (body.isBlank()) emptyList() else parseJmapPushEvents(body)
+            // An empty body is a closed stream, not "no events". parseJmapPushEvents rejects it so the watch ends.
+            return parseJmapPushEvents(body)
         } finally {
             if (run.stream === exchange) run.stream = null
             exchange.close()
