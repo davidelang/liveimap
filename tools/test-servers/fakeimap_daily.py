@@ -5,10 +5,12 @@ The emulator cannot start the binary or read its command log. The bridge serves
 GET /log (the log_path file) and POST /control (one JSON control object). The
 instrumented test uses the app's own sessions for IMAP, SMTP, and JMAP.
 
-Usage: fakeimap_daily.py [--skip-install] generated|faults|bearer|all
+Usage: fakeimap_daily.py [--skip-install] generated|faults|bearer|session|tls|bearer-auth|all
 """
+import base64
 import json
 import os
+import subprocess
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -205,6 +207,154 @@ def run_bearer(work):
         srv.close()
 
 
+SESSION_CASES = (
+    ("imapSilentFetch", "imap-silent"),
+    ("imapDelayFetch", "imap-delay"),
+    ("imapHalfCloseFetch", "imap-half-close"),
+    ("imapFetchNo", "imap-fetch-no"),
+    ("imapStoreNo", "imap-store-no"),
+    ("imapAppendNo", "imap-append-no"),
+    ("smtpDropAfter354", "smtp-drop"),
+    ("smtpBounce", "smtp-bounce"),
+    ("smtpOverquota", "smtp-overquota"),
+    ("jmapServerFail", "jmap-server-fail"),
+    ("jmapUnauthorized", "jmap-unauthorized"),
+    ("jmapDropEventSource", "jmap-drop-eventsource"),
+    ("idleCloseEndsWatch", "idle-close"),
+    ("longSearchSilent", "search-silent"),
+    ("longSearchClose", "search-close"),
+    ("clientSortExpungeMid", "sort-expunge"),
+    ("expungeMidMatchesList", "imap-expunge-mid"),
+    ("armInjectMatchesList", "imap-inject"),
+    ("sievePutNoAndClose", "sieve-put"),
+)
+
+
+def session_personality(path):
+    path.write_text(json.dumps({
+        "greeting": "daily session imap ready",
+        "delimiter": "/",
+        "greeting_capabilities": ["IMAP4rev1", "AUTH=PLAIN"],
+        "pre_login_capabilities": ["IMAP4rev1", "AUTH=PLAIN"],
+        "post_login_capabilities": ["IMAP4rev1", "AUTH=PLAIN", "IDLE"],
+        "fetch_item_order": ["FLAGS", "UID", "RFC822.SIZE", "RFC822"],
+    }, indent=1) + "\n", encoding="utf-8")
+    return path
+
+
+def session_extra(srv, bridge, case, folder):
+    return [
+        "-e", "labCase", case,
+        "-e", "labPort", str(srv.port("listen")),
+        "-e", "labSmtpPort", str(srv.port("smtp")),
+        "-e", "labJmapPort", str(srv.port("jmap")),
+        "-e", "labSievePort", str(srv.port("sieve")),
+        "-e", "labFolder", folder,
+        "-e", "labUser", lab.USER,
+        "-e", "labPass", lab.PASS,
+        "-e", "labBridge", bridge,
+    ]
+
+
+def run_session(work):
+    folder = "LiveIMAP-Test"
+    ds = fakeimap_pin.write_dataset(
+        Path(work) / "dataset", folder=folder, count=4, user=lab.USER, password=lab.PASS,
+    )
+    pers = session_personality(Path(work) / "personality.json")
+    log_path = str(Path(work) / "fakeimap.jsonl")
+    addr = f"{lab.LAB_HOST}:0"
+    srv = start_server(work, pers, ds, {
+        "smtp_listen": addr,
+        "jmap_listen": addr,
+        "sieve_listen": addr,
+    }, log_path)
+    httpd = serve(srv, log_path)
+    try:
+        bridge = f"http://{lab.LAB_HOST}:{httpd.server_address[1]}"
+        for method, case in SESSION_CASES:
+            instrument(method, session_extra(srv, bridge, case, folder))
+    finally:
+        httpd.shutdown()
+        srv.close()
+
+
+def write_lab_cert(work):
+    cert = Path(work) / "cert.pem"
+    key = Path(work) / "key.pem"
+    der = Path(work) / "cert.der"
+    subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-keyout", str(key), "-out", str(cert), "-days", "2",
+        "-subj", "/CN=liveimap-lab",
+        "-addext", f"subjectAltName=IP:{lab.LAB_HOST}",
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "openssl", "x509", "-in", str(cert), "-outform", "DER", "-out", str(der),
+    ], check=True, capture_output=True)
+    return cert, key, base64.b64encode(der.read_bytes()).decode("ascii")
+
+
+def run_tls(work):
+    folder = "LiveIMAP-Test"
+    ds = fakeimap_pin.write_dataset(
+        Path(work) / "dataset", folder=folder, count=1, user=lab.USER, password=lab.PASS,
+    )
+    pers = session_personality(Path(work) / "personality.json")
+    cert, key, der_b64 = write_lab_cert(work)
+    log_path = str(Path(work) / "fakeimap.jsonl")
+    srv = start_server(work, pers, ds, {
+        "implicit_tls_listen": f"{lab.LAB_HOST}:0",
+        "cert_file": str(cert.resolve()),
+        "key_file": str(key.resolve()),
+    }, log_path)
+    httpd = serve(srv, log_path)
+    try:
+        port = httpd.server_address[1]
+        instrument("tlsCertFaultsFailBeforeLogin", [
+            "-e", "labCase", "tls-certs",
+            "-e", "labPort", str(srv.port("implicit_tls_listen")),
+            "-e", "labFolder", folder,
+            "-e", "labUser", lab.USER,
+            "-e", "labPass", lab.PASS,
+            "-e", "labCa", der_b64,
+            "-e", "labBridge", f"http://{lab.LAB_HOST}:{port}",
+        ])
+    finally:
+        httpd.shutdown()
+        srv.close()
+
+
+def run_bearer_auth_no(work):
+    dataset = fakeimap_pin.PERSONALITIES.parent / "datasets" / "demo"
+    log_path = str(Path(work) / "fakeimap.jsonl")
+    srv = start_server(
+        work,
+        fakeimap_pin.PERSONALITIES / "stalwart-oauth.json",
+        dataset,
+        {},
+        log_path,
+    )
+    httpd = serve(srv, log_path)
+    try:
+        port = httpd.server_address[1]
+        instrument("bearerAuthenticateNo", [
+            "-e", "labCase", "bearer-auth-no",
+            "-e", "labPort", str(srv.port("listen")),
+            "-e", "labUser", "demo",
+            "-e", "labPass", "",
+            "-e", "labBridge", f"http://{lab.LAB_HOST}:{port}",
+        ])
+    finally:
+        httpd.shutdown()
+        srv.close()
+
+
+WHICH = (
+    "generated", "faults", "bearer", "session", "tls", "bearer-auth", "all",
+)
+
+
 def main():
     fakeimap_pin.require_ready()
     args = [a for a in sys.argv[1:] if a != "--skip-install"]
@@ -219,8 +369,14 @@ def main():
         run_faults(root / "faults")
     if which in ("bearer", "all"):
         run_bearer(root / "bearer")
-    if which not in ("generated", "faults", "bearer", "all"):
-        sys.exit("usage: fakeimap_daily.py [--skip-install] generated|faults|bearer|all")
+    if which in ("session", "all"):
+        run_session(root / "session")
+    if which in ("tls", "all"):
+        run_tls(root / "tls")
+    if which in ("bearer-auth", "all"):
+        run_bearer_auth_no(root / "bearer-auth")
+    if which not in WHICH:
+        sys.exit("usage: fakeimap_daily.py [--skip-install] " + "|".join(WHICH))
 
 
 if __name__ == "__main__":

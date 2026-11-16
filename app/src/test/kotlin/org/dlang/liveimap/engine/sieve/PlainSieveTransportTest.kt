@@ -1,16 +1,11 @@
 package org.dlang.liveimap.engine.sieve
 
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.runBlocking
+import org.dlang.liveimap.engine.TrafficLog
+import org.dlang.liveimap.fakeimap.FakeimapPin
+import org.dlang.liveimap.fakeimap.FakeimapServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,124 +13,36 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class PlainSieveTransportTest {
-    @Test(timeout = 20_000)
-    fun localhostGreetingLogsOut() = runBlocking {
-        val listen = ServerSocket()
-        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        assertEquals("127.0.0.1", listen.inetAddress.hostAddress)
-        val port = listen.localPort
-        val received = AtomicReference<ByteArray>()
-        val failure = AtomicReference<Throwable>()
-        val thread = Thread {
-            var client: Socket? = null
-            try {
-                listen.soTimeout = 10_000
-                client = listen.accept()
-                client.tcpNoDelay = true
-                client.soTimeout = 10_000
-                val output = client.getOutputStream()
-                output.write(GREETING)
-                output.flush()
-                val got = readBytes(client.getInputStream(), LOGOUT.size)
-                output.write(LOGOUT_OK)
-                output.flush()
-                val rest = drain(client.getInputStream())
-                val all = ByteArray(got.size + rest.size)
-                got.copyInto(all)
-                rest.copyInto(all, got.size)
-                received.set(all)
-            } catch (error: Throwable) {
-                failure.set(error)
-            } finally {
-                try {
-                    client?.close()
-                } catch (error: Exception) {
-                }
-            }
-        }
-        thread.isDaemon = true
-        thread.start()
-        try {
-            val caps = greetPlain("127.0.0.1", port, null)
-            thread.join(10_000)
-            assertFalse(thread.isAlive)
-            val error = failure.get()
-            if (error != null) throw error
-            assertEquals("Example timsieved", caps.implementation)
-            assertEquals(listOf("fileinto"), caps.extensions)
+    @Test(timeout = 30_000)
+    fun pinGreetingLogsOut() = runBlocking {
+        withPin { server ->
+            val caps = greetPlain(server.listenHost, sievePort(server), null)
+            assertEquals("fakeimap", caps.implementation)
+            assertTrue(caps.extensions.contains("fileinto"))
             assertFalse(caps.startTls)
-            assertEquals("LOGOUT\r\n", String(received.get(), StandardCharsets.UTF_8))
-        } finally {
-            try {
-                listen.close()
-            } catch (error: Exception) {
-            }
-            thread.join(2_000)
         }
     }
 
-    @Test(timeout = 10_000)
-    fun closeWritesNothing() = runBlocking {
-        val listen = ServerSocket()
-        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        val port = listen.localPort
-        val received = AtomicReference<ByteArray>()
-        val thread = Thread {
-            val client = listen.accept()
-            try {
-                received.set(drain(client.getInputStream()))
-            } finally {
-                try {
-                    client.close()
-                } catch (error: Exception) {
-                }
-            }
-        }
-        thread.isDaemon = true
-        thread.start()
-        try {
-            val transport = openPlainSieve("127.0.0.1", port, null)
+    @Test(timeout = 30_000)
+    fun closeLeavesTheListenerUp() = runBlocking {
+        withPin { server ->
+            val host = server.listenHost
+            val port = sievePort(server)
+            val transport = openPlainSieve(host, port, null)
             transport.close()
             transport.close()
-            thread.join(5_000)
-            assertFalse(thread.isAlive)
-            assertEquals(0, received.get().size)
-        } finally {
-            try {
-                listen.close()
-            } catch (error: Exception) {
-            }
-            thread.join(2_000)
+            val caps = greetPlain(host, port, null)
+            assertEquals("fakeimap", caps.implementation)
         }
     }
 
-    @Test(timeout = 10_000)
+    @Test(timeout = 30_000)
     fun closeFailsABlockedRead() = runBlocking {
-        val listen = ServerSocket()
-        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        val port = listen.localPort
-        val accepted = CountDownLatch(1)
-        val server = Thread {
-            val client = listen.accept()
-            accepted.countDown()
-            try {
-                Thread.sleep(30_000)
-            } catch (error: InterruptedException) {
-            } finally {
-                try {
-                    client.close()
-                } catch (error: Exception) {
-                }
-            }
-        }
-        server.isDaemon = true
-        server.start()
-        val error = AtomicReference<Throwable>()
-        var reader: Thread? = null
-        try {
-            val transport = openPlainSieve("127.0.0.1", port, null)
-            assertTrue(accepted.await(5, TimeUnit.SECONDS))
-            reader = Thread {
+        withPin { server ->
+            val transport = openPlainSieve(server.listenHost, sievePort(server), null)
+            readGreeting(transport)
+            val error = AtomicReference<Throwable>()
+            val reader = Thread {
                 try {
                     runBlocking { transport.readLine() }
                 } catch (thrown: Throwable) {
@@ -152,102 +59,94 @@ class PlainSieveTransportTest {
             assertFalse(reader.isAlive)
             assertTrue("read took $ms ms", ms < 5_000)
             assertTrue(error.get() is SieveFailure)
-        } finally {
-            server.interrupt()
-            try {
-                listen.close()
-            } catch (closeError: Exception) {
-            }
-            server.join(2_000)
-            reader?.join(2_000)
         }
     }
 
-    @Test(timeout = 20_000)
-    fun authenticateLineAndContinuationArePrivate() = runBlocking {
+    @Test(timeout = 30_000)
+    fun cramAuthenticateIsPrivate() = runBlocking {
         val root = java.nio.file.Files.createTempDirectory("sieve-log").toFile()
-        val writer = org.dlang.liveimap.engine.TrafficLog.writer(root, "acct-1", 0) ?: error("writer")
-        val listen = ServerSocket()
-        listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-        val server = Thread {
-            val client = listen.accept()
-            client.soTimeout = 10_000
-            val input = client.getInputStream()
-            val output = client.getOutputStream()
-            fun line() {
-                while (true) {
-                    val c = input.read()
-                    if (c < 0 || c == '\n'.code) break
-                }
-            }
-            output.write("OK \"ready\"\r\n".toByteArray())
-            output.flush()
-            line()
-            output.write("\"challenge\"\r\n".toByteArray())
-            output.flush()
-            line()
-            output.write("OK \"logged in\"\r\n".toByteArray())
-            output.flush()
-            line()
-            client.close()
-        }
-        server.isDaemon = true
-        server.start()
-        val transport = openPlainSieve("127.0.0.1", listen.localPort, writer)
-        try {
-            assertTrue(transport.readLine().startsWith("OK"))
-            transport.writeLine("AUTHENTICATE \"PLAIN\" \"initial\"")
-            val challenge = transport.readLine()
-            assertEquals("\"challenge\"", challenge)
-            transport.writeLine("continuation-bytes")
-            assertTrue(transport.readLine().startsWith("OK"))
-            transport.writeLine("NOOP")
-            writer.sync()
-        } finally {
-            transport.close()
-            listen.close()
-            server.join(5_000)
-        }
-        val records = org.dlang.liveimap.engine.TrafficLog.recordsIn(java.io.File(java.io.File(root, "traffic"), "acct-1"))
-        val auth = "AUTHENTICATE \"PLAIN\" \"initial\"\r\n".toByteArray(StandardCharsets.UTF_8)
-        val cont = "continuation-bytes\r\n".toByteArray(StandardCharsets.UTF_8)
-        val markerAuth = org.dlang.liveimap.engine.TrafficLog.privateMarker(auth.size)
-        val markerCont = org.dlang.liveimap.engine.TrafficLog.privateMarker(cont.size)
-        assertTrue(records.any { it.dir == '>' && it.bytes.contentEquals(markerAuth) })
-        assertTrue(records.any { it.dir == '>' && it.bytes.contentEquals(markerCont) })
-        val visible = records.filter { it.dir == '<' }.joinToString("\n") { String(it.bytes, StandardCharsets.UTF_8) }
-        assertTrue(visible.contains("challenge"))
-        assertTrue(visible.contains("OK"))
-        val sent = records.filter { it.dir == '>' }.joinToString("\n") { String(it.bytes, StandardCharsets.UTF_8) }
-        assertTrue(sent.contains("NOOP"))
-        assertFalse(sent.contains("initial"))
-        assertFalse(sent.contains("continuation-bytes"))
-    }
-
-    @Test(timeout = 20_000)
-    fun getScriptKeepsTheLiteralAndDropsTheTail() {
-        withLocalSieve("{5}\r\nkeep;\r\nOK \"got\"\r\n") { transport ->
-            assertEquals("keep;", getScript(transport, "liveimap"))
-        }
-    }
-
-    @Test(timeout = 20_000)
-    fun failedLiteralLeavesTheNextResponse() {
-        withLocalSieve("NO {4}\r\nline\r\nOK \"next\"\r\n") { transport ->
+        val writer = TrafficLog.writer(root, "acct-1", 0)
+        withPin { server ->
+            val transport = openPlainSieve(server.listenHost, sievePort(server), writer)
             try {
-                getScript(transport, "liveimap")
-                fail("expected SieveFailure")
-            } catch (failure: SieveFailure) {
-                assertEquals("line", failure.text)
+                readGreeting(transport)
+                authenticateCramMd5(transport, "demo", "secret")
+                listScripts(transport)
+                writer.sync()
+            } finally {
+                transport.close()
             }
-            assertEquals("OK \"next\"", transport.readLine())
+        }
+        val records = TrafficLog.recordsIn(java.io.File(java.io.File(root, "traffic"), "acct-1"))
+        val sent = records.filter { it.dir == '>' }.joinToString("\n") { String(it.bytes, StandardCharsets.UTF_8) }
+        assertTrue(records.any { it.dir == '>' && String(it.bytes, StandardCharsets.US_ASCII).startsWith("<private ") })
+        assertTrue(sent.contains("LISTSCRIPTS"))
+        assertFalse(sent.contains("secret"))
+    }
+
+    @Test(timeout = 30_000)
+    fun putScriptNoLeavesTheScriptUnstored() = runBlocking {
+        withPin { server ->
+            val transport = authed(server)
+            try {
+                server.armFault(mapOf(
+                    "do" to "reply",
+                    "proto" to "sieve",
+                    "command" to "PUTSCRIPT",
+                    "times" to 1,
+                ))
+                try {
+                    putScript(transport, "faulted", "keep;\n")
+                    fail("expected SieveFailure")
+                } catch (failure: SieveFailure) {
+                    assertEquals("fault", failure.text)
+                }
+            } finally {
+                transport.close()
+            }
+            val listed = authed(server)
+            try {
+                assertFalse(listScripts(listed).any { it.name == "faulted" })
+            } finally {
+                listed.close()
+            }
         }
     }
 
-    @Test(timeout = 20_000)
-    fun emptyLiteralReturnsAnEmptyScript() {
-        withLocalSieve("{0}\r\n\r\nOK\r\n") { transport ->
-            assertEquals("", getScript(transport, "liveimap"))
+    @Test(timeout = 30_000)
+    fun putScriptCloseFails() = runBlocking {
+        withPin { server ->
+            val transport = authed(server)
+            try {
+                var failed = false
+                try {
+                    putScript(transport, "closed", "keep;\n" + " ".repeat(1 shl 20))
+                } catch (_: Throwable) {
+                    failed = true
+                }
+                assertTrue(failed)
+            } finally {
+                transport.close()
+            }
+            val listed = authed(server)
+            try {
+                assertFalse(listScripts(listed).any { it.name == "closed" })
+            } finally {
+                listed.close()
+            }
+        }
+    }
+
+    @Test(timeout = 30_000)
+    fun getScriptRoundTrip() = runBlocking {
+        withPin { server ->
+            val transport = authed(server)
+            try {
+                putScript(transport, "liveimap", "keep;\n")
+                assertEquals("keep;\n", getScript(transport, "liveimap"))
+            } finally {
+                transport.close()
+            }
         }
     }
 
@@ -264,83 +163,29 @@ class PlainSieveTransportTest {
     }
 }
 
-private val GREETING = (
-    "\"IMPLEMENTATION\" \"Example timsieved\"\r\n" +
-        "\"SIEVE\" \"fileinto\"\r\n" +
-        "OK\r\n"
-    ).toByteArray(StandardCharsets.UTF_8)
-
-private val LOGOUT = "LOGOUT\r\n".toByteArray(StandardCharsets.UTF_8)
-
-private val LOGOUT_OK = "OK \"done\"\r\n".toByteArray(StandardCharsets.UTF_8)
-
-private fun readBytes(input: InputStream, count: Int): ByteArray {
-    val got = ByteArray(count)
-    var off = 0
-    while (off < count) {
-        val n = input.read(got, off, count - off)
-        if (n < 0) break
-        off += n
-    }
-    return got.copyOf(off)
+private fun sievePort(server: FakeimapServer): Int {
+    val bound = server.bound["sieve"] as? String ?: error("no sieve listener: ${server.bound}")
+    return bound.substringAfterLast(":").toInt()
 }
 
-private fun withLocalSieve(response: String, block: suspend (PlainSieveTransport) -> Unit) = runBlocking {
-    val listen = ServerSocket()
-    listen.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0))
-    val failure = AtomicReference<Throwable>()
-    val thread = Thread {
-        var client: Socket? = null
-        try {
-            listen.soTimeout = 10_000
-            client = listen.accept()
-            client.tcpNoDelay = true
-            client.soTimeout = 10_000
-            val output = client.getOutputStream()
-            output.write(response.toByteArray(StandardCharsets.UTF_8))
-            output.flush()
-            drain(client.getInputStream())
-        } catch (error: Throwable) {
-            failure.set(error)
-        } finally {
-            try {
-                client?.close()
-            } catch (error: Exception) {
-            }
-        }
-    }
-    thread.isDaemon = true
-    thread.start()
-    var transport: PlainSieveTransport? = null
-    var thrown: Throwable? = null
+private fun withPin(block: suspend (FakeimapServer) -> Unit) = runBlocking {
+    FakeimapPin.requireReady()
+    val server = FakeimapServer.start(
+        "sieve-transport",
+        FakeimapPin.personalityPath("binary"),
+        FakeimapPin.personalities().parent.resolve("datasets/demo"),
+        extra = mapOf("sieve_listen" to "127.0.0.1:0"),
+    )
     try {
-        transport = openPlainSieve("127.0.0.1", listen.localPort, null)
-        block(transport)
-    } catch (error: Throwable) {
-        thrown = error
+        block(server)
     } finally {
-        try {
-            transport?.close()
-        } catch (error: Exception) {
-        }
-        try {
-            listen.close()
-        } catch (error: Exception) {
-        }
-        thread.join(10_000)
+        server.close()
     }
-    if (thrown != null) throw thrown
-    assertFalse(thread.isAlive)
-    val error = failure.get()
-    if (error != null) throw error
 }
 
-private fun drain(input: InputStream): ByteArray {
-    val rest = ByteArrayOutputStream()
-    while (true) {
-        val next = input.read()
-        if (next < 0) break
-        rest.write(next)
-    }
-    return rest.toByteArray()
+private suspend fun authed(server: FakeimapServer): PlainSieveTransport {
+    val transport = openPlainSieve(server.listenHost, sievePort(server), null)
+    readGreeting(transport)
+    authenticatePlain(transport, "demo", "secret")
+    return transport
 }

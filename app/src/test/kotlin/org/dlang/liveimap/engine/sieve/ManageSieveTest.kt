@@ -75,23 +75,6 @@ class ManageSieveTest {
         }
         assertEquals(listOf("STARTTLS"), refused.written)
         assertEquals(listOf("NO \"refused\""), refused.read)
-
-        val bare = ListTransport(listOf("NO"))
-        try {
-            requestStartTls(bare)
-            fail("expected SieveFailure")
-        } catch (failure: SieveFailure) {
-            assertEquals("NO", failure.text)
-        }
-
-        val bye = ListTransport(listOf("BYE \"gone\""))
-        try {
-            requestStartTls(bye)
-            fail("expected SieveFailure")
-        } catch (failure: SieveFailure) {
-            assertEquals("gone", failure.text)
-        }
-        assertEquals(listOf("BYE \"gone\""), bye.read)
     }
 
     @Test

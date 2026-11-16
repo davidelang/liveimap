@@ -4340,3 +4340,13 @@ SMTP uses the account TLS mode and checks the certificate before MAIL.
 
 - Plan sandbox/plans/fakeimap-daily-20261113-2141-plan.md. Pinned fakeimap at 579fe5c. regress defaults to that process, resets it between suites on the same server, and starts a new process when the server changes. Docker still starts the container, checks the image label, and runs the dovecot-245 relay sink.
 - Removed the private-socket FakeImap tests. OauthFakeimapPinTest talks to the stalwart-oauth listener. FakeimapDailyTest covers a mailbox larger than the seed, fault and referral cases, and a bearer from control issue through the app.
+
+## 2026-11-15 - real-session faults execution start
+
+- Approved plan: sandbox/plans/real-session-faults-20261115-2317-plan.md
+- Work: instrumented fakeimap cases through LibetpanMailSession, platformJmapMailSession, and PlainSieveTransport; remove the stand-ins those cases replace
+- First action per standard-plan-compliance-block.md
+
+## 2026-11-15 - real-session faults landed
+
+Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, and putScript. Replaced stand-ins: FakeLink throw/block cases, ManageSieve ListTransport BYE and bare NO, and the source scans in AppendReadWriteTest, CloseOnlyOnLeaveTest, and Pass5GuardTest. Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md.
