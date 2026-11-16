@@ -460,7 +460,7 @@ class FakeimapDailyTest {
             ))
             var reported = ""
             try {
-                held.session.clientOrder(SortKey.Size, false) { _, _ -> }
+                held.session.clientOrder(SortKey.Size, false, { _, _ -> }, { false })
             } catch (e: Throwable) {
                 reported = e.message ?: e.javaClass.simpleName
             }
@@ -582,7 +582,7 @@ class FakeimapDailyTest {
         val box: String,
     )
 
-    private fun prepare(case: String): Ready? {
+    private suspend fun prepare(case: String): Ready? {
         val host = arg("labHost")
         assumeTrue("no labHost argument", host.isNotEmpty() && arg("labCase") == case)
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
@@ -693,11 +693,12 @@ class FakeimapDailyTest {
         val quiet = account.copy(longSearchQuietSec = 3L)
         try {
             val first = searchBody(quiet, labId, box)
-            assertTrue("$first", first is LongSearchResult.Hits && first.uids.isNotEmpty())
+            val firstHits = (first as? LongSearchResult.Hits)?.uids
+            assertTrue("$first", !firstHits.isNullOrEmpty())
             arm(mapOf("do" to fault, "command" to "SEARCH", "times" to 0))
             val second = searchBody(quiet, labId, box)
-            val sameHits = second is LongSearchResult.Hits && second.uids == first.uids
-            assertFalse("$second", sameHits)
+            val secondHits = (second as? LongSearchResult.Hits)?.uids
+            assertFalse("$second", secondHits == firstHits)
         } finally {
             clearFaults()
             deleteLabAccount(ctx, labId)
