@@ -4356,3 +4356,8 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 - Pin bounce answers DATA 250 and stores a failure report. smtpBounce asks for FAILURE notification, so smtpSend returns -1, and the report's Action line is the failure text.
 - An empty JMAP event-source body is a closed stream. The watch ends with WatchLost instead of opening the stream again.
 - Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md
+
+## 2026-11-16 - bounce fails the SMTP send
+
+- Pin bounce answers DATA 250 after appending a failure report to the sender's INBOX. smtpSend throws MailFailure with that report's Action line, which does not start with smtp-uncertain and is not a success return.
+- Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md
