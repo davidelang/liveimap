@@ -4384,3 +4384,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-17 - git add rejects a settings tree id
 
 - git add rejects a settings tree whose group or setting id is not an identifier, or whose section is not `account` or `ui`.
+
+## 2026-11-17 - settings note
+
+- a settings child can be a sentence or a full-width line.

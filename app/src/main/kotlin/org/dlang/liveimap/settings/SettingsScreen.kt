@@ -58,6 +58,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
@@ -94,8 +95,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
@@ -105,6 +108,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -1218,7 +1222,7 @@ fun SettingsTree(
                 notePaneScroll(scroll, bounds.top, bounds.bottom)
             }
             .verticalScroll(scroll)
-            .padding(16.dp)
+            .padding(settingsPanePadding)
             .testTag("smoke-settings"),
     ) {
             val saveFailure = settingsSaveFailure.value
@@ -1631,7 +1635,71 @@ internal fun renderSettingsNode(node: TreeNode, depth: Int, walk: SettingsWalk) 
         is TreeNode.Group -> renderGroup(node, depth, walk)
         is TreeNode.Page -> node.children.forEach { renderSettingsNode(it, depth, walk) }
         is TreeNode.Editor -> EditorEntry(node, walk)
+        is TreeNode.Note -> renderNote(node, walk)
     }
+}
+
+private val settingsPanePadding = 16.dp
+
+private val settingRowInset = 16.dp
+
+@Composable
+internal fun renderNote(node: TreeNode.Note, walk: SettingsWalk) {
+    val read = { key: String -> walk.editor.settings.getSetting(key) }
+    val sdk = android.os.Build.VERSION.SDK_INT
+    if (node.visibleWhen?.holds(read, sdk) == false) return
+    if (node.line) {
+        SettingsRule()
+        return
+    }
+    val id = SettingsTreeGenerated.resource(node.text)
+    val shown = if (id != 0) stringResource(id) else node.english.ifEmpty { node.text }
+    Text(shown, style = noteTextStyle(node), modifier = Modifier.fillMaxWidth().padding(horizontal = settingRowInset))
+}
+
+@Composable
+private fun SettingsRule() {
+    val density = LocalDensity.current
+    val pad = with(density) { settingsPanePadding.roundToPx() }
+    val thickness = with(density) { 1.toDp() }
+    HorizontalDivider(
+        modifier = Modifier.layout { measurable, constraints ->
+            val width = constraints.maxWidth + pad * 2
+            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+            this.layout(constraints.maxWidth, placeable.height) {
+                placeable.placeRelative(-pad, 0)
+            }
+        },
+        thickness = thickness,
+    )
+}
+
+@Composable
+private fun noteTextStyle(node: TreeNode.Note): androidx.compose.ui.text.TextStyle {
+    val scale = listOf(
+        MaterialTheme.typography.displayLarge,
+        MaterialTheme.typography.displayMedium,
+        MaterialTheme.typography.displaySmall,
+        MaterialTheme.typography.headlineLarge,
+        MaterialTheme.typography.headlineMedium,
+        MaterialTheme.typography.headlineSmall,
+        MaterialTheme.typography.titleLarge,
+        MaterialTheme.typography.titleMedium,
+        MaterialTheme.typography.titleSmall,
+        MaterialTheme.typography.bodyLarge,
+        MaterialTheme.typography.bodyMedium,
+        MaterialTheme.typography.bodySmall,
+        MaterialTheme.typography.labelLarge,
+        MaterialTheme.typography.labelMedium,
+        MaterialTheme.typography.labelSmall,
+    )
+    var style = scale[9 - node.size]
+    if (node.bold) style = style.copy(fontWeight = FontWeight.Bold)
+    when (node.font) {
+        "serif" -> style = style.copy(fontFamily = FontFamily.Serif)
+        "monospace" -> style = style.copy(fontFamily = FontFamily.Monospace)
+    }
+    return style
 }
 
 /** Account opens the server editor. Server, Sending, Logging, Layout, and Address book add a footer. These stay headers. */
@@ -1657,6 +1725,7 @@ internal fun childDrawn(node: TreeNode, read: (String) -> String, sdk: Int): Boo
     is TreeNode.Group -> (node.visibleWhen?.holds(read, sdk) ?: true) && node.children.any { childDrawn(it, read, sdk) }
     is TreeNode.Editor -> true
     is TreeNode.Page -> node.children.any { childDrawn(it, read, sdk) }
+    is TreeNode.Note -> node.visibleWhen?.holds(read, sdk) ?: true
 }
 
 @Composable

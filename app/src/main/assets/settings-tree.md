@@ -2,7 +2,7 @@
 
 The settings screens, the groups on them, and the values that are saved. A reader can add a section, a group, or a setting from the sections below. Each section says which keys are required the first time they appear.
 
-A display string is the en-US sentence, not an Android resource name. That is `title`, `label`, `description`, each `choiceTitles` value, and summary `text`, `plural`, and `titles` values. `smtpNoAuth` is titled "On sends with no SMTP login". Its choices are "No SMTP login" and "SMTP login is required".
+A display string is the en-US sentence, not an Android resource name. That is `title`, `label`, `description`, each `choiceTitles` value, summary `text`, `plural`, and `titles` values, and a note's `text`. `smtpNoAuth` is titled "On sends with no SMTP login". Its choices are "No SMTP login" and "SMTP login is required".
 
 The Android resource name for a sentence stays the name that sentence already has. The same sentence stays one resource until the English texts differ. A sentence that changes keeps its name when it is the only user of that name. A shared sentence that changes in one place gets a new name, and an `<locale>.override.json` entry stays on the old name. The override is the manual translation. It is not replaced. Its text is what ships.
 
@@ -18,13 +18,13 @@ Account settings and UI settings are JSON documents. One account document is one
 
 A section is an object. Required: `section`, `title`, and `children`. Optional: `summary`.
 
-`section` is `account` or `ui`. There is one of each, and a section is not nested. `account` is saved on the account. `ui` is saved in the UI record. The section picks the record. A leaf does not name a record. `title` is the section's en-US heading. `children` is an array of groups, editors, and leaves.
+`section` is `account` or `ui`. There is one of each, and a section is not nested. `account` is saved on the account. `ui` is saved in the UI record. The section picks the record. A leaf does not name a record. `title` is the section's en-US heading. `children` is an array of groups, editors, leaves, and notes.
 
 ## Group
 
 A group is an object. Required: `group`, `title`, and `children`. `group` is the stable id. `title` is the heading text.
 
-Optional: `label` (how a group matches the extra-control headers; it defaults to `title`), `header` (`label` or `arrow`; default `label`), `summary`, `description`, `visibleWhen`, `editor`, `opens`, and `introWhen`. `children` may contain groups, editors, and leaves. `description` stays unused. The screen does not draw `label` as its own text. `summary` is the small line under the heading while the group is collapsed. `introWhen` is the line above the children while the group is open.
+Optional: `label` (how a group matches the extra-control headers; it defaults to `title`), `header` (`label` or `arrow`; default `label`), `summary`, `description`, `visibleWhen`, `editor`, `opens`, and `introWhen`. `children` may contain groups, editors, leaves, and notes. `description` stays unused. The screen does not draw `label` as its own text. `summary` is the small line under the heading while the group is collapsed. `introWhen` is the line above the children while the group is open.
 
 A group with one visible leaf and no footer controls is drawn as that single visible leaf. A group whose drawn children are empty is not drawn. Account, Server, Sending, Logging, Layout, Address book, and Mailboxes stay headers. Account opens the server editor. Server, Sending, Logging, Layout, and Address book add a footer under their children.
 
@@ -33,6 +33,16 @@ A group with one visible leaf and no footer controls is drawn as that single vis
 An editor is an object with no `type` and no `setting`. Required: `editor` and `opens` (`screen`, `popup`, or `inline`). Optional: `title`, `label`, `summary`, and `children`.
 
 `accountList` opens on a screen. A group may also name `editor` (the server group). `rules`, `toolbar`, `paneLayout`, and `swipe` are leaf types with their own screens, not a second editor id on the leaf.
+
+## Note
+
+A child may be a note. A note is a sentence or a line. It stores nothing. It is not a group and not a setting. It may sit in a section's `children`, a group's `children`, or an editor's `children` or `settings`, next to a group or a setting.
+
+A sentence is `{ "text": "…" }`. `text` is the en-US sentence. A line is `{ "line": true }`. One of those, not both.
+
+Optional `visibleWhen` uses the same condition language as a setting. Absent means shown.
+
+Optional `size` is an integer from -2 to 2. Absent is 0. 0 uses the same type style as a setting row's title. Each step is the next theme style larger or smaller. Optional `bold` true draws that style bold. Absent is not bold. Optional `font` is `serif` or `monospace`. Absent is the theme font. `serif` is `FontFamily.Serif`. `monospace` is `FontFamily.Monospace`. No font file is added.
 
 ## Leaf
 

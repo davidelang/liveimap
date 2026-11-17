@@ -20,6 +20,7 @@ class SettingsOneLeafTest {
                 is TreeNode.Page -> node.children.forEach { walk(it) }
                 is TreeNode.Editor -> node.children.forEach { walk(it) }
                 is TreeNode.Leaf -> Unit
+                is TreeNode.Note -> Unit
             }
         }
         parseSettingsDocument(settingsTreeText()).pages.forEach { walk(it) }
@@ -49,6 +50,70 @@ class SettingsOneLeafTest {
         assertNull(leafShownInstead(group("Account", listOf(leaf("only"))), { "" }, 30))
         assertNull(leafShownInstead(group("Server", listOf(leaf("only"))), { "" }, 30))
         assertEquals("only", leafShownInstead(group("Replying", listOf(leaf("only"))), { "" }, 30)?.setting)
+    }
+
+    @Test
+    fun aNoteIsDrawnAndIsNotTheOneLeaf() {
+        val read = { _: String -> "" }
+        val sentence = TreeNode.Note(text = "Hello", english = "Hello", line = false)
+        val rule = TreeNode.Note(text = "", english = "", line = true)
+        assertTrue(childDrawn(sentence, read, 30))
+        assertTrue(childDrawn(rule, read, 30))
+        val hidden = sentence.copy(visibleWhen = Condition.Equals("flag", JsonValue.Bool(true)))
+        assertFalse(childDrawn(hidden, { "false" }, 30))
+        assertTrue(childDrawn(hidden, { "true" }, 30))
+        val withNote = group("Replying", listOf(leaf("only"), sentence))
+        assertTrue(childDrawn(withNote, read, 30))
+        assertNull(leafShownInstead(withNote, read, 30))
+        val onlyNote = group("Replying", listOf(sentence))
+        assertTrue(childDrawn(onlyNote, read, 30))
+        assertNull(leafShownInstead(onlyNote, read, 30))
+        val noteHidden = group("Replying", listOf(leaf("only"), hidden))
+        assertEquals("only", leafShownInstead(noteHidden, { "false" }, 30)?.setting)
+        val text = """
+            {"sections":[
+              {"section":"account","title":"Account","children":[
+                {"group":"g","title":"G","children":[
+                  {"text":"Hello","size":-2,"bold":true,"font":"serif"},
+                  {"setting":"kept","type":"bool","default":false,"title":"T"},
+                  {"line":true}
+                ]},
+                {"editor":"rules","opens":"screen","settings":[{"text":"In settings","font":"monospace"}],"children":[{"line":true}]}
+              ]},
+              {"section":"ui","title":"UI","children":[{"line":true,"visibleWhen":{"setting":"kept","equals":true}}]}
+            ]}
+        """.trimIndent()
+        val doc = parseSettingsDocument(text)
+        val leaves = ArrayList<String>()
+        fun walk(node: TreeNode) {
+            when (node) {
+                is TreeNode.Leaf -> leaves.add(node.leaf.setting)
+                is TreeNode.Group -> node.children.forEach { walk(it) }
+                is TreeNode.Page -> node.children.forEach { walk(it) }
+                is TreeNode.Editor -> node.children.forEach { walk(it) }
+                is TreeNode.Note -> Unit
+            }
+        }
+        doc.pages.forEach { walk(it) }
+        assertEquals(listOf("kept"), leaves)
+        val account = doc.pages[0] as TreeNode.Page
+        val parsed = (account.children[0] as TreeNode.Group).children[0] as TreeNode.Note
+        assertEquals("Hello", parsed.text)
+        assertEquals("Hello", parsed.english)
+        assertEquals(-2, parsed.size)
+        assertTrue(parsed.bold)
+        assertEquals("serif", parsed.font)
+        assertFalse(parsed.line)
+        val editor = account.children[1] as TreeNode.Editor
+        val inSettings = editor.children[0] as TreeNode.Note
+        assertEquals("monospace", inSettings.font)
+        assertEquals("In settings", inSettings.english)
+        val uiLine = (doc.pages[1] as TreeNode.Page).children[0] as TreeNode.Note
+        assertTrue(uiLine.line)
+        assertFalse(childDrawn(uiLine, { "false" }, 30))
+        assertTrue(childDrawn(uiLine, { "true" }, 30))
+        val parsedGroup = account.children[0] as TreeNode.Group
+        assertNull(leafShownInstead(parsedGroup, { "" }, 30))
     }
 
     @Test
@@ -82,6 +147,8 @@ class SettingsOneLeafTest {
             "titleWhen", "titleArgs", "sdkAtLeast", "notEquals",
             "choiceTitle", "countSet", "rulesWho", "\$accounts",
             "single visible leaf",
+            "monospace",
+            "serif",
         )) {
             assertTrue(key, text.contains(key))
         }

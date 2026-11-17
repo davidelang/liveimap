@@ -18,6 +18,7 @@ class SettingsTreeCoverageTest {
                 is TreeNode.Group -> node.children.forEach { walk(it) }
                 is TreeNode.Page -> node.children.forEach { walk(it) }
                 is TreeNode.Editor -> node.children.forEach { walk(it) }
+                is TreeNode.Note -> Unit
             }
         }
         doc.pages.forEach { walk(it) }

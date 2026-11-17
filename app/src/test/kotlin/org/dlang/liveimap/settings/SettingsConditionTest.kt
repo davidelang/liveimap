@@ -42,6 +42,7 @@ class SettingsConditionTest {
                 is TreeNode.Page -> node.children.forEach { walk(it) }
                 is TreeNode.Editor -> node.children.forEach { walk(it) }
                 is TreeNode.Leaf -> Unit
+                is TreeNode.Note -> Unit
             }
         }
         doc.pages.forEach { walk(it) }

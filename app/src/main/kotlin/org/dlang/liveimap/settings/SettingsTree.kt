@@ -81,6 +81,17 @@ sealed class TreeNode {
     ) : TreeNode()
 
     data class Leaf(val leaf: TreeLeaf) : TreeNode()
+
+    /** A sentence or a full-width line. It stores nothing. */
+    data class Note(
+        val text: String,
+        val english: String,
+        val line: Boolean,
+        val size: Int = 0,
+        val bold: Boolean = false,
+        val font: String? = null,
+        val visibleWhen: Condition? = null,
+    ) : TreeNode()
 }
 
 private val uiInstalled = listOf(
@@ -135,6 +146,8 @@ private val editorKeys = setOf("editor", "opens", "title", "summary", "settings"
 
 private val sectionKeys = setOf("section", "title", "children", "summary")
 
+private val noteKeys = setOf("text", "line", "visibleWhen", "size", "bold", "font")
+
 private val opensOk = setOf("screen", "popup", "inline")
 
 private val editorsOk = mapOf(
@@ -179,6 +192,7 @@ fun findSettingsPage(nodes: List<TreeNode>, page: String): TreeNode.Page? {
                 findSettingsPage(node.children, page)?.let { return it }
             }
             is TreeNode.Group -> findSettingsPage(node.children, page)?.let { return it }
+            is TreeNode.Note -> Unit
             else -> Unit
         }
     }
@@ -195,6 +209,7 @@ fun findSettingsEditor(nodes: List<TreeNode>, editorId: String?): TreeNode? {
                 findSettingsEditor(node.children, editorId)?.let { return it }
             }
             is TreeNode.Page -> findSettingsEditor(node.children, editorId)?.let { return it }
+            is TreeNode.Note -> Unit
             else -> Unit
         }
     }
@@ -239,6 +254,7 @@ private fun node(value: JsonValue, scopeName: String): TreeNode {
         "group" in obj.fields -> readGroup(obj, scopeName)
         "setting" in obj.fields -> TreeNode.Leaf(readLeaf(obj, scopeName))
         "editor" in obj.fields -> readEditor(obj, scopeName)
+        "text" in obj.fields || "line" in obj.fields -> readNote(obj)
         else -> throw SettingsTreeParseException("settings-tree.json node")
     }
 }
@@ -274,6 +290,57 @@ private fun readEditor(obj: JsonValue.Obj, scopeName: String): TreeNode.Editor {
         else -> emptyList()
     }
     return TreeNode.Editor(editor, opens, title, children, arrayField(obj, "summary"))
+}
+
+private fun readNote(obj: JsonValue.Obj): TreeNode.Note {
+    for (name in obj.fields.keys) {
+        if (name !in noteKeys) throw SettingsTreeParseException("settings-tree.json note field $name")
+    }
+    val hasText = "text" in obj.fields
+    val hasLine = "line" in obj.fields
+    if (hasText == hasLine) throw SettingsTreeParseException("settings-tree.json note")
+    val text = if (!hasText) {
+        ""
+    } else {
+        val value = str(obj, "text") ?: throw SettingsTreeParseException("settings-tree.json note text")
+        if (value.isEmpty()) throw SettingsTreeParseException("settings-tree.json note text")
+        value
+    }
+    if (hasLine && obj.fields["line"] != JsonValue.Bool(true)) {
+        throw SettingsTreeParseException("settings-tree.json note line")
+    }
+    val size = when (val raw = obj.fields["size"]) {
+        null -> 0
+        is JsonValue.Num -> {
+            if (raw.value < -2L || raw.value > 2L) throw SettingsTreeParseException("settings-tree.json note size ${raw.value}")
+            raw.value.toInt()
+        }
+        else -> throw SettingsTreeParseException("settings-tree.json note size")
+    }
+    val bold = when (val raw = obj.fields["bold"]) {
+        null -> false
+        is JsonValue.Bool -> raw.value
+        else -> throw SettingsTreeParseException("settings-tree.json note bold")
+    }
+    val font = when (val raw = obj.fields["font"]) {
+        null -> null
+        is JsonValue.Str -> {
+            if (raw.value != "serif" && raw.value != "monospace") {
+                throw SettingsTreeParseException("settings-tree.json note font ${raw.value}")
+            }
+            raw.value
+        }
+        else -> throw SettingsTreeParseException("settings-tree.json note font")
+    }
+    return TreeNode.Note(
+        text = text,
+        english = text,
+        line = hasLine,
+        size = size,
+        bold = bold,
+        font = font,
+        visibleWhen = conditionField(obj, "visibleWhen"),
+    )
 }
 
 private fun readLeaf(obj: JsonValue.Obj, scopeName: String): TreeLeaf {
@@ -379,6 +446,7 @@ fun groupTitles(nodes: List<TreeNode>): List<String> {
             is TreeNode.Page -> node.children.forEach { walk(it) }
             is TreeNode.Editor -> node.children.forEach { walk(it) }
             is TreeNode.Leaf -> Unit
+            is TreeNode.Note -> Unit
         }
     }
     nodes.forEach { walk(it) }
@@ -422,6 +490,20 @@ fun validateSettingsTree(text: String, complete: Boolean = true): List<String> {
                 if (!seen.add(node.leaf.setting)) errors.add("settings-tree.json duplicate setting ${node.leaf.setting}")
                 errors.addAll(checkLeaf(node.leaf, section, complete))
             }
+            is TreeNode.Note -> {
+                if (node.line) {
+                    if (node.text.isNotEmpty()) errors.add("settings-tree.json note text")
+                } else if (node.text.isEmpty()) {
+                    errors.add("settings-tree.json note text")
+                } else {
+                    checkResource(node.text, complete, errors)
+                }
+                if (node.size !in -2..2) errors.add("settings-tree.json note size ${node.size}")
+                if (node.font != null && node.font != "serif" && node.font != "monospace") {
+                    errors.add("settings-tree.json note font ${node.font}")
+                }
+                if (node.visibleWhen != null) checkCondition(node.visibleWhen, errors)
+            }
         }
     }
     doc.pages.forEach { walk(it, null) }
@@ -450,6 +532,7 @@ private fun findLeaf(nodes: List<TreeNode>, key: String): TreeLeaf? {
             is TreeNode.Group -> findLeaf(node.children, key)?.let { return it }
             is TreeNode.Page -> findLeaf(node.children, key)?.let { return it }
             is TreeNode.Editor -> findLeaf(node.children, key)?.let { return it }
+            is TreeNode.Note -> Unit
         }
     }
     return null
@@ -679,6 +762,7 @@ internal fun installBuiltTree(pages: List<TreeNode>) {
             is TreeNode.Group -> node.children.forEach { walk(it) }
             is TreeNode.Page -> node.children.forEach { walk(it) }
             is TreeNode.Editor -> node.children.forEach { walk(it) }
+            is TreeNode.Note -> Unit
         }
     }
     pages.forEach { walk(it) }

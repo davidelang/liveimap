@@ -574,6 +574,46 @@ def _is_editor(node):
     )
 
 
+def _is_note(node):
+    # A sentence or a line. Not a group, a setting, an editor, or a section.
+    if not isinstance(node, dict):
+        return False
+    if any(key in node for key in ("group", "setting", "editor", "section", "type")):
+        return False
+    return "text" in node or "line" in node
+
+
+def _note_name(catalog, sentence):
+    if _resource_name(catalog, sentence):
+        return sentence
+    return _string_name(catalog, sentence, None, "note")
+
+
+def _resolve_note(node, catalog, bound):
+    # The slot id is the sentence, so moving the note keeps the resource name.
+    text = node.get("text")
+    if not isinstance(text, str) or text == "":
+        return
+    sentence = node.get("_note_sentence")
+    if not isinstance(sentence, str) or sentence == "":
+        sentence = text
+        node["_note_sentence"] = sentence
+    node["text"] = _use_name(bound, sentence, lambda: _note_name(catalog, sentence))
+
+
+def _note_slot(node, owner, out):
+    text = node.get("text")
+    if not isinstance(text, str) or text == "":
+        return
+    slot_id = node.get("_note_sentence")
+    if not isinstance(slot_id, str) or slot_id == "":
+        slot_id = text
+    for item in out:
+        if item["id"] == slot_id:
+            return
+    _add_slot(out, slot_id, text, False, "note", {"owner": owner}, node)
+
+
 def _use_name(bound, slot_id, lookup):
     if bound is not None:
         name = bound.get(slot_id)
@@ -589,12 +629,15 @@ def _slot_fields(node):
     return {"line": _origin_line(node) or 0, "own": _own_text(node)}
 
 
-def _resolve_node(node, owner, catalog, bound, scope):
+def _resolve_node(node, owner, catalog, bound, scope, as_child=False):
     if isinstance(node, list):
         for index, item in enumerate(node):
-            _resolve_node(item, owner, catalog, bound, "%s/%s" % (scope, index))
+            _resolve_node(item, owner, catalog, bound, "%s/%s" % (scope, index), as_child)
         return
     if not isinstance(node, dict):
+        return
+    if as_child and _is_note(node):
+        _resolve_note(node, catalog, bound)
         return
     if _is_leaf(node):
         owner = node["setting"]
@@ -678,7 +721,9 @@ def _resolve_node(node, owner, catalog, bound, scope):
         )
     for key, value in node.items():
         if isinstance(value, (dict, list)):
-            _resolve_node(value, owner, catalog, bound, scope + ":" + key)
+            _resolve_node(
+                value, owner, catalog, bound, scope + ":" + key, key in ("children", "settings")
+            )
 
 
 def resolve_display_names(doc, catalog, bound=None):
@@ -727,12 +772,16 @@ def _add_slot(out, slot_id, sentence, plural, role, meta, node=None):
     out.append(item)
 
 
-def _display_slots(node, scope, owner, out):
+def _display_slots(node, scope, owner, out, as_child=False):
     if isinstance(node, list):
         for index, item in enumerate(node):
-            _display_slots(item, "%s/%s" % (scope, index), owner, out)
+            _display_slots(item, "%s/%s" % (scope, index), owner, out, as_child)
         return
     if not isinstance(node, dict):
+        return
+    if as_child and _is_note(node):
+        # size, bold, font, and line are not sentences. The slot id is the sentence.
+        _note_slot(node, owner, out)
         return
     if _is_leaf(node):
         scope = "leaf:" + node["setting"]
@@ -793,7 +842,7 @@ def _display_slots(node, scope, owner, out):
         _add_slot(out, scope + ":description", node.get("description"), False, "description", {"owner": owner}, node)
     for key, value in node.items():
         if isinstance(value, (dict, list)):
-            _display_slots(value, scope + ":" + key, owner, out)
+            _display_slots(value, scope + ":" + key, owner, out, key in ("children", "settings"))
 
 
 def _slot_list(doc):
@@ -829,6 +878,8 @@ def _lookup_slot(slot, catalog):
             return _plural_name(catalog, sentence, slot.get("count") or "")
         if role == "titles":
             return _titles_name(catalog, slot.get("setting") or slot.get("owner") or "", slot.get("key") or "", sentence)
+        if role == "note":
+            return _note_name(catalog, sentence)
     except SystemExit:
         # A missing sentence is allocated, or the slot keeps its resource.
         # A repeated sentence is not an error and is not retargeted.
@@ -2038,6 +2089,7 @@ GROUP_KEYS = {
     "description", "editor", "opens", "introWhen",
 }
 EDITOR_KEYS = {"editor", "opens", "title", "summary", "settings", "children", "label"}
+NOTE_KEYS = {"text", "line", "visibleWhen", "size", "bold", "font"}
 LEAF_KEYS = {
     "setting", "type", "default", "title", "summary", "choiceTitles", "choices",
     "min", "max", "minItems", "maxItems", "itemMin", "itemMax", "order", "many", "server", "derived",
@@ -2108,6 +2160,57 @@ def stamp_scopes(doc):
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
+def _note_marked(node):
+    return any(key in node for key in ("line", "size", "bold", "font", "visibleWhen"))
+
+
+def _validate_note(node):
+    _extra(node, NOTE_KEYS)
+    has_text = "text" in node
+    has_line = "line" in node
+    if has_text and has_line:
+        _tree_fail(node, "text and line")
+    if not has_text and not has_line:
+        _tree_fail(node, "missing text or line")
+    if has_text:
+        text = node.get("text")
+        if not isinstance(text, str) or text == "":
+            _tree_fail(node, "text %r" % (text,))
+    if has_line and node.get("line") is not True:
+        _tree_fail(node, "line %r" % (node.get("line"),))
+    if "size" in node:
+        size = node.get("size")
+        if isinstance(size, bool) or not isinstance(size, int) or size < -2 or size > 2:
+            _tree_fail(node, "size %r" % (size,))
+    if "bold" in node and node.get("bold") is not True and node.get("bold") is not False:
+        _tree_fail(node, "bold %r" % (node.get("bold"),))
+    if "font" in node and node.get("font") not in ("serif", "monospace"):
+        _tree_fail(node, "font %r" % (node.get("font"),))
+
+
+def _reject_stray_notes(node, summary_item=False):
+    # A summary case may be text. A note anywhere else is not a summary case.
+    if isinstance(node, list):
+        for item in node:
+            _reject_stray_notes(item, summary_item)
+        return
+    if not isinstance(node, dict):
+        return
+    if _is_note(node) and (_note_marked(node) or not summary_item):
+        _tree_fail(node, "note")
+    for key, value in node.items():
+        if isinstance(value, (dict, list)):
+            _reject_stray_notes(value, key in ("summary", "introWhen"))
+
+
+def _reject_nested_notes(node):
+    for key, value in node.items():
+        if key in ("children", "settings"):
+            continue
+        if isinstance(value, (dict, list)):
+            _reject_stray_notes(value, key in ("summary", "introWhen"))
+
+
 def validate_doc(doc):
     if not isinstance(doc, dict):
         raise SettingsTreeError("settings-tree.json: root")
@@ -2154,8 +2257,17 @@ def validate_doc(doc):
             raise SettingsTreeError("settings-tree.json: node %s" % where)
         if "section" in node:
             _tree_fail(node, "nested section")
+        if _is_note(node.get("group")):
+            _tree_fail(node, "note group")
+        if _is_note(node.get("setting")):
+            _tree_fail(node, "note setting")
+        if _is_note(node):
+            _validate_note(node)
+            _reject_nested_notes(node)
+            return
         if "setting" in node and "type" in node:
             leaf(node, where)
+            _reject_nested_notes(node)
             return
         if "group" in node:
             _extra(node, GROUP_KEYS)
@@ -2166,20 +2278,31 @@ def validate_doc(doc):
                 _tree_fail(node, "missing children")
             for index, child in enumerate(node["children"]):
                 walk(child, "%s/%s" % (node["group"], index))
+            _reject_nested_notes(node)
             return
         if "editor" in node:
             _extra(node, EDITOR_KEYS)
-            kids = node.get("settings", node.get("children", []))
+            if "settings" in node:
+                kids = node.get("settings")
+                other = node.get("children")
+            else:
+                kids = node.get("children", [])
+                other = None
             if not isinstance(kids, list):
                 _tree_fail(node, "editor children")
             for index, child in enumerate(kids):
                 walk(child, "%s/%s" % (node["editor"], index))
+            if isinstance(other, list):
+                _reject_stray_notes(other, False)
+            _reject_nested_notes(node)
             return
         _tree_fail(node, "missing kind")
 
     for index, section in enumerate(sections):
         if not isinstance(section, dict):
             raise SettingsTreeError("settings-tree.json: section %s" % index)
+        if _is_note(section):
+            _tree_fail(section, "note")
         _extra(section, SECTION_KEYS)
         sid = section.get("section")
         if sid not in ("account", "ui"):
@@ -2191,6 +2314,7 @@ def validate_doc(doc):
             _tree_fail(section, "missing section field", ident=str(sid))
         for child_index, child in enumerate(section["children"]):
             walk(child, "%s/%s" % (sid, child_index))
+        _reject_nested_notes(section)
     if len(seen_sections) != 2 or set(seen_sections) != {"account", "ui"}:
         raise SettingsTreeError("settings-tree.json: sections")
 
@@ -2548,6 +2672,92 @@ def _self_check_errors():
         if proc.returncode != 0:
             raise SystemExit("check ok failed: " + proc.stderr + proc.stdout)
 
+    def note_tree(account_children, ui_children="[]"):
+        return "\n".join([
+            "{",
+            '  "sections": [',
+            '    {"section": "account", "title": "Account", "children": [',
+            "      " + account_children,
+            "    ]},",
+            '    {"section": "ui", "title": "UI", "children": %s}' % ui_children,
+            "  ]",
+            "}",
+        ]) + "\n"
+
+    def expect_note(child, field, value):
+        try:
+            validate_doc(parse_settings_text(note_tree(child)))
+        except SettingsTreeError as exc:
+            message = str(exc)
+        else:
+            raise SystemExit("note passed: " + child)
+        if field not in message or value not in message:
+            raise SystemExit("note %s %s: %s" % (field, value, message))
+
+    validate_doc(parse_settings_text(note_tree(
+        '{"text": "Hello note", "size": -2, "bold": true, "font": "serif", "visibleWhen": {"setting": "imapHost", "empty": true}},'
+        ' {"line": true},'
+        ' {"editor": "rules", "opens": "screen", "settings": [{"text": "Hello note", "font": "monospace"}, {"line": true}]}'
+    )))
+    expect_note('{"text": "Hello note", "size": 9}', "size", "9")
+    expect_note('{"text": "Hello note", "size": 1.5}', "size", "1.5")
+    expect_note('{"text": "Hello note", "size": true}', "size", "True")
+    expect_note('{"text": "Hello note", "bold": "yes"}', "bold", "yes")
+    expect_note('{"text": "Hello note", "font": "comic"}', "font", "comic")
+    expect_note('{"line": false}', "line", "False")
+    expect_note('{"text": "Hello note", "line": true}', "text and line", "text and line")
+    expect_note('{"bold": true}', "missing kind", "missing kind")
+    try:
+        validate_doc(parse_settings_text(note_tree(
+            '{"group": {"text": "Nope"}, "title": "T", "children": []}'
+        )))
+    except SettingsTreeError as exc:
+        if "note group" not in str(exc):
+            raise SystemExit("note group: " + str(exc))
+    else:
+        raise SystemExit("note group passed")
+    try:
+        validate_doc(parse_settings_text(note_tree(
+            '{"setting": {"line": true}, "type": "text", "default": "", "title": "T"}'
+        )))
+    except SettingsTreeError as exc:
+        if "note setting" not in str(exc):
+            raise SystemExit("note setting: " + str(exc))
+    else:
+        raise SystemExit("note setting passed")
+    try:
+        validate_doc(parse_settings_text(note_tree(
+            '{"group": "g", "title": "T", "children": [], "summary": [{"line": true}]}'
+        )))
+    except SettingsTreeError as exc:
+        if "note" not in str(exc):
+            raise SystemExit("summary line: " + str(exc))
+    else:
+        raise SystemExit("summary line passed")
+
+    moved = note_tree(
+        '{"text": "Hello note", "size": 1, "bold": false, "font": "monospace"}',
+        '[{"group": "g", "title": "Group", "children": [{"text": "Hello note"}, {"line": true}]}]',
+    )
+    slots = [slot["id"] for slot in _slot_list(parse_settings_text(moved)) if slot["role"] == "note"]
+    if slots != ["Hello note"]:
+        raise SystemExit("note slot id: " + str(slots))
+    note_pairs = sections + [
+        ("hello_note", "Hello note"),
+        ("settings_group_g_title", "Group"),
+    ]
+    note_bindings = dict(section_bindings, **{
+        "Hello note": "hello_note",
+        "group:g:title": "settings_group_g_title",
+    })
+    noted, noted_names, _ = placed(moved, note_pairs, note_bindings, False)
+    if noted is not None or "hello_note" not in noted_names:
+        raise SystemExit("note resource: " + str(noted) + " " + str(noted_names))
+    parked = note_tree('{"group": "g", "title": "Group", "children": [{"line": true}, {"text": "Hello note", "bold": true}]}')
+    parked_ok, parked_names, _ = placed(parked, note_pairs, note_bindings, False)
+    if parked_ok is not None or "hello_note" not in parked_names:
+        raise SystemExit("moved note resource: " + str(parked_ok) + " " + str(parked_names))
+
 
 def kt_json(value):
     if isinstance(value, bool):
@@ -2645,6 +2855,38 @@ def kt_leaf(leaf):
     ])
 
 
+def kt_note(node):
+    line = node.get("line") is True
+    text = node.get("text") if isinstance(node.get("text"), str) else ""
+    stored = node.get("_note_sentence")
+    if isinstance(stored, str):
+        english = stored
+    elif line:
+        english = ""
+    else:
+        english = text
+    size = node.get("size", 0)
+    if isinstance(size, bool) or not isinstance(size, int):
+        size = 0
+    font = node.get("font")
+    font_kt = kt_string(font) if font in ("serif", "monospace") else "null"
+    visible = "null"
+    if "visibleWhen" in node:
+        visible = 'parseCondition(%s, "visibleWhen")' % kt_json(node["visibleWhen"])
+    return (
+        "TreeNode.Note(text = %s, english = %s, line = %s, size = %s, bold = %s, font = %s, visibleWhen = %s)"
+        % (
+            kt_string(text),
+            kt_string(english),
+            "true" if line else "false",
+            int(size),
+            "true" if node.get("bold") is True else "false",
+            font_kt,
+            visible,
+        )
+    )
+
+
 def install_kotlin(doc):
     functions = []
     seq = [0]
@@ -2655,6 +2897,8 @@ def install_kotlin(doc):
         return "tree_%s_%s" % (safe, seq[0])
 
     def emit_node(node):
+        if _is_note(node):
+            return kt_note(node)
         if "setting" in node:
             return "TreeNode.Leaf(%s)" % kt_leaf(node)
         if "section" in node:
