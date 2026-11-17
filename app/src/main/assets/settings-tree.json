@@ -1056,98 +1056,6 @@
                   ]
                 }
               ]
-            },
-            {
-              "group": "large_folders",
-              "title": "Large folders",
-              "label": "Large folders",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "askSort",
-                  "type": "number",
-                  "default": -1,
-                  "title": "Ask before sorting folders larger than"
-                },
-                {
-                  "setting": "askThread",
-                  "type": "number",
-                  "default": -1,
-                  "title": "Ask before threading folders larger than"
-                },
-                {
-                  "setting": "askSearch",
-                  "type": "number",
-                  "default": -1,
-                  "title": "Ask before searching folders larger than"
-                },
-                {
-                  "setting": "askFallback",
-                  "type": "number",
-                  "default": -1,
-                  "title": "Ask before a fallback on folders larger than"
-                },
-                {
-                  "setting": "sortAskSkip",
-                  "type": "text",
-                  "default": [],
-                  "title": "Do not ask again for this sort",
-                  "many": true,
-                  "order": "sorted"
-                },
-                {
-                  "setting": "threadAskSkip",
-                  "type": "text",
-                  "default": [],
-                  "title": "Do not ask again for this thread",
-                  "many": true,
-                  "order": "sorted"
-                },
-                {
-                  "setting": "searchAskSkip",
-                  "type": "text",
-                  "default": [],
-                  "title": "Do not ask again for this search",
-                  "many": true,
-                  "order": "sorted"
-                },
-                {
-                  "setting": "fallbackAskSkip",
-                  "type": "text",
-                  "default": [],
-                  "title": "Do not ask again for this fallback",
-                  "many": true,
-                  "order": "sorted"
-                },
-                {
-                  "setting": "savedSearches",
-                  "type": "text",
-                  "default": "",
-                  "title": "Saved searches",
-                  "many": true,
-                  "order": "user"
-                },
-                {
-                  "setting": "savedAdvanced",
-                  "type": "text",
-                  "default": "",
-                  "title": "Saved advanced searches",
-                  "many": true,
-                  "order": "user"
-                },
-                {
-                  "setting": "maxResultUids",
-                  "type": "number",
-                  "default": 2000000,
-                  "title": "Most search results",
-                  "min": 1
-                }
-              ],
-              "summary": [
-                {
-                  "text": "0 always asks. -1 never asks."
-                }
-              ]
             }
           ],
           "summary": [
@@ -1332,9 +1240,9 @@
               ]
             },
             {
-              "group": "actions",
-              "title": "Actions",
-              "label": "Actions",
+              "group": "Swipe Actions",
+              "title": "Swipe Actions",
+              "label": "Swipe Actions",
               "header": "label",
               "children": [
                 {
@@ -1626,6 +1534,345 @@
           ]
         },
         {
+          "group": "advanced",
+          "title": "Advanced",
+          "label": "Advanced",
+          "header": "label",
+          "children": [
+            {
+              "group": "performance",
+              "title": "Performance",
+              "label": "Performance",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "pipelineCommands",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Disable command pipelining"
+                },
+                {
+                  "setting": "compression",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Disable compression"
+                },
+                {
+                  "setting": "bodyFetchChunk",
+                  "type": "number",
+                  "default": 65536,
+                  "title": "Bytes per body fetch",
+                  "min": 1024,
+                  "max": 1048576
+                },
+                {
+                  "setting": "extraIdleBudget",
+                  "type": "number",
+                  "default": 2,
+                  "title": "Connections for watched folders (within the maximum)",
+                  "min": 0,
+                  "max": 8
+                },
+                {
+                  "setting": "maxConnections",
+                  "type": "number",
+                  "default": 8,
+                  "title": "Most connections to the server",
+                  "min": 2,
+                  "max": 20
+                },
+                {
+                  "setting": "clientSort",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Client sort"
+                },
+                {
+                  "setting": "clientSortCollation",
+                  "type": "choice",
+                  "default": "locale",
+                  "title": "Client sort collation",
+                  "choices": [
+                    "locale",
+                    "plain"
+                  ],
+                  "choiceTitles": {
+                    "locale": "Locale",
+                    "plain": "Plain"
+                  }
+                },
+                {
+                  "setting": "clientThread",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Client thread"
+                },
+                {
+                  "setting": "pollForNewMail",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Poll for new mail"
+                },
+                {
+                  "setting": "pollSeconds",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Poll interval",
+                  "min": 15,
+                  "max": 600
+                },
+                {
+                  "setting": "idleFallbackSeconds",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Poll interval when IDLE fails"
+                },
+                {
+                  "setting": "keepAliveMinutes",
+                  "type": "number",
+                  "default": 9,
+                  "title": "Keep-alive interval (NOOP on idle connections)"
+                },
+                {
+                  "setting": "idleRenewMinutes",
+                  "type": "number",
+                  "default": 9,
+                  "title": "Restart IDLE every",
+                  "min": 1,
+                  "max": 29
+                },
+                {
+                  "setting": "longSearchProgressSec",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Long search progress"
+                },
+                {
+                  "setting": "longSearchQuietSec",
+                  "type": "number",
+                  "default": 600,
+                  "title": "Long search quiet"
+                },
+                {
+                  "setting": "statusVisibleCounts",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Fetch counts for visible folders (slower)"
+                },
+                {
+                  "setting": "forceSlowerFallbacks",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Force slower fallbacks"
+                }
+              ],
+              "summary": [
+                {
+                  "when": {
+                    "any": [
+                      {
+                        "setting": "clientSort",
+                        "equals": true
+                      },
+                      {
+                        "setting": "clientThread",
+                        "equals": true
+                      },
+                      {
+                        "setting": "pollForNewMail",
+                        "equals": true
+                      },
+                      {
+                        "setting": "statusVisibleCounts",
+                        "equals": true
+                      }
+                    ]
+                  },
+                  "text": "On"
+                },
+                {
+                  "text": "Off"
+                }
+              ]
+            },
+            {
+              "group": "Items that can be slow on large_folders",
+              "title": "Items that can be slow on large folders",
+              "label": "Items that can be slow on large folders",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "askSort",
+                  "type": "number",
+                  "default": -1,
+                  "title": "Ask before sorting folders larger than"
+                },
+                {
+                  "setting": "askThread",
+                  "type": "number",
+                  "default": -1,
+                  "title": "Ask before threading folders larger than"
+                },
+                {
+                  "setting": "askSearch",
+                  "type": "number",
+                  "default": -1,
+                  "title": "Ask before searching folders larger than"
+                },
+                {
+                  "setting": "askFallback",
+                  "type": "number",
+                  "default": -1,
+                  "title": "Ask before a fallback on folders larger than"
+                },
+                {
+                  "setting": "sortAskSkip",
+                  "type": "text",
+                  "default": [],
+                  "title": "Do not ask again for this sort",
+                  "many": true,
+                  "order": "sorted"
+                },
+                {
+                  "setting": "threadAskSkip",
+                  "type": "text",
+                  "default": [],
+                  "title": "Do not ask again for this thread",
+                  "many": true,
+                  "order": "sorted"
+                },
+                {
+                  "setting": "searchAskSkip",
+                  "type": "text",
+                  "default": [],
+                  "title": "Do not ask again for this search",
+                  "many": true,
+                  "order": "sorted"
+                },
+                {
+                  "setting": "fallbackAskSkip",
+                  "type": "text",
+                  "default": [],
+                  "title": "Do not ask again for this fallback",
+                  "many": true,
+                  "order": "sorted"
+                },
+                {
+                  "setting": "savedSearches",
+                  "type": "text",
+                  "default": "",
+                  "title": "Saved searches",
+                  "many": true,
+                  "order": "user"
+                },
+                {
+                  "setting": "savedAdvanced",
+                  "type": "text",
+                  "default": "",
+                  "title": "Saved advanced searches",
+                  "many": true,
+                  "order": "user"
+                },
+                {
+                  "setting": "maxResultUids",
+                  "type": "number",
+                  "default": 2000000,
+                  "title": "Most search results",
+                  "min": 1
+                }
+              ],
+              "summary": [
+                {
+                  "text": "0 always asks. -1 never asks."
+                }
+              ]
+            },
+            {
+              "setting": "hiddenCapabilities",
+              "type": "text",
+              "default": [],
+              "title": "Hide capabilities",
+              "summary": [
+                {
+                  "when": {
+                    "setting": "hiddenCapabilities",
+                    "empty": true
+                  },
+                  "text": "None hidden"
+                },
+                {
+                  "text": "%1$d hidden",
+                  "args": [
+                    {
+                      "count": "hiddenCapabilities"
+                    }
+                  ]
+                }
+              ],
+              "many": true,
+              "order": "sorted"
+            },
+            {
+              "group": "logging",
+              "title": "Logging",
+              "label": "Logging",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "logImapTraffic",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Log IMAP traffic"
+                },
+                {
+                  "setting": "trafficLogMaxMb",
+                  "type": "number",
+                  "default": 4,
+                  "title": "Traffic log size limit",
+                  "min": 0,
+                  "max": 64
+                },
+                {
+                  "setting": "showUserInDebugReport",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Show user name in the debug report"
+                },
+                {
+                  "setting": "idleWakeSeconds",
+                  "type": "number",
+                  "default": 5,
+                  "title": "Watch check interval (debug)",
+                  "min": 1,
+                  "max": 60
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "logImapTraffic",
+                    "titles": {
+                      "true": "Traffic log on",
+                      "false": "Traffic log off"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section": "ui",
+      "title": "All accounts",
+      "summary": [
+        {
+          "text": "Settings shared by every account"
+        }
+      ],
+      "children": [
+        {
           "group": "appearance",
           "title": "Appearance",
           "label": "Appearance",
@@ -1813,242 +2060,6 @@
           "hidden": true
         },
         {
-          "group": "advanced",
-          "title": "Advanced",
-          "label": "Advanced",
-          "header": "label",
-          "children": [
-            {
-              "group": "performance",
-              "title": "Performance",
-              "label": "Performance",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "pipelineCommands",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Disable command pipelining"
-                },
-                {
-                  "setting": "compression",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Disable compression"
-                },
-                {
-                  "setting": "bodyFetchChunk",
-                  "type": "number",
-                  "default": 65536,
-                  "title": "Bytes per body fetch",
-                  "min": 1024,
-                  "max": 1048576
-                },
-                {
-                  "setting": "extraIdleBudget",
-                  "type": "number",
-                  "default": 2,
-                  "title": "Connections for watched folders (within the maximum)",
-                  "min": 0,
-                  "max": 8
-                },
-                {
-                  "setting": "maxConnections",
-                  "type": "number",
-                  "default": 8,
-                  "title": "Most connections to the server",
-                  "min": 2,
-                  "max": 20
-                },
-                {
-                  "setting": "clientSort",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Client sort"
-                },
-                {
-                  "setting": "clientSortCollation",
-                  "type": "choice",
-                  "default": "locale",
-                  "title": "Client sort collation",
-                  "choices": [
-                    "locale",
-                    "plain"
-                  ],
-                  "choiceTitles": {
-                    "locale": "Locale",
-                    "plain": "Plain"
-                  }
-                },
-                {
-                  "setting": "clientThread",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Client thread"
-                },
-                {
-                  "setting": "pollForNewMail",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Poll for new mail"
-                },
-                {
-                  "setting": "pollSeconds",
-                  "type": "number",
-                  "default": 60,
-                  "title": "Poll interval",
-                  "min": 15,
-                  "max": 600
-                },
-                {
-                  "setting": "idleFallbackSeconds",
-                  "type": "number",
-                  "default": 60,
-                  "title": "Poll interval when IDLE fails"
-                },
-                {
-                  "setting": "keepAliveMinutes",
-                  "type": "number",
-                  "default": 9,
-                  "title": "Keep-alive interval (NOOP on idle connections)"
-                },
-                {
-                  "setting": "idleRenewMinutes",
-                  "type": "number",
-                  "default": 9,
-                  "title": "Restart IDLE every",
-                  "min": 1,
-                  "max": 29
-                },
-                {
-                  "setting": "longSearchProgressSec",
-                  "type": "number",
-                  "default": 60,
-                  "title": "Long search progress"
-                },
-                {
-                  "setting": "longSearchQuietSec",
-                  "type": "number",
-                  "default": 600,
-                  "title": "Long search quiet"
-                },
-                {
-                  "setting": "statusVisibleCounts",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Fetch counts for visible folders (slower)"
-                },
-                {
-                  "setting": "forceSlowerFallbacks",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Force slower fallbacks"
-                }
-              ],
-              "summary": [
-                {
-                  "when": {
-                    "any": [
-                      {
-                        "setting": "clientSort",
-                        "equals": true
-                      },
-                      {
-                        "setting": "clientThread",
-                        "equals": true
-                      },
-                      {
-                        "setting": "pollForNewMail",
-                        "equals": true
-                      },
-                      {
-                        "setting": "statusVisibleCounts",
-                        "equals": true
-                      }
-                    ]
-                  },
-                  "text": "On"
-                },
-                {
-                  "text": "Off"
-                }
-              ]
-            },
-            {
-              "setting": "hiddenCapabilities",
-              "type": "text",
-              "default": [],
-              "title": "Hide capabilities",
-              "summary": [
-                {
-                  "when": {
-                    "setting": "hiddenCapabilities",
-                    "empty": true
-                  },
-                  "text": "None hidden"
-                },
-                {
-                  "text": "%1$d hidden",
-                  "args": [
-                    {
-                      "count": "hiddenCapabilities"
-                    }
-                  ]
-                }
-              ],
-              "many": true,
-              "order": "sorted"
-            },
-            {
-              "group": "logging",
-              "title": "Logging",
-              "label": "Logging",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "logImapTraffic",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Log IMAP traffic"
-                },
-                {
-                  "setting": "trafficLogMaxMb",
-                  "type": "number",
-                  "default": 4,
-                  "title": "Traffic log size limit",
-                  "min": 0,
-                  "max": 64
-                },
-                {
-                  "setting": "showUserInDebugReport",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Show user name in the debug report"
-                },
-                {
-                  "setting": "idleWakeSeconds",
-                  "type": "number",
-                  "default": 5,
-                  "title": "Watch check interval (debug)",
-                  "min": 1,
-                  "max": 60
-                }
-              ],
-              "summary": [
-                {
-                  "value": {
-                    "setting": "logImapTraffic",
-                    "titles": {
-                      "true": "Traffic log on",
-                      "false": "Traffic log off"
-                    }
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
           "setting": "lastSaveMailbox",
           "type": "mailbox",
           "default": "",
@@ -2108,18 +2119,7 @@
           "min": 1,
           "max": 10000,
           "hidden": true
-        }
-      ]
-    },
-    {
-      "section": "ui",
-      "title": "All accounts",
-      "summary": [
-        {
-          "text": "Settings shared by every account"
-        }
-      ],
-      "children": [
+        },
         {
           "group": "custom_panel_layout",
           "title": "Custom panel layout",
