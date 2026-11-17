@@ -1,9 +1,13 @@
 package org.dlang.liveimap.settings
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -114,6 +118,37 @@ class SettingsOneLeafTest {
         assertTrue(childDrawn(uiLine, { "true" }, 30))
         val parsedGroup = account.children[0] as TreeNode.Group
         assertNull(leafShownInstead(parsedGroup, { "" }, 30))
+    }
+
+    @Test
+    fun noteSizeStepsToTheNextLargerOrSmallerThemeStyle() {
+        val scale = listOf(
+            TextStyle(fontSize = 57.sp),
+            TextStyle(fontSize = 45.sp),
+            TextStyle(fontSize = 36.sp),
+            TextStyle(fontSize = 32.sp),
+            TextStyle(fontSize = 28.sp),
+            TextStyle(fontSize = 24.sp),
+            TextStyle(fontSize = 22.sp),
+            TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+            TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            TextStyle(fontSize = 16.sp),
+            TextStyle(fontSize = 14.sp),
+            TextStyle(fontSize = 12.sp),
+            TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+            TextStyle(fontSize = 11.sp),
+        )
+        val anchor = scale[9]
+        assertSame(anchor, steppedThemeStyle(scale, anchor, 0))
+        assertSame(scale[6], steppedThemeStyle(scale, anchor, 1))
+        assertSame(scale[5], steppedThemeStyle(scale, anchor, 2))
+        assertSame(scale[10], steppedThemeStyle(scale, anchor, -1))
+        assertSame(scale[11], steppedThemeStyle(scale, anchor, -2))
+        assertTrue(steppedThemeStyle(scale, anchor, 1).fontSize > anchor.fontSize)
+        assertTrue(steppedThemeStyle(scale, anchor, -1).fontSize < anchor.fontSize)
+        assertSame(scale.first(), steppedThemeStyle(scale, anchor, 9))
+        assertSame(scale.last(), steppedThemeStyle(scale, anchor, -9))
     }
 
     @Test

@@ -107,6 +107,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -1675,7 +1676,7 @@ private fun SettingsRule() {
 }
 
 @Composable
-private fun noteTextStyle(node: TreeNode.Note): androidx.compose.ui.text.TextStyle {
+private fun noteTextStyle(node: TreeNode.Note): TextStyle {
     val scale = listOf(
         MaterialTheme.typography.displayLarge,
         MaterialTheme.typography.displayMedium,
@@ -1693,13 +1694,37 @@ private fun noteTextStyle(node: TreeNode.Note): androidx.compose.ui.text.TextSty
         MaterialTheme.typography.labelMedium,
         MaterialTheme.typography.labelSmall,
     )
-    var style = scale[9 - node.size]
+    // Role order, not size order. Count a step only when fontSize moves past the last accepted style.
+    var style = steppedThemeStyle(scale, MaterialTheme.typography.bodyLarge, node.size)
     if (node.bold) style = style.copy(fontWeight = FontWeight.Bold)
     when (node.font) {
         "serif" -> style = style.copy(fontFamily = FontFamily.Serif)
         "monospace" -> style = style.copy(fontFamily = FontFamily.Monospace)
     }
     return style
+}
+
+internal fun steppedThemeStyle(scale: List<TextStyle>, anchor: TextStyle, size: Int): TextStyle {
+    if (size == 0) return anchor
+    val origin = scale.indexOf(anchor)
+    if (origin < 0) return anchor
+    val towardLarger = size > 0
+    var index = origin
+    var accepted = origin
+    var left = kotlin.math.abs(size)
+    while (left > 0) {
+        val next = if (towardLarger) index - 1 else index + 1
+        if (next !in scale.indices) return scale[accepted]
+        index = next
+        val step = scale[next]
+        val base = scale[accepted]
+        val moves = if (towardLarger) step.fontSize > base.fontSize else step.fontSize < base.fontSize
+        if (moves) {
+            accepted = next
+            left -= 1
+        }
+    }
+    return scale[accepted]
 }
 
 /** Account opens the server editor. Server, Sending, Logging, Layout, and Address book add a footer. These stay headers. */
