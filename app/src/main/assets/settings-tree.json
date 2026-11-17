@@ -1240,7 +1240,7 @@
               ]
             },
             {
-              "group": "Swipe Actions",
+              "group": "Swipe_Actions",
               "title": "Swipe Actions",
               "label": "Swipe Actions",
               "header": "label",
@@ -1696,7 +1696,7 @@
               ]
             },
             {
-              "group": "Items that can be slow on large_folders",
+              "group": "Items_that_can_be_slow_on_large_folders",
               "title": "Items that can be slow on large folders",
               "label": "Items that can be slow on large folders",
               "header": "label",
