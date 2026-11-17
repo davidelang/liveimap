@@ -1,4 +1,6 @@
 {
+  "Global Settings": "global_settings",
+  "Per Account Settings": "per_account_settings",
   "editor:accountList:summary/0:plural": "settings_account_count",
   "editor:accountList:title": "settings_accounts",
   "group:Items_that_can_be_slow_on_large_folders:summary/0:text": "settings_ask_note",
