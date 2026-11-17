@@ -5,6 +5,9 @@
       "title": "Account",
       "children": [
         {
+          "text": "Per Account Settings"
+        },
+        {
           "group": "account",
           "title": "Account",
           "label": "Account",
@@ -1872,6 +1875,12 @@
         }
       ],
       "children": [
+        {
+          "line": true
+        },
+        {
+          "text": "Global Settings"
+        },
         {
           "group": "appearance",
           "title": "Appearance",
