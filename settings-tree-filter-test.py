@@ -538,7 +538,10 @@ def main():
         check=False,
     )
     if installed.returncode != 0:
-        fail(installed.stderr.decode())
+        err = installed.stderr.decode()
+        # chmod is owner-only and still fails for anyone else. The config lines above it ran.
+        if "changing permissions" not in err:
+            fail(err)
     clean_cfg = subprocess.run(
         ["git", "config", "--get", "filter.settings-tree.clean"],
         cwd=ROOT,
