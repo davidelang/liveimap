@@ -21,7 +21,8 @@
 #                       annotated tag on the commit these builds use, created before Gradle so
 #                       versionName is exactly NAME. No prompt. Absent: no release tag. With
 #                       --play the tag is on the versionCode bump; without it, on the commit
-#                       the builds use. A failed run deletes that tag. A bump commit stays.
+#                       the builds use. The bindings update is already in that commit. A failed
+#                       run deletes that tag. A bump commit stays. A bindings commit stays.
 #   Single-user Play signing (no project.config; refused when one exists), passed explicitly:
 #     -c, --signing-config FILE   key=value lines: release_keystore, release_key_alias,
 #                             release_bundle_task, release_bundle_path, release_gradle_args
@@ -44,13 +45,20 @@
 #   Order of work:
 #     1. Check the config for every selected build. If the Play build is selected (also by
 #        default) and stdin is not a terminal, stop: pass --standard/--test explicitly.
-#     2. Commit phase: commit the named files (or nothing when no message is given).
-#        build_app never commits files it generates (GENERATED PATHS below), whatever the
-#        project's .gitignore says: named or pre-staged ones are unstaged (working files kept)
-#        with a stderr line per path, and already-tracked ones are reported with the
-#        'git rm --cached' command to untrack them (never run by build_app).
+#     2. Update app/settings-display-bindings.json with the assignment align_display_english
+#        computes. That update does not create or edit app/src/main/res/values/strings.xml.
+#        Then the commit phase. When the update differs from HEAD and a commit message was
+#        given, that file is part of that commit even if it was not named. When it differs
+#        and no message was given, commit that file alone ("Update settings display
+#        bindings") and continue. Otherwise commit the named files, or nothing when no
+#        message is given and the bindings file matches HEAD. A bindings commit this run
+#        created stays if a later step fails. build_app never commits files it generates
+#        (GENERATED PATHS below), whatever the project's .gitignore says: named or
+#        pre-staged ones are unstaged (working files kept) with a stderr line per path, and
+#        already-tracked ones are reported with the 'git rm --cached' command to untrack
+#        them (never run by build_app).
 #     3. Integrity check: the tree must be clean (generated paths aside); every build comes
-#        from that one commit.
+#        from that one commit. The bindings update is already committed.
 #     4. Play only. If a Play build is selected, query Play for the highest versionCode
 #        (all tracks and uploaded bundles, same service-account as deploy --play) as the
 #        invoking user, BEFORE any re-exec as coder_user (play_service_account_json is
@@ -61,18 +69,23 @@
 #        BRANCH-start tag); then password prompts.
 #     5. Play only, before any gradle work: app/versionCode.txt is set to Play's highest
 #        versionCode plus one (Play is the source of truth, even if the local file is higher)
-#        and committed alone as "versionCode N (play build)" when the file changed. Every
-#        selected build then comes from that commit (or from HEAD if the file was already N).
-#        Without --play nothing is changed. If a build fails, a bump commit stays (history is
-#        never rewritten); the next --play queries Play again (gaps are fine for Play).
-#     6. --release-tag only: an annotated tag of that name is created on the commit the builds
-#        will use (the bump commit when --play is selected). Refused when the name is missing,
+#        and committed alone as "versionCode N (play build)" when the file changed. This is
+#        after the bindings update is committed, and the commit is still only
+#        app/versionCode.txt. Every selected build then comes from that commit (or from HEAD
+#        if the file was already N). Without --play nothing is changed. If a build fails, a
+#        bump commit stays (history is never rewritten); the next --play queries Play again
+#        (gaps are fine for Play). A bindings commit this run created also stays.
+#     6. --release-tag only, after the bindings commit: an annotated tag of that name is
+#        created on the commit the builds will use (the bump commit when --play is selected).
+#        With --play that commit's tree already contains the bindings update. Without --play
+#        the tag is on the commit that contains the update. Refused when the name is missing,
 #        already exists, is 'builds' or '*/builds', is 'play' or '*/play', ends in '-start', contains '+', or this
 #        branch has a <branch>-start tag (that describe would hide the release name), or, without
 #        --play, when HEAD already has another annotated tag (describe could pick it). A failed
-#        run deletes the tag this run created. There is no prompt.
+#        run deletes the tag this run created. A bindings commit this run created stays. There is no prompt.
 #     7. Builds in sequence: standard, test, play. The first failure stops everything.
-#     8. The builds tag moves only after every selected build succeeded.
+#     8. The builds tag moves only after every selected build succeeded. That commit's tree
+#        already contains the bindings update.
 #
 # Multi-user mode (a smudged project.config): every build, in every mode (--standard, --test,
 # --play, the default), runs as coder_user, so app/build, .gradle and the deliverables always have
@@ -146,7 +159,8 @@ _ba_usage() {
   cat <<EOF
 $USAGE_LINE
 
-The only way to build: commit the named FILEs with MESSAGE, check the tree is clean,
+The only way to build: commit the named FILEs with MESSAGE, plus
+app/settings-display-bindings.json when that update changed it, check the tree is clean,
 then build from that one commit and move the builds tag. No build flag selects
 standard, test (unless none) and, with a project.config, play.
 
@@ -866,7 +880,8 @@ fi
 #   - a build/ directory whose parent holds build.gradle or build.gradle.kts (a Gradle
 #     module's output, e.g. app/build incl. app/build/outputs/build_app/*.json). A source
 #     directory merely named build/ elsewhere is not matched.
-# Not generated: play-bundle.aab (tracked link) and app/versionCode.txt (--play bump commit).
+# Not generated: play-bundle.aab (tracked link), app/versionCode.txt (--play bump commit),
+# and app/settings-display-bindings.json (updated and committed before that bump).
 GENERATED_TOP_DIRS=(.gradle-home .android-shared .gradle-shared build)
 GENERATED_ANY_DEPTH_DIRS=(.gradle .cxx)
 GENERATED_MODULE_DIR=build
@@ -939,6 +954,41 @@ unstage_generated() {
 
 warn_tracked_generated
 
+# Before the integrity check, the versionCode commit, and either tag. Strings.xml is not touched.
+update_display_bindings() {
+  PYTHONDONTWRITEBYTECODE=1 python3 app/gen-settings-tree.py --write-display-bindings
+  if [ "$?" -ne 0 ]; then
+    echo "ERROR: could not update app/settings-display-bindings.json." >&2
+    exit 1
+  fi
+}
+BINDINGS_FILE=app/settings-display-bindings.json
+BINDINGS_COMMITTED=false
+bindings_differ_from_head() {
+  local rc
+  git diff --quiet --exit-code HEAD -- "$BINDINGS_FILE"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    return 1
+  fi
+  if [ "$rc" -gt 1 ]; then
+    echo "ERROR: git diff failed for $BINDINGS_FILE." >&2
+    exit 1
+  fi
+  return 0
+}
+commit_display_bindings_alone() {
+  git add -- "$BINDINGS_FILE" || { echo "ERROR: could not stage $BINDINGS_FILE." >&2; exit 1; }
+  git commit -m "Update settings display bindings" --only -- "$BINDINGS_FILE" || {
+    echo "ERROR: could not commit $BINDINGS_FILE." >&2
+    exit 1
+  }
+  BINDINGS_COMMITTED=true
+}
+update_display_bindings
+
+COMMIT_MSG=""
+ADDED_COUNT=0
 if [ "$#" -ge 1 ]; then
     MSG_ARG="$1"
     shift
@@ -980,8 +1030,17 @@ if [ "$#" -ge 1 ]; then
         done
     fi
 
-    # 3. Commit Phase (staged changes from args above or pre-staged), generated paths left out
+    # 3. Commit Phase (staged changes from args above or pre-staged), generated paths left out.
+    # The bindings update is part of this commit when a message was given. The caller need not name it.
     unstage_generated
+    BINDINGS_IN_COMMIT=false
+    if [ -z "$COMMIT_MSG" ] && bindings_differ_from_head; then
+        commit_display_bindings_alone
+    fi
+    if [ -n "$COMMIT_MSG" ] && bindings_differ_from_head; then
+        git add -- "$BINDINGS_FILE" || { echo "ERROR: could not stage $BINDINGS_FILE." >&2; exit 1; }
+        BINDINGS_IN_COMMIT=true
+    fi
     STAGED_CHANGES=$(git diff --cached --name-only) || { echo "ERROR: git diff --cached failed." >&2; exit 1; }
     if [ -n "$STAGED_CHANGES" ]; then
         if [ -n "$COMMIT_MSG" ]; then
@@ -989,6 +1048,13 @@ if [ "$#" -ge 1 ]; then
             if [ $? -ne 0 ]; then
                 echo "Error: Git commit failed."
                 exit 1
+            fi
+            if [ "$BINDINGS_IN_COMMIT" = true ]; then
+                if bindings_differ_from_head; then
+                    echo "ERROR: $BINDINGS_FILE still differs from HEAD after the commit." >&2
+                    exit 1
+                fi
+                BINDINGS_COMMITTED=true
             fi
         else
             echo "Error: Staged changes exist but no commit message provided."
@@ -1003,6 +1069,15 @@ if [ "$#" -ge 1 ]; then
     fi
 else
     echo "Info: No arguments provided. Skipping commit phase."
+fi
+
+# No commit message and no earlier bindings commit: the update, when it differs, is its own commit.
+if bindings_differ_from_head; then
+    if [ -n "$COMMIT_MSG" ]; then
+        echo "ERROR: $BINDINGS_FILE still differs from HEAD after the commit." >&2
+        exit 1
+    fi
+    commit_display_bindings_alone
 fi
 
 # 4. Integrity Barrier: everything MUST be in git for accurate 'git describe' versioning.
@@ -1078,7 +1153,13 @@ play_bump_note() {
   if [ "$PLAY_BUMPED" = true ] && [ "$rc" -ne 0 ]; then
     echo "NOTE: the build failed after versionCode $NEW_VERSION_CODE was committed ($(git rev-parse --short "$BUILT_COMMIT")). That commit stays; the next --play queries Play again for the next versionCode (gaps are fine for Play)." >&2
   fi
+  if [ "${BINDINGS_COMMITTED:-false}" = true ] && [ "$rc" -ne 0 ]; then
+    echo "NOTE: the build failed after the settings display bindings were committed. That commit stays." >&2
+  fi
 }
+if [ "$BINDINGS_COMMITTED" = true ]; then
+  trap play_bump_note EXIT
+fi
 # Refuse a name that git describe would not use as versionName. Nothing is committed.
 validate_release_tag() {
   [ -n "$RELEASE_TAG" ] || return 0

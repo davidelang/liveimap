@@ -996,10 +996,15 @@ def _apply_string_xml(strings_path, catalog, edits):
     return True
 
 
-def align_display_english(tree_path, strings_path=None, binding_path=None, write=True, report_new=False):
+def align_display_english(
+    tree_path, strings_path=None, binding_path=None, write=True, report_new=False, write_bindings=None
+):
     # A settings-tree sentence keeps the Android resource name it already has.
     # A shared name stays on the uses whose English did not change.
-    # write is false for --check: same failures, no strings.xml and no bindings write.
+    # write is false for --check: same failures, no strings.xml write.
+    # write_bindings follows write unless set. Gradle and emit pass false: they do not write the repo file.
+    if write_bindings is None:
+        write_bindings = write
     tree_path = Path(tree_path)
     if strings_path is None:
         strings_path = tree_path.resolve().parents[1] / "res" / "values" / "strings.xml"
@@ -1022,8 +1027,9 @@ def align_display_english(tree_path, strings_path=None, binding_path=None, write
         body = json.dumps(named, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         if write:
             _apply_string_xml(strings_path, catalog, edits)
+        if write_bindings:
             _write_if_changed(binding_path, body)
-        else:
+        if not write:
             _report_created(edits, report_new, write)
         return set(named.values())
 
@@ -1085,9 +1091,10 @@ def align_display_english(tree_path, strings_path=None, binding_path=None, write
             )
     if write:
         _apply_string_xml(strings_path, catalog, edits)
+    if write_bindings:
         body = json.dumps(assigned, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         _write_if_changed(binding_path, body)
-    else:
+    if not write:
         _report_created(edits, report_new, write)
     return set(assigned.values())
 
@@ -1180,7 +1187,7 @@ def emit(doc, kt_root, tree_bytes, tree_path):
             strings_path = _synthesized_english(holder.name)
             align_display_english(tree_path, strings_path, write=False)
         else:
-            align_display_english(tree_path)
+            align_display_english(tree_path, write_bindings=False)
         catalog = load_string_catalog(tree_path, strings_path)
     finally:
         if holder is not None:
@@ -1886,6 +1893,27 @@ def _synthesized_english(folder):
     return res / "values" / "strings.xml"
 
 
+def update_display_bindings(tree_path=None, binding_path=None):
+    # Repo bindings only. Same assignment align_display_english computes for the build.
+    # Does not create or edit app/src/main/res/values/strings.xml.
+    tree_path = _default_tree_path() if tree_path is None else Path(tree_path)
+    if binding_path is None:
+        binding_path = Path(__file__).resolve().parent / _BINDINGS_NAME
+    binding_path = Path(binding_path)
+    repo_strings = _default_strings_path(tree_path)
+    existed = repo_strings.is_file()
+    before = repo_strings.read_bytes() if existed else None
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        strings_path = _synthesized_english(folder)
+        align_display_english(
+            tree_path, strings_path, binding_path, write=False, write_bindings=True
+        )
+    if repo_strings.is_file() != existed or (repo_strings.read_bytes() if repo_strings.is_file() else None) != before:
+        raise SettingsTreeError("display bindings update edited strings.xml")
+
+
 def _slots_by_resource(bindings):
     found = {}
     if not isinstance(bindings, dict):
@@ -1978,6 +2006,15 @@ def main():
             sys.stderr.write(str(exc).rstrip() + "\n")
             raise SystemExit(1)
         print("settings-tree.json ok")
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "--write-display-bindings":
+        if len(sys.argv) != 2:
+            raise SystemExit("usage: gen-settings-tree.py --write-display-bindings")
+        try:
+            update_display_bindings()
+        except SettingsTreeError as exc:
+            sys.stderr.write(str(exc).rstrip() + "\n")
+            raise SystemExit(1)
         return
     if len(sys.argv) != 3:
         raise SystemExit("usage: gen-settings-tree.py <tree.json> <ktOut>")
@@ -2438,6 +2475,21 @@ def _self_check_errors():
             raise SystemExit("repeated title strings: missing " + snippet)
     if "drawer_name" in wrote_names or "index_search_name" in wrote_names:
         raise SystemExit("write retargeted")
+
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        tree = root / "tree.json"
+        strings = root / "strings.xml"
+        bind = root / "bindings.json"
+        tree.write_text(bare_text, encoding="utf-8")
+        strings.write_text(resources(sections), encoding="utf-8")
+        bind.write_text(json_mod.dumps(section_bindings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        before_bind = bind.read_bytes()
+        align_display_english(tree, strings, bind, write=True, write_bindings=False)
+        if bind.read_bytes() != before_bind:
+            raise SystemExit("write_bindings false wrote bindings")
+        if "settings_group_onlyKeys_title" not in strings.read_text(encoding="utf-8"):
+            raise SystemExit("write_bindings false skipped the string")
 
     script = str(Path(__file__).resolve())
     default_strings = _default_strings_path(_default_tree_path())

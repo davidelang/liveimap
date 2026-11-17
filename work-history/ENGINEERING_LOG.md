@@ -4376,3 +4376,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-16 - summaries do not own screen strings
 
 - The Mail access switch uses the `emailSubmission` title, and a screen does not read a name that only a summary declares.
+
+## 2026-11-16 - display bindings committed before the tags
+
+- The display bindings are committed before the versionCode bump and before the release tag and the builds tag.

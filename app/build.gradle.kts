@@ -847,7 +847,8 @@ def main(argv):
     if len(args) == 8:
         tree_path, binding_path, gen_path = args[5:]
         gen = load_settings_gen(gen_path)
-        gen.align_display_english(tree_path, strings_path, binding_path)
+        # Repo bindings are written by ./build_app before the commit, not by this task.
+        gen.align_display_english(tree_path, strings_path, binding_path, write_bindings=False)
     filters = [part for part in filter_arg.split(",") if part]
     issues, generated, _string_count, fallback_count = check(
         strings_path, i18n_dir, filters, TARGET

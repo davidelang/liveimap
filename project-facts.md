@@ -16,7 +16,8 @@
 - **Test build:** instrumentation:x86_64Debug
 - Build: `./build_app --standard --test`. Agents never pass `--play`: only David runs the Play build, by hand.
 - Play-only code (`app/src/play`) compiles without signing: `./build_app --standard --test -- compilePlayReleaseKotlin`.
-- Commit: `./build_app --standard --test "<message>"|@<msg_file> <paths...>` (builds, then commits exactly the named paths and tags builds)
+- Commit: `./build_app --standard --test "<message>"|@<msg_file> <paths...>` (builds, then commits the named paths, plus `app/settings-display-bindings.json` when that update changed it, before the versionCode bump and before the release tag and the builds tag)
+- `app/settings-display-bindings.json` is committed. It records which resource name each settings-tree display slot already has. `./build_app` updates it and commits it before the versionCode bump and before the release tag and the builds tag. The versionCode commit stays only `app/versionCode.txt`. The Gradle build does not write the bindings file.
 - Translation rules: `docs/facts/translations.md`. A normal build packages the committed catalog and does not call a translator. Call sites use `S` or the plural helper next to it. A settings-tree sentence stays in `settings-tree.json`. The build writes en-US `strings.xml` from those definitions.
 - User-visible text uses `S`, or the plural helper next to it, so the translation catalog sees the sentence. A settings-tree display sentence stays in `settings-tree.json`. The user manual stays in the manual. A summary is collapsed-row text only: no other screen reads a resource that only a summary declares.
 - A missing group title is created as `settings_group_<id>_title` with the JSON title. An existing `settings_group_<id>_title` whose text is not that title still fails. `--check` names the missing resource and writes nothing.
