@@ -12,19 +12,22 @@ import json
 from pathlib import Path
 
 
-def _loads_settings_tree():
+def _generator():
     path = Path(__file__).resolve().parent / "app" / "gen-settings-tree.py"
     spec = importlib.util.spec_from_file_location("gen_settings_tree", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.loads_settings_tree
+    return mod
 
 
-loads_settings_tree = _loads_settings_tree()
+_gen = _generator()
+loads_settings_tree = _gen.loads_settings_tree
+validate_doc = _gen.validate_doc
 
 
 def clean_text(text):
     doc = loads_settings_tree(text)
+    validate_doc(doc)
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
 
@@ -35,6 +38,12 @@ def main(argv):
     try:
         text = sys.stdin.buffer.read().decode("utf-8")
         out = clean_text(text)
+    except SystemExit as exc:
+        # SettingsTreeError is a SystemExit. A failing clean writes no tree.
+        if exc.code in (None, 0):
+            raise
+        sys.stderr.write("settings-tree-filter: %s\n" % exc)
+        return 1
     except Exception as exc:
         sys.stderr.write("settings-tree-filter: %s\n" % exc)
         return 1

@@ -22,6 +22,7 @@
 - User-visible text uses `S`, or the plural helper next to it, so the translation catalog sees the sentence. A settings-tree display sentence stays in `settings-tree.json`. The user manual stays in the manual. A summary is collapsed-row text only: no other screen reads a resource that only a summary declares.
 - A missing group title is created as `settings_group_<id>_title` with the JSON title. An existing `settings_group_<id>_title` whose text is not that title still fails. `--check` names the missing resource and writes nothing.
 - Settings-tree check (the build's display and structure checks, no writes and no translation): `python3 app/gen-settings-tree.py --check`.
+- `git add` of `settings-tree.json` runs the clean filter, and the filter is required. A `group` or `setting` id that is not an identifier is rejected, and a `section` id that is not `account` or `ui` is rejected. `title` and `label` may contain spaces.
 - A display string in `app/src/main/assets/settings-tree.json` (`title`, `label`, `description`, each `choiceTitles` value, and summary `text`, `plural`, and `titles`) is the en-US sentence. The Android resource name stays the name that sentence already has. One sentence stays one resource until its English texts differ; a shared sentence that changes on one use gets a new name, and an `<locale>.override.json` entry stays on the old name.
 
 ## Review after implement

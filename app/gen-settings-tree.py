@@ -2104,6 +2104,10 @@ def stamp_scopes(doc):
             walk(child, section["section"])
 
 
+# Pasted into settings_group_<id>_title and `val <setting>`. A space, a hyphen, or a leading digit is illegal.
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
 def validate_doc(doc):
     if not isinstance(doc, dict):
         raise SettingsTreeError("settings-tree.json: root")
@@ -2135,6 +2139,8 @@ def validate_doc(doc):
         key = node["setting"]
         if not isinstance(key, str) or not key:
             _tree_fail(node, "misspelt setting")
+        if _IDENTIFIER.fullmatch(key) is None:
+            _tree_fail(node, "setting %r is not an identifier" % (key,))
         if key in seen:
             _tree_fail(node, "duplicate setting")
         seen.add(key)
@@ -2153,6 +2159,9 @@ def validate_doc(doc):
             return
         if "group" in node:
             _extra(node, GROUP_KEYS)
+            group_id = node.get("group")
+            if not isinstance(group_id, str) or _IDENTIFIER.fullmatch(group_id) is None:
+                _tree_fail(node, "group %r is not an identifier" % (group_id,))
             if "children" not in node:
                 _tree_fail(node, "missing children")
             for index, child in enumerate(node["children"]):

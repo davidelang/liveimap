@@ -4380,3 +4380,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-16 - display bindings committed before the tags
 
 - The display bindings are committed before the versionCode bump and before the release tag and the builds tag.
+
+## 2026-11-17 - git add rejects a settings tree id
+
+- git add rejects a settings tree whose group or setting id is not an identifier, or whose section is not `account` or `ui`.

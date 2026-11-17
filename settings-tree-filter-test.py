@@ -143,9 +143,8 @@ def check_layout(collapsed):
         if '"setting": "appTextZoom"' in line
     ]
     if zoom != [
-        '        { "setting": "appTextZoom", "type": "Int", '
-        '"kind": "number", "default": 100, "title": "Font size", '
-        '"min": 50, "max": 300 },'
+        '        { "setting": "appTextZoom", "type": "number", '
+        '"default": 100, "title": "Font size", "min": 50, "max": 300 },'
     ]:
         fail("appTextZoom: %r" % zoom)
     tls_at = next(i for i, line in enumerate(lines) if line.strip() == '"setting": "tlsMode",')
@@ -199,12 +198,13 @@ def check_attributes():
         fail("settings-tree-filter is not !filter")
     if "settings-tree-collapse !filter" not in lines:
         fail("settings-tree-collapse is not !filter")
-    script = (ROOT / "install-merge-drivers.sh").read_text()
+    script = (ROOT / "install-merge-drivers.local").read_text()
     if 'git config filter.settings-tree.clean "./settings-tree-filter clean"' not in script:
         fail("clean filter is not registered")
+    if "git config filter.settings-tree.required true" not in script:
+        fail("clean filter is not required")
     for banned in (
         "filter.settings-tree.smudge",
-        "filter.settings-tree.required",
         "merge.settings-tree",
     ):
         if banned in script:
@@ -218,6 +218,26 @@ def git(repo, *args, check=True):
     return proc
 
 
+def _merge_tree(title):
+    # Canonical clean output. A title change stays canonical, so the stored blob is this text.
+    return (
+        "{\n"
+        '  "sections": [\n'
+        "    {\n"
+        '      "section": "account",\n'
+        '      "title": "%s",\n'
+        '      "children": []\n'
+        "    },\n"
+        "    {\n"
+        '      "section": "ui",\n'
+        '      "title": "UI",\n'
+        '      "children": []\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+    ) % title
+
+
 def check_merge_driver():
     repo = Path(tempfile.mkdtemp(prefix="settings-tree-merge-"))
     git(repo, "init", "-q", "-b", "master")
@@ -226,43 +246,43 @@ def check_merge_driver():
     git(repo, "config", "filter.settings-tree.clean", "%s clean" % FILTER)
     (repo / ".gitattributes").write_text("tree.json filter=settings-tree merge=binary\n")
     tree = repo / "tree.json"
-    pretty = '{\n  "a": 1\n}\n'
+    pretty = _merge_tree("Account")
     tree.write_text(pretty)
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "base")
     blob = git(repo, "rev-parse", "HEAD:tree.json").stdout.decode().strip()
-    tree.write_text('{\n  "a": 1,\n}\n')
+    tree.write_text(pretty.replace("[]\n", "[],\n", 1))
     git(repo, "add", "tree.json")
     if git(repo, "diff", "--cached", "--quiet", "--", "tree.json", check=False).returncode != 0:
         fail("layout-only add changed the blob")
     if git(repo, "rev-parse", ":tree.json").stdout.decode().strip() != blob:
         fail("index blob changed")
-    tree.write_text('{\n  "a": 9\n}\n')
+    tree.write_text(_merge_tree("Nine"))
     git(repo, "checkout", "HEAD", "--", "tree.json")
     if tree.read_text() != pretty:
         fail("checkout did not write the blob: %r" % tree.read_text())
     # One side (theirs) keeps that side.
     git(repo, "branch", "other")
     git(repo, "checkout", "-q", "other")
-    tree.write_text('{\n  "a": 3\n}\n')
+    tree.write_text(_merge_tree("Three"))
     git(repo, "commit", "-q", "-am", "theirs")
     git(repo, "checkout", "-q", "master")
     merged = git(repo, "merge", "--no-edit", "other", check=False)
-    if merged.returncode != 0 or tree.read_text() != '{\n  "a": 3\n}\n':
+    if merged.returncode != 0 or tree.read_text() != _merge_tree("Three"):
         fail("one-side merge: %s %r" % (merged.returncode, tree.read_text()))
     if "<<<<<<<" in tree.read_text():
         fail("one-side merge wrote markers")
     git(repo, "reset", "--hard", "HEAD~1")
     # Both sides: keep ours, conflict, no markers.
     git(repo, "branch", "-f", "other")
-    tree.write_text('{\n  "a": 2\n}\n')
+    tree.write_text(_merge_tree("Two"))
     git(repo, "commit", "-q", "-am", "ours")
     git(repo, "checkout", "-q", "other")
-    tree.write_text('{\n  "a": 3\n}\n')
+    tree.write_text(_merge_tree("Three"))
     git(repo, "commit", "-q", "-am", "theirs2")
     git(repo, "checkout", "-q", "master")
     both = git(repo, "merge", "--no-edit", "other", check=False)
-    if both.returncode == 0 or tree.read_text() != '{\n  "a": 2\n}\n' or "<<<<<<<" in tree.read_text():
+    if both.returncode == 0 or tree.read_text() != _merge_tree("Two") or "<<<<<<<" in tree.read_text():
         fail("both-sides merge: %s %r" % (both.returncode, tree.read_text()))
     if not git(repo, "ls-files", "-u", "--", "tree.json").stdout:
         fail("both-sides merge did not leave the path conflicted")
@@ -272,27 +292,26 @@ def check_merge_driver():
     if reverted.returncode != 0 or tree.read_text() != pretty or "<<<<<<<" in tree.read_text():
         fail("one-side revert: %s %r" % (reverted.returncode, tree.read_text()))
     # Both sides of a revert: a later edit plus an older change. Keep the current text.
-    tree.write_text('{\n  "a": 2\n}\n')
+    tree.write_text(_merge_tree("Two"))
     git(repo, "commit", "-q", "-am", "middle")
     middle = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
-    tree.write_text('{\n  "a": 4\n}\n')
+    tree.write_text(_merge_tree("Four"))
     git(repo, "commit", "-q", "-am", "later")
     rev = git(repo, "revert", "--no-edit", middle, check=False)
-    if rev.returncode == 0 or tree.read_text() != '{\n  "a": 4\n}\n' or "<<<<<<<" in tree.read_text():
+    if rev.returncode == 0 or tree.read_text() != _merge_tree("Four") or "<<<<<<<" in tree.read_text():
         fail("both-sides revert: %s %r" % (rev.returncode, tree.read_text()))
     if not git(repo, "ls-files", "-u", "--", "tree.json").stdout:
         fail("revert did not leave the path conflicted")
     git(repo, "revert", "--abort")
     # Cherry-pick one side keeps the picked side; both sides keep the current branch.
     git(repo, "checkout", "-q", "-b", "pick", "HEAD~1")
-    tree.write_text('{\n  "a": 5\n}\n')
+    tree.write_text(_merge_tree("Five"))
     git(repo, "commit", "-q", "-am", "pickme")
     pick = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
     git(repo, "checkout", "-q", "master")
-    # master is "later" (a=4), which also changed the file from the parent of pick? 
-    # pick branched from middle (a=2). master is later (a=4). Both differ from a=2.
+    # master is "later" (Four). pick branched from middle (Two). Both differ from Two.
     both_pick = git(repo, "cherry-pick", "--no-edit", pick, check=False)
-    if both_pick.returncode == 0 or tree.read_text() != '{\n  "a": 4\n}\n' or "<<<<<<<" in tree.read_text():
+    if both_pick.returncode == 0 or tree.read_text() != _merge_tree("Four") or "<<<<<<<" in tree.read_text():
         fail("both-sides cherry-pick: %s %r" % (both_pick.returncode, tree.read_text()))
     if not git(repo, "ls-files", "-u", "--", "tree.json").stdout:
         fail("cherry-pick did not leave the path conflicted")
@@ -300,7 +319,7 @@ def check_merge_driver():
     # pick's parent matches this tree, so only the picked side changed.
     git(repo, "checkout", "-q", "-B", "plain", "pick~1")
     one_pick = git(repo, "cherry-pick", "--no-edit", pick, check=False)
-    if one_pick.returncode != 0 or tree.read_text() != '{\n  "a": 5\n}\n' or "<<<<<<<" in tree.read_text():
+    if one_pick.returncode != 0 or tree.read_text() != _merge_tree("Five") or "<<<<<<<" in tree.read_text():
         fail("one-side cherry-pick: %s %r" % (one_pick.returncode, tree.read_text()))
 
 
@@ -319,8 +338,8 @@ def check_worktree_diff(collapsed, ugly):
             if diff.returncode != 0 or diff.stdout:
                 fail("layout diff not empty: %s" % diff.stdout[:400])
         edited = collapsed.replace(
-            '"setting": "appTextZoom", "type": "Int", "kind": "number", "default": 100,',
-            '"setting": "appTextZoom", "type": "Int", "kind": "number", "default": 101,',
+            '"setting": "appTextZoom", "type": "number", "default": 100,',
+            '"setting": "appTextZoom", "type": "number", "default": 101,',
             1,
         )
         if edited == collapsed:
@@ -370,6 +389,123 @@ def pretty_blob():
     return proc.stdout
 
 
+GOOD_TREE = """\
+{
+  "sections": [
+    {
+      "section": "account",
+      "title": "Account page",
+      "children": [
+        {
+          "group": "Swipe_Actions",
+          "title": "Swipe actions",
+          "label": "Swipe label",
+          "children": [
+            {
+              "setting": "keep_id",
+              "type": "bool",
+              "default": false,
+              "title": "Keep this",
+              "label": "Keep label"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "section": "ui",
+      "title": "App screens",
+      "children": []
+    }
+  ]
+}
+"""
+
+
+def _line_of(text, needle):
+    for number, line in enumerate(text.splitlines(), 1):
+        if needle in line:
+            return number
+    fail("missing %s" % needle)
+
+
+def _replace_id(text, field, old, new):
+    needle = '"%s": "%s"' % (field, old)
+    if needle not in text:
+        fail("missing %s" % needle)
+    return text.replace(needle, '"%s": "%s"' % (field, new), 1)
+
+
+def _clean_proc(text):
+    return subprocess.run(
+        [str(FILTER), "clean"],
+        input=text.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
+def _expect_refusal(text, field, value):
+    proc = _clean_proc(text)
+    err = proc.stderr.decode()
+    if proc.returncode == 0 or proc.stdout:
+        fail("clean stored %s %r: %s" % (field, value, err))
+    line = _line_of(text, '"%s": "%s"' % (field, value))
+    if "settings-tree.json:%d:" % line not in err or field not in err or value not in err:
+        fail("clean refusal for %s %r: %s" % (field, value, err))
+    if "is not an identifier" not in err and field != "section":
+        fail("identifier rule missing for %s %r: %s" % (field, value, err))
+
+
+def check_identifier_rule():
+    kept = _clean_proc(GOOD_TREE)
+    if kept.returncode != 0 or kept.stderr:
+        fail("spaced title was refused: %s" % kept.stderr.decode())
+    text = kept.stdout.decode()
+    for sentence in ("Account page", "Swipe label", "Keep this", "Keep label"):
+        if sentence not in text:
+            fail("clean dropped %r" % sentence)
+    _expect_refusal(_replace_id(GOOD_TREE, "group", "Swipe_Actions", "Swipe Actions"), "group", "Swipe Actions")
+    _expect_refusal(_replace_id(GOOD_TREE, "group", "Swipe_Actions", "Swipe-Actions"), "group", "Swipe-Actions")
+    _expect_refusal(_replace_id(GOOD_TREE, "group", "Swipe_Actions", "1Swipe"), "group", "1Swipe")
+    _expect_refusal(_replace_id(GOOD_TREE, "setting", "keep_id", "keep id"), "setting", "keep id")
+    _expect_refusal(_replace_id(GOOD_TREE, "setting", "keep_id", "keep-id"), "setting", "keep-id")
+    _expect_refusal(_replace_id(GOOD_TREE, "setting", "keep_id", "1keep"), "setting", "1keep")
+    _expect_refusal(_replace_id(GOOD_TREE, "section", "ui", "not ui"), "section", "not ui")
+
+    repo = Path(tempfile.mkdtemp(prefix="settings-tree-add-"))
+    git(repo, "init", "-q", "-b", "master")
+    git(repo, "config", "filter.settings-tree.clean", "%s clean" % FILTER)
+    git(repo, "config", "filter.settings-tree.required", "true")
+    (repo / ".gitattributes").write_text("tree.json filter=settings-tree\n")
+    tree = repo / "tree.json"
+    tree.write_text(GOOD_TREE)
+    git(repo, "add", "tree.json")
+    stored = git(repo, "rev-parse", ":tree.json").stdout.decode().strip()
+    blob = git(repo, "cat-file", "-p", ":tree.json").stdout.decode()
+    if blob != kept.stdout.decode() or "Account page" not in blob or "Keep label" not in blob:
+        fail("git add did not store the spaced title or label")
+
+    def rejected(text, field, value):
+        tree.write_text(text)
+        added = git(repo, "add", "--", "tree.json", check=False)
+        err = added.stderr.decode()
+        if added.returncode == 0:
+            fail("git add stored %s %r" % (field, value))
+        if value not in err or field not in err:
+            fail("git add stderr for %s %r: %s" % (field, value, err))
+        if git(repo, "rev-parse", ":tree.json").stdout.decode().strip() != stored:
+            fail("index changed for %s %r" % (field, value))
+        bad = git(repo, "hash-object", "--no-filters", "--", "tree.json").stdout.decode().strip()
+        if bad == stored:
+            fail("bad %s %r hashed as the stored blob" % (field, value))
+
+    rejected(_replace_id(GOOD_TREE, "group", "Swipe_Actions", "Swipe Actions"), "group", "Swipe Actions")
+    rejected(_replace_id(GOOD_TREE, "setting", "keep_id", "keep id"), "setting", "keep id")
+    rejected(_replace_id(GOOD_TREE, "section", "ui", "not ui"), "section", "not ui")
+
+
 def main():
     drop_generator_bytecode()
     before = bytecode_files()
@@ -395,7 +531,7 @@ def main():
         fail("key order, strings, numbers, or bools changed")
     check_attributes()
     installed = subprocess.run(
-        [str(ROOT / "install-merge-drivers.sh")],
+        [str(ROOT / "install-merge-drivers.local")],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -412,15 +548,23 @@ def main():
     )
     if clean_cfg.stdout.strip() != "./settings-tree-filter clean":
         fail("filter clean config: %r" % clean_cfg.stdout)
-    for key in ("filter.settings-tree.smudge", "filter.settings-tree.required"):
-        got = subprocess.run(
-            ["git", "config", "--get", key],
-            cwd=ROOT,
-            stdout=subprocess.PIPE,
-            check=False,
-        )
-        if got.returncode == 0:
-            fail("%s is set" % key)
+    required_cfg = subprocess.run(
+        ["git", "config", "--get", "filter.settings-tree.required"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if required_cfg.returncode != 0 or required_cfg.stdout.strip() != "true":
+        fail("filter required config: %r" % required_cfg.stdout)
+    smudge = subprocess.run(
+        ["git", "config", "--get", "filter.settings-tree.smudge"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        check=False,
+    )
+    if smudge.returncode == 0:
+        fail("filter.settings-tree.smudge is set")
     named = subprocess.run(
         ["git", "config", "--get-regexp", "merge.settings-tree"],
         cwd=ROOT,
@@ -453,7 +597,7 @@ def main():
     check_merge_driver()
     check_filter_usage()
     check_collapse_parse_failure()
-    run_filter("clean", '{ "a": 1 }\n')
+    check_identifier_rule()
     run_collapse('{ "a": 1 }\n')
     made = [path for path in bytecode_files() if path not in before]
     if made or list((ROOT / "app" / "__pycache__").glob("gen-settings-tree.cpython-*.pyc")):

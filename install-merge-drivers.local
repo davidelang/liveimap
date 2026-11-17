@@ -4,5 +4,13 @@
 # app/src/main/assets/settings-tree.json. Never written by deploy-orchestration.
 set -euo pipefail
 git config filter.settings-tree.clean "./settings-tree-filter clean"
-chmod +x ./settings-tree-filter ./settings-tree-collapse
+git config filter.settings-tree.required true
+# chmod is owner-only. Already-executable scripts still install.
+if ! chmod +x ./settings-tree-filter ./settings-tree-collapse; then
+  if [ ! -x ./settings-tree-filter ] || [ ! -x ./settings-tree-collapse ]; then
+    echo "install-merge-drivers.local: filter scripts are not executable" >&2
+    exit 1
+  fi
+fi
 echo "  filter.settings-tree.clean=$(git config --get filter.settings-tree.clean)"
+echo "  filter.settings-tree.required=$(git config --get filter.settings-tree.required)"
