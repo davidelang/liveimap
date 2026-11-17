@@ -98,7 +98,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -216,7 +215,7 @@ internal fun FolderViewsBody(editor: SettingsEditor, drafts: () -> ServerDrafts?
                         "%1\$s %2\$s %3\$s",
                         mailbox,
                         sortKeyName(view.key),
-                        if (view.newestFirst) stringResource(SettingsTreeGenerated.resource("reader_newest")) else stringResource(SettingsTreeGenerated.resource("reader_oldest")),
+                        if (view.newestFirst) S("Newest first", name = "reader_newest") else S("Oldest first"),
                     ),
                     modifier = Modifier.weight(1f),
                 )

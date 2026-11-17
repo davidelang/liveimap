@@ -1137,6 +1137,38 @@ def display_sentences(doc, catalog):
     return sorted(found)
 
 
+# Names emit always adds, even when no binding slot owns them.
+# titleOf("server") is settings_group_server_title. The tree has no server group.
+_ALWAYS_RESOURCE_NAMES = (
+    "settings_all_accounts_summary",
+    "settings_logging_line",
+    "settings_account_count",
+    "sending_rule_numbered",
+    "address_book_row",
+    "label_arrival",
+    "label_date",
+    "label_from",
+    "compose_subject",
+    "compose_to",
+    "compose_cc",
+    "label_size",
+    "label_thread",
+    "label_ordered_subject",
+    "drawer_delete",
+    "label_move",
+    "compose_reply",
+    "compose_reply_all",
+    "label_set_flag",
+    "label_clear_flag",
+    "label_flag_screen",
+    "reader_next",
+    "reader_previous",
+    "settings_group_server_title",
+)
+
+_RESOURCE_LITERAL = re.compile(r'SettingsTreeGenerated\.resource\(\s*"([^"]*)"\s*\)')
+
+
 def emit(doc, kt_root, tree_bytes, tree_path):
     # English is build output. When the hand-written file is gone, use the same file the build writes.
     strings_path = _default_strings_path(tree_path)
@@ -1197,35 +1229,9 @@ def emit(doc, kt_root, tree_bytes, tree_path):
             for item in value:
                 collect_strings(item)
     collect_strings(doc)
-    add_res("settings_all_accounts_summary")
-    add_res("settings_logging_line")
-    add_res("settings_account_count")
-    plural_names.add("settings_account_count")
-    add_res("sending_rule_numbered")
-    add_res("address_book_row")
-    for name in (
-        "label_arrival",
-        "label_date",
-        "label_from",
-        "compose_subject",
-        "compose_to",
-        "compose_cc",
-        "label_size",
-        "label_thread",
-        "label_ordered_subject",
-        "drawer_delete",
-        "label_move",
-        "compose_reply",
-        "compose_reply_all",
-        "label_set_flag",
-        "label_clear_flag",
-        "label_flag_screen",
-        "reader_next",
-        "reader_previous",
-        # titleOf("server") is this name. The tree has no server group.
-        "settings_group_server_title",
-    ):
+    for name in _ALWAYS_RESOURCE_NAMES:
         add_res(name)
+    plural_names.add("settings_account_count")
     resource_names = sorted(set(resource_names))
     def res_expr(name):
         kind = "plurals" if name in plural_names else "string"
@@ -1880,6 +1886,63 @@ def _synthesized_english(folder):
     return res / "values" / "strings.xml"
 
 
+def _slots_by_resource(bindings):
+    found = {}
+    if not isinstance(bindings, dict):
+        return found
+    for slot_id, name in bindings.items():
+        if isinstance(slot_id, str) and isinstance(name, str):
+            found.setdefault(name, []).append(slot_id)
+    return found
+
+
+def resource_literal_passes(name, slots_by_name):
+    # Being in the generated resource table is not a pass. A template is not this scan.
+    if "$" in name:
+        return True
+    if name in _ALWAYS_RESOURCE_NAMES:
+        return True
+    slots = slots_by_name.get(name) or []
+    if not slots:
+        return False
+    return any(":summary" not in slot_id for slot_id in slots)
+
+
+def screen_resource_failures(bindings, files):
+    # files is (path, text). A literal with no $ fails when the name is missing or every slot id contains :summary.
+    slots_by_name = _slots_by_resource(bindings)
+    failures = []
+    for path, text in files:
+        for match in _RESOURCE_LITERAL.finditer(text):
+            name = match.group(1)
+            if resource_literal_passes(name, slots_by_name):
+                continue
+            failures.append("%s: %s" % (path, name))
+    return failures
+
+
+def _screen_source_files(tree):
+    # app/src/main/assets/<tree> -> app/src/main and app/src/test. A fixture tree is not that layout.
+    tree_path = Path(tree).resolve()
+    try:
+        src = tree_path.parents[2]
+    except IndexError:
+        return []
+    app = src.parent
+    if not (app / "gen-settings-tree.py").is_file():
+        return []
+    roots = [src / "main", src / "test"]
+    if not all(root.is_dir() for root in roots):
+        return []
+    repo = app.parent
+    files = []
+    for root in roots:
+        for path in sorted(root.rglob("*.kt")):
+            shown = path.relative_to(repo).as_posix()
+            files.append((shown, path.read_text(encoding="utf-8")))
+    return files
+
+
 def run_check(argv):
     # Same display and structure checks as the build. Writes nothing. Does not read locale files.
     if len(argv) > 3:
@@ -1899,6 +1962,10 @@ def run_check(argv):
     finally:
         if holder is not None:
             holder.cleanup()
+    loaded = json.loads(Path(bindings).read_text(encoding="utf-8"))
+    failures = screen_resource_failures(loaded, _screen_source_files(tree))
+    if failures:
+        raise SettingsTreeError("\n".join(failures))
 
 
 def main():
@@ -1970,6 +2037,7 @@ def self_check():
     else:
         raise SystemExit("trailing text loaded")
     _self_check_errors()
+    _self_check_screen_resources()
 
 
 def _extra(node, allowed):
@@ -2079,6 +2147,56 @@ def validate_doc(doc):
             walk(child, "%s/%s" % (sid, child_index))
     if len(seen_sections) != 2 or set(seen_sections) != {"account", "ui"}:
         raise SettingsTreeError("settings-tree.json: sections")
+
+
+def _self_check_screen_resources():
+    bindings = {
+        "group:g:summary/0:text": "only_summary",
+        "leaf:leaf:title": "leaf_title",
+        "leaf:when:titleWhen:title": "when_title",
+        "group:g:summary/1:text": "shared_name",
+        "leaf:shared:title": "shared_name",
+    }
+    summary = screen_resource_failures(bindings, [
+        ("SummaryOnly.kt", 'SettingsTreeGenerated.resource("only_summary")\n'),
+    ])
+    if summary != ["SummaryOnly.kt: only_summary"]:
+        raise SystemExit("summary-only literal: " + str(summary))
+    leaf = screen_resource_failures(bindings, [
+        ("LeafTitle.kt", 'SettingsTreeGenerated.resource("leaf_title")\n'),
+    ])
+    if leaf:
+        raise SystemExit("leaf-title literal failed: " + str(leaf))
+    when = screen_resource_failures(bindings, [
+        ("When.kt", 'SettingsTreeGenerated.resource("when_title")\n'),
+    ])
+    if when:
+        raise SystemExit("titleWhen literal failed: " + str(when))
+    skipped = screen_resource_failures(bindings, [
+        (
+            "Skip.kt",
+            'SettingsTreeGenerated.resource("settings_group_${id}_title")\n'
+            "SettingsTreeGenerated.resource(piece.name)\n"
+            "summaryText(piece)\n",
+        ),
+    ])
+    if skipped:
+        raise SystemExit("template or dynamic literal was scanned: " + str(skipped))
+    missing = screen_resource_failures(bindings, [
+        ("Missing.kt", 'SettingsTreeGenerated.resource("not_a_slot")\n'),
+    ])
+    if missing != ["Missing.kt: not_a_slot"]:
+        raise SystemExit("missing literal: " + str(missing))
+    always = screen_resource_failures({}, [
+        ("Always.kt", 'SettingsTreeGenerated.resource("settings_group_server_title")\n'),
+    ])
+    if always:
+        raise SystemExit("hardcoded name failed: " + str(always))
+    both = screen_resource_failures(bindings, [
+        ("Shared.kt", 'SettingsTreeGenerated.resource("shared_name")\n'),
+    ])
+    if both:
+        raise SystemExit("leaf plus summary literal failed: " + str(both))
 
 
 def _self_check_errors():

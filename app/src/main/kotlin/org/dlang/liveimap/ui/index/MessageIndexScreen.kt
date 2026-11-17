@@ -3630,10 +3630,11 @@ private fun MessageIndexLoaded(
                     } else {
                         Column {
                             MailboxTitleLines(heading.leaf, heading.parent)
-                            val sortLine = stringResource(
-                                SettingsTreeGenerated.resource("settings_sort_line"),
+                            val sortLine = S(
+                                "%1\$s, %2\$s",
                                 sortShortLabel(view.key),
                                 if (view.newestFirst) S("Newest") else S("Oldest"),
+                                name = "settings_sort_line",
                             )
                             val criteria = if (filterActive) {
                                 filters.joinToString(", ") { filterChipText(it) }

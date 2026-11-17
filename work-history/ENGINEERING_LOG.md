@@ -4372,3 +4372,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 - smtpBounce requires smtpSend to return 0 with text that is not smtp-uncertain. list-mail on the sender's INBOX shows the failure report the pin stored after DATA 250. The send path does not read INBOX.
 - drop_after_354 still fails as smtp-uncertain. overquota still fails without that prefix and does not return 0.
 - Plan: sandbox/plans/real-session-faults-20261115-2317-plan.md
+
+## 2026-11-16 - summaries do not own screen strings
+
+- The Mail access switch uses the `emailSubmission` title, and a screen does not read a name that only a summary declares.

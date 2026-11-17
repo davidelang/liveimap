@@ -2931,7 +2931,7 @@ internal fun row_emailSubmission(walk: SettingsWalk) {
     val editor = walk.editor
     val settings = editor.settings
     BoolField(
-        stringResource(SettingsTreeGenerated.resource("settings_send_over_jmap")),
+        stringResource(SettingsTreeGenerated.regTitle("emailSubmission")),
         settings.emailSubmission,
         note = S("Off uses SMTP."),
     ) { enabled ->
@@ -3334,7 +3334,7 @@ internal fun row_defaultView(key: String, walk: SettingsWalk) {
     ) { sort ->
         editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(key = sort)))
     }
-    BoolField(stringResource(SettingsTreeGenerated.resource("reader_newest")), settings.defaultView.newestFirst) { newest ->
+    BoolField(S("Newest first", name = "reader_newest"), settings.defaultView.newestFirst) { newest ->
         editor.persist(editor.settings.copy(defaultView = editor.settings.defaultView.copy(newestFirst = newest)))
     }
 }
@@ -3438,7 +3438,7 @@ internal fun row_askSort(walk: SettingsWalk) {
 
     val editor = walk.editor
     val settings = editor.settings
-    Text(stringResource(SettingsTreeGenerated.resource("settings_ask_note")))
+    Text(S("0 always asks. -1 never asks."))
     AskLimitField(stringResource(SettingsTreeGenerated.resource("settings_ask_sort")), settings.askSort, editor.ready) { limit ->
         editor.persist(editor.settings.copy(askSort = limit))
     }
