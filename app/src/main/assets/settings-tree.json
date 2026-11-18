@@ -1082,245 +1082,6 @@
           ]
         },
         {
-          "group": "reading",
-          "title": "Reading",
-          "label": "Reading",
-          "header": "label",
-          "children": [
-            {
-              "group": "opening",
-              "title": "Opening",
-              "label": "Opening",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "markSeenOnOpen",
-                  "type": "bool",
-                  "default": true,
-                  "title": "Mark seen on open"
-                },
-                {
-                  "setting": "readerDisplay",
-                  "type": "choice",
-                  "default": "Monospaced",
-                  "title": "Message view",
-                  "choices": [
-                    "Html",
-                    "HtmlAsText",
-                    "Flowed",
-                    "Monospaced"
-                  ],
-                  "choiceTitles": {
-                    "Html": "HTML",
-                    "HtmlAsText": "HTML as text",
-                    "Flowed": "Flowed text",
-                    "Monospaced": "Monospaced text"
-                  }
-                },
-                {
-                  "setting": "displayImages",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Display images by default"
-                },
-                {
-                  "setting": "viewerHeaders",
-                  "type": "text",
-                  "default": "",
-                  "title": "Headers shown when reading (e.g. List-Id)",
-                  "pinerc": "viewer-hdrs",
-                  "pinercFormat": "headers"
-                },
-                {
-                  "setting": "nonAsciiDisplay",
-                  "type": "choice",
-                  "default": "HighlightSuspicious",
-                  "title": "Unusual characters (folders, senders, subjects)",
-                  "choices": [
-                    "Normal",
-                    "HighlightSuspicious",
-                    "HighlightAll",
-                    "Warn",
-                    "Escape"
-                  ],
-                  "choiceTitles": {
-                    "Normal": "Show normally",
-                    "HighlightSuspicious": "Highlight look-alikes and mixed scripts",
-                    "HighlightAll": "Highlight all non-ASCII",
-                    "Warn": "Warn on look-alikes",
-                    "Escape": "Show as code points"
-                  }
-                },
-                {
-                  "setting": "unlabeledCharset",
-                  "type": "text",
-                  "default": "ISO-8859-1",
-                  "title": "Charset of unlabeled text"
-                }
-              ],
-              "summary": [
-                {
-                  "value": {
-                    "choiceTitle": "readerDisplay"
-                  }
-                }
-              ]
-            },
-            {
-              "group": "deleting",
-              "title": "Deleting",
-              "label": "Deleting",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "showDeleted",
-                  "type": "bool",
-                  "default": true,
-                  "title": "Show deleted"
-                },
-                {
-                  "setting": "autoExpunge",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Auto-expunge"
-                },
-                {
-                  "setting": "askBeforeExpunge",
-                  "type": "bool",
-                  "default": true,
-                  "title": "Confirm before expunge",
-                  "pinerc": "feature-list",
-                  "pinercFormat": "feature"
-                },
-                {
-                  "setting": "deleteMovesToNext",
-                  "type": "bool",
-                  "default": true,
-                  "title": "Delete moves to next",
-                  "hidden": true,
-                  "pinerc": "feature-list",
-                  "pinercFormat": "feature"
-                },
-                {
-                  "setting": "deletePolicy",
-                  "type": "choice",
-                  "default": "MarkDeleted",
-                  "title": "Delete button",
-                  "choices": [
-                    "MarkDeleted",
-                    "MoveToTrash",
-                    "DeletePermanently"
-                  ],
-                  "choiceTitles": {
-                    "MarkDeleted": "Mark as deleted",
-                    "MoveToTrash": "Move to Trash",
-                    "DeletePermanently": "Delete permanently"
-                  }
-                },
-                {
-                  "setting": "disableImapMove",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Disable IMAP MOVE"
-                },
-                {
-                  "setting": "moveAllIncludesDeleted",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Move entire folder includes deleted messages"
-                }
-              ],
-              "summary": [
-                {
-                  "value": {
-                    "setting": "askBeforeExpunge",
-                    "titles": {
-                      "true": "Confirm before expunge",
-                      "false": "Expunge without asking"
-                    }
-                  }
-                }
-              ]
-            },
-            {
-              "group": "Swipe_Actions",
-              "title": "Swipe Actions",
-              "label": "Swipe Actions",
-              "header": "label",
-              "children": [
-                {
-                  "setting": "swipeTrailing",
-                  "type": "swipe",
-                  "default": {
-                    "action": "Delete",
-                    "moveMailbox": "",
-                    "flag": ""
-                  },
-                  "title": "List swipe left"
-                },
-                {
-                  "setting": "swipeLeading",
-                  "type": "swipe",
-                  "default": {
-                    "action": "ReplyAll",
-                    "moveMailbox": "",
-                    "flag": ""
-                  },
-                  "title": "List swipe right"
-                },
-                {
-                  "setting": "readerSwipeTrailing",
-                  "type": "swipe",
-                  "default": {
-                    "action": "Delete",
-                    "moveMailbox": "",
-                    "flag": ""
-                  },
-                  "title": "Open-message swipe left"
-                },
-                {
-                  "setting": "readerSwipeLeading",
-                  "type": "swipe",
-                  "default": {
-                    "action": "ReplyAll",
-                    "moveMailbox": "",
-                    "flag": ""
-                  },
-                  "title": "Open-message swipe right"
-                },
-                {
-                  "setting": "bounceFcc",
-                  "type": "bool",
-                  "default": false,
-                  "title": "Bounce Fcc"
-                }
-              ],
-              "summary": [
-                {
-                  "text": "%1$s / %2$s",
-                  "args": [
-                    {
-                      "choiceTitle": "swipeTrailing",
-                      "field": "action"
-                    },
-                    {
-                      "choiceTitle": "swipeLeading",
-                      "field": "action"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
-          "summary": [
-            {
-              "value": {
-                "choiceTitle": "readerDisplay"
-              }
-            }
-          ]
-        },
-        {
           "group": "compose",
           "title": "Compose",
           "label": "Compose",
@@ -2130,6 +1891,248 @@
           "hidden": true
         },
         {
+          "group": "reading",
+          "title": "Reading",
+          "label": "Reading",
+          "header": "label",
+          "children": [
+            {
+              "group": "opening",
+              "title": "Opening",
+              "label": "Opening",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "markSeenOnOpen",
+                  "type": "bool",
+                  "default": true,
+                  "title": "Mark seen on open"
+                },
+                {
+                  "setting": "readerDisplay",
+                  "type": "choice",
+                  "default": "Monospaced",
+                  "title": "Message view",
+                  "choices": [
+                    "Html",
+                    "HtmlAsText",
+                    "Flowed",
+                    "Monospaced"
+                  ],
+                  "choiceTitles": {
+                    "Html": "HTML",
+                    "HtmlAsText": "HTML as text",
+                    "Flowed": "Flowed text",
+                    "Monospaced": "Monospaced text"
+                  }
+                },
+                {
+                  "setting": "displayImages",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Display images by default"
+                },
+                {
+                  "setting": "viewerHeaders",
+                  "type": "text",
+                  "default": "",
+                  "title": "Headers shown when reading (e.g. List-Id)",
+                  "pinerc": "viewer-hdrs",
+                  "pinercFormat": "headers"
+                },
+                {
+                  "setting": "nonAsciiDisplay",
+                  "type": "choice",
+                  "default": "HighlightSuspicious",
+                  "title": "Unusual characters (folders, senders, subjects)",
+                  "choices": [
+                    "Normal",
+                    "HighlightSuspicious",
+                    "HighlightAll",
+                    "Warn",
+                    "Escape"
+                  ],
+                  "choiceTitles": {
+                    "Normal": "Show normally",
+                    "HighlightSuspicious": "Highlight look-alikes and mixed scripts",
+                    "HighlightAll": "Highlight all non-ASCII",
+                    "Warn": "Warn on look-alikes",
+                    "Escape": "Show as code points"
+                  }
+                },
+                {
+                  "setting": "unlabeledCharset",
+                  "type": "text",
+                  "default": "ISO-8859-1",
+                  "title": "Charset of unlabeled text"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "choiceTitle": "readerDisplay"
+                  }
+                }
+              ]
+            },
+            {
+              "group": "deleting",
+              "title": "Deleting",
+              "label": "Deleting",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "showDeleted",
+                  "type": "bool",
+                  "default": true,
+                  "title": "Show deleted"
+                },
+                {
+                  "setting": "autoExpunge",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Auto-expunge"
+                },
+                {
+                  "setting": "askBeforeExpunge",
+                  "type": "bool",
+                  "default": true,
+                  "title": "Confirm before expunge",
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "deleteMovesToNext",
+                  "type": "bool",
+                  "default": true,
+                  "title": "Delete moves to next",
+                  "hidden": true,
+                  "pinerc": "feature-list",
+                  "pinercFormat": "feature"
+                },
+                {
+                  "setting": "deletePolicy",
+                  "type": "choice",
+                  "default": "MarkDeleted",
+                  "title": "Delete button",
+                  "choices": [
+                    "MarkDeleted",
+                    "MoveToTrash",
+                    "DeletePermanently"
+                  ],
+                  "choiceTitles": {
+                    "MarkDeleted": "Mark as deleted",
+                    "MoveToTrash": "Move to Trash",
+                    "DeletePermanently": "Delete permanently"
+                  }
+                },
+                {
+                  "setting": "disableImapMove",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Disable IMAP MOVE"
+                },
+                {
+                  "setting": "moveAllIncludesDeleted",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Move entire folder includes deleted messages"
+                }
+              ],
+              "summary": [
+                {
+                  "value": {
+                    "setting": "askBeforeExpunge",
+                    "titles": {
+                      "true": "Confirm before expunge",
+                      "false": "Expunge without asking"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "group": "Swipe_Actions",
+              "title": "Swipe Actions",
+              "label": "Swipe Actions",
+              "header": "label",
+              "children": [
+                {
+                  "setting": "swipeTrailing",
+                  "type": "swipe",
+                  "default": {
+                    "action": "Delete",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "List swipe left"
+                },
+                {
+                  "setting": "swipeLeading",
+                  "type": "swipe",
+                  "default": {
+                    "action": "ReplyAll",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "List swipe right"
+                },
+                {
+                  "setting": "readerSwipeTrailing",
+                  "type": "swipe",
+                  "default": {
+                    "action": "Delete",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "Open-message swipe left"
+                },
+                {
+                  "setting": "readerSwipeLeading",
+                  "type": "swipe",
+                  "default": {
+                    "action": "ReplyAll",
+                    "moveMailbox": "",
+                    "flag": ""
+                  },
+                  "title": "Open-message swipe right"
+                },
+                {
+                  "setting": "bounceFcc",
+                  "type": "bool",
+                  "default": false,
+                  "title": "Bounce Fcc"
+                }
+              ],
+              "summary": [
+                {
+                  "text": "%1$s / %2$s",
+                  "args": [
+                    {
+                      "choiceTitle": "swipeTrailing",
+                      "field": "action"
+                    },
+                    {
+                      "choiceTitle": "swipeLeading",
+                      "field": "action"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "summary": [
+            {
+              "value": {
+                "choiceTitle": "readerDisplay"
+              }
+            }
+          ]
+        },
+        {
+          "line": true
+        },
+        {
           "group": "custom_panel_layout",
           "title": "Custom panel layout",
           "label": "Custom panel layout",
@@ -2154,6 +2157,9 @@
               "text": "Custom panel layout"
             }
           ]
+        },
+        {
+          "line": true
         },
         {
           "setting": "appTextZoom",
@@ -2265,6 +2271,9 @@
           "title": "Startup folder"
         },
         {
+          "line": true
+        },
+        {
           "group": "favorites",
           "title": "Favorites",
           "label": "Favorites",
@@ -2290,6 +2299,9 @@
           ]
         },
         {
+          "line": true
+        },
+        {
           "setting": "debugLogging",
           "type": "bool",
           "default": false,
@@ -2307,59 +2319,73 @@
           ]
         },
         {
-          "setting": "indexBar",
-          "type": "toolbar",
-          "title": "Message index toolbar",
-          "default": {
-            "rows": 2,
-            "toolbar": [],
-            "overflow": [],
-            "hidden": []
-          }
+          "line": true
         },
         {
-          "setting": "selectionBar",
-          "type": "toolbar",
-          "title": "Selection bar",
-          "default": {
-            "rows": 2,
-            "toolbar": [],
-            "overflow": [],
-            "hidden": []
-          }
+          "group": "toolbars",
+          "title": "Toolbar Contents",
+          "label": "Toolbar Contents",
+          "header": "label",
+          "children": [
+            {
+              "setting": "indexBar",
+              "type": "toolbar",
+              "title": "Message index toolbar",
+              "default": {
+                "rows": 2,
+                "toolbar": [],
+                "overflow": [],
+                "hidden": []
+              }
+            },
+            {
+              "setting": "selectionBar",
+              "type": "toolbar",
+              "title": "Selection bar",
+              "default": {
+                "rows": 2,
+                "toolbar": [],
+                "overflow": [],
+                "hidden": []
+              }
+            },
+            {
+              "setting": "folderBar",
+              "type": "toolbar",
+              "title": "Folder list toolbar",
+              "default": {
+                "rows": 2,
+                "toolbar": [],
+                "overflow": [],
+                "hidden": []
+              }
+            },
+            {
+              "setting": "readerToolbar",
+              "type": "toolbar",
+              "title": "Reader toolbar",
+              "default": {
+                "rows": 2,
+                "toolbar": [],
+                "overflow": [],
+                "hidden": []
+              }
+            },
+            {
+              "setting": "composeBar",
+              "type": "toolbar",
+              "title": "Compose toolbar",
+              "default": {
+                "rows": 2,
+                "toolbar": [],
+                "overflow": [],
+                "hidden": []
+              }
+            }
+          ]
         },
         {
-          "setting": "folderBar",
-          "type": "toolbar",
-          "title": "Folder list toolbar",
-          "default": {
-            "rows": 2,
-            "toolbar": [],
-            "overflow": [],
-            "hidden": []
-          }
-        },
-        {
-          "setting": "readerToolbar",
-          "type": "toolbar",
-          "title": "Reader toolbar",
-          "default": {
-            "rows": 2,
-            "toolbar": [],
-            "overflow": [],
-            "hidden": []
-          }
-        },
-        {
-          "setting": "composeBar",
-          "type": "toolbar",
-          "title": "Compose toolbar",
-          "default": {
-            "rows": 2,
-            "toolbar": [],
-            "overflow": [],
-            "hidden": []
-          }
+          "line": true
         },
         {
           "setting": "pinerc",
