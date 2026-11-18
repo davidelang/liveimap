@@ -18,10 +18,12 @@ class AutoPanesTest {
 
     @Test fun absentLayoutKeysStayOutOfTheDocument() {
         val stored = Settings().encode()
+        val ui = Settings().encodeUi()
         for (key in listOf("multiPane", "folderPlace", "foldPosture", "paneArrangement", "customLayout")) {
             assertFalse(stored.contains("\"$key\""))
+            assertFalse(ui.contains("\"$key\""))
         }
-        assertEquals("", decodeSettings(stored).layoutCatalog)
-        assertEquals("", newAccountSettings().layoutCatalog)
+        assertEquals(Settings().layoutCatalog, decodeSettings(ui).layoutCatalog)
+        assertEquals(Settings().layoutCatalog, newAccountSettings().layoutCatalog)
     }
 }

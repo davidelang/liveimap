@@ -23,8 +23,8 @@ class TextZoomTest {
         assertEquals(130, decodeSettings(text).appTextZoom)
         val hostile = documentWith(Settings().encode(), "readerTextZoom", "130")
         val decoded = decodeSettings(hostile)
-        assertEquals(Settings().appTextZoom, decoded.appTextZoom)
         assertTrue(decoded.unknownSettings.any { it.startsWith("readerTextZoom\n") })
+        assertTrue(Settings().encodeUi().contains("\"appTextZoom\":"))
         assertFalse(decoded.encodeUi().contains("\"appTextZoom\":130"))
     }
 }

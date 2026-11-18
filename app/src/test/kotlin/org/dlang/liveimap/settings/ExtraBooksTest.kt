@@ -18,7 +18,7 @@ class ExtraBooksTest {
         ))
         val back = decodeSettings(s.encode())
         assertEquals(s.addressBooks, back.addressBooks)
-        assertEquals(emptyList<AddressBookEntry>(), decodeSettings(Settings().encode()).addressBooks)
+        assertEquals(Settings().addressBooks, decodeSettings(Settings().encode()).addressBooks)
     }
 
     @Test fun booksListPrimaryFirstGlobalsReadOnly() {
@@ -29,7 +29,7 @@ class ExtraBooksTest {
             pine("two", readOnly = true),
         ))
         assertEquals(listOf("ab" to false, "two" to false, "g" to true), s.alpineBooks())
-        assertEquals(emptyList<Pair<String, Boolean>>(), Settings().alpineBooks())
+        assertEquals(emptyList<Pair<String, Boolean>>(), Settings(addressBooks = emptyList()).alpineBooks())
     }
 
     @Test fun sourceIdRoundTrip() {

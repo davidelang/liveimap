@@ -74,22 +74,23 @@ class PinercImportTest {
         assertEquals(SortKey.ThreadReferences, next.defaultView.key)
         assertTrue(next.defaultView.newestFirst)
         assertFalse(next.askBeforeExpunge)
-        assertEquals("", next.spamMailbox)
+        val fresh = Settings()
+        assertEquals(fresh.spamMailbox, next.spamMailbox)
         assertEquals(
-            Settings(),
+            fresh,
             next.copy(
-                imapHost = "",
-                imapPort = SettingsDefaults.imapPort,
-                smtpHost = "",
-                smtpPort = SettingsDefaults.smtpPort,
-                username = "",
-                displayName = "",
-                email = "",
-                sentMailbox = "",
-                postponedMailbox = "",
-                addressBooks = emptyList(),
-                defaultView = FolderView(SortKey.Arrival, newestFirst = true),
-                askBeforeExpunge = true,
+                imapHost = fresh.imapHost,
+                imapPort = fresh.imapPort,
+                smtpHost = fresh.smtpHost,
+                smtpPort = fresh.smtpPort,
+                username = fresh.username,
+                displayName = fresh.displayName,
+                email = fresh.email,
+                sentMailbox = fresh.sentMailbox,
+                postponedMailbox = fresh.postponedMailbox,
+                addressBooks = fresh.addressBooks,
+                defaultView = fresh.defaultView,
+                askBeforeExpunge = fresh.askBeforeExpunge,
             ),
         )
         assertTrue(preview.rows.none { "secret" in it })
@@ -200,7 +201,7 @@ class PinercImportTest {
             "inbox-path={imap.example.com/user=ada}INBOX\nsmtp-server={smtp.example.com/user=ada}\n",
             Settings(),
         )
-        assertEquals("", same.next.smtpUsername)
+        assertEquals(Settings().smtpUsername, same.next.smtpUsername)
         assertTrue(same.skipped.isEmpty())
 
         val conflict = previewPinerc(
@@ -252,7 +253,7 @@ class PinercImportTest {
         assertEquals("INBOX.sent", braced.next.sentMailbox)
 
         val slash = previewPinerc("postponed-folder=INBOX/postponed\n", Settings())
-        assertEquals("", slash.next.postponedMailbox)
+        assertEquals(Settings().postponedMailbox, slash.next.postponedMailbox)
         assertTrue(slash.skipped.contains("Local path is not a mailbox"))
 
         val book = previewPinerc(
@@ -288,7 +289,6 @@ class PinercImportTest {
         )
 
         val manual = previewPinerc("feature-list=expunge-only-manually\n", Settings())
-        assertTrue(manual.next.askBeforeExpunge)
         assertEquals(Settings(), manual.next)
         assertTrue(manual.skipped.contains("Expunge already happens only when asked"))
 

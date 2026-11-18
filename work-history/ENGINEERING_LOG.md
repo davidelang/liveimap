@@ -4392,3 +4392,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-17 - host unit tests
 
 - host unit tests are testX86_64DebugUnitTest, and they check the setting set rather than the groups.
+
+## 2026-11-18 - host tests do not name settings defaults
+
+- host tests round-trip values they set and do not name a settings-tree default. `sendingRules` stays a string. The three list leaves default to an empty array.

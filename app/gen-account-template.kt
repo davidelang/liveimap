@@ -149,6 +149,7 @@ private fun migrateReaderDisplay(decoded: Settings, values: Map<String, JsonValu
     }
     val stripped = if (kept.size == decoded.unknownSettings.size) decoded else decoded.copy(unknownSettings = kept)
     if ("readerDisplay" in values) return stripped
+    if (retiredReaderKeys.none { it in values }) return stripped
     return stripped.copy(readerDisplay = readerDisplayFromRetired(values))
 }
 

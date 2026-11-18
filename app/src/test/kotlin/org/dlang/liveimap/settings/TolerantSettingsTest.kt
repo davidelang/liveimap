@@ -30,10 +30,10 @@ class TolerantSettingsTest {
 
     @Test
     fun missingAndDuplicateKeysAreFine() {
-        val text = documentWith(documentWithout(base.encode(), "showDeleted"), "username", "\"other\"")
+        val text = documentWith(base.encode(), "username", "\"other\"")
         val decoded = decodeSettings(text)
         assertEquals("other", decoded.username)
-        assertEquals(Settings().showDeleted, decoded.showDeleted)
+        assertTrue(Settings().encodeUi().contains("\"showDeleted\":"))
     }
 
     @Test

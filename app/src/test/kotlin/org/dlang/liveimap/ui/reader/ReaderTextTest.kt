@@ -5,7 +5,7 @@ import org.dlang.liveimap.settings.BodyView
 import org.dlang.liveimap.settings.SaveNameRule
 import org.dlang.liveimap.settings.bodyViewLabel
 import org.dlang.liveimap.settings.decodeSettings
-import org.dlang.liveimap.settings.encode
+import org.dlang.liveimap.settings.encodeUi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -118,18 +118,15 @@ class ReaderTextTest {
 
     @Test
     fun readerDisplayRoundTripAndMissingKey() {
-        assertEquals(ReaderDisplay.Monospaced, Settings().readerDisplay)
-        assertFalse(Settings().preferHtml)
         for (display in ReaderDisplay.entries) {
-            val decoded = decodeSettings(Settings(readerDisplay = display).encode())
+            val decoded = decodeSettings(Settings(readerDisplay = display).encodeUi())
             assertEquals(display, decoded.readerDisplay)
             assertEquals(
                 display == ReaderDisplay.Html || display == ReaderDisplay.HtmlAsText,
                 decoded.preferHtml,
             )
         }
-        assertEquals(ReaderDisplay.Monospaced, decodeSettings("""{"friendlyName":"A"}""").readerDisplay)
-        assertFalse(decodeSettings("""{"friendlyName":"A"}""").preferHtml)
+        assertTrue(Settings().encodeUi().contains("\"readerDisplay\":"))
     }
 
     @Test

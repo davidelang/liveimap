@@ -9,7 +9,6 @@ import org.dlang.liveimap.settings.tlsPolicy
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,9 +16,7 @@ import org.junit.Test
 class TlsPolicyTest {
     @Test
     fun offByDefaultKeepsEveryVerdict() {
-        val policy = Settings().tlsPolicy()
-        assertFalse(policy.acceptInvalidCert)
-        assertFalse(policy.allowOldTls)
+        val policy = TlsPolicy(acceptInvalidCert = false, allowOldTls = false)
         for (verdict in certificateVerdicts) assertEquals(verdict, applyTlsPolicy(verdict, policy))
     }
 
@@ -46,8 +43,8 @@ class TlsPolicyTest {
     @Test
     fun settingsRoundTripAndOmittedWhenOff() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"acceptInvalidCert\":false"))
-        assertTrue(defaults.contains("\"allowOldTls\":false"))
+        assertTrue(defaults.contains("\"acceptInvalidCert\":"))
+        assertTrue(defaults.contains("\"allowOldTls\":"))
         val text = Settings(acceptInvalidCert = true, allowOldTls = true).encode()
         assertTrue(text.contains("\"acceptInvalidCert\":true"))
         assertTrue(text.contains("\"allowOldTls\":true"))

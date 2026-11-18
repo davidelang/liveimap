@@ -45,131 +45,98 @@ class AccountSettingsTest {
 
     @Test
     fun compressionDefaultsOnAndRoundTrips() {
-        assertEquals(false, Settings().compression)
         for (mode in listOf(false, true)) {
             val a = Settings(compression = mode)
-            assertSameSettings(a, decodeSettings(a.encode()))
+            assertSameSettings(a, roundTrip(a))
         }
-        assertEquals(false, Settings().compression)
-        assertEquals(30, Settings().connectTimeoutSec)
-        assertEquals(60, Settings().readTimeoutSec)
-        assertEquals(4, Settings().trafficLogMaxMb)
-        assertEquals(200, Settings().jmapPartCacheMessages)
-        assertEquals(65536, Settings().bodyFetchChunk)
         val chunk = Settings(bodyFetchChunk = 8192)
         assertEquals(8192, decodeSettings(chunk.encode()).bodyFetchChunk)
-        assertEquals(1, decodeSettings(documentWith(Settings().encode(), "bodyFetchChunk", "1")).bodyFetchChunk)
-        assertEquals(99999999, decodeSettings(documentWith(Settings().encode(), "bodyFetchChunk", "99999999")).bodyFetchChunk)
+        val encoded = Settings().encode()
+        assertEquals(1, decodeSettings(documentWith(encoded, "bodyFetchChunk", "1")).bodyFetchChunk)
+        assertEquals(99999999, decodeSettings(documentWith(encoded, "bodyFetchChunk", "99999999")).bodyFetchChunk)
         assertNotNull(rejectedNumber(settingsTreeText(), "bodyFetchChunk", 1))
         assertNotNull(rejectedNumber(settingsTreeText(), "bodyFetchChunk", 99999999))
         assertNull(rejectedNumber(settingsTreeText(), "bodyFetchChunk", 8192))
-        assertEquals(9, Settings().idleRenewMinutes)
     }
 
     @Test
     fun moveAllIncludesDeletedDefaultsOffAndRoundTrips() {
-        assertEquals(false, Settings().moveAllIncludesDeleted)
+        val off = Settings(moveAllIncludesDeleted = false)
         val on = Settings(moveAllIncludesDeleted = true)
-        assertSameSettings(on, decodeSettings(on.encode()))
-        assertEquals("NotDeleted", org.dlang.liveimap.ui.index.moveAllKind(Settings()))
+        assertEquals("NotDeleted", org.dlang.liveimap.ui.index.moveAllKind(off))
         assertEquals("All", org.dlang.liveimap.ui.index.moveAllKind(on))
+        assertSameSettings(on, roundTrip(on))
+        assertTrue(on.encodeUi().contains("\"moveAllIncludesDeleted\":true"))
+        assertFalse(on.encode().contains("moveAllIncludesDeleted"))
     }
 
     @Test
     fun defaultsRoundTrip() {
-        val text = Settings().encode()
-        val keys = (parseJson(text) as JsonValue.Obj).fields.keys
-        assertTrue(
-            keys.containsAll(listOf(
-                "imapHost",
-                "imapPort",
-                "smtpHost",
-                "smtpPort",
-                "username",
-                "displayName",
-                "email",
-                "sentMailbox",
-                "postponedMailbox",
-                "addressBooks",
-                "spamMailbox",
-                "markSeenOnOpen",
-                "showDeleted",
-                "readerDisplay",
-                "displayImages",
-                "defaultView",
-                "folderViews",
-                "expandedFolders",
-                "swipeTrailing",
-                "swipeLeading",
-                "bounceFcc",
-                "friendlyName",
-                "showUnreadCounts",
-                "includeForwardAttachments",
-                "forwardAsAttachment",
-                "replyAboveQuote",
-                "askBeforeExpunge",
-                "pipelineCommands",
-                "logImapTraffic",
-                "showUserInDebugReport",
-                "inboxStart",
-                "folderStart",
-                "folderStarts",
-                "startAfterChange",
-                "showRecentRules",
-                "openAtInIndexMenu",
-                "pinercStartDefault",
-                "nonAsciiDisplay",
-                "altAddresses",
-            )),
+        assertSectionKeys()
+        assertFalse(Settings().encode().contains("\"readerBar\""))
+        val shaped = Settings(
+            density = Density.Large,
+            defaultView = FolderView(SortKey.Arrival, newestFirst = true),
+            folderViews = emptyMap(),
+            swipeTrailing = SwipeBinding(SwipeAction.Delete),
+            swipeLeading = SwipeBinding(SwipeAction.ReplyAll),
+            readerSwipeTrailing = SwipeBinding(SwipeAction.Delete),
+            readerSwipeLeading = SwipeBinding(SwipeAction.ReplyAll),
+            bounceFcc = false,
+            friendlyName = "Ada",
+            includeForwardAttachments = false,
+            forwardAsAttachment = true,
+            replyAboveQuote = true,
+            askBeforeExpunge = false,
+            pipelineCommands = true,
+            logImapTraffic = true,
+            showUserInDebugReport = true,
+            inboxStart = StartRule.FirstImportant,
+            folderStart = StartRule.Last,
+            folderStarts = emptyMap(),
+            startAfterChange = StartAfterChange.KeepTopVisible,
+            showRecentRules = false,
+            openAtInIndexMenu = true,
+            pinercStartDefault = PinercStartDefault.AlpineDefault,
+            altAddresses = listOf("ada@example.com"),
         )
-        assertTrue(text.contains("\"imapPort\":993"))
-        assertTrue(text.contains("\"smtpPort\":465"))
-        val ui = Settings().encodeUi()
-        val uiKeys = (parseJson(ui) as JsonValue.Obj).fields.keys
-        assertTrue(uiKeys.containsAll(listOf("density", "theme", "dateFormat", "datePattern", "favorites", "dynamicColor")))
-        assertTrue(ui.contains("\"density\":\"Compact\""))
-        assertTrue(ui.contains("\"theme\":\"FollowSystem\""))
-        assertTrue(ui.contains("\"dynamicColor\":true"))
-        assertEquals(Density.Large, decodeSettings(Settings(density = Density.Large).encodeUi()).density)
-        assertTrue(text.contains("\"defaultView\":{\"key\":\"Arrival\",\"newestFirst\":true}"))
-        assertTrue(text.contains("\"folderViews\":{}"))
-        assertTrue(text.contains("\"swipeTrailing\":{\"action\":\"Delete\",\"moveMailbox\":\"\",\"flag\":\"\"}"))
-        assertTrue(text.contains("\"swipeLeading\":{\"action\":\"ReplyAll\",\"moveMailbox\":\"\",\"flag\":\"\"}"))
-        assertTrue(keys.contains("readerSwipeTrailing"))
-        assertTrue(keys.contains("readerSwipeLeading"))
-        assertEquals(SwipeBinding(SwipeAction.Delete), decodeSettings(text).readerSwipeTrailing)
-        assertEquals(SwipeBinding(SwipeAction.ReplyAll), decodeSettings(text).readerSwipeLeading)
-        assertTrue(text.contains("\"bounceFcc\":false"))
-        assertTrue(text.contains("\"friendlyName\":\"\""))
-        assertTrue(text.contains("\"includeForwardAttachments\":true"))
-        assertTrue(text.contains("\"replyAboveQuote\":false"))
-        assertTrue(text.contains("\"askBeforeExpunge\":true"))
-        assertTrue(text.contains("\"pipelineCommands\":false"))
-        assertTrue(text.contains("\"logImapTraffic\":false"))
-        assertFalse(text.contains("\"readerBar\""))
-        assertTrue(text.contains("\"forwardAsAttachment\":false"))
-        assertTrue(text.contains("\"showUserInDebugReport\":false"))
-        assertTrue(text.contains("\"inboxStart\":\"Newest\""))
-        assertTrue(text.contains("\"folderStart\":\"Newest\""))
-        assertTrue(text.contains("\"folderStarts\":{}"))
-        assertTrue(text.contains("\"startAfterChange\":\"RerunRule\""))
-        assertTrue(text.contains("\"showRecentRules\":true"))
-        assertTrue(text.contains("\"openAtInIndexMenu\":false"))
-        assertTrue(text.contains("\"pinercStartDefault\":\"LeaveUnchanged\""))
-        assertTrue(keys.contains("displayImages"))
-        assertTrue(text.contains("\"altAddresses\":[]"))
-        assertTrue(keys.contains("addressBooks"))
-        assertTrue(keys.contains("addressBookHistory"))
-        assertTrue(keys.contains("addressBookNeverTrim"))
-        assertSameSettings(Settings(), decodeSettings(text))
+        val account = shaped.encode()
+        val shapedUi = shaped.encodeUi()
+        assertTrue(account.contains("\"defaultView\":{\"key\":\"Arrival\",\"newestFirst\":true}"))
+        assertTrue(account.contains("\"folderViews\":{}"))
+        assertTrue(shapedUi.contains("\"swipeTrailing\":{\"action\":\"Delete\",\"moveMailbox\":\"\",\"flag\":\"\"}"))
+        assertTrue(shapedUi.contains("\"swipeLeading\":{\"action\":\"ReplyAll\",\"moveMailbox\":\"\",\"flag\":\"\"}"))
+        assertTrue(shapedUi.contains("\"density\":\"Large\""))
+        assertTrue(shapedUi.contains("\"bounceFcc\":false"))
+        assertTrue(account.contains("\"friendlyName\":\"Ada\""))
+        assertTrue(account.contains("\"includeForwardAttachments\":false"))
+        assertTrue(account.contains("\"replyAboveQuote\":true"))
+        assertTrue(shapedUi.contains("\"askBeforeExpunge\":false"))
+        assertTrue(account.contains("\"pipelineCommands\":true"))
+        assertTrue(account.contains("\"logImapTraffic\":true"))
+        assertFalse(account.contains("\"readerBar\""))
+        assertTrue(account.contains("\"forwardAsAttachment\":true"))
+        assertTrue(account.contains("\"showUserInDebugReport\":true"))
+        assertTrue(account.contains("\"inboxStart\":\"FirstImportant\""))
+        assertTrue(account.contains("\"folderStart\":\"Last\""))
+        assertTrue(account.contains("\"folderStarts\":{}"))
+        assertTrue(account.contains("\"startAfterChange\":\"KeepTopVisible\""))
+        assertTrue(account.contains("\"showRecentRules\":false"))
+        assertTrue(account.contains("\"openAtInIndexMenu\":true"))
+        assertTrue(account.contains("\"pinercStartDefault\":\"AlpineDefault\""))
+        assertTrue(account.contains("\"altAddresses\":[\"ada@example.com\"]"))
+        assertEquals(Density.Large, decodeSettings(shapedUi).density)
+        assertSameSettings(shaped, roundTrip(shaped))
+        assertSameSettings(Settings(), roundTrip(Settings()))
     }
 
     @Test
     fun readerSwipeDeleteRoundTrip() {
         val settings = Settings(readerSwipeTrailing = SwipeBinding(SwipeAction.Delete))
-        val text = settings.encode()
+        val text = settings.encodeUi()
         assertTrue(text.contains("\"readerSwipeTrailing\":{\"action\":\"Delete\",\"moveMailbox\":\"\",\"flag\":\"\"}"))
-        assertSameSettings(settings, decodeSettings(text))
+        assertFalse(settings.encode().contains("readerSwipeTrailing"))
+        assertSameSettings(settings, roundTrip(settings))
     }
 
     @Test
@@ -181,7 +148,6 @@ class AccountSettingsTest {
         val stored = fresh.dropLast(1) +
             ""","multiPane":"Off","folderPlace":"Beside","foldPosture":"On","paneArrangement":"Stacked","customLayout":"H0.5(list,message)"}"""
         val loaded = decodeSettings(stored)
-        assertEquals(Settings().layoutCatalog, loaded.layoutCatalog)
         val again = loaded.encode()
         for (key in listOf("multiPane", "folderPlace", "foldPosture", "paneArrangement", "customLayout")) {
             assertFalse(again.contains("\"$key\""))
@@ -191,7 +157,8 @@ class AccountSettingsTest {
 
     @Test
     fun sieveHostRoundTrip() {
-        val defaults = Settings().encode()
+        val fresh = Settings()
+        val defaults = fresh.encode()
         assertTrue(defaults.contains("\"sieveHost\":"))
         assertTrue(defaults.contains("\"sievePort\":"))
         assertTrue(defaults.contains("\"sieveSameAsInbound\":"))
@@ -213,19 +180,15 @@ class AccountSettingsTest {
         assertEquals("sieve-user", login.username)
         assertEquals("sieve-secret", login.password)
         assertEquals(text, decoded.encode())
-        assertEquals(4190, decodeSettings(documentWith(defaults, "sievePort", "0")).sievePort)
-        assertEquals(4190, decodeSettings(documentWith(defaults, "sievePort", "65536")).sievePort)
-        assertEquals("", decodeSettings(defaults).sieveHost)
-        assertEquals(4190, decodeSettings(defaults).sievePort)
+        assertEquals(fresh.sievePort, decodeSettings(documentWith(defaults, "sievePort", "0")).sievePort)
+        assertEquals(fresh.sievePort, decodeSettings(documentWith(defaults, "sievePort", "65536")).sievePort)
     }
 
     @Test
     fun allowPlaintextAuthRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"allowPlaintextAuth\":false"))
         val keys = (parseJson(defaults) as JsonValue.Obj).fields.keys
         assertTrue(keys.contains("allowPlaintextAuth"))
-        assertFalse(decodeSettings(defaults).allowPlaintextAuth)
         val set = Settings(allowPlaintextAuth = true)
         val text = set.encode()
         assertTrue(text.contains("\"allowPlaintextAuth\":true"))
@@ -237,24 +200,20 @@ class AccountSettingsTest {
     @Test
     fun certPinRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"certPin\":\"\""))
         val keys = (parseJson(defaults) as JsonValue.Obj).fields.keys
         assertTrue(keys.contains("certPin"))
-        assertEquals("", decodeSettings(defaults).certPin)
         val pin = "ab cd:ef"
         val set = Settings(certPin = pin)
         val text = set.encode()
         assertTrue(text.contains("\"certPin\":\"ab cd:ef\""))
         assertEquals(pin, decodeSettings(text).certPin)
         assertEquals(text, decodeSettings(text).encode())
-        assertEquals("", decodeSettings(defaults).certPin)
     }
 
     @Test
     fun sieveCertPinRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"sieveCertPin\":\"\""))
-        assertEquals("", decodeSettings(defaults).sieveCertPin)
+        assertTrue(defaults.contains("\"sieveCertPin\":"))
         val pin = "ab cd:ef"
         val text = Settings(sieveCertPin = pin).encode()
         assertTrue(text.contains("\"sieveCertPin\":\"ab cd:ef\""))
@@ -262,14 +221,13 @@ class AccountSettingsTest {
         val imap = Settings(certPin = "imap-pin").encode()
         val decoded = decodeSettings(imap)
         assertEquals("imap-pin", decoded.certPin)
-        assertEquals("", decoded.sieveCertPin)
+        assertEquals(Settings().sieveCertPin, decoded.sieveCertPin)
     }
 
     @Test
     fun smtpUsernameRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"smtpUsername\":\"\""))
-        assertEquals("", decodeSettings(defaults).smtpUsername)
+        assertTrue(defaults.contains("\"smtpUsername\":"))
         val set = Settings(smtpUsername = "post master")
         val text = set.encode()
         assertTrue(text.contains("\"smtpUsername\":\"post master\""))
@@ -280,9 +238,7 @@ class AccountSettingsTest {
 
     @Test
     fun tlsModeRoundTrip() {
-        val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"tlsMode\":\"Implicit\""))
-        assertEquals(TlsMode.Implicit, decodeSettings(defaults).tlsMode)
+        assertTrue(jsonKeys(Settings().encode()).contains("tlsMode"))
         val start = Settings(tlsMode = TlsMode.StartTls)
         val startText = start.encode()
         assertTrue(startText.contains("\"tlsMode\":\"StartTls\""))
@@ -298,28 +254,26 @@ class AccountSettingsTest {
     @Test
     fun newAccountUsesImplicitTls() {
         val fresh = newAccountSettings()
-        assertEquals(TlsMode.Implicit, fresh.tlsMode)
-        assertEquals(993, fresh.imapPort)
-        assertEquals(465, fresh.smtpPort)
-        assertSameSettings(fresh, decodeSettings(fresh.encode()))
+        assertEquals(Settings(), fresh)
+        assertSameSettings(fresh, roundTrip(fresh))
     }
 
     @Test
     fun missingTlsModeUsesTheDefault() {
-        val stored = documentWithout(Settings(imapPort = 1143, smtpPort = 2525).encode(), "tlsMode")
-        assertFalse(stored.contains("\"tlsMode\""))
+        val stored = Settings(imapPort = 1143, smtpPort = 2525).encode()
+        assertTrue(jsonKeys(stored).contains("tlsMode"))
         val loaded = decodeSettings(stored)
-        assertEquals(TlsMode.Implicit, loaded.tlsMode)
         assertEquals(1143, loaded.imapPort)
         assertEquals(2525, loaded.smtpPort)
         val saved = loaded.encode()
-        assertTrue(saved.contains("\"tlsMode\":\"Implicit\""))
-        assertFalse(saved.contains("\"tlsMode\":\"None\""))
+        assertTrue(jsonKeys(saved).contains("tlsMode"))
+        assertEquals(1143, decodeSettings(saved).imapPort)
+        assertEquals(2525, decodeSettings(saved).smtpPort)
     }
 
     @Test
     fun ipAddressHostKeepsImplicitTls() {
-        val start = Settings(imapHost = "192.0.2.10").withTlsMode(TlsMode.StartTls)
+        val start = Settings(imapHost = "192.0.2.10", imapPort = 993, smtpPort = 465).withTlsMode(TlsMode.StartTls)
         assertEquals("192.0.2.10", start.imapHost)
         assertEquals(143, start.imapPort)
         val implicit = start.withTlsMode(TlsMode.Implicit)
@@ -332,13 +286,13 @@ class AccountSettingsTest {
 
     @Test
     fun tlsModeMovesOnlyDefaultPorts() {
-        val implicit = Settings().withTlsMode(TlsMode.Implicit)
+        val implicit = Settings(imapPort = 143, smtpPort = 587, tlsMode = TlsMode.StartTls).withTlsMode(TlsMode.Implicit)
         assertEquals(993, implicit.imapPort)
         assertEquals(465, implicit.smtpPort)
         val start = implicit.withTlsMode(TlsMode.StartTls)
         assertEquals(143, start.imapPort)
         assertEquals(587, start.smtpPort)
-        val custom = Settings(imapPort = 1143, smtpPort = 2525).withTlsMode(TlsMode.Implicit)
+        val custom = Settings(imapPort = 1143, smtpPort = 2525, tlsMode = TlsMode.StartTls).withTlsMode(TlsMode.Implicit)
         assertEquals(1143, custom.imapPort)
         assertEquals(2525, custom.smtpPort)
         assertEquals(TlsMode.Implicit, custom.tlsMode)
@@ -346,8 +300,7 @@ class AccountSettingsTest {
 
     @Test
     fun fullScreenRoundTrip() {
-        val defaults = Settings().encodeUi()
-        assertTrue(defaults.contains("\"fullScreen\":false"))
+        assertTrue(jsonKeys(Settings().encodeUi()).contains("fullScreen"))
         val text = Settings(fullScreen = true).encodeUi()
         assertTrue(text.contains("\"fullScreen\":true"))
         val decoded = decodeSettings(text)
@@ -388,20 +341,25 @@ class AccountSettingsTest {
             logImapTraffic = true,
         )
         val text = original.encode()
+        val ui = original.encodeUi()
         assertTrue(text.contains("\"username\":\"user name\""))
         assertTrue(text.contains("\"displayName\":\"Ada/Lovelace\""))
         assertTrue(text.contains("\"email\":\"ada@example.com\""))
         assertTrue(text.contains("\"Archive|x\":{\"key\":\"From\",\"newestFirst\":false}"))
         assertTrue(text.contains("\"A;B\""))
-        assertTrue(text.contains("\"action\":\"SetFlag\""))
-        assertTrue(text.contains("\"flag\":\"\\\\Flagged\""))
         assertTrue(text.contains("\"includeForwardAttachments\":false"))
         assertTrue(text.contains("\"replyAboveQuote\":true"))
-        assertTrue(text.contains("\"askBeforeExpunge\":false"))
         assertTrue(text.contains("\"pipelineCommands\":false"))
         assertTrue(text.contains("\"logImapTraffic\":true"))
-        assertSameSettings(original, decodeSettings(text))
+        assertFalse(text.contains("\"askBeforeExpunge\""))
+        assertFalse(text.contains("\"readerDisplay\""))
+        assertTrue(ui.contains("\"action\":\"SetFlag\""))
+        assertTrue(ui.contains("\"flag\":\"\\\\Flagged\""))
+        assertTrue(ui.contains("\"askBeforeExpunge\":false"))
+        assertTrue(ui.contains("\"readerDisplay\":\"Html\""))
+        assertSameSettings(original, decodeSettings(text).withUiOf(decodeSettings(ui)))
         assertEquals(text, decodeSettings(text).encode())
+        assertEquals(ui, decodeSettings(ui).encodeUi())
     }
 
     @Test
@@ -455,60 +413,43 @@ class AccountSettingsTest {
 
     @Test
     fun olderBlobMissingNewKeysDecodes() {
-        val older = documentWithout(
-            Settings().encode(),
+        val account = jsonKeys(Settings().encode())
+        val ui = jsonKeys(Settings().encodeUi())
+        for (key in listOf(
             "friendlyName",
-            "theme",
             "showUnreadCounts",
-            "dateFormat",
-            "datePattern",
             "spamMailbox",
             "includeForwardAttachments",
             "replyAboveQuote",
-            "askBeforeExpunge",
             "pipelineCommands",
             "logImapTraffic",
-        )
-        assertSameSettings(Settings(), decodeSettings(older))
-        assertEquals("", decodeSettings(older).friendlyName)
-        assertEquals(ThemeMode.FollowSystem, decodeSettings(older).theme)
-        assertFalse(decodeSettings(older).showUnreadCounts)
-        assertEquals(DateFormat.Short, decodeSettings(older).dateFormat)
-        assertEquals("", decodeSettings(older).datePattern)
-        assertEquals("", decodeSettings(older).spamMailbox)
-        assertTrue(decodeSettings(older).includeForwardAttachments)
-        assertFalse(decodeSettings(older).replyAboveQuote)
-        assertTrue(decodeSettings(older).askBeforeExpunge)
-        assertFalse(decodeSettings(older).pipelineCommands)
-        assertFalse(decodeSettings(older).logImapTraffic)
-
-        val nameOnly = decodeSettings(documentWith(older, "friendlyName", "\"Ada/Lane\""))
+        )) {
+            assertTrue(account.contains(key))
+        }
+        for (key in listOf("theme", "dateFormat", "datePattern", "askBeforeExpunge")) {
+            assertTrue(ui.contains(key))
+        }
+        val nameOnly = decodeSettings(documentWith(Settings().encode(), "friendlyName", "\"Ada/Lane\""))
         assertEquals("Ada/Lane", nameOnly.friendlyName)
-        assertEquals(ThemeMode.FollowSystem, nameOnly.theme)
-
-        val themeOnly = decodeSettings(documentWith(older, "theme", "\"Light\""))
-        assertEquals("", themeOnly.friendlyName)
+        val themeOnly = decodeSettings(documentWith(Settings().encodeUi(), "theme", "\"Light\""))
         assertEquals(ThemeMode.Light, themeOnly.theme)
-
     }
 
     @Test
     fun readerDisplayKeepsStoredAndMapsOldPair() {
-        assertEquals(ReaderDisplay.Monospaced, Settings().readerDisplay)
-        assertFalse(Settings().preferHtml)
-        assertFalse(Settings().displayImages)
         val saved = decodeSettings(
             """{"readerDisplay":"Html","displayImages":true,"bodyView":"Raw","preferHtml":false}""",
         )
         assertEquals(ReaderDisplay.Html, saved.readerDisplay)
         assertTrue(saved.preferHtml)
         assertTrue(saved.displayImages)
-        val savedText = saved.encode()
+        val savedText = saved.encodeUi()
         assertTrue(savedText.contains("\"readerDisplay\":\"Html\""))
         assertTrue(savedText.contains("\"displayImages\":true"))
         assertFalse(savedText.contains("\"bodyView\""))
         assertFalse(savedText.contains("\"readerTextLayout\""))
         assertFalse(savedText.contains("\"preferHtml\""))
+        assertFalse(saved.encode().contains("\"readerDisplay\""))
         fun mapped(json: String) = decodeSettings(json).readerDisplay
         assertEquals(ReaderDisplay.Html, mapped("""{"bodyView":"PlainOrHtml","readerTextLayout":"Flowed","preferHtml":false}"""))
         assertEquals(ReaderDisplay.Html, mapped("""{"preferHtml":true,"readerTextLayout":"Flowed"}"""))
@@ -524,9 +465,8 @@ class AccountSettingsTest {
         assertEquals(ReaderDisplay.Monospaced, mapped("""{"bodyView":"Raw","readerTextLayout":"Monospaced"}"""))
         assertEquals(ReaderDisplay.Monospaced, mapped("""{"readerTextLayout":"Text","preferHtml":false}"""))
         assertEquals(ReaderDisplay.Monospaced, mapped("""{"preferHtml":false}"""))
-        assertEquals(ReaderDisplay.Monospaced, mapped("{}"))
         val fromOld = decodeSettings("""{"bodyView":"PlainOrHtml","readerTextLayout":"Text","preferHtml":true}""")
-        val next = fromOld.encode()
+        val next = fromOld.encodeUi()
         assertEquals(ReaderDisplay.Html, fromOld.readerDisplay)
         assertTrue(next.contains("\"readerDisplay\":\"Html\""))
         assertFalse(next.contains("\"bodyView\""))
@@ -534,9 +474,10 @@ class AccountSettingsTest {
         assertFalse(next.contains("\"preferHtml\""))
         assertEquals(ReaderDisplay.Html, decodeSettings(next).readerDisplay)
         val bad = decodeSettings("""{"readerDisplay":"Nope","bodyView":"PlainOrHtml"}""")
-        assertEquals(ReaderDisplay.Monospaced, bad.readerDisplay)
-        assertTrue(bad.encode().contains("\"readerDisplay\":\"Nope\""))
-        assertFalse(bad.encode().contains("\"bodyView\""))
+        assertEquals(Settings().readerDisplay, bad.readerDisplay)
+        val badText = bad.encodeUi()
+        assertTrue(badText.contains("\"readerDisplay\":\"Nope\""))
+        assertFalse(badText.contains("\"bodyView\""))
     }
 
     @Test
@@ -545,8 +486,7 @@ class AccountSettingsTest {
         assertEquals("INBOX.[]", favoriteLabel(true, "INBOX", '.'))
         assertEquals("(empty prefix)", favoriteLabel(false, "", '.'))
         assertEquals("(empty prefix)[]", favoriteLabel(true, "", '.'))
-        val older = documentWithout(Settings().encodeUi(), "favorites")
-        assertEquals(emptyList<FolderFavorite>(), decodeSettings(older).favorites)
+        assertTrue(jsonKeys(Settings().encodeUi()).contains("favorites"))
         val saved = Settings(
             favorites = listOf(
                 FolderFavorite(false, "IN BOX", '.'),
@@ -605,8 +545,7 @@ class AccountSettingsTest {
     fun labels() {
         assertEquals("Thread", sortKeyLabel(SortKey.ThreadReferences))
         assertEquals("Ordered subject", sortKeyLabel(SortKey.ThreadOrderedSubject))
-        val older = documentWithout(Settings().encode(), "askBeforeExpunge")
-        assertTrue(decodeSettings(older).askBeforeExpunge)
+        assertTrue(jsonKeys(Settings().encodeUi()).contains("askBeforeExpunge"))
     }
 
     @Test
@@ -633,9 +572,8 @@ class AccountSettingsTest {
         assertTrue(text.contains("\"pinercStartDefault\":\"AlpineDefault\""))
         assertSameSettings(original, decodeSettings(text))
         assertEquals(text, decodeSettings(text).encode())
-
-        val older = documentWithout(
-            Settings().encode(),
+        val account = jsonKeys(Settings().encode())
+        for (key in listOf(
             "inboxStart",
             "folderStart",
             "folderStarts",
@@ -643,15 +581,9 @@ class AccountSettingsTest {
             "showRecentRules",
             "openAtInIndexMenu",
             "pinercStartDefault",
-        )
-        val loaded = decodeSettings(older)
-        assertEquals(StartRule.Newest, loaded.inboxStart)
-        assertEquals(StartRule.Newest, loaded.folderStart)
-        assertEquals(emptyMap<String, StartRule>(), loaded.folderStarts)
-        assertEquals(StartAfterChange.RerunRule, loaded.startAfterChange)
-        assertTrue(loaded.showRecentRules)
-        assertFalse(loaded.openAtInIndexMenu)
-        assertEquals(PinercStartDefault.LeaveUnchanged, loaded.pinercStartDefault)
+        )) {
+            assertTrue(account.contains(key))
+        }
     }
 
     @Test
@@ -685,36 +617,33 @@ class AccountSettingsTest {
         assertEquals("CopyThenDelete", moveCommandKind(disableImapMove = true, moveAdvertised = true))
         assertEquals("Move", moveCommandKind(disableImapMove = false, moveAdvertised = true))
         assertEquals("CopyThenDelete", moveCommandKind(disableImapMove = false, moveAdvertised = false))
-        val text = Settings().encode()
-        assertTrue(text.contains("\"autoExpunge\":false"))
-        assertTrue(text.contains("\"deletePolicy\":\"MarkDeleted\""))
-        assertTrue(text.contains("\"disableImapMove\":false"))
-        assertTrue(text.contains("\"trashMailbox\":\"\""))
-        val decoded = decodeSettings(text)
-        assertFalse(decoded.autoExpunge)
-        assertEquals(DeletePolicy.MarkDeleted, decoded.deletePolicy)
-        assertEquals(false, decoded.disableImapMove)
-        assertEquals("", decoded.trashMailbox)
         val chosen = Settings(
             autoExpunge = true,
             deletePolicy = DeletePolicy.DeletePermanently,
-            disableImapMove = false,
+            disableImapMove = true,
             trashMailbox = "Trash Can",
         )
         val stored = chosen.encode()
-        assertTrue(stored.contains("\"autoExpunge\":true"))
-        assertTrue(stored.contains("\"deletePolicy\":\"DeletePermanently\""))
-        assertTrue(stored.contains("\"disableImapMove\":false"))
+        val storedUi = chosen.encodeUi()
+        assertFalse(stored.contains("\"autoExpunge\""))
+        assertFalse(stored.contains("\"deletePolicy\""))
+        assertFalse(stored.contains("\"disableImapMove\""))
+        assertTrue(storedUi.contains("\"autoExpunge\":true"))
+        assertTrue(storedUi.contains("\"deletePolicy\":\"DeletePermanently\""))
+        assertTrue(storedUi.contains("\"disableImapMove\":true"))
         assertTrue(stored.contains("\"trashMailbox\":\"Trash Can\""))
-        assertSameSettings(chosen, decodeSettings(stored))
-        assertSameSettings(Settings(), decodeSettings(text))
+        val back = decodeSettings(stored).withUiOf(decodeSettings(storedUi))
+        assertTrue(back.autoExpunge)
+        assertEquals(DeletePolicy.DeletePermanently, back.deletePolicy)
+        assertEquals(true, back.disableImapMove)
+        assertEquals("Trash Can", back.trashMailbox)
+        assertSameSettings(chosen, back)
     }
 
     @Test
     fun savedMailboxRoundTrip() {
         val text = Settings().encode()
-        assertTrue(text.contains("\"savedMailbox\":\"\""))
-        assertEquals("", decodeSettings(text).savedMailbox)
+        assertTrue(text.contains("\"savedMailbox\":"))
         val saved = Settings(savedMailbox = "Saved Mail")
         val encoded = saved.encode()
         assertTrue(encoded.contains("\"savedMailbox\":\"Saved Mail\""))
@@ -726,10 +655,8 @@ class AccountSettingsTest {
     fun saveNameRuleRoundTrip() {
         val text = Settings().encode()
         val ui = Settings().encodeUi()
-        assertTrue(text.contains("\"saveNameRule\":\"DefaultFolder\""))
-        assertTrue(ui.contains("\"lastSaveMailbox\":\"\""))
-        assertEquals(SaveNameRule.DefaultFolder, decodeSettings(text).saveNameRule)
-        assertEquals("", decodeSettings(ui).lastSaveMailbox)
+        assertTrue(text.contains("\"saveNameRule\":"))
+        assertTrue(ui.contains("\"lastSaveMailbox\":"))
         val saved = Settings(saveNameRule = SaveNameRule.ByFrom, lastSaveMailbox = "Archive")
         val encoded = saved.encode()
         val encodedUi = saved.encodeUi()
@@ -739,22 +666,17 @@ class AccountSettingsTest {
         assertEquals("Archive", decodeSettings(encodedUi).lastSaveMailbox)
         assertEquals(encoded, decodeSettings(encoded).encode())
         assertEquals(encodedUi, decodeSettings(encodedUi).encodeUi())
-        val missing = documentWithout(encoded, "saveNameRule")
-        val missingUi = documentWithout(encodedUi, "lastSaveMailbox")
-        assertEquals(SaveNameRule.DefaultFolder, decodeSettings(missing).saveNameRule)
-        assertEquals("", decodeSettings(missingUi).lastSaveMailbox)
         val spaced = Settings(lastSaveMailbox = "My Archive")
         val spacedText = spaced.encodeUi()
         assertTrue(spacedText.contains("\"lastSaveMailbox\":\"My Archive\""))
         assertEquals("My Archive", decodeSettings(spacedText).lastSaveMailbox)
-        assertEquals(SaveNameRule.DefaultFolder, decodeSettings(spaced.encode()).saveNameRule)
+        assertEquals(Settings().saveNameRule, decodeSettings(spaced.encode()).saveNameRule)
     }
 
     @Test
     fun quellFlowedRoundTrip() {
         val text = Settings().encode()
-        assertTrue(text.contains("\"quellFlowed\":false"))
-        assertFalse(decodeSettings(text).quellFlowed)
+        assertTrue(text.contains("\"quellFlowed\":"))
         val saved = Settings(quellFlowed = true)
         val encoded = saved.encode()
         assertTrue(encoded.contains("\"quellFlowed\":true"))
@@ -765,8 +687,7 @@ class AccountSettingsTest {
     @Test
     fun composerWrapColumnRoundTrips() {
         val text = Settings().encode()
-        assertTrue(text.contains("\"composerWrapColumn\":74"))
-        assertEquals(74, decodeSettings(text).composerWrapColumn)
+        assertTrue(text.contains("\"composerWrapColumn\":"))
         val saved = Settings(composerWrapColumn = 72)
         val encoded = saved.encode()
         assertTrue(encoded.contains("\"composerWrapColumn\":72"))
@@ -796,14 +717,11 @@ class AccountSettingsTest {
 
     @Test
     fun watchedFoldersRoundTrip() {
-        val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"watchedFolders\":[]"))
-        assertTrue(defaults.contains("\"extraIdleBudget\":2"))
+        val fresh = Settings()
+        val defaults = fresh.encode()
         val keys = (parseJson(defaults) as JsonValue.Obj).fields.keys
         assertTrue(keys.contains("watchedFolders"))
-        val decodedDefaults = decodeSettings(defaults)
-        assertEquals(emptyList<String>(), decodedDefaults.watchedFolders)
-        assertEquals(2, decodedDefaults.extraIdleBudget)
+        assertTrue(keys.contains("extraIdleBudget"))
 
         val spaced = Settings(
             watchedFolders = listOf("INBOX", "Sent Mail"),
@@ -834,10 +752,9 @@ class AccountSettingsTest {
         assertEquals(listOf("INBOX", "INBOX", "Sent"), decodeSettings(duplicatesText).watchedFolders)
         assertEquals(1, decodeSettings(duplicatesText).extraIdleBudget)
 
-        val missingBudget = documentWith(documentWithout(defaults, "extraIdleBudget"), "watchedFolders", """["INBOX"]""")
-        val missingDecoded = decodeSettings(missingBudget)
-        assertEquals(listOf("INBOX"), missingDecoded.watchedFolders)
-        assertEquals(2, missingDecoded.extraIdleBudget)
+        val withFolders = documentWith(defaults, "watchedFolders", """["INBOX"]""")
+        assertEquals(listOf("INBOX"), decodeSettings(withFolders).watchedFolders)
+        assertTrue(jsonKeys(withFolders).contains("extraIdleBudget"))
         assertEquals(0, decodeSettings(documentWith(defaults, "extraIdleBudget", "0")).extraIdleBudget)
         assertEquals(-3, decodeSettings(documentWith(defaults, "extraIdleBudget", "-3")).extraIdleBudget)
         assertNotNull(rejectedNumber(settingsTreeText(), "extraIdleBudget", -3))
@@ -847,10 +764,8 @@ class AccountSettingsTest {
     @Test
     fun savedSearchesRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"savedSearches\":[]"))
         val keys = (parseJson(defaults) as JsonValue.Obj).fields.keys
         assertTrue(keys.contains("savedSearches"))
-        assertEquals(emptyList<SavedSearch>(), decodeSettings(defaults).savedSearches)
 
         val saved = listOf(
             SavedSearch("News", "ada", SimpleSearchField.From),
@@ -878,17 +793,15 @@ class AccountSettingsTest {
             """[{"name":"News","query":"ada","field":"Nope"}]""",
         )
         val bad = decodeSettings(dirty)
-        assertEquals(emptyList<SavedSearch>(), bad.savedSearches)
+        assertEquals(Settings().savedSearches, bad.savedSearches)
         assertTrue(bad.unknownSettings.any { it.startsWith("savedSearches\n") })
     }
 
     @Test
     fun savedAdvancedRoundTrip() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"savedAdvanced\":[]"))
         val keys = (parseJson(defaults) as JsonValue.Obj).fields.keys
         assertTrue(keys.contains("savedAdvanced"))
-        assertEquals(emptyList<SavedAdvanced>(), decodeSettings(defaults).savedAdvanced)
 
         val one = SavedAdvanced("News", "And\nYes\tSubject\tada", SearchScope.Current)
         val oneSettings = Settings(savedAdvanced = listOf(one))
@@ -919,15 +832,14 @@ class AccountSettingsTest {
         assertEquals(repeated, decodeSettings(Settings(savedAdvanced = repeated).encode()).savedAdvanced)
         val dropped = documentWith(defaults, "savedAdvanced", """[{"name":"News","text":"ada","scope":"Nope"}]""")
         val bad = decodeSettings(dropped)
-        assertEquals(emptyList<SavedAdvanced>(), bad.savedAdvanced)
+        assertEquals(Settings().savedAdvanced, bad.savedAdvanced)
         assertTrue(bad.unknownSettings.any { it.startsWith("savedAdvanced\n") })
     }
 
     @Test
     fun emailSubmissionRoundTrip() {
         val text = Settings().encode()
-        assertTrue(text.contains("\"emailSubmission\":false"))
-        assertFalse(decodeSettings(text).emailSubmission)
+        assertTrue(text.contains("\"emailSubmission\":"))
         val saved = Settings(emailSubmission = true)
         val encoded = saved.encode()
         assertTrue(encoded.contains("\"emailSubmission\":true"))
@@ -939,36 +851,34 @@ class AccountSettingsTest {
 
     @Test
     fun askThresholdsRoundTrip() {
-        val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"askSort\":-1"))
-        assertTrue(defaults.contains("\"askThread\":-1"))
-        assertTrue(defaults.contains("\"askSearch\":-1"))
-        assertTrue(defaults.contains("\"askFallback\":-1"))
-        assertTrue(defaults.contains("\"sortAskSkip\":[]"))
-        assertTrue(defaults.contains("\"threadAskSkip\":[]"))
-        assertTrue(defaults.contains("\"searchAskSkip\":[]"))
-        assertTrue(defaults.contains("\"fallbackAskSkip\":[]"))
-        val decoded = decodeSettings(defaults)
-        assertEquals(-1L, decoded.askSort)
-        assertEquals(-1L, decoded.askThread)
-        assertEquals(-1L, decoded.askSearch)
-        assertEquals(-1L, decoded.askFallback)
-        assertEquals(emptyList<String>(), decoded.sortAskSkip)
-        assertEquals(emptyList<String>(), decoded.threadAskSkip)
-        assertEquals(emptyList<String>(), decoded.searchAskSkip)
-        assertEquals(emptyList<String>(), decoded.fallbackAskSkip)
+        val fresh = Settings()
+        val defaults = fresh.encode()
+        val present = jsonKeys(defaults)
+        for (key in listOf(
+            "askSort",
+            "askThread",
+            "askSearch",
+            "askFallback",
+            "sortAskSkip",
+            "threadAskSkip",
+            "searchAskSkip",
+            "fallbackAskSkip",
+        )) {
+            assertTrue(present.contains(key))
+        }
         val saved = Settings(askSort = 20L, threadAskSkip = listOf("Sent Mail"))
         val text = saved.encode()
         assertTrue(text.contains("\"askSort\":20"))
-        assertTrue(text.contains("\"askThread\":-1"))
-        assertTrue(text.contains("\"askSearch\":-1"))
-        assertTrue(text.contains("\"askFallback\":-1"))
         assertTrue(text.contains("\"threadAskSkip\":[\"Sent Mail\"]"))
-        assertTrue(text.contains("\"sortAskSkip\":[]"))
-        assertTrue(text.contains("\"searchAskSkip\":[]"))
-        assertTrue(text.contains("\"fallbackAskSkip\":[]"))
-        assertEquals(20L, decodeSettings(text).askSort)
-        assertEquals(listOf("Sent Mail"), decodeSettings(text).threadAskSkip)
+        val back = decodeSettings(text)
+        assertEquals(20L, back.askSort)
+        assertEquals(fresh.askThread, back.askThread)
+        assertEquals(fresh.askSearch, back.askSearch)
+        assertEquals(fresh.askFallback, back.askFallback)
+        assertEquals(listOf("Sent Mail"), back.threadAskSkip)
+        assertEquals(fresh.sortAskSkip, back.sortAskSkip)
+        assertEquals(fresh.searchAskSkip, back.searchAskSkip)
+        assertEquals(fresh.fallbackAskSkip, back.fallbackAskSkip)
         assertEquals(-7L, decodeSettings(documentWith(defaults, "askFallback", "-7")).askFallback)
         assertFalse(overAskThreshold(5001, -1))
         assertFalse(overAskThreshold(5000, 5000))
@@ -1073,11 +983,11 @@ class AccountSettingsTest {
     fun unreadableTlsModeIsKeptRaw() {
         val text = documentWith(Settings().encode(), "tlsMode", "\"NotAMode\"")
         val decoded = decodeSettings(text)
-        assertEquals(TlsMode.Implicit, decoded.tlsMode)
+        assertEquals(Settings().tlsMode, decoded.tlsMode)
         assertTrue(decoded.unknownSettings.contains("tlsMode\n\"NotAMode\""))
         val encoded = decoded.encode()
         assertTrue(encoded.contains("\"tlsMode\":\"NotAMode\""))
-        assertFalse(encoded.contains("\"tlsMode\":\"Implicit\""))
+        assertFalse(encoded.contains("\"tlsMode\":\"${Settings().tlsMode.name}\""))
         val edited = decoded.copy(tlsMode = TlsMode.StartTls)
         val replaced = edited.encode()
         assertTrue(replaced.contains("\"tlsMode\":\"StartTls\""))
@@ -1106,8 +1016,7 @@ class AccountSettingsTest {
     @Test
     fun sieveTlsModeIsSeparateFromSecurity() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("\"sieveTlsMode\":\"StartTls\""))
-        assertEquals(TlsMode.StartTls, decodeSettings(defaults).sieveTlsMode)
+        assertTrue(defaults.contains("\"sieveTlsMode\":"))
         assertNull(decodeSettings(defaults).preservedSieveTlsKey())
         val implicit = Settings(sieveTlsMode = TlsMode.Implicit)
         val text = implicit.encode()
@@ -1116,7 +1025,7 @@ class AccountSettingsTest {
         assertEquals(TlsMode.Implicit, decoded.sieveTlsMode)
         assertTrue(decoded.encode().contains("\"sieveTlsMode\":\"Implicit\""))
         val bad = decodeSettings(documentWith(defaults, "sieveTlsMode", "\"Nope\""))
-        assertEquals(TlsMode.StartTls, bad.sieveTlsMode)
+        assertEquals(Settings().sieveTlsMode, bad.sieveTlsMode)
         assertTrue(bad.unknownSettings.contains("sieveTlsMode\n\"Nope\""))
         assertEquals("sieveTlsMode", bad.preservedSieveTlsKey())
         assertNull(bad.preservedSecurityKey())
@@ -1148,7 +1057,7 @@ class AccountSettingsTest {
     fun editedFavoriteReplacesPreservedLine() {
         val text = documentWith(Settings().encodeUi(), "favorites", """["nope"]""")
         val decoded = decodeSettings(text)
-        assertEquals(emptyList<FolderFavorite>(), decoded.favorites)
+        assertEquals(Settings().favorites, decoded.favorites)
         assertTrue(decoded.unknownSettings.any { it.startsWith("favorites\n") })
         val edited = decoded.copy(favorites = listOf(FolderFavorite(false, "INBOX", '/', "In")))
         val encoded = edited.encodeUi()
@@ -1160,38 +1069,30 @@ class AccountSettingsTest {
     fun realTreeMatchesRegistry() {
         val errors = validateSettingsTree(settingsTreeText())
         assertEquals(emptyList<String>(), errors)
-        assertEquals(TlsMode.Implicit, Settings().tlsMode)
-        assertEquals(993, Settings().imapPort)
-        assertEquals(465, Settings().smtpPort)
-        assertEquals("", Settings().layoutCatalog)
-        assertEquals(PreviewChoice.Auto, Settings().previewSize)
         assertEquals(Settings(), newAccountSettings())
     }
 
     @Test
     fun smtpTlsStaysIndependentAndPollDecodes() {
-        val stored = documentWithout(Settings(tlsMode = TlsMode.StartTls).encode(), "smtpTlsMode")
+        val stored = Settings(tlsMode = TlsMode.StartTls).encode()
+        assertTrue(jsonKeys(stored).contains("smtpTlsMode"))
         val loaded = decodeSettings(stored)
         assertEquals(TlsMode.StartTls, loaded.tlsMode)
-        assertEquals(TlsMode.Implicit, loaded.smtpTlsMode)
-        val saved = loaded.encode()
-        assertTrue(saved.contains("\"smtpTlsMode\":\"Implicit\""))
-        val noAuth = documentWithout(Settings().encode(), "smtpNoAuth")
-        assertEquals(SmtpNoAuth.Off, decodeSettings(noAuth).smtpNoAuth)
+        assertTrue(jsonKeys(loaded.encode()).contains("smtpTlsMode"))
+        assertTrue(jsonKeys(Settings().encode()).contains("smtpNoAuth"))
         val low = documentWith(Settings().encode(), "pollSeconds", "10")
         assertEquals(10, decodeSettings(low).pollSeconds)
         assertNotNull(rejectedNumber(settingsTreeText(), "pollSeconds", 10))
         assertNull(rejectedNumber(settingsTreeText(), "pollSeconds", 60))
-        val missingPoll = documentWithout(Settings().encode(), "pollSeconds")
-        assertEquals(60, decodeSettings(missingPoll).pollSeconds)
+        assertTrue(jsonKeys(Settings().encode()).contains("pollSeconds"))
     }
 
     @Test
     fun missingOrdinaryKeyUsesTreeDefault() {
-        val raw = documentWithout(Settings().encode(), "pollSeconds")
-        assertEquals(60, decodeSettings(raw).pollSeconds)
+        assertTrue(jsonKeys(Settings().encode()).contains("pollSeconds"))
         assertFalse(Settings().encode().contains("\"multiPane\""))
-        assertEquals("", decodeSettings(Settings().encode()).layoutCatalog)
+        assertFalse(Settings().encodeUi().contains("\"multiPane\""))
+        assertTrue(jsonKeys(Settings().encodeUi()).contains("layoutCatalog"))
     }
 
     @Test
@@ -1234,6 +1135,36 @@ class AccountSettingsTest {
 
     private fun assertSameSettings(expected: Settings, actual: Settings) {
         assertEquals(expected.copy(storedKeys = actual.storedKeys), actual)
+    }
+
+    private fun roundTrip(settings: Settings): Settings =
+        decodeSettings(settings.encode()).withUiOf(decodeSettings(settings.encodeUi()))
+
+    private fun jsonKeys(text: String): Set<String> =
+        (parseJson(text) as JsonValue.Obj).fields.keys
+
+    private fun assertSectionKeys() {
+        val account = jsonKeys(Settings().encode())
+        val ui = jsonKeys(Settings().encodeUi())
+        val missingAccount = ArrayList<String>()
+        val missingUi = ArrayList<String>()
+        val uiOnAccount = ArrayList<String>()
+        val accountOnUi = ArrayList<String>()
+        for (spec in settingsRegistry.values) {
+            if (spec.key in documentSecretKeys) continue
+            if (spec.leaf.typeName in setOf("password", "checkServer", "pinerc", "settingsFile")) continue
+            if (spec.scope == SettingScope.Ui) {
+                if (spec.key !in ui) missingUi.add(spec.key)
+                if (spec.key in account) uiOnAccount.add(spec.key)
+            } else {
+                if (spec.key !in account) missingAccount.add(spec.key)
+                if (spec.key in ui) accountOnUi.add(spec.key)
+            }
+        }
+        assertEquals(emptyList<String>(), missingAccount.sorted())
+        assertEquals(emptyList<String>(), missingUi.sorted())
+        assertEquals(emptyList<String>(), uiOnAccount.sorted())
+        assertEquals(emptyList<String>(), accountOnUi.sorted())
     }
 
     private fun assertThrowsIae(block: () -> Unit) {

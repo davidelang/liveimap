@@ -20,7 +20,7 @@ class AddressSaveTest {
     }
 
     @Test fun noneWritesNothing() {
-        assertEquals(AddressSave.None, Settings().addressSave())
+        assertEquals(AddressSave.None, Settings(addressBooks = emptyList()).addressSave())
         assertEquals(AddressSave.None, Settings(addressBooks = listOf(pine("ab", readOnly = true))).addressSave())
     }
 

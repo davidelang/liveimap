@@ -58,10 +58,10 @@ class AccountDataTest {
         val userData = accountUserData("new", fresh, null)
         val loaded = overlayAccountFields(decodeSettings(fresh.encode()), userData)
         assertEquals(fresh.copy(storedKeys = loaded.storedKeys), loaded)
-        assertEquals("", loaded.imapHost)
-        assertEquals("", loaded.username)
-        assertEquals("", loaded.email)
-        assertEquals("@", accountVisibleName(loaded))
+        assertEquals(fresh.imapHost, loaded.imapHost)
+        assertEquals(fresh.username, loaded.username)
+        assertEquals(fresh.email, loaded.email)
+        assertEquals(accountVisibleName(fresh), accountVisibleName(loaded))
     }
 
     @Test

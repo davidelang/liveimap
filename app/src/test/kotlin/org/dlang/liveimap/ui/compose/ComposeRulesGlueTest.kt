@@ -4,6 +4,8 @@ import java.io.File
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
+import org.dlang.liveimap.settings.encodeUi
+import org.dlang.liveimap.settings.withUiOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,7 +20,7 @@ class ComposeRulesGlueTest {
             composerHeaders = "Reply-To, X-Priority", viewerHeaders = "List-Id",
             sendingRules = encodeRules(listOf(RulePresets.mailingList("x.example.org", "me@example.org"))),
         )
-        val back = decodeSettings(s.encode())
+        val back = decodeSettings(s.encode()).withUiOf(decodeSettings(s.encodeUi()))
         assertEquals(s.signature, back.signature)
         assertFalse(back.sigDashes)
         assertTrue(back.sigAtBottom)
@@ -28,7 +30,10 @@ class ComposeRulesGlueTest {
         assertEquals(s.composerHeaders, back.composerHeaders)
         assertEquals(s.viewerHeaders, back.viewerHeaders)
         assertEquals(s.sendingRules, back.sendingRules)
-        assertTrue(Settings().encode().contains("\"signature\":"))
+        assertTrue(s.encode().contains("\"signature\":"))
+        assertTrue(s.encode().contains("\"sendingRules\":"))
+        assertFalse(s.encode().contains("\"viewerHeaders\""))
+        assertTrue(s.encodeUi().contains("\"viewerHeaders\":\"List-Id\""))
     }
 
     @Test

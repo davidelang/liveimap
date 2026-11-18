@@ -754,9 +754,7 @@
                   "default": "",
                   "title": "Sending rules",
                   "pinerc": "patterns-roles",
-                  "pinercFormat": "roles",
-                  "many": true,
-                  "order": "user"
+                  "pinercFormat": "roles"
                 },
                 {
                   "setting": "signature",
@@ -829,7 +827,7 @@
                 {
                   "setting": "inboundRules",
                   "type": "rules",
-                  "default": "",
+                  "default": [],
                   "title": "Inbound rules",
                   "many": true,
                   "order": "user"
@@ -1524,7 +1522,7 @@
                 {
                   "setting": "savedSearches",
                   "type": "text",
-                  "default": "",
+                  "default": [],
                   "title": "Saved searches",
                   "many": true,
                   "order": "user"
@@ -1532,7 +1530,7 @@
                 {
                   "setting": "savedAdvanced",
                   "type": "text",
-                  "default": "",
+                  "default": [],
                   "title": "Saved advanced searches",
                   "many": true,
                   "order": "user"
