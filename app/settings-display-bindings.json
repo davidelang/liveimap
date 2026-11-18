@@ -65,6 +65,7 @@
   "group:start_position:title": "settings_group_start_position_title",
   "group:theme:summary/0:text": "settings_dynamic_line",
   "group:theme:title": "settings_group_theme_title",
+  "group:toolbars:title": "settings_group_toolbars_title",
   "group:watched_folders:summary/0:text": "settings_watched_none",
   "group:watched_folders:title": "settings_group_watched_folders_title",
   "leaf:acceptInvalidCert:title": "settings_accept_invalid_cert",
