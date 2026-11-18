@@ -68,8 +68,8 @@ class AlpineBookWriteTest {
         assertEquals(3L, decodeSettings(stripped).addressBookHistory)
         assertFalse(decodeSettings(stripped).addressBookNeverTrim)
         val round = Settings(addressBookHistory = 5, addressBookNeverTrim = true)
-        val decoded = decodeSettings(round.encode())
-        assertEquals(round.copy(storedKeys = decoded.storedKeys), decoded)
+        val again = decodeSettings(round.encode())
+        assertEquals(round.copy(storedKeys = again.storedKeys), again)
     }
 
     @Test

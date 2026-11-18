@@ -162,6 +162,6 @@ class CompletionTest {
             mapOf(id to emptyList()),
             mapOf(id to "Ada"),
         )
-        assertEquals(listOf("Ada", "ab"), sources.map { it.sourceLabel })
+        assertEquals(listOf("Ada", "ab"), sources.map { it.label })
     }
 }
