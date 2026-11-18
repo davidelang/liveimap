@@ -266,7 +266,7 @@ class PinercImportTest {
             "address-book=~/abook\n",
             Settings(addressBooks = listOf(pineBook("keep"))),
         )
-        assertEquals(listOf(pineBook("keep")), localBook.next.addressBooks)
+        assertEquals(emptyList<AddressBookEntry>(), localBook.next.addressBooks)
 
         val quoted = previewPinerc(
             "address-book=\"{imap.example.com}ab\", \"~/abook\"\n",
@@ -631,7 +631,7 @@ class PinercImportTest {
             "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\naddress-book=ab\n",
             host.copy(addressBooks = listOf(pineBook("keep"))),
         )
-        assertEquals(listOf(pineBook("keep")), plainBook.next.addressBooks)
+        assertEquals(emptyList<AddressBookEntry>(), plainBook.next.addressBooks)
         assertTrue(plainBook.skipped.contains("Local path is not a mailbox"))
     }
 

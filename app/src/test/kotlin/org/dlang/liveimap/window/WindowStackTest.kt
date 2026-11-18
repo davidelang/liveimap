@@ -74,7 +74,7 @@ class WindowStackTest {
             ),
             fromSearch.kinds(),
         )
-        assertEquals("9", fromSearch.pushMessage("10", WindowLayerKind.SearchIndex).layers.last().key)
+        assertEquals("10", fromSearch.pushMessage("10", WindowLayerKind.SearchIndex).layers.last().key)
     }
 
     @Test

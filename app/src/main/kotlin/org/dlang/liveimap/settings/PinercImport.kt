@@ -219,7 +219,7 @@ private class PinercRun(
         val alt = entries[key] ?: return
         if (alt.raw.isEmpty()) return
         val specs = splitList(alt.raw).map { it.trim() }.filter { it.isNotEmpty() }
-        next = next.withSetting(leaf.setting, SettingValue(encodeAltAddresses(specs)))
+        next = next.withSetting(leaf.setting, SettingValue(encodeJson(stringListJson(specs))))
     }
 
     private fun applySignature(leaf: TreeLeaf) {
@@ -372,7 +372,7 @@ private class PinercRun(
         val sort = entries[key]?.decoded ?: return
         val view = parseSort(sort)
         if (view == null) skipped.add(phrases.sort)
-        else next = next.withSetting(leaf.setting, SettingValue(encodeView(view)))
+        else next = next.withSetting(leaf.setting, SettingValue(encodeJson(viewJson(view))))
     }
 
     private fun applyStartup(leaf: TreeLeaf) {

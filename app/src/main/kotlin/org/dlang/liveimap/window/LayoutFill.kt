@@ -50,10 +50,15 @@ fun layoutRecordProblem(record: LayoutRecord): LayoutRecordProblem? {
     if (pins.size != pins.toSet().size) return LayoutRecordProblem.DuplicateLayer
     val ids = record.panels.map { it.id }
     if (ids.size != ids.toSet().size) return LayoutRecordProblem.DuplicateLayer
-    // The window stack needs somewhere to go.
-    if (record.panels.isNotEmpty() && record.panels.all { it.pin != null }) return LayoutRecordProblem.NoUnpinnedPanel
+    // The window stack needs somewhere to go. One pinned message panel is the index-off-screen layout.
+    if (record.panels.isNotEmpty() && record.panels.all { it.pin != null } && !messageWithoutAnIndex(record)) {
+        return LayoutRecordProblem.NoUnpinnedPanel
+    }
     return null
 }
+
+private fun messageWithoutAnIndex(record: LayoutRecord): Boolean =
+    record.panels.size == 1 && record.panels.single().pin == WindowLayerKind.Message
 
 /** The layer kinds this record binds to panels. Pins come only from the layout definition. */
 fun pinnedKinds(record: LayoutRecord?): Set<WindowLayerKind> =
@@ -157,7 +162,7 @@ fun fill(record: LayoutRecord?, stack: WindowStack, viewOffset: Int = 0): FillRe
         slots,
         hiddenBelow = window.size - shownFromFlow,
         hiddenAbove = offset,
-        problem = if (free == 0 && coverCount == 0) LayoutRecordProblem.NoUnpinnedPanel else null,
+        problem = if (free == 0 && coverCount == 0 && !messageWithoutAnIndex(record)) LayoutRecordProblem.NoUnpinnedPanel else null,
     )
 }
 

@@ -75,7 +75,7 @@ class MailStackNavTest {
         val replaced = message.pushMessage("10", messageSource(message))
         assertEquals("10", replaced.layers.last().key)
         assertEquals(1, replaced.layers.count { it.kind == WindowLayerKind.Message })
-        assertEquals(listOf(WindowLayerKind.Drawer, WindowLayerKind.FolderIndex), search.pop().pop().kinds())
+        assertEquals(listOf(WindowLayerKind.Drawer, WindowLayerKind.FolderIndex), message.pop().pop().kinds())
         val covered = message.pushScreen("settings")
         assertEquals(WindowLayerKind.SearchIndex, messageSource(covered))
         assertEquals(WindowLayerKind.FolderIndex, messageSource(folder.pushScreen("help")))

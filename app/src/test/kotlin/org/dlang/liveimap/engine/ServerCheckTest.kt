@@ -56,7 +56,13 @@ class ServerCheckTest {
         assertEquals(listOf("certificate fails validation: name mismatch"), bad.conflicts)
         val accepted = checkServer(base.copy(acceptInvalidCert = true), ServerProbe(post = good, accepted = "name mismatch"))
         assertTrue(accepted.conflicts.isEmpty())
-        assertEquals(1, accepted.notes.size)
+        assertEquals(
+            listOf(
+                "certificate fails validation (name mismatch); accepted by the Accept invalid certificate setting",
+                "server does not advertise COMPRESS=DEFLATE",
+            ),
+            accepted.notes,
+        )
     }
 
     @Test

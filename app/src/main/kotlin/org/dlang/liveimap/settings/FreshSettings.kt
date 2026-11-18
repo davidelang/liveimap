@@ -20,7 +20,7 @@ internal fun accountSettingsFile(context: Context): File =
  */
 internal suspend fun freshPreferenceStrings(file: File): Map<String, String> {
     if (!file.isFile || file.length() == 0L) return emptyMap()
-    val copy = File.createTempFile("liveimap-prefs-", ".pb", file.parentFile)
+    val copy = File.createTempFile("liveimap-prefs-", ".preferences_pb", file.parentFile)
     val job = SupervisorJob()
     try {
         file.inputStream().use { input -> copy.outputStream().use { output -> input.copyTo(output) } }

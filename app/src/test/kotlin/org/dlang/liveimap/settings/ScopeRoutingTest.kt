@@ -13,7 +13,7 @@ class ScopeRoutingTest {
     @Test
     fun scopePicksTheBlob() {
         assertEquals(SettingScope.Ui, settingsRegistry.getValue("indexPageSize").scope)
-        assertEquals(SettingScope.Ui, settingsRegistry.getValue("toolbars").scope)
+        assertEquals(SettingScope.Ui, settingsRegistry.getValue("theme").scope)
         assertEquals(SettingScope.Account, settingsRegistry.getValue("imapHost").scope)
         assertEquals(true, settingsRegistry.getValue("imapHost").server)
         assertEquals(SettingScope.Account, settingsRegistry.getValue("friendlyName").scope)

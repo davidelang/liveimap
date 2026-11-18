@@ -236,8 +236,6 @@ internal fun propose(
     accountSource: Map<String, Map<String, String>>,
     names: Map<String, String>,
 ): Proposal {
-    val fresh = Settings()
-    val defaults = linesOf(fresh.encode() + "\n" + fresh.encodeUi())
     val ui = LinkedHashMap(uiSource)
     val accounts = LinkedHashMap<String, LinkedHashMap<String, String>>()
     for ((id, map) in accountSource) accounts[id] = LinkedHashMap(map)
@@ -247,7 +245,7 @@ internal fun propose(
         for ((key, value) in map) {
             val spec = settingsRegistry[key] ?: continue
             if (!globalValueOk(spec, value)) {
-                map[key] = defaults[key] ?: ""
+                map[key] = lineDefault(spec)
                 bad.add(key)
             }
         }
@@ -294,6 +292,25 @@ internal fun propose(
     }
     val warning = warnings.joinToString("\n")
     return Proposal(ui, accounts, LoadQuestions(extras, moves, warning), warning)
+}
+
+private fun lineDefault(spec: SettingSpec): String {
+    fun scalar(value: JsonValue): String? = when (value) {
+        is JsonValue.Num -> value.value.toString()
+        is JsonValue.Bool -> value.value.toString()
+        is JsonValue.Str -> value.value
+        else -> null
+    }
+    val value = spec.leaf.default
+    scalar(value)?.let { return it }
+    if (value is JsonValue.Arr) {
+        val parts = ArrayList<String>()
+        for (item in value.items) {
+            parts.add(scalar(item) ?: return "")
+        }
+        return parts.joinToString(",")
+    }
+    return ""
 }
 
 private fun questionFor(key: String, found: List<Pair<String, String>>, names: Map<String, String>): MoveQuestion {
