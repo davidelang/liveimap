@@ -4388,3 +4388,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-17 - settings note
 
 - a settings child can be a sentence or a full-width line.
+
+## 2026-11-17 - host unit tests
+
+- host unit tests are testX86_64DebugUnitTest, and they check the setting set rather than the groups.

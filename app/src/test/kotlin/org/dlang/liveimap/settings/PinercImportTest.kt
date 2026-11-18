@@ -70,7 +70,7 @@ class PinercImportTest {
         assertEquals("Ada", next.displayName)
         assertEquals("INBOX.sent-mail", next.sentMailbox)
         assertEquals("INBOX.postponed", next.postponedMailbox)
-        assertEquals("ab", next.addressBookMailbox)
+        assertEquals(listOf(pineBook("ab")), next.addressBooks)
         assertEquals(SortKey.ThreadReferences, next.defaultView.key)
         assertTrue(next.defaultView.newestFirst)
         assertFalse(next.askBeforeExpunge)
@@ -87,7 +87,7 @@ class PinercImportTest {
                 email = "",
                 sentMailbox = "",
                 postponedMailbox = "",
-                addressBookMailbox = "",
+                addressBooks = emptyList(),
                 defaultView = FolderView(SortKey.Arrival, newestFirst = true),
                 askBeforeExpunge = true,
             ),
@@ -257,22 +257,22 @@ class PinercImportTest {
 
         val book = previewPinerc(
             "address-book=~/abook, {imap.example.com}ab\n",
-            Settings(addressBookMailbox = "keep"),
+            Settings(addressBooks = listOf(pineBook("keep"))),
         )
-        assertEquals("ab", book.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("ab")), book.next.addressBooks)
         assertTrue(book.skipped.contains("Local path is not a mailbox"))
 
         val localBook = previewPinerc(
             "address-book=~/abook\n",
-            Settings(addressBookMailbox = "keep"),
+            Settings(addressBooks = listOf(pineBook("keep"))),
         )
-        assertEquals("keep", localBook.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("keep")), localBook.next.addressBooks)
 
         val quoted = previewPinerc(
             "address-book=\"{imap.example.com}ab\", \"~/abook\"\n",
             Settings(),
         )
-        assertEquals("ab", quoted.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("ab")), quoted.next.addressBooks)
         assertTrue(quoted.skipped.contains("Local path is not a mailbox"))
     }
 
@@ -624,14 +624,14 @@ class PinercImportTest {
             "address-book={other.example.com}ab, {imap.example.com}book\n",
             host,
         )
-        assertEquals("book", book.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("book")), book.next.addressBooks)
         assertTrue(book.skipped.contains("other.example.com is a different server"))
 
         val plainBook = previewPinerc(
             "folder-collections=\"Mail\" {imap.example.com}INBOX.[]\naddress-book=ab\n",
-            host.copy(addressBookMailbox = "keep"),
+            host.copy(addressBooks = listOf(pineBook("keep"))),
         )
-        assertEquals("keep", plainBook.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("keep")), plainBook.next.addressBooks)
         assertTrue(plainBook.skipped.contains("Local path is not a mailbox"))
     }
 
@@ -689,19 +689,19 @@ class PinercImportTest {
             imapHost = "imap.example.com",
             sentMailbox = "old-sent",
             postponedMailbox = "same-post",
-            addressBookMailbox = "old-book",
+            addressBooks = listOf(pineBook("old-book")),
         )
         val preview = previewPinerc(
             "default-fcc=INBOX.sent-mail\npostponed-folder=same-post\naddress-book={imap.example.com}book\n",
             current,
         )
-        assertEquals("book", preview.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("book")), preview.next.addressBooks)
         assertTrue(preview.rows.any { it.startsWith("Sent mailbox:") })
         assertTrue(preview.rows.any { it.startsWith("Address book mailbox:") })
         val checked = withoutCheckedMailboxes(preview, current, testPinercPhrases())
         assertEquals("old-sent", checked.next.sentMailbox)
         assertEquals("same-post", checked.next.postponedMailbox)
-        assertEquals("old-book", checked.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("old-book")), checked.next.addressBooks)
         assertTrue(checked.rows.none { it.startsWith("Sent mailbox:") })
         assertTrue(checked.rows.none { it.startsWith("Address book mailbox:") })
         assertEquals(1, checked.skipped.count { it == "Could not check folders" })
@@ -823,7 +823,7 @@ class PinercImportTest {
         )
         assertEquals("INBOX.sent-mail", missing.next.sentMailbox)
         assertEquals(current.postponedMailbox, missing.next.postponedMailbox)
-        assertEquals(current.addressBookMailbox, missing.next.addressBookMailbox)
+        assertEquals(current.addressBooks, missing.next.addressBooks)
         assertTrue(missing.rows.any { it.startsWith("Sent mailbox:") })
         assertTrue(missing.rows.none { it == "Favorite: INBOX.one (One)" })
         assertTrue(missing.rows.contains("Favorite: INBOX.two (Two)"))
@@ -836,7 +836,7 @@ class PinercImportTest {
         assertEquals(listOf(keep, node), checked.next.favorites)
         assertEquals("INBOX.sent-mail", checked.next.sentMailbox)
         assertEquals(current.postponedMailbox, checked.next.postponedMailbox)
-        assertEquals(current.addressBookMailbox, checked.next.addressBookMailbox)
+        assertEquals(current.addressBooks, checked.next.addressBooks)
         assertTrue(checked.rows.any { it.startsWith("Sent mailbox:") })
         assertTrue(checked.rows.none { it.startsWith("Favorite:") })
         assertEquals(1, checked.skipped.count { it == "Could not check folders" })
@@ -898,7 +898,7 @@ class PinercImportTest {
             email = "ada@example.com",
             sentMailbox = "Sent Mail",
             postponedMailbox = "Later Mail",
-            addressBookMailbox = "Address Book",
+            addressBooks = listOf(pineBook("Address Book")),
             addressBookHistory = 4,
             altAddresses = listOf("ada@lang.hm"),
             favorites = listOf(
@@ -935,9 +935,9 @@ class PinercImportTest {
         assertEquals(TlsMode.Implicit, blank.next.tlsMode)
         assertEquals("Sent Mail", blank.next.sentMailbox)
         assertEquals("Later Mail", blank.next.postponedMailbox)
-        assertEquals("Address Book", blank.next.addressBookMailbox)
+        assertEquals(listOf(pineBook("Address Book")), blank.next.addressBooks)
         assertEquals(listOf(leaf), blank.next.favorites)
-        assertEquals(4, blank.next.addressBookHistory)
+        assertEquals(4L, blank.next.addressBookHistory)
         assertEquals(FolderView(SortKey.ThreadReferences, newestFirst = true), blank.next.defaultView)
         assertEquals(StartRule.FirstUnseen, blank.next.inboxStart)
         assertFalse(blank.next.askBeforeExpunge)
@@ -1061,6 +1061,8 @@ internal fun testPinercPhrases(): PinercPhrases = PinercPhrases(
     folderCheck = "Could not check folders",
     favorite = "Favorite",
 )
+
+internal fun pineBook(mailbox: String) = AddressBookEntry(kind = "pine", mailbox = mailbox)
 
 internal fun previewPinerc(text: String, current: Settings): PinercPreview =
     pinercPreview(text, current, testPinercPhrases())

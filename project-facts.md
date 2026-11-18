@@ -14,6 +14,7 @@
 ## Build and commit
 - **Standard build:** debug
 - **Test build:** instrumentation:x86_64Debug
+- **Unit tests:** testX86_64DebugUnitTest
 - Build: `./build_app --standard --test`. Agents never pass `--play`: only David runs the Play build, by hand.
 - Play-only code (`app/src/play`) compiles without signing: `./build_app --standard --test -- compilePlayReleaseKotlin`.
 - Commit: `./build_app --standard --test "<message>"|@<msg_file> <paths...>` (builds, then commits the named paths, plus `app/settings-display-bindings.json` when that update changed it, before the versionCode bump and before the release tag and the builds tag)

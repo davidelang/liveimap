@@ -6,6 +6,7 @@ import org.dlang.liveimap.settings.PreviewChoice
 import org.dlang.liveimap.settings.PreviewSize
 import org.dlang.liveimap.settings.decodeSettings
 import org.dlang.liveimap.settings.encode
+import org.dlang.liveimap.settings.encodeUi
 import org.dlang.liveimap.settings.newAccountSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,7 +15,7 @@ import org.junit.Test
 
 class PreviewSettingTest {
     @Test fun storedAccountsKeepDensityBehaviour() {
-        val legacy = decodeSettings(Settings(density = Density.Medium, previewSize = PreviewChoice.Density).encode())
+        val legacy = decodeSettings(Settings(density = Density.Medium, previewSize = PreviewChoice.Density).encodeUi())
         assertEquals(PreviewChoice.Density, legacy.previewSize)
         assertEquals(3, previewLines(legacy, PreviewSize.None))
         assertTrue(wantsPreview(legacy))

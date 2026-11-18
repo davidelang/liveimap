@@ -7,6 +7,7 @@ import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.settings.Settings
+import org.dlang.liveimap.settings.encodeUi
 import org.dlang.liveimap.settings.settingsRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -19,12 +19,12 @@ class TextZoomTest {
     @Test
     fun settingRoundTripsAndOldKeyStaysUnknown() {
         val text = Settings(appTextZoom = 130).encodeUi()
-        assertTrue(text.contains("appTextZoom=130"))
+        assertTrue(text.contains("\"appTextZoom\":130"))
         assertEquals(130, decodeSettings(text).appTextZoom)
-        val hostile = Settings().encode() + "readerTextZoom=130\n"
+        val hostile = documentWith(Settings().encode(), "readerTextZoom", "130")
         val decoded = decodeSettings(hostile)
         assertEquals(Settings().appTextZoom, decoded.appTextZoom)
-        assertTrue(decoded.unknownSettings.any { it.startsWith("readerTextZoom=") })
-        assertFalse(decoded.encode().contains("appTextZoom=130"))
+        assertTrue(decoded.unknownSettings.any { it.startsWith("readerTextZoom\n") })
+        assertFalse(decoded.encodeUi().contains("\"appTextZoom\":130"))
     }
 }

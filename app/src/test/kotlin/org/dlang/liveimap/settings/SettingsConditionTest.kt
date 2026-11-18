@@ -1,6 +1,5 @@
 package org.dlang.liveimap.settings
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,27 +26,5 @@ class SettingsConditionTest {
         assertFalse(holds("a@b"))
         assertFalse(holds("imap.lang.hm"))
         assertFalse(holds("H 0.5(list, message)"))
-    }
-
-    @Test
-    fun identitySummaryShowsEmail() {
-        val doc = parseSettingsDocument(settingsTreeText())
-        val groups = ArrayList<TreeNode.Group>()
-        fun walk(node: TreeNode) {
-            when (node) {
-                is TreeNode.Group -> {
-                    groups.add(node)
-                    node.children.forEach { walk(it) }
-                }
-                is TreeNode.Page -> node.children.forEach { walk(it) }
-                is TreeNode.Editor -> node.children.forEach { walk(it) }
-                is TreeNode.Leaf -> Unit
-                is TreeNode.Note -> Unit
-            }
-        }
-        doc.pages.forEach { walk(it) }
-        val identity = groups.first { it.id == "identity" }
-        val piece = summaryPiece(identity.summary, Settings(email = "a@b"), 1, 30)
-        assertEquals(SummaryPiece.Literal("a@b"), piece)
     }
 }

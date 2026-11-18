@@ -2,6 +2,7 @@ package org.dlang.liveimap.session
 
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.decodeSettings
+import org.dlang.liveimap.settings.documentWith
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -53,10 +54,11 @@ class ConnectionLimitsTest {
     @Test
     fun storedValuesRoundTripAndClamp() {
         val text = Settings(maxConnections = 4).encode()
-        assertEquals(true, text.contains("maxConnections=4"))
+        assertEquals(true, text.contains("\"maxConnections\":4"))
         assertEquals(4, decodeSettings(text).maxConnections)
-        assertEquals(true, Settings().encode().contains("maxConnections="))
-        val huge = Settings().encode().trimEnd() + "\nmaxConnections=9999\n"
-        assertEquals(MaxConnectionsCeiling, decodeSettings(huge).maxConnections)
+        assertEquals(true, Settings().encode().contains("\"maxConnections\":"))
+        val huge = documentWith(Settings().encode(), "maxConnections", "9999")
+        assertEquals(9999, decodeSettings(huge).maxConnections)
+        assertEquals(MaxConnectionsCeiling, connectionLimits(decodeSettings(huge)).total)
     }
 }

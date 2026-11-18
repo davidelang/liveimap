@@ -83,6 +83,18 @@ class SettingsStorageTest {
     }
 }
 
+internal fun documentWithout(text: String, vararg keys: String): String {
+    val fields = LinkedHashMap((parseJson(text) as JsonValue.Obj).fields)
+    for (key in keys) fields.remove(key)
+    return encodeJson(JsonValue.Obj(fields))
+}
+
+internal fun documentWith(text: String, key: String, rawJson: String): String {
+    val fields = LinkedHashMap((parseJson(text) as JsonValue.Obj).fields)
+    fields[key] = parseJson(rawJson)
+    return encodeJson(JsonValue.Obj(fields))
+}
+
 internal fun settingsTreeText(): String {
     val file = listOf(File("src/main/assets/settings-tree.json"), File("app/src/main/assets/settings-tree.json"))
         .first { it.isFile }

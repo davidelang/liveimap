@@ -28,7 +28,7 @@ class ComposeRulesGlueTest {
         assertEquals(s.composerHeaders, back.composerHeaders)
         assertEquals(s.viewerHeaders, back.viewerHeaders)
         assertEquals(s.sendingRules, back.sendingRules)
-        assertTrue(Settings().encode().contains("signature="))
+        assertTrue(Settings().encode().contains("\"signature\":"))
     }
 
     @Test

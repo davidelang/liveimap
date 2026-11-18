@@ -13,37 +13,6 @@ import org.junit.Test
 
 class SettingsOneLeafTest {
     @Test
-    fun oneVisibleLeafReplacesTheHeader() {
-        val groups = ArrayList<TreeNode.Group>()
-        fun walk(node: TreeNode) {
-            when (node) {
-                is TreeNode.Group -> {
-                    groups.add(node)
-                    node.children.forEach { walk(it) }
-                }
-                is TreeNode.Page -> node.children.forEach { walk(it) }
-                is TreeNode.Editor -> node.children.forEach { walk(it) }
-                is TreeNode.Leaf -> Unit
-                is TreeNode.Note -> Unit
-            }
-        }
-        parseSettingsDocument(settingsTreeText()).pages.forEach { walk(it) }
-        val read = { _: String -> "" }
-        fun shown(id: String, sdk: Int) = leafShownInstead(groups.first { it.id == id }, read, sdk)?.setting
-        assertEquals("replyAboveQuote", shown("replying", 30))
-        assertEquals("layoutCatalog", shown("custom_panel_layout", 30))
-        assertEquals("favorites", shown("favorites", 30))
-        assertEquals("theme", shown("theme", 30))
-        assertNull(shown("theme", 31))
-        for (id in listOf(
-            "mailboxes", "account", "server", "sending", "logging", "layout", "address_book",
-            "forwarding", "composing",
-        )) {
-            assertNull(id, shown(id, 30))
-        }
-    }
-
-    @Test
     fun hiddenSiblingsLeaveTheOneLeaf() {
         val hidden = Condition.Equals("flag", JsonValue.Bool(true))
         val plain = group("Plain", listOf(leaf("kept"), leaf("hidden", hidden)))

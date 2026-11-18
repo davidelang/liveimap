@@ -12,16 +12,16 @@ class TolerantSettingsTest {
 
     @Test
     fun unknownKeysAreKeptAndRoundTrip() {
-        val text = base.encode() + "futureOption=42\n"
+        val text = documentWith(base.encode(), "futureOption", "42")
         val decoded = decodeSettings(text)
         assertEquals("mail.lang.hm", decoded.imapHost)
-        assertEquals(listOf("futureOption=42"), decoded.unknownSettings)
-        assertTrue(decoded.encode().contains("futureOption=42"))
+        assertEquals(listOf("futureOption\n42"), decoded.unknownSettings)
+        assertTrue(decoded.encode().contains("\"futureOption\":42"))
     }
 
     @Test
     fun oneBadValueFallsBackToItsDefaultOnly() {
-        val text = base.encode().replace(Regex("(?m)^density=.*$"), "density=Galactic").replace(Regex("(?m)^imapPort=.*$"), "imapPort=x")
+        val text = documentWith(documentWith(base.encode(), "density", "\"Galactic\""), "imapPort", "\"x\"")
         val decoded = decodeSettings(text)
         assertEquals(Settings().density, decoded.density)
         assertEquals(Settings().imapPort, decoded.imapPort)
@@ -30,7 +30,7 @@ class TolerantSettingsTest {
 
     @Test
     fun missingAndDuplicateKeysAreFine() {
-        val text = base.encode().lines().filterNot { it.startsWith("showDeleted=") }.joinToString("\n") + "\nusername=other\n"
+        val text = documentWith(documentWithout(base.encode(), "showDeleted"), "username", "\"other\"")
         val decoded = decodeSettings(text)
         assertEquals("other", decoded.username)
         assertEquals(Settings().showDeleted, decoded.showDeleted)
@@ -38,11 +38,14 @@ class TolerantSettingsTest {
 
     @Test
     fun inboundRulesStillSpanLinesAndStopAtUnknownKeys() {
-        val rules = "From=a%40b\tseen\nSubject=x\tflagged"
-        val text = base.encode() + "inboundRules=$rules\nnewerThing=1\n"
+        val text = documentWith(
+            documentWith(base.encode(), "inboundRules", """["From=a%40b\tseen","Subject=x\tflagged"]"""),
+            "newerThing",
+            "1",
+        )
         val decoded = decodeSettings(text)
         assertEquals(2, decoded.inboundRules.size)
-        assertEquals(listOf("newerThing=1"), decoded.unknownSettings)
+        assertEquals(listOf("newerThing\n1"), decoded.unknownSettings)
     }
 
     @Test

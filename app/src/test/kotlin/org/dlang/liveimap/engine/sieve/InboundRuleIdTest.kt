@@ -29,8 +29,8 @@ class InboundRuleIdTest {
             fileInto = "INBOX.lists",
         )
         val text = Settings(inboundRules = listOf(stored)).encode()
-        val line = text.lines().first { it.startsWith("inboundRules=") }
-        assertFalse(line.contains("id="))
+        assertTrue(text.contains("\"inboundRules\":"))
+        assertFalse(text.contains("id="))
         val decoded = decodeSettings(text).inboundRules.single()
         assertEquals("", decoded.id)
         val kept = InboundRule(

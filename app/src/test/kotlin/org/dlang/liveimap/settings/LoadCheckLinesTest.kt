@@ -22,7 +22,7 @@ class LoadCheckLinesTest {
         assertTrue(map.getValue("inboundRules").contains("\nSubject=x\tfile=Sent"))
         val proposal = propose(emptyMap(), mapOf("a" to map), mapOf("a" to "Ada"))
         assertTrue(proposal.questions.extras.none { it.key == "From" || it.key == "Subject" })
-        assertEquals(2, decodeSettings(textOfForTest(map)).inboundRules.size)
+        assertEquals(2, decodeInboundRules(map.getValue("inboundRules")).size)
     }
 
     @Test
@@ -78,6 +78,3 @@ class LoadCheckLinesTest {
         assertEquals(Settings().maxConnections.toString(), proposal.accounts.getValue("a")["maxConnections"])
     }
 }
-
-private fun textOfForTest(map: Map<String, String>): String =
-    map.entries.joinToString("\n") { (key, value) -> "$key=$value" }

@@ -1,8 +1,10 @@
 package org.dlang.liveimap.ui.contacts
 
+import org.dlang.liveimap.settings.AddressBookEntry
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.androidSourceId
 import org.dlang.liveimap.settings.decodeSettings
+import org.dlang.liveimap.settings.documentWith
 import org.dlang.liveimap.settings.encode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,34 +124,44 @@ class CompletionTest {
     }
 
     @Test
-    fun missingCompletionSourcesKeyDecodesToPineOnly() {
+    fun missingAddressBooksKeyDecodesToNone() {
         val encoded = Settings().encode()
-        assertTrue(encoded.contains("completionSources="))
-        assertEquals(listOf("pine"), decodeSettings(encoded).completionSources)
-        val removed = Settings(completionSources = listOf("android|x|y")).encode()
-            .lineSequence()
-            .filter { it.isNotEmpty() && !it.startsWith("completionSources=") }
-            .joinToString("\n")
-        assertEquals(listOf("pine"), decodeSettings(removed).completionSources)
+        assertTrue(encoded.contains("\"addressBooks\":[]"))
+        assertEquals(emptyList<AddressBookEntry>(), decodeSettings(encoded).addressBooks)
+        val removed = documentWith(
+            Settings(addressBooks = listOf(AddressBookEntry(kind = "android", accountType = "x", accountName = "y"))).encode(),
+            "addressBooks",
+            "[]",
+        )
+        assertEquals(emptyList<AddressBookEntry>(), decodeSettings(removed).addressBooks)
+        assertEquals(emptyList<CompletionSource>(), completionSourcesInOrder(decodeSettings(removed).addressBooks, emptyMap(), emptyMap(), emptyMap()))
     }
 
     @Test
-    fun emptyCompletionSourcesValueDecodesToNone() {
-        val appended = Settings().encode().trimEnd() + "\ncompletionSources=\n"
-        assertEquals(emptyList<String>(), decodeSettings(appended).completionSources)
-        val saved = Settings(completionSources = emptyList())
-        assertTrue(saved.encode().lines().contains("completionSources="))
-        assertEquals(emptyList<String>(), decodeSettings(saved.encode()).completionSources)
+    fun emptyAddressBooksDecodeToNoSources() {
+        val saved = Settings(addressBooks = emptyList())
+        assertTrue(saved.encode().contains("\"addressBooks\":[]"))
+        assertEquals(emptyList<AddressBookEntry>(), decodeSettings(saved.encode()).addressBooks)
         assertEquals(saved.encode(), decodeSettings(saved.encode()).encode())
+        assertEquals(emptyList<CompletionSource>(), completionSourcesInOrder(saved.addressBooks, emptyMap(), emptyMap(), emptyMap()))
     }
 
     @Test
-    fun completionSourcesKeepOrderAndEncoding() {
+    fun addressBooksKeepOrderAndSourceEncoding() {
         val id = androidSourceId("com.google", "Ada/Lane")
         assertEquals("android|com.google|Ada%2FLane", id)
-        val saved = Settings(completionSources = listOf(id, "pine"))
+        val android = AddressBookEntry(kind = "android", accountType = "com.google", accountName = "Ada/Lane")
+        val pine = AddressBookEntry(kind = "pine", mailbox = "ab")
+        val saved = Settings(addressBooks = listOf(android, pine))
         val text = saved.encode()
-        assertEquals(listOf(id, "pine"), decodeSettings(text).completionSources)
+        assertEquals(listOf(android, pine), decodeSettings(text).addressBooks)
         assertEquals(text, decodeSettings(text).encode())
+        val sources = completionSourcesInOrder(
+            decodeSettings(text).addressBooks,
+            mapOf("ab" to emptyList()),
+            mapOf(id to emptyList()),
+            mapOf(id to "Ada"),
+        )
+        assertEquals(listOf("Ada", "ab"), sources.map { it.sourceLabel })
     }
 }

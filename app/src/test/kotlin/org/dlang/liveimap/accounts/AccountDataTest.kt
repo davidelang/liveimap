@@ -57,7 +57,7 @@ class AccountDataTest {
         val fresh = newAccountSettings()
         val userData = accountUserData("new", fresh, null)
         val loaded = overlayAccountFields(decodeSettings(fresh.encode()), userData)
-        assertEquals(fresh, loaded)
+        assertEquals(fresh.copy(storedKeys = loaded.storedKeys), loaded)
         assertEquals("", loaded.imapHost)
         assertEquals("", loaded.username)
         assertEquals("", loaded.email)
@@ -84,7 +84,8 @@ class AccountDataTest {
         assertEquals("bea@example.com", plan.userData[userEmail])
         assertEquals("id1", plan.userData[userAccountId])
         // the engine's view (file overlaid with the record) is exactly what was saved
-        assertEquals(plan.settings, overlayAccountFields(decodeSettings(plan.text), plan.userData))
+        val over = overlayAccountFields(decodeSettings(plan.text), plan.userData)
+        assertEquals(plan.settings.copy(storedKeys = over.storedKeys), over)
         // a moved IMAP server does not keep the old password slot (F32)
         assertEquals("", plan.passwordSlot)
 
@@ -92,7 +93,8 @@ class AccountDataTest {
         val same = planAccountSave("id1", before, before, before.encode(), "slot")
         assertEquals(accountUserData("id1", before, null), same.userData)
         assertEquals("slot", same.passwordSlot)
-        assertEquals(before, overlayAccountFields(decodeSettings(same.text), same.userData))
+        val sameOver = overlayAccountFields(decodeSettings(same.text), same.userData)
+        assertEquals(before.copy(storedKeys = sameOver.storedKeys), sameOver)
 
         // every record field except bookkeeping keys comes from the settings
         val bookkeeping = setOf(userAccountId, userSchema, userMigratedFrom)

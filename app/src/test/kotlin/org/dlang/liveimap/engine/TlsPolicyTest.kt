@@ -46,11 +46,11 @@ class TlsPolicyTest {
     @Test
     fun settingsRoundTripAndOmittedWhenOff() {
         val defaults = Settings().encode()
-        assertTrue(defaults.contains("acceptInvalidCert=false"))
-        assertTrue(defaults.contains("allowOldTls=false"))
+        assertTrue(defaults.contains("\"acceptInvalidCert\":false"))
+        assertTrue(defaults.contains("\"allowOldTls\":false"))
         val text = Settings(acceptInvalidCert = true, allowOldTls = true).encode()
-        assertTrue(text.contains("acceptInvalidCert=true"))
-        assertTrue(text.contains("allowOldTls=true"))
+        assertTrue(text.contains("\"acceptInvalidCert\":true"))
+        assertTrue(text.contains("\"allowOldTls\":true"))
         val back = decodeSettings(text)
         assertTrue(back.acceptInvalidCert)
         assertTrue(back.allowOldTls)
@@ -69,7 +69,7 @@ class TlsPolicyTest {
 
     @Test
     fun authMechanismRoundTrip() {
-        assertTrue(Settings().encode().contains("authMechanism="))
+        assertTrue(Settings().encode().contains("\"authMechanism\":"))
         val back = decodeSettings(Settings(authMechanism = "SCRAM-SHA-256").encode())
         assertEquals("SCRAM-SHA-256", back.authMechanism)
     }

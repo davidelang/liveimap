@@ -2,6 +2,7 @@ package org.dlang.liveimap.ui.contacts
 
 import org.dlang.liveimap.settings.Settings
 import org.dlang.liveimap.settings.decodeSettings
+import org.dlang.liveimap.settings.documentWithout
 import org.dlang.liveimap.settings.encode
 import org.dlang.liveimap.settings.previewPinerc
 import org.junit.Assert.assertEquals
@@ -54,29 +55,31 @@ class AlpineBookWriteTest {
     @Test
     fun missingHistoryKeysStayAtDefaults() {
         val text = Settings().encode()
-        assertTrue(text.contains("addressBookHistory="))
-        assertTrue(text.contains("addressBookNeverTrim="))
+        assertTrue(text.contains("\"addressBookHistory\":"))
+        assertTrue(text.contains("\"addressBookNeverTrim\":"))
         val decoded = decodeSettings(text)
-        assertEquals(3, decoded.addressBookHistory)
+        assertEquals(3L, decoded.addressBookHistory)
         assertFalse(decoded.addressBookNeverTrim)
-        val stripped = Settings(addressBookHistory = 5, addressBookNeverTrim = true).encode()
-            .lineSequence()
-            .filterNot { it.startsWith("addressBookHistory=") || it.startsWith("addressBookNeverTrim=") }
-            .joinToString("\n")
-        assertEquals(3, decodeSettings(stripped).addressBookHistory)
+        val stripped = documentWithout(
+            Settings(addressBookHistory = 5, addressBookNeverTrim = true).encode(),
+            "addressBookHistory",
+            "addressBookNeverTrim",
+        )
+        assertEquals(3L, decodeSettings(stripped).addressBookHistory)
         assertFalse(decodeSettings(stripped).addressBookNeverTrim)
         val round = Settings(addressBookHistory = 5, addressBookNeverTrim = true)
-        assertEquals(round, decodeSettings(round.encode()))
+        val decoded = decodeSettings(round.encode())
+        assertEquals(round.copy(storedKeys = decoded.storedKeys), decoded)
     }
 
     @Test
     fun pinercHistoryIsDigitsOnlyAndDoesNotTrim() {
         val ok = previewPinerc("remote-abook-history=4\n", Settings())
-        assertEquals(4, ok.next.addressBookHistory)
+        assertEquals(4L, ok.next.addressBookHistory)
         assertFalse(ok.next.addressBookNeverTrim)
         assertFalse(ok.skipped.contains("Address book history is not a number."))
         val bad = previewPinerc("remote-abook-history=nope\n", Settings())
-        assertEquals(3, bad.next.addressBookHistory)
+        assertEquals(3L, bad.next.addressBookHistory)
         assertFalse(bad.next.addressBookNeverTrim)
         assertTrue(bad.skipped.contains("Address book history is not a number."))
     }
