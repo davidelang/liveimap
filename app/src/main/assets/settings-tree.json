@@ -92,20 +92,6 @@
                   }
                 },
                 {
-                  "setting": "maxJmapResponseBytes",
-                  "type": "number",
-                  "default": 16777216,
-                  "title": "Largest JMAP server response"
-                },
-                {
-                  "setting": "jmapPartCacheMessages",
-                  "type": "number",
-                  "default": 200,
-                  "title": "JMAP part cache",
-                  "min": 1,
-                  "max": 10000
-                },
-                {
                   "setting": "imapHost",
                   "type": "text",
                   "default": "",
@@ -156,8 +142,8 @@
                   }
                 },
                 {
-                  "group": "imapSecurity",
-                  "title": "Imap Security",
+                  "group": "advanced_Security",
+                  "title": "Advanced Security",
                   "children": [
                     {
                       "setting": "tlsMode",
@@ -360,10 +346,38 @@
                       "setting": "certPin",
                       "type": "text",
                       "default": "",
-                      "title": "Certificate pin",
+                      "title": "imap Certificate pin",
                       "server": true,
                       "visibleWhen": {
                         "setting": "jmapFolders",
+                        "equals": false
+                      }
+                    },
+                    {
+                      "setting": "sieveTlsMode",
+                      "type": "choice",
+                      "default": "StartTls",
+                      "title": "Sieve TLS",
+                      "server": true,
+                      "choices": [
+                        "None",
+                        "StartTls",
+                        "Implicit"
+                      ],
+                      "choiceTitles": {
+                        "None": "None",
+                        "StartTls": "STARTTLS",
+                        "Implicit": "Implicit TLS"
+                      }
+                    },
+                    {
+                      "setting": "sieveCertPin",
+                      "type": "text",
+                      "default": "",
+                      "title": "Sieve certificate pin",
+                      "server": true,
+                      "visibleWhen": {
+                        "setting": "sieveSameAsInbound",
                         "equals": false
                       }
                     },
@@ -373,6 +387,23 @@
                       "default": "",
                       "title": "JMAP certificate pin",
                       "server": true
+                    },
+                    {
+                      "setting": "passwordStorage",
+                      "type": "choice",
+                      "default": "googleRestore",
+                      "title": "Password storage",
+                      "server": true,
+                      "choices": [
+                        "googleRestore",
+                        "none",
+                        "passwordManager"
+                      ],
+                      "choiceTitles": {
+                        "googleRestore": "Google restore",
+                        "none": "Do not back up passwords",
+                        "passwordManager": "Password manager"
+                      }
                     },
                     {
                       "setting": "checkServer",
@@ -516,7 +547,7 @@
                   "setting": "sieveSameAsInbound",
                   "type": "bool",
                   "default": true,
-                  "title": "Same as inbound server and login",
+                  "title": "Sieve uses same login as inbound server",
                   "server": true
                 },
                 {
@@ -546,23 +577,10 @@
                 {
                   "setting": "sievePassword",
                   "type": "password",
-                  "title": "Sieve password"
-                },
-                {
-                  "setting": "passwordStorage",
-                  "type": "choice",
-                  "default": "googleRestore",
-                  "title": "Password storage",
-                  "server": true,
-                  "choices": [
-                    "googleRestore",
-                    "none",
-                    "passwordManager"
-                  ],
-                  "choiceTitles": {
-                    "googleRestore": "Google restore",
-                    "none": "Do not back up passwords",
-                    "passwordManager": "Password manager"
+                  "title": "Sieve password",
+                  "visibleWhen": {
+                    "setting": "sieveSameAsInbound",
+                    "equals": false
                   }
                 },
                 {
@@ -573,51 +591,8 @@
                   "server": true,
                   "min": 1,
                   "max": 65535
-                },
-                {
-                  "setting": "sieveTlsMode",
-                  "type": "choice",
-                  "default": "StartTls",
-                  "title": "Sieve TLS",
-                  "server": true,
-                  "choices": [
-                    "None",
-                    "StartTls",
-                    "Implicit"
-                  ],
-                  "choiceTitles": {
-                    "None": "None",
-                    "StartTls": "STARTTLS",
-                    "Implicit": "Implicit TLS"
-                  }
-                },
-                {
-                  "setting": "sieveCertPin",
-                  "type": "text",
-                  "default": "",
-                  "title": "Sieve certificate pin",
-                  "server": true
-                },
-                {
-                  "setting": "sieveConnectSeconds",
-                  "type": "number",
-                  "default": 30,
-                  "title": "Sieve connect timeout",
-                  "server": true
-                },
-                {
-                  "setting": "sieveReadSeconds",
-                  "type": "number",
-                  "default": 60,
-                  "title": "Sieve read timeout",
-                  "server": true
                 }
               ]
-            },
-            {
-              "setting": "accountSettingsFile",
-              "type": "settingsFile",
-              "title": "Import or export this account"
             }
           ],
           "summary": [
@@ -1314,6 +1289,34 @@
                   "title": "Disable command pipelining"
                 },
                 {
+                  "setting": "maxJmapResponseBytes",
+                  "type": "number",
+                  "default": 16777216,
+                  "title": "Largest JMAP server response"
+                },
+                {
+                  "setting": "jmapPartCacheMessages",
+                  "type": "number",
+                  "default": 200,
+                  "title": "JMAP part cache",
+                  "min": 1,
+                  "max": 10000
+                },
+                {
+                  "setting": "sieveConnectSeconds",
+                  "type": "number",
+                  "default": 30,
+                  "title": "Sieve connect timeout",
+                  "server": true
+                },
+                {
+                  "setting": "sieveReadSeconds",
+                  "type": "number",
+                  "default": 60,
+                  "title": "Sieve read timeout",
+                  "server": true
+                },
+                {
                   "setting": "compression",
                   "type": "bool",
                   "default": false,
@@ -1622,6 +1625,11 @@
               ]
             }
           ]
+        },
+        {
+          "setting": "accountSettingsFile",
+          "type": "settingsFile",
+          "title": "Import or export this account"
         }
       ]
     },
@@ -1638,7 +1646,9 @@
           "line": true
         },
         {
-          "text": "Global Settings"
+          "text": "Global Settings",
+          "size": 2,
+          "bold": true
         },
         {
           "group": "appearance",
