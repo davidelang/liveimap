@@ -4396,3 +4396,5 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-18 - host tests do not name settings defaults
 
 - host tests round-trip values they set and do not name a settings-tree default. `sendingRules` stays a string. The three list leaves default to an empty array.
+
+## 2026-11-18 - Save no longer compares two accounts, a mailbox Choose button stays visible, and a Pine book is picked from the folder list.

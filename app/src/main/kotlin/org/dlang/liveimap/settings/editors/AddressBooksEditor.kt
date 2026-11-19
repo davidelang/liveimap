@@ -241,12 +241,20 @@ internal fun ManageAddresses(
             }
         }
     }
-    var mailbox by remember { mutableStateOf("") }
-    LineField(S("Add Pine book"), mailbox, ready = editor.ready) { text ->
-        mailbox = ""
-        val name = text.trim()
-        if (name.isEmpty()) return@LineField
-        editor.persist(editor.settings.copy(addressBooks = editor.settings.addressBooks + AddressBookEntry("pine", mailbox = name)))
+    var addingPine by remember { mutableStateOf(false) }
+    TextButton(onClick = { addingPine = true }) { Text(S("Add Pine book")) }
+    if (addingPine) {
+        SettingsFolderChooser(
+            editor = editor,
+            drafts = { null },
+            onPick = { mailbox ->
+                if (mailbox.isNotEmpty()) {
+                    editor.persist(assignMailbox(editor.settings, MailboxPick.AddressBook, mailbox))
+                }
+                addingPine = false
+            },
+            onDismiss = { addingPine = false },
+        )
     }
     if (!granted) {
         TextButton(onClick = { requestContacts.launch(android.Manifest.permission.READ_CONTACTS) }) {

@@ -5223,13 +5223,8 @@ internal fun MailboxLine(
     onChoose: () -> Unit,
     onValue: (String) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            LineField(label, value, onCommit = onValue)
-        }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        LineField(label, value, onCommit = onValue)
         TextButton(onClick = onChoose) { Text(S("Choose")) }
     }
 }
