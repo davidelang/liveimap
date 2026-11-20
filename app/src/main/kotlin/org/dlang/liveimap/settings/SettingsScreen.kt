@@ -1223,8 +1223,7 @@ fun SettingsTree(
                 notePaneScroll(scroll, bounds.top, bounds.bottom)
             }
             .verticalScroll(scroll)
-            .padding(settingsPanePadding)
-            .testTag("smoke-settings"),
+            .padding(settingsPanePadding),
     ) {
             val saveFailure = settingsSaveFailure.value
             if (saveFailure != null) {

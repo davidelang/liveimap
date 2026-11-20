@@ -1,6 +1,5 @@
 package org.dlang.liveimap.settings
 
-import java.io.File
 import org.dlang.liveimap.accounts.NoAccountSelected
 import org.dlang.liveimap.accounts.accountUserData
 import org.dlang.liveimap.accounts.overlayAccountFields
@@ -435,8 +434,6 @@ class ServerSaveTest {
         assertEquals("", frozenLoad.signature)
     }
 
-    private fun screen() = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
-        .map(::File).first { it.exists() }.readText()
 
 
 

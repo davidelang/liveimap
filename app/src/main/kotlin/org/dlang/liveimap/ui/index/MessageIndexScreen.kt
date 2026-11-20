@@ -3687,7 +3687,7 @@ private fun MessageIndexLoaded(
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("smoke-index"),
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             IndexTopBar()
         },

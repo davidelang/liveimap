@@ -1,21 +1,15 @@
 package org.dlang.liveimap.ui
 
-import java.io.File
 import org.dlang.liveimap.session.MaxExtraIdle
 import org.dlang.liveimap.session.extraIdleBudgetFromText
 import org.dlang.liveimap.session.planWatchedFolders
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** F70, F73, F81, F82, F84 guards. */
 class SmallHardeningTest {
-    private fun src(p: String) = File("src/main/$p").readText()
-
-
-
     @Test fun f81IdleBudgetClamped() {
         assertNull(extraIdleBudgetFromText("500"))
         assertEquals(8, extraIdleBudgetFromText("8"))

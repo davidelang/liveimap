@@ -2094,7 +2094,7 @@ private fun ComposeForm(
     @Composable
     fun ComposeChrome() {
     Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("smoke-compose"),
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = {

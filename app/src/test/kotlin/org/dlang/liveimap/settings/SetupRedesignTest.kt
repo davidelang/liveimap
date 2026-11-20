@@ -1,6 +1,5 @@
 package org.dlang.liveimap.settings
 
-import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.session.SmtpLoginCheck
 import org.junit.Assert.assertEquals
@@ -11,19 +10,6 @@ import org.junit.Test
 
 /** David, 2026-10-12: setup page order, JMAP sending, flowed text, no Advanced, Test account next to Save. */
 class SetupRedesignTest {
-    private val screen = listOf("src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt", "app/src/main/kotlin/org/dlang/liveimap/settings/SettingsScreen.kt")
-        .map(::File).first { it.exists() }.readText()
-
-    private fun group(name: String): String {
-        val start = screen.indexOf("private fun $name(")
-        val next = screen.indexOf("\nprivate fun ", start + 1).let { if (it < 0) screen.length else it }
-        return screen.substring(start, next)
-    }
-
-
-
-
-
     @Test fun everyAccountCanSend() {
         val bare = newAccountSettings().copy(smtpHost = "", emailSubmission = false)
         assertEquals(

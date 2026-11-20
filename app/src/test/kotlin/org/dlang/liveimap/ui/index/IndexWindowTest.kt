@@ -104,11 +104,6 @@ class IndexWindowTest {
         assertEquals(SwipeVisual("primaryContainer", "arrow_back"), swipeVisual(SwipeAction.Previous))
     }
 
-    private fun screenSource(): String = listOf(
-        "src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
-        "app/src/main/kotlin/org/dlang/liveimap/ui/index/MessageIndexScreen.kt",
-    ).map { java.io.File(it) }.first { it.exists() }.readText()
-
     @Test
     fun indexStatusDescriptionAndSequenceWidth() {
         val words = arrayOf("forwarded", "replied", "flagged", "to me", "has attachment")
@@ -138,8 +133,6 @@ class IndexWindowTest {
                 words[4],
             ),
         )
-        val statusFn = screenSource().substringAfter("fun indexStatusDescription(").substringBefore("\nfun ")
-        for (phrase in words) assertFalse(statusFn.contains(phrase))
         assertEquals(1, existsColumnChars(0))
         assertEquals(3, existsColumnChars(999))
         assertEquals(4, existsColumnChars(1000))

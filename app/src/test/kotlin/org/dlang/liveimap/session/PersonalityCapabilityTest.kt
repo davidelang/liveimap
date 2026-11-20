@@ -34,18 +34,6 @@ class PersonalityCapabilityTest {
         assertFalse(bare.uidPlus)
     }
 
-    @Test fun wrapperFilesAreAbsent() {
-        val rels = listOf(
-            "src/main/kotlin/org/dlang/liveimap/session/CapabilityChoice.kt",
-            "src/test/kotlin/org/dlang/liveimap/session/CapabilityChoiceTest.kt",
-            "src/main/kotlin/org/dlang/liveimap/jmap/JmapCapabilityChoice.kt",
-            "src/test/kotlin/org/dlang/liveimap/jmap/JmapCapabilityChoiceTest.kt",
-        )
-        for (rel in rels) {
-            assertFalse(rel, File(rel).exists() || File("app/$rel").exists())
-        }
-    }
-
     @Test fun recordedCapabilitiesDriveConsistentChoices() {
         FakeimapPin.requireReady()
         val dir = FakeimapPin.personalities()

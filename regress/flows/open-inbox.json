@@ -1,0 +1,15 @@
+{
+  "schema": "capture-flow/1",
+  "name": "open-inbox",
+  "package": "${pkg}",
+  "description": "Open the screenshot inbox and read the newest visible subject.",
+  "steps": [
+    {"id": "launch", "launch": true},
+    {"id": "folders", "wait_for": {"string": "settings_group_folders_title"}, "timeout_s": 40},
+    {"id": "inbox", "tap": {"text": "INBOX"}, "scroll": "page", "timeout_s": 60},
+    {"id": "row", "wait_for": {"text": "Board deck for tomorrow"}, "timeout_s": 120},
+    {"id": "open", "tap": {"text": "Board deck for tomorrow"}, "timeout_s": 30},
+    {"id": "body", "wait_for": {"text": "xxxxx", "contains": true}, "timeout_s": 60},
+    {"id": "subject", "read_text": {"text": "Board deck for tomorrow"}, "save_as": "subject"}
+  ]
+}

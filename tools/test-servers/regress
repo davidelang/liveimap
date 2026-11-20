@@ -17,7 +17,7 @@ CACHE_PATH = os.path.join(REC_ROOT, "regress-cache.json")
 PKG = "com.davidlang.liveimap"
 TEST_PKG = "com.davidlang.liveimap.test"
 SERIAL = "emulator-5554"
-SUITES = ["imap", "imap-idle", "imap-mechs", "jmap", "smtp", "sieve", "contacts", "ui"]
+SUITES = ["imap", "imap-idle", "imap-mechs", "jmap", "smtp", "sieve", "contacts", "ui", "flow"]
 JMAP_SERVERS = ["cyrus-3124", "cyrus-3137", "stalwart", "stalwart-01625", "stalwart-dev", "stalwart-0155"]
 UNTESTED = [
     "two accounts and a pin dialog",
@@ -2261,6 +2261,213 @@ def stop(msg, suites, servers, unseeded):
     finish(line)
 
 
+FLOW_CASES = (
+    ("open-inbox", "regress/flows/open-inbox.json", "regress/flows/open-inbox.expected.json"),
+    ("broken-fetch", "regress/flows/broken-fetch.json", "regress/flows/broken-fetch.expected.json"),
+)
+
+
+def flow_save_ids(flow):
+    """save_as name -> step id. The report stores the step id and values.text, not save_as."""
+    out = {}
+    steps = flow.get("steps") if isinstance(flow, dict) else None
+    if not isinstance(steps, list):
+        return out
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or not isinstance(step.get("save_as"), str):
+            continue
+        command = "read_text"
+        for key in ("tap", "long_press", "swipe", "type", "back", "home", "rotate",
+                    "wait_for", "wait_gone", "wait", "read_text", "screenshot", "note", "launch"):
+            if key in step:
+                command = key
+                break
+        sid = step.get("id")
+        if not isinstance(sid, str) or not sid:
+            sid = "%s-%d" % (command, index)
+        out[step["save_as"]] = sid
+    return out
+
+
+def judge_flow_report(report, expected, save_ids):
+    """Empty when the latest run matches. Otherwise the reason it does not."""
+    if report is None:
+        return "report.json is missing"
+    if not isinstance(report, dict):
+        return "report is not an object"
+    if not isinstance(expected, dict) or not expected:
+        return "expected values are empty"
+    runs = report.get("runs")
+    if not isinstance(runs, list) or not runs:
+        return "report has no runs"
+    run = runs[-1]
+    if not isinstance(run, dict):
+        return "latest run is not an object"
+    if run.get("stopped"):
+        return "run stopped: " + str(run.get("reason") or "")
+    flows = run.get("flows")
+    if not isinstance(flows, list) or not flows or not isinstance(flows[-1], dict):
+        return "run has no flow"
+    flow = flows[-1]
+    if flow.get("stopped"):
+        return "flow stopped"
+    steps = flow.get("steps")
+    if not isinstance(steps, list):
+        return "flow has no steps"
+    by_id = {}
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if step.get("stopped"):
+            return "step %s stopped: %s" % (step.get("id"), step.get("message") or "")
+        by_id[step.get("id")] = step
+    for key, want in expected.items():
+        if not isinstance(want, str):
+            return "%s expected value is not a string" % key
+        sid = save_ids.get(key)
+        if not sid:
+            return "flow has no save_as %s" % key
+        step = by_id.get(sid)
+        if step is None:
+            return "report has no step %s" % sid
+        got = (step.get("values") or {}).get("text") if isinstance(step.get("values"), dict) else None
+        if got != want:
+            return "%s: %r != %r" % (key, got, want)
+    return ""
+
+
+def flow_failure(script_code, report, expected, save_ids):
+    """Empty on a match. A non-zero script-android-app status is a failure even when the text matches."""
+    reasons = []
+    if script_code:
+        reasons.append("script-android-app exited %s" % script_code)
+    judged = judge_flow_report(report, expected, save_ids)
+    if judged:
+        reasons.append(judged)
+    return "; ".join(reasons)
+
+
+def completed_run_code(result_rows):
+    """A finished run stays exit 0 except when the flow judgment did not pass."""
+    for row in result_rows:
+        if row.get("suite") == "flow" and row.get("result") != "PASS":
+            return 1
+    return 0
+
+
+def adb_flow(args, timeout=60):
+    try:
+        proc = subprocess.run(["adb", "-s", SERIAL, *args], capture_output=True, text=True,
+                              errors="replace", timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return 1, str(exc)
+    text = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
+    return proc.returncode, text
+
+
+def prepare_flow_device(host, port, user, password):
+    code, text = adb_flow(["shell", "pm", "clear", PKG], timeout=60)
+    if code != 0:
+        return "pm clear: " + first_line(text)
+    for key in ("animator_duration_scale", "transition_animation_scale", "window_animation_scale"):
+        code, text = adb_flow(["shell", "settings", "put", "global", key, "0"])
+        if code != 0:
+            return "animator scale %s: %s" % (key, first_line(text))
+    code, text = adb_flow([
+        "shell", "am", "instrument", "-w",
+        "-e", "class", "org.dlang.liveimap.lab.LabAccountTest#addLabAccount",
+        "-e", "labHost", host,
+        "-e", "labPort", str(port),
+        "-e", "labUser", user,
+        "-e", "labPass", password,
+        "-e", "labName", "Screenshot",
+        "-e", "labEmail", user,
+        TEST_PKG + "/androidx.test.runner.AndroidJUnitRunner",
+    ], timeout=180)
+    if code != 0 or "OK (1 test)" not in text:
+        return "LabAccountTest: " + first_line(text)
+    return ""
+
+
+def drive_one_flow(name, flow_rel, expected_rel):
+    flow_path = os.path.join(REPO, flow_rel)
+    expected_path = os.path.join(REPO, expected_rel)
+    run_dir = os.path.join(run_rec, "flow-" + name)
+    try:
+        os.makedirs(run_dir, exist_ok=True)
+        flow = json.load(open(flow_path, encoding="utf-8"))
+        expected = json.load(open(expected_path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return "flow files: %s" % exc
+    script = os.path.join(REPO, "script-android-app")
+    try:
+        proc = subprocess.run(
+            [script, "--serial", SERIAL, "--flow", flow_path, "--run-dir", run_dir],
+            cwd=REPO, capture_output=True, text=True, errors="replace", timeout=600,
+        )
+    except subprocess.TimeoutExpired as exc:
+        write_log("flow-%s.log" % name, (exc.stdout or "") + "\n" + (exc.stderr or "") + "\ntimeout")
+        return "script-android-app timed out"
+    except OSError as exc:
+        return "script-android-app: %s" % exc
+    write_log("flow-%s.log" % name, (proc.stdout or "") + "\n" + (proc.stderr or ""))
+    report_path = os.path.join(run_dir, "report.json")
+    try:
+        report = json.load(open(report_path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        report = None
+    return flow_failure(proc.returncode, report, expected, flow_save_ids(flow))
+
+
+def run_device_flows():
+    """Screenshot fakeimap, one broken message, then the capture flows. Does not sys.exit."""
+    global fakeimap_server
+    import screenshot_personality
+    srv = None
+    reason = ""
+    try:
+        srv = screenshot_personality.start_server(listen=os.environ["LAB_BIND"] + ":0")
+        fakeimap_server = srv
+        host, port_s = srv.bound["listen"].rsplit(":", 1)
+        port = int(port_s)
+        raw_path = os.path.join(HERE, "personalities", "broken-fetch.eml")
+        raw = open(raw_path, encoding="utf-8").read().replace("\r\n", "\n")
+        try:
+            srv.control({
+                "op": "inject",
+                "user": screenshot_personality.SCREENSHOT_USER,
+                "mailbox": "INBOX",
+                "raw": raw,
+            })
+        except SystemExit as exc:
+            reason = "inject broken message: %s" % (exc.code or exc)
+        if not reason:
+            reason = prepare_flow_device(
+                host, port, screenshot_personality.SCREENSHOT_USER, screenshot_personality.SCREENSHOT_PASSWORD)
+    except SystemExit as exc:
+        reason = "screenshot fakeimap: %s" % (exc.code or exc)
+    except Exception as exc:
+        reason = "screenshot fakeimap: %s: %s" % (type(exc).__name__, exc)
+    try:
+        for name, flow_rel, expected_rel in FLOW_CASES:
+            started = time.time()
+            if reason:
+                detail = reason
+            else:
+                detail = drive_one_flow(name, flow_rel, expected_rel)
+            result = "PASS" if not detail else "FAIL"
+            add_row("screenshot", "flow", name, counts_for(result), result,
+                    "" if result == "PASS" else name, detail, int(time.time() - started))
+    finally:
+        if srv is not None:
+            try:
+                srv.close()
+            except Exception:
+                pass
+            if fakeimap_server is srv:
+                fakeimap_server = None
+
+
 def main():
     global quiet, plan, run_t0, backend, personality_override
     global dry_run, secrets, run_id, run_rec, run_log, commit, cache, hold_lock, responding_to, any_skip
@@ -2340,6 +2547,10 @@ def main():
             seq = "; ".join(suite if j == 0 else f"reset, {suite}" for j, suite in enumerate(mine))
             down = "stop fakeimap" if backend == "fakeimap" else ("stop, rm" if s and s.get("container") else "-")
             print(f"plan {i}/{len(per_server)} {name}: setup ({steps}); {seq}; teardown ({down})")
+        if "flow" in suites:
+            flows = " ".join(rel for _name, rel, _expected in FLOW_CASES)
+            print(f"plan flow {SERIAL}: screenshot fakeimap on LAB_BIND; inject broken-fetch.eml; "
+                  f"pm clear; LabAccountTest#addLabAccount; script-android-app {flows}")
     if not dry_run:
         try:
             acquire_lock()
@@ -2351,9 +2562,10 @@ def main():
     if reason:
         stop(reason, suites, names, [])
     if dry_run:
-        reason = dry_run_problems()
-        if reason:
-            stop(reason, suites, names, [])
+        if plan:
+            reason = dry_run_problems()
+            if reason:
+                stop(reason, suites, names, [])
         print("servers: " + " ".join(names))
         print("suites: " + " ".join(suites))
         return
@@ -2418,12 +2630,17 @@ def main():
                     stop(f"VERDICT BLOCKED {name} still running after teardown: {err}", suites, names, [])
             current_unit[:] = ["", ""]
     record_backend_skips(suites)
+    if "flow" in suites:
+        current_unit[:] = ["screenshot", "flow"]
+        run_device_flows()
+        current_unit[:] = ["", ""]
     if not any_skip:
         save_cache()
     verdict = "FAIL" if any(row["result"] in ("FAIL", "BLOCKED") for row in rows) else "PASS"
     write_lock("cleanup")
     write_outputs(verdict, "", [], suites, names)
-    finish(f"VERDICT {verdict}", 0)  # exit status unchanged: 0 after a completed run, PASS or FAIL
+    # Other suites keep exit 0 after a completed run. A flow miss is the process result.
+    finish(f"VERDICT {verdict}", completed_run_code(rows))
 
 
 if __name__ == "__main__":

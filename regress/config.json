@@ -1,0 +1,5 @@
+{
+  "pkg": "com.davidlang.liveimap",
+  "activity": "com.davidlang.liveimap/org.dlang.liveimap.MainActivity",
+  "strings_res": "app/build/generated/english/res"
+}

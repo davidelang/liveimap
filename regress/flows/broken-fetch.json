@@ -1,0 +1,15 @@
+{
+  "schema": "capture-flow/1",
+  "name": "broken-fetch",
+  "package": "${pkg}",
+  "description": "Open the broken message and record the failure text the reader shows.",
+  "steps": [
+    {"id": "launch", "launch": true},
+    {"id": "folders", "wait_for": {"string": "settings_group_folders_title"}, "timeout_s": 40},
+    {"id": "inbox", "tap": {"text": "INBOX"}, "scroll": "page", "timeout_s": 60},
+    {"id": "row", "wait_for": {"text": "Broken fetch"}, "timeout_s": 120},
+    {"id": "open", "tap": {"text": "Broken fetch"}, "timeout_s": 30},
+    {"id": "shown", "wait_for": {"text": "could not decode this part"}, "timeout_s": 60},
+    {"id": "failure", "read_text": {"text": "could not decode this part"}, "save_as": "failure"}
+  ]
+}

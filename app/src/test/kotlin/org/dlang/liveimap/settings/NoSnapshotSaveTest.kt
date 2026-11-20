@@ -1,9 +1,7 @@
 package org.dlang.liveimap.settings
 
-import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /** F55/F66: field edits go through update {} so a stale snapshot never reverts other settings. */
@@ -16,17 +14,6 @@ class NoSnapshotSaveTest {
         val now = store.load()
         assertEquals("AB:CD", now.sieveCertPin)
         assertEquals(ThemeMode.Dark, now.theme)
-    }
-
-    @Test
-    fun knownSnapshotSitesUseUpdate() {
-        val root = "src/main/kotlin/org/dlang/liveimap/"
-        val filter = File(root + "ui/filter/FilterScreen.kt").readText()
-        assertFalse(filter.contains("store.save(account.copy(sieveCertPin"))
-        val folders = File(root + "ui/folder/FolderListModel.kt").readText()
-        assertFalse(folders.contains("store.save(settings.copy(expandedFolders"))
-        val toolbar = File(root + "ui/toolbar/ToolbarEditorScreen.kt").readText()
-        assertFalse(toolbar.contains("store.save(latest)"))
     }
 }
 

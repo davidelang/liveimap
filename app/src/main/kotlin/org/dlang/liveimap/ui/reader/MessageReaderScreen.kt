@@ -2140,7 +2140,7 @@ private fun ReaderScreen(
         trashNamedByUser = usableTrashName(account.trashMailbox).isNotEmpty(),
     )
     Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("smoke-reader"),
+        modifier = Modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = { MailboxTitleLines(heading.leaf, heading.parent) },

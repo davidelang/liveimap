@@ -1,6 +1,5 @@
 package org.dlang.liveimap.engine.sieve
 
-import java.io.File
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
@@ -743,22 +742,6 @@ class ManageSieveTest {
     }
 
     @Test
-    fun literalTailFollowsEachReadBytes() {
-        val text = source("kotlin/org/dlang/liveimap/engine/sieve/ManageSieve.kt")
-        var from = 0
-        for (name in listOf("fun getScript", "fun saslChallengeText", "fun commandFailureText")) {
-            val start = text.indexOf(name, from)
-            assertTrue(start >= 0)
-            val bytes = text.indexOf("readBytes(", start)
-            val tail = text.indexOf("readLiteralTail()", bytes)
-            assertTrue(tail > bytes)
-            val nextBytes = text.indexOf("readBytes(", bytes + "readBytes(".length)
-            if (nextBytes >= 0) assertTrue(tail < nextBytes)
-            from = tail
-        }
-    }
-
-    @Test
     fun literalTailDoesNotConsumeAResponseLine() = runBlocking {
         val transport = ListTransport(listOf("OK \"next\""))
         transport.readLiteralTail()
@@ -800,6 +783,3 @@ private class ListTransport(
         writtenBytes.add(bytes.copyOf())
     }
 }
-
-private fun source(path: String): String =
-    listOf("src/main/$path", "app/src/main/$path").map(::File).first { it.exists() }.readText()

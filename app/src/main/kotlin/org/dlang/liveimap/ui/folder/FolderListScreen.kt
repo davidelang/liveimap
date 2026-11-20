@@ -73,13 +73,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -123,7 +120,6 @@ import org.dlang.liveimap.session.mailSession
 import org.dlang.liveimap.settings.alpineBooks
 import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.SettingsStore
-import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.FolderFavorite
 import org.dlang.liveimap.settings.sameEntry
 import org.dlang.liveimap.ui.ConnectionStatusStrip
@@ -211,17 +207,6 @@ internal class FolderScreenHeld : ViewModel() {
     }
 }
 
-private fun Context.hostActivity(): Activity? {
-    var current: Context = this
-    while (true) {
-        if (current is Activity) return current
-        if (current !is ContextWrapper) return null
-        val next = current.baseContext
-        if (next === current) return null
-        current = next
-    }
-}
-
 private fun folderBarLabel(action: FolderBarAction): String = when (action) {
     FolderBarAction.Refresh -> org.dlang.liveimap.i18n.literal.S("Refresh")
     FolderBarAction.CollapseAll -> org.dlang.liveimap.i18n.literal.S("Collapse all")
@@ -277,32 +262,12 @@ fun FolderListScreen(
         accountChecked = body != FolderAccountBody.Pending
         if (body == FolderAccountBody.Account && accountId == null) onOpenDrawer?.invoke()
     }
-    val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val id = accountId
     if (id.isNullOrEmpty()) {
-        if (smoke) {
-            Box(Modifier.fillMaxSize().testTag("smoke-folders"))
-            return
-        }
         // Fresh install: no account yet. Say so and offer setup instead of an empty screen (seen on a Boox).
         if (noAccounts && accountChecked) {
             NoAccountYet(onAddAccount, onOpenDrawer, onOpenUnsent, onCustomize, onOpenHelp, onOpenAbout, onOpenSettings)
         }
-        return
-    }
-    if (smoke) {
-        FolderListLoaded(
-            accountId = id,
-            store = remember(id) { store.forAccount(id) },
-            onOpenMailbox = onOpenMailbox,
-            onCompose = { seed -> onCompose(seed.copy(accountId = id)) }, // F121
-            onOpenUnsent = onOpenUnsent,
-            onOpenHelp = onOpenHelp,
-            onCustomize = onCustomize,
-            focusMailbox = focusMailbox,
-            focusToken = focusToken,
-            onOpenDrawer = onOpenDrawer,
-        )
         return
     }
     // F181: everything below reads and writes this account, never the drawer's active one.
@@ -337,7 +302,6 @@ private fun FolderListLoaded(
 ) {
     LocalScreenAccounts.current.Register(accountId)
     val appContext = LocalContext.current.applicationContext
-    val smoke = smokeLaunch(LocalContext.current.hostActivity()?.intent)
     val session = remember(accountId) { mailSession(accountId) }
     val connectionState by session.connectionState.collectAsState()
     val debugStatus by TrafficLog.debugStatus.collectAsState()
@@ -440,7 +404,6 @@ private fun FolderListLoaded(
     }
 
     LaunchedEffect(session, loadToken) {
-        if (smoke) return@LaunchedEffect
         val reuse = held.levelReady && !refreshListed && loadToken == 0
         unsentCount = readCopies(appContext, accountId).size
         if (!reuse) {
@@ -870,12 +833,12 @@ private fun FolderListLoaded(
         },
         contentWindowInsets = mailScreenInsets(),
     ) { padding ->
-    Box(Modifier.fillMaxSize().padding(padding).testTag("smoke-folders")) {
+    Box(Modifier.fillMaxSize().padding(padding)) {
     Column(modifier = Modifier.fillMaxSize()) {
         ConnectionStatusStrip(connectionState) {
             scope.launch {
                 try {
-                    if (!smoke) session.resume()
+                    session.resume()
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: MailFailure) {

@@ -37,7 +37,6 @@ import org.dlang.liveimap.settings.DataStoreSettingsStore
 import org.dlang.liveimap.settings.LayoutApply
 import org.dlang.liveimap.settings.SettingsHub
 import org.dlang.liveimap.settings.withUiOf
-import org.dlang.liveimap.smoke.smokeLaunch
 import org.dlang.liveimap.settings.ThemeMode
 import org.dlang.liveimap.ui.LiveImapNavHost
 import org.dlang.liveimap.window.claimWindow
@@ -138,7 +137,6 @@ open class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         if (!slotHeld) return
-        if (smokeLaunch(intent)) return
         val stopping = extraIdleStop
         extraIdleStart = lifecycleScope.launch {
             runAfterExtraIdleStop(stopping) {

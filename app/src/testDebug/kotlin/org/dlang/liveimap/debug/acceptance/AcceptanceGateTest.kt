@@ -45,7 +45,6 @@ class AcceptanceGateTest {
         assertFalse(section.contains("getExternalFilesDir"))
         assertTrue(File("src/main/kotlin/org/dlang/liveimap/settings/editors/ServerEditor.kt").readText()
             .contains("if (com.davidlang.liveimap.BuildConfig.DEBUG) org.dlang.liveimap.debug.acceptance.AcceptanceSection()"))
-        assertTrue(File("src/release/kotlin/org/dlang/liveimap/smoke/SmokeGate.kt").readText().contains("SmokeAllowed = false"))
         // Size work: the runner is debug-only; release has only an empty stub.
         assertFalse(File("src/main/kotlin/org/dlang/liveimap/debug/acceptance").exists())
         val stub = File("src/release/kotlin/org/dlang/liveimap/debug/acceptance/AcceptanceSection.kt").readText()

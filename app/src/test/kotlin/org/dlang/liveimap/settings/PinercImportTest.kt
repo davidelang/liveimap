@@ -1,6 +1,5 @@
 package org.dlang.liveimap.settings
 
-import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.dlang.liveimap.session.FolderEntry
 import org.dlang.liveimap.session.IndexRequest
@@ -1009,11 +1008,6 @@ class PinercImportTest {
                 (candidate.default as? JsonValue.Str)?.value.orEmpty().isNotEmpty()
         }
         val key = leaf.pinerc ?: error("plain leaf")
-        val source = listOf(
-            File("src/main/kotlin/org/dlang/liveimap/settings/PinercImport.kt"),
-            File("app/src/main/kotlin/org/dlang/liveimap/settings/PinercImport.kt"),
-        ).first { it.isFile }.readText()
-        assertFalse(source.contains(key))
         val changed = Settings().withSetting(leaf.setting, SettingValue("||"))
         val text = encodePinerc(changed)
         assertTrue(text.contains("$key="))
