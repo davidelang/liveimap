@@ -2399,6 +2399,11 @@ def drive_one_flow(name, flow_rel, expected_rel):
         expected = json.load(open(expected_path, encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return "flow files: %s" % exc
+    # MainActivity is singleTask, and the flow launch is am start with no flags.
+    # A live task stays on the previous message, so stop the process before each flow.
+    code, text = adb_flow(["shell", "am", "force-stop", PKG], timeout=20)
+    if code != 0:
+        return "force-stop: " + first_line(text)
     script = os.path.join(REPO, "script-android-app")
     try:
         proc = subprocess.run(
@@ -2550,7 +2555,8 @@ def main():
         if "flow" in suites:
             flows = " ".join(rel for _name, rel, _expected in FLOW_CASES)
             print(f"plan flow {SERIAL}: screenshot fakeimap on LAB_BIND; inject broken-fetch.eml; "
-                  f"pm clear; LabAccountTest#addLabAccount; script-android-app {flows}")
+                  f"pm clear; LabAccountTest#addLabAccount; force-stop before each flow; "
+                  f"script-android-app {flows}")
     if not dry_run:
         try:
             acquire_lock()

@@ -4402,3 +4402,7 @@ Instrumented fakeimap cases call LibetpanMailSession, platformJmapMailSession, a
 ## 2026-11-20 - Device flows
 
 - Source-quote tests are gone, regress judges device flows, and the smoke extra is gone.
+
+## 2026-11-20 - Device flow restart
+
+- regress force-stops the app before each device flow so the singleTask activity launches from the start.
